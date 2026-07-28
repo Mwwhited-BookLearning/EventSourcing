@@ -360,14 +360,26 @@ Decision (captured now, not implemented now):
 - `$on` is an explicit equality expression across named source fields (not
   a `StreamId`-convention join) — standard OData has no multi-resource join
   operator, so this is necessarily a hand-rolled, OData-*inspired* mini-
-  grammar, not literal OData.
+  grammar, not literal OData. **`$from` accepts an arbitrary-length,
+  comma-separated source list, not just two** — `$on` becomes a
+  conjunction of pairwise equalities across however many sources are
+  named (e.g. `$from=A,B,C&$on=A/OrderId eq B/OrderId and A/OrderId eq
+  C/OrderId`). A single n-ary derivation is preferred over forcing
+  three-plus sources into a chain of pairwise derivations — chaining is
+  still allowed where it's the more natural shape for the data, but it's
+  a choice, not something the design forces on every 3+-source case.
 - The join/emit trigger — **fire-once inner join** (wait for one event per
   source per key, emit once, key closes) vs. **continuous latest-state
   enrichment** (any new arrival on any source re-emits, joined against the
   current latest state of the others) — is **configurable per derived event
   type** at registration time, not a single global choice.
 - Backfill-from-history vs. from-now-only is likewise **configurable per
-  derived event type** at registration time.
+  derived event type** at registration time — and when a declared source
+  is itself a derived event type, whether backfill recurses through that
+  source's own upstream derivation history (vs. treating its existing
+  output as the starting point) is a **further, per-derivation
+  configuration choice** (e.g. `backfillThroughDerivedSources: true|false`),
+  not a single fixed answer for every derivation.
 - Execution model: a background process per derivation, architecturally "an
   internal follower" — it tails each declared source stream the same way
   `EventTailReader` does for the Follow API (`04-odata-filter-pushdown.md`),
@@ -394,12 +406,55 @@ Consequences / why this doesn't block v1, and what to remember meanwhile:
   (`ADR-006`) rather than inventing a new one — defining an event type is a
   single administrative capability whether the type is hand-authored or
   derived.
-- Real open questions deliberately left unresolved here (to be settled when
-  this is actually built, not now): what happens to a fire-once join whose
-  key never completes on all sides (unbounded pending state, optional TTL?);
-  whether `$select` projections can reference more than two sources at once
-  or must be expressed as chained pairwise derivations; and how backfill
-  interacts with a source stream that is itself a derived event type.
+- **Pending fire-once-join state is durable and TTL-bounded, not a bare
+  in-memory cache.** A key that hasn't completed across all its declared
+  sources is recorded in a `PendingJoinState` table (derivation name, join
+  key, whatever fields have arrived so far, first-seen timestamp) — so it
+  survives a worker restart rather than silently vanishing — and expires
+  (`ExpiresAt = FirstSeenAt + Ttl`, `Ttl` configurable per derivation
+  definition, swept periodically) if the remaining sources never arrive.
+  An expired pending join is dropped with a recorded reason, not silently
+  discarded — worth a dead-letter-style record so an operator can see
+  which keys never completed, though the exact shape of that record isn't
+  designed further here. This resolves what was previously this ADR's
+  open "unbounded pending state, optional TTL?" question.
+- **Derivation-*definition* cycles must be rejected at registration time,
+  not just detected at runtime.** This is a different cycle from
+  `ADR-005`'s `CycleGuard` — that one guards a single traversal of already-
+  published *events'* parent DAG (an inert data structure); this one
+  guards the small graph of derivation *definitions themselves* (derived
+  type → its declared `$from` sources), where a cycle isn't inert at all:
+  if type `C` is derived from `A`+`B`, and someone later registers `A` as
+  derived (transitively) from `C`, each derivation worker's republish
+  becomes a new triggering event for the other, forever. Registering a
+  new derivation must walk the existing derivation-definition graph and
+  reject (`400`) if the new `$from` sources transitively include the type
+  being defined. **A plain depth-first walk with a hash-set of visited
+  types is the standard pattern for this, and it's sufficient here** — no
+  specialized cycle-detection algorithm (e.g. Floyd's tortoise-and-hare,
+  which targets cycles in a single-successor sequence, not a multi-parent
+  graph) is needed, because the graph being walked is the small,
+  admin-scale set of *derivation definitions themselves* — tens of
+  registrations, changing rarely — not the runtime-scale graph of
+  published events `ADR-005`'s `CycleGuard` already has to handle
+  differently for exactly that reason.
+- **Belt-and-suspenders runtime safety net, for the residual race
+  condition the registration-time check can't fully close** (two
+  concurrent registrations each passing their own individual check before
+  either commits): every derived event's envelope carries a
+  `derivationHopCount` — incremented by one each time a derivation
+  worker's republish is itself the triggering event for *another*
+  derivation. A configured **max depth** per derivation definition
+  (a small default, e.g. `5`) causes the worker to stop and dead-letter
+  (the same `EventUpcastFailed`-style pattern `ADR-020` establishes,
+  generalized — not designed further here) rather than propagate forever
+  if that count is ever exceeded. This is a cap on symptoms, not a
+  correctness mechanism — the registration-time graph walk above is what
+  actually prevents a cycle from being registered in the first place.
+
+With the above, this ADR carries no unresolved technical questions of its
+own anymore — like `ADR-009`, it's a pure priority/sequencing decision
+(build after Phases 0–6, not because anything here is still undecided).
 
 ---
 
@@ -943,6 +998,7 @@ Anything beyond that is carried in Problem Details' standard
 | `fromSequenceNumber` supplied with `mode=tail` | `400` | `invalid-replay-parameters` | — |
 | Missing/invalid Bearer token | `401` | `unauthenticated` | — |
 | Missing/invalid DPoP proof, or proof doesn't match the token's `cnf.jkt` (`ADR-017`) | `401` | `dpop-proof-invalid` | `reason: "..."` |
+| `schemaVersion` on publish names a version that doesn't exist (`ADR-020`) | `400` | `unknown-schema-version` | — |
 | Missing scope, or missing `RequiredPublishClaim`/`RequiredReadClaim` | `403` | `forbidden` | `reason: "missing_scope"` \| `"missing_required_claim"` — this is exactly the "response detail, not the status code" distinction `ADR-008` already promised |
 | Unknown event-type / unknown `eventId` | `404` | `not-found` | — |
 | `eventId` reused with different content | `409` | `event-id-conflict` | `eventId: "..."` |
@@ -1115,6 +1171,14 @@ Consequences:
   an in-process background service would be — an accepted cost for making
   the CQRS split legible as two things you actually deploy separately, not
   just two namespaces in one process.
+- **Checkpoint-advance granularity (per-event vs. per-batch) is a pure
+  throughput knob, not a correctness one.** Because `SnapshotMerger`'s
+  Full-replace and Partial-merge-patch operations are both idempotent
+  (`ADR-016`), reprocessing a batch of already-applied events after a
+  crash produces the same end state, not corruption — it only redoes
+  wasted work. `ProjectionHost` can therefore batch any number of events
+  between checkpoint writes with no additional correctness mechanism
+  required; see `09-cqrs-read-models.md` for the configurable mechanism.
 
 ---
 
@@ -1294,56 +1358,97 @@ stream — and a consumer, especially a CQRS projection
 (`09-cqrs-read-models.md`) whose `Project` function expects one consistent
 shape, has no designed way to reconcile that today.
 
+A note on terminology before the Decision: this ADR's transform is
+sometimes called a "projection" in the wider industry (mapping one shape
+to another) — that word is avoided here entirely, because `ADR-015`/
+`ADR-016` already give it a specific, different meaning in this design
+(a CQRS read model). Everywhere below, "upcast mapping" or "`compute()`
+expression" is used instead, deliberately.
+
 Decision:
-- A new, **code-registered** component per event type — same pattern as
-  `IJsonPathTranslator`, not a `PUT /registry` field —
-  `IEventUpcaster`, one per `(EventType, FromVersion)` pair:
-```csharp
-public interface IEventUpcaster
-{
-    string EventType { get; }
-    int FromVersion { get; }
-    JsonNode Upcast(JsonNode payloadAtFromVersion);
-}
-```
-- An `UpcastChain` (the same shape as Axon Framework's upcaster chain —
-  see `docs/references.md`) resolves and applies, in order, every
-  registered upcaster between a `StoredEvent`'s `SchemaVersion` and the
-  event type's current active version, before the payload reaches a
-  consumer — Follow and any CQRS projection (`ProjectionHost`,
-  `ADR-015`). Lineage never includes `Payload` at all (`ADR-009`), so it's
-  unaffected.
+- Each registered schema version `>= 2` gets an optional
+  `upcastFromPrevious` field: an **OData `$apply` `compute()` expression
+  list** (`<expression> as <alias>`, comma-separated — OASIS OData v4.01
+  Data Aggregation extension, `docs/references.md`) — **not** a
+  general-purpose transform language like JSONata. This travels through
+  the same `PUT /registry/{event-type}` call as everything else — it's
+  data, registered live, not a code deployment.
+- **Why `compute()` is enough, and deliberately not more**: an upcast
+  mapping is structurally always **many-source-fields-to-one-destination-
+  field, or one-to-one** — combine or rename/recompute sibling fields of
+  the *same* stored event into the new version's fields. It is never
+  one-to-many (one source field fanning out into several destination
+  fields) and never many-to-many (a join or an array-cardinality change)
+  — an upcast reshapes one event's own payload into one new-version
+  payload, it doesn't join across events or restructure array shape.
+  `compute()`'s "expression `as` alias" list already matches that
+  cardinality exactly; none of JSONata's object/array-construction or
+  looping constructs would ever be exercised, so adopting a full
+  transform language for this would be strictly more power than the
+  problem has.
+- **Why OData specifically, over JSONata or a bespoke format**: this
+  design already depends on `Microsoft.OData.UriParser` for `$filter`
+  (`04-odata-filter-pushdown.md`) — parsing `compute()` reuses that same
+  library and the same "borrow OData syntax, not full spec compliance"
+  convention already established by `ADR-003`/`ADR-012`, instead of
+  adding a second expression grammar and an unverified-maturity .NET
+  port purely for this one feature.
+- Each `compute()` alias must name an actual property of the *destination*
+  version's schema — validated at registration (`05-schema-registry-and-
+  spec-generation.md`), alongside the existing structural checks. An
+  alias that doesn't correspond to any destination property, or an
+  expression that fails to parse, is rejected `400` at registration time
+  — the first concrete piece of registration-time compatibility checking
+  this design has (see Consequences).
+- `UpcastChain` (`06-solution-structure.md`) is a single generic executor,
+  not `N` hand-written classes: for each version hop between a
+  `StoredEvent`'s `SchemaVersion` and the event type's current active
+  version, it retrieves that version's `upcastFromPrevious` clause,
+  evaluates each `expression as alias` against the previous hop's fields
+  (`Microsoft.OData.UriParser`'s expression evaluation, not a bespoke
+  interpreter), and assembles the next hop's payload from the results.
+  Applied before the payload reaches a consumer — Follow and any CQRS
+  projection (`ProjectionHost`, `ADR-015`). Lineage never includes
+  `Payload` at all (`ADR-009`), so it's unaffected.
 - `StoredEvent.Payload` is never rewritten — upcasting is a read-time
   transform, computed fresh per response, the same non-destructive posture
   already taken for masking (`ADR-009`) and for never deleting/mutating
   stored data (`ADR-009`'s closing note).
-- Registering a new schema version does **not** require a matching
-  upcaster to exist — a purely additive-optional-field change may need no
-  transform at all. Whether a version gap that *does* need one is missing
-  its upcaster is a runtime data problem, not something registration
-  validates; schema-compatibility *checking* at registration time (in the
-  style of Confluent Schema Registry's BACKWARD/FORWARD/FULL modes — see
-  `docs/references.md`) is a further, undecided extension, not built here.
+- Registering a new schema version still does **not** require an
+  `upcastFromPrevious` clause — a purely additive-optional-field change
+  may need no transform at all; that hop's payload simply passes through
+  unchanged.
 
 Consequences:
 - Follow/`ProjectionHost` consumers, across a `mode=replay` burst spanning
   many schema versions, now see one consistent (current-version) shape
   throughout, instead of branching on `SchemaVersion` themselves — the
   direct fix for the gap in Context.
-- An upcaster runs per event, on every read — for a high-volume replay
-  this is a real, uncached cost; no upcast-result caching is designed
-  here, the same category of accepted v1 cost as Follow's unbounded
-  replay burst (`ADR-010`).
-- `IEventUpcaster` is deliberately symmetrical with
-  `IJsonPathTranslator`/`IEventLineageQueryProvider`
-  (`06-solution-structure.md`) — resolved via DI, one registration per
-  `(type, version)` pair, no runtime `switch` — consistent with this
-  design's pattern for version-/provider-specific logic.
-- **Not decided here**, unlike `ADR-007`'s or `ADR-009`'s deferrals (which
-  are fully designed, just scheduled later): whether to add
-  compatibility-mode *enforcement* at registration time. v1 only builds
-  the transform mechanism, trusting whoever registers a new version to
-  also register the matching upcaster.
+- Evaluating a `compute()` clause runs per event, on every read — for a
+  high-volume replay this is a real, uncached cost; no upcast-result
+  caching is designed here, the same category of accepted v1 cost as
+  Follow's unbounded replay burst (`ADR-010`).
+- No new NuGet dependency and no second expression grammar for
+  maintainers to learn — the direct trade for `compute()`'s narrower
+  expressiveness versus a general transform language.
+- The OASIS Data Aggregation extension's `compute()` grammar has no
+  confirmed native default-if-missing/coalesce function — expressing "use
+  `USD` if `Currency` is absent" may need a conditional/comparison
+  expression rather than one builtin, and this needs verifying against
+  whichever `Microsoft.OData.UriParser` version is pinned, not assumed.
+- **This narrows, but does not close,** the still-open
+  compatibility-*enforcement* question (`README.md`, "Open decisions"):
+  registering a syntactically-broken or misaliased `upcastFromPrevious`
+  clause is now caught at `400`, but whether an expression's *output*
+  actually validates against the destination schema is still never
+  checked — that would need executing it against representative data,
+  which this design does not attempt.
+- **A hard boundary, not a currently-needed capability**: if a future
+  event type ever genuinely needs a one-to-many or many-to-many reshape
+  across a version bump, `compute()` stops being sufficient and a general
+  transform language (JSONata — see `docs/references.md` — or similar)
+  would need revisiting. Nothing observed in this design's event types so
+  far needs that; recorded here so it isn't rediscovered from scratch.
 
 ---
 
@@ -1411,3 +1516,95 @@ Consequences:
   `ChainHash` computation is plain application code in `EventAppender`,
   identical on SQLite/Postgres/SQL Server; only the column itself (`TEXT`,
   portable per `ADR-004`) is persisted per provider.
+
+---
+
+## ADR-020: Explicit `schemaVersion` on publish, with publish-time upcast validation and a reserved dead-letter event type
+
+Status: Accepted
+
+Context: Publish previously validated every payload against whichever
+schema version was currently active — the publisher never stated which
+version they were written against, the store simply used "whatever's
+active right now." That's fine until a schema evolves faster than every
+publisher upgrades: a publisher still emitting a payload shaped for an
+older version has no way to say so, and gets rejected against a schema it
+was never written against. Separately, `ADR-018`'s registration-time
+`upcastFromPrevious` validation (parses, aliases resolve) still can't
+confirm the *output* of a real upcast actually satisfies the destination
+schema — the still-open compatibility-enforcement question (`README.md`)
+— because there's no representative data to run it against at
+registration time.
+
+Decision:
+- The publish envelope gains a **required** `schemaVersion` field,
+  alongside `payload`/`parentEventIds?`/`eventId?` — the publisher states
+  which version of `{event-type}`'s schema their payload is shaped for.
+  `SchemaValidationService` validates against *that* version specifically
+  (rejected `400`, `unknown-schema-version`, if it doesn't exist) — not
+  automatically "whichever is active."
+- If `schemaVersion` names a version **behind** the event type's current
+  active version, `PublishEndpoint` runs the declared payload through
+  `UpcastChain` (`ADR-018`) — the same chain a Follow/`ProjectionHost`
+  consumer would apply on read — all the way to the current active
+  version, **as part of the publish request itself**, using the caller's
+  real, just-validated payload as the test case. This is the concrete
+  mechanism that answers the open compatibility-enforcement question:
+  instead of checking an abstract "is this mapping compatible" question
+  against synthetic data at registration time, every real publish against
+  a lagging version is itself a live compatibility check against real
+  data, the first time it actually matters.
+- **On success** (every hop parses, evaluates, and the final result
+  validates against the current version's schema): behavior is otherwise
+  unchanged — the event is stored exactly as declared, at `schemaVersion`.
+  `Payload` is never transformed before storage; only a Follow/
+  `ProjectionHost` reader sees the upcasted shape, exactly as `ADR-018`
+  already designs. The publish-time run is a validation pass, not a
+  storage-shape change.
+- **On failure** (a hop between `schemaVersion` and the active version
+  fails to parse, fails to evaluate, or its output doesn't validate
+  against that hop's target schema): the store does **not** reject the
+  publish outright, and does **not** silently store an unreconcilable
+  event as if nothing were wrong. It publishes a **reserved,
+  system-defined event type**, `EventUpcastFailed`, in the original
+  event's place. Its payload carries: the original `eventType`, the
+  original `schemaVersion`, the original (verbatim, unmodified) submitted
+  payload, and which `(EventType, FromVersion)` hop failed and why. The
+  HTTP response is still `201 Created` — something durable *was*
+  recorded — but its body names `EventUpcastFailed` as the stored type,
+  not the caller's originally-intended one.
+- `EventUpcastFailed` is the first **system-owned event type** in this
+  design — not registered through `PUT /registry/{event-type}` by an
+  operator, but reserved at the platform level. It's fully queryable like
+  any other type: `QUERY /follow/EventUpcastFailed` lets an operator (or a
+  monitoring projection) watch upgrade failures as they happen, rather
+  than needing to poll logs.
+
+Consequences:
+- A genuine, incremental answer to the compatibility-enforcement question
+  — every real publish against a lagging version doubles as a live test
+  of that version's upcast path — but still not *complete*: a hop no
+  lagging publisher has ever actually hit is never validated this way.
+  `ADR-018`'s registration-time syntactic check remains the only
+  guarantee for a hop nobody has exercised yet.
+- `schemaVersion` being **required**, not optional-defaulting-to-active,
+  is a breaking change to every existing publish example across this
+  design package's feature docs and Gherkin scenarios, none of which
+  state one today — flagged as a real cross-doc follow-up, not
+  exhaustively rewritten here.
+- `EventUpcastFailed` needs its own fixed schema (source type, source
+  version, verbatim original payload, failed-hop identifier, failure
+  reason) baked into the platform rather than the registry — the first
+  event type this design has that an operator didn't register. Its
+  `ChangeKind`/claims answer (most likely `Full`, no claims beyond the
+  base scopes, so it's visible to the same audience as the failing
+  attempt) isn't designed further here.
+- `EventAppender`'s idempotency check (`ADR-011`) still applies to
+  whichever event actually gets stored — a retried publish with the same
+  `eventId` and an upcast failure replays the *original*
+  `EventUpcastFailed` response, not a fresh attempt.
+- Does not change `ADR-018`'s read-time `UpcastChain` at all — it remains
+  necessary and unchanged for every event stored before this ADR existed,
+  or stored under a hop whose `compute()` clause only broke *after* that
+  event was already written. Publish-time validation and read-time
+  upcasting are complementary, not redundant with each other.

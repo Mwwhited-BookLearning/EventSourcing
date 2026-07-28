@@ -142,7 +142,7 @@ Container_Boundary(followApi, "Follow API") {
     Component(tailReader, "EventTailReader", "EF Core repository", "Polls Events where SequenceNumber > lastSeen (cursor set by mode, ADR-010), applies pushed-down predicate")
     Component(parentFilter, "parentEventIds visibility filter", "restrictedTypes set", "ADR-008 -- omits any parent whose type the caller can't see")
     Component(masker, "IPayloadMasker", "schema+data transform", "ADR-009 -- Phase 8, not yet built; wraps maskable fields per caller's claims")
-    Component(upcaster, "UpcastChain", "IEventUpcaster per (EventType, FromVersion)", "ADR-018 -- reshapes an old-version payload to current shape before masking runs")
+    Component(upcaster, "UpcastChain", "Generic executor over registered OData compute() expressions", "ADR-018 -- reshapes an old-version payload to current shape (many-to-one/one-to-one only) before masking runs")
 }
 
 ContainerDb(db, "Event & Schema Store")

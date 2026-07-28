@@ -70,10 +70,25 @@ database, a Follow connection, or a checkpoint in sight.
    e. Call `projection.Project(key, mergedSnapshot)`, upsert the returned
       `TReadModel` into the projection's own read-model table, keyed by
       `key`.
-   f. After the batch (or on each event, depending on desired durability
-      granularity — not prescribed further here), advance
-      `ProjectionCheckpoint.LastSequenceNumber` to the event's
-      `SequenceNumber`.
+   f. Advance `ProjectionCheckpoint.LastSequenceNumber` to the highest
+      `SequenceNumber` applied so far in the current batch (see below).
+
+**Checkpoint-advance granularity is configurable, and the choice is a
+pure throughput trade-off, not a correctness one** (`ADR-015`'s closing
+consequence). `ProjectionHost` takes a `batchSize` setting per projection
+— `1` (the default) advances the checkpoint after every event, the
+safest and slowest option; a larger value applies several events'
+merges (steps a–e above) before writing the checkpoint once. Because
+`SnapshotMerger`'s `Full`/`Partial` operations are both idempotent
+(`ADR-016`) — reapplying the same event, in the same order, always
+produces the same result — a crash mid-batch is always safe to recover
+from by simply resuming from the last successfully-advanced checkpoint:
+at worst this redoes already-applied work, it never corrupts state.
+Conceptually, a batch is the same shape as a multi-parent event
+(`ADR-005`) — one unit of work covering several underlying events — but
+`ProjectionHost` doesn't need an actual stored multi-parent event to get
+this benefit; batching here is a purely internal, read-side detail, not
+something the write side needs to know about.
 
 ```csharp
 static JsonNode MergePatch(JsonNode? current, JsonNode incoming)

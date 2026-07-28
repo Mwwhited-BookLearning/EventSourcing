@@ -155,14 +155,20 @@ masking's runtime enforcement (`IPayloadMasker`); see `ADR-002` and
 - One path template: `POST /publish/{event-type}`, with `event-type` as a
   path parameter constrained by an `enum` populated from active event types
   in the registry.
-- Request body is an **envelope**: `payload` (the schema-validated event
-  data) plus optional `parentEventIds` (lineage metadata — see
-  `02-data-model.md`, "Event lineage") and optional `eventId` (idempotency
-  key — see "Publish idempotency", `ADR-011`). Neither `parentEventIds`
-  nor `eventId` is ever part of the registered JSON Schema; `parentEventIds`
-  is validated against the event type's `ParentValidationMode`, `eventId`
-  against any existing `StoredEvent` with the same id — neither against
-  `payload`'s schema.
+- Request body is an **envelope**: `schemaVersion` (**required** — which
+  registered version of `{event-type}`'s schema `payload` is shaped for,
+  `ADR-020`), `payload` (validated against *that* version specifically,
+  not automatically "whichever is active"), plus optional `parentEventIds`
+  (lineage metadata — see `02-data-model.md`, "Event lineage") and
+  optional `eventId` (idempotency key — see "Publish idempotency",
+  `ADR-011`). If `schemaVersion` is behind the active version, the
+  payload is also run through `UpcastChain` (`ADR-018`) as a live
+  compatibility check before the response is returned — see `ADR-020`
+  for the `EventUpcastFailed` outcome when that fails. None of
+  `schemaVersion`/`parentEventIds`/`eventId` is ever part of the
+  registered JSON Schema itself; each is validated against its own rule
+  (an existing version, `ParentValidationMode`, an existing `StoredEvent`
+  with the same id, respectively) — never against `payload`'s schema.
 - `payload`'s schema per event type is a `$ref` into a `components/schemas`
   section built directly from each `EventTypeDefinition.JsonSchema`.
 
@@ -189,8 +195,16 @@ paths:
           application/json:
             schema:
               type: object
-              required: [payload]
+              required: [schemaVersion, payload]
               properties:
+                schemaVersion:
+                  type: integer
+                  description: >
+                    Which registered version of this event type's schema
+                    payload is shaped for (ADR-020). Rejected 400 if that
+                    version doesn't exist; if it's behind the active
+                    version, the payload is upcast-validated live before
+                    the response is returned.
                 payload:
                   oneOf:
                     - $ref: '#/components/schemas/OrderPlaced'
@@ -217,11 +231,14 @@ paths:
           description: >
             Event accepted and appended, OR (eventId supplied, matching an
             existing event's content) an idempotent replay of the original
-            response — no new write in that case.
+            response, OR (schemaVersion behind active, upcast validation
+            failed) an EventUpcastFailed event stored in its place
+            (ADR-020) — the response body's eventType names which one.
         '400':
           description: >
-            payload failed schema validation, OR (Strict ParentValidationMode)
-            one or more parentEventIds do not resolve to a stored event
+            payload failed schema validation, OR schemaVersion doesn't
+            exist, OR (Strict ParentValidationMode) one or more
+            parentEventIds do not resolve to a stored event
         '401':
           description: Missing or invalid Bearer token
         '403':

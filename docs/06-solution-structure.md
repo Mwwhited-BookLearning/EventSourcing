@@ -455,23 +455,28 @@ the recursive term.
 
 ## Event upcasting (`ADR-018`)
 
-`IEventUpcaster` implementations are resolved the same way
-`IJsonPathTranslator`s are — registered in DI, one per `(EventType,
-FromVersion)`, looked up by an `UpcastChain` rather than a runtime
-`switch`:
+Unlike `IJsonPathTranslator`, there is no per-`(EventType, FromVersion)`
+class to write. `upcastFromPrevious` (registered per version,
+`05-schema-registry-and-spec-generation.md`) is an OData `compute()`
+expression list — **data**, not code — so `UpcastChain` is one generic
+executor that evaluates it via the same `Microsoft.OData.UriParser`
+already used for `$filter` (`04-odata-filter-pushdown.md`):
 
 ```csharp
 public class UpcastChain
 {
-    private readonly IReadOnlyDictionary<(string EventType, int FromVersion), IEventUpcaster> _upcasters;
+    private readonly ISchemaRegistryReader _registry;
 
-    public JsonNode Apply(string eventType, int storedVersion, int currentVersion, JsonNode payload)
+    public async Task<JsonNode> ApplyAsync(string eventType, int storedVersion, int currentVersion, JsonNode payload)
     {
         var node = payload;
         for (var v = storedVersion; v < currentVersion; v++)
-            node = _upcasters.TryGetValue((eventType, v), out var upcaster)
-                ? upcaster.Upcast(node)
-                : node; // no upcaster registered for this gap -- passed through as-is (ADR-018's accepted risk)
+        {
+            var definition = await _registry.GetVersionAsync(eventType, v + 1);
+            if (definition.UpcastFromPrevious is { } compute)
+                node = ComputeEvaluator.Evaluate(compute, node); // parses + evaluates "expr as alias, ..." via Microsoft.OData.UriParser
+            // no upcastFromPrevious registered for this hop -- passed through as-is (ADR-018's accepted risk)
+        }
         return node;
     }
 }
@@ -483,6 +488,27 @@ must see the upcasted payload, not the as-stored one) and from
 `ProjectionHost` (per event, before `SnapshotMerger` — `09-cqrs-read-
 models.md`, `ADR-016`), never from `LineageEndpoint` (which never
 includes `Payload`).
+
+**Also called from `PublishEndpoint` itself now (`ADR-020`)** — not to
+transform what gets stored, but as a live validation pass:
+
+```csharp
+if (request.SchemaVersion < activeVersion)
+{
+    try { await upcastChain.ApplyAsync(eventType, request.SchemaVersion, activeVersion, request.Payload); }
+    catch (UpcastFailedException ex)
+    {
+        return await appender.AppendAsync(BuildEventUpcastFailed(request, ex.FailedHop, ex.Reason));
+    }
+}
+// upcast succeeded (or wasn't needed) -- store the ORIGINAL request.Payload at request.SchemaVersion, unchanged
+return await appender.AppendAsync(BuildStoredEvent(request));
+```
+
+The upcasted result itself is discarded here — only whether it *succeeded*
+matters at publish time; what actually gets stored is always the caller's
+original, as-declared payload (`ADR-020`'s "on success, behavior is
+otherwise unchanged").
 
 ## Auth: DPoP proof validation (`ADR-017`)
 

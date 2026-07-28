@@ -143,15 +143,31 @@ An event-sourcing store with:
 
 ## Open decisions flagged for the implementer
 
-None outstanding. Every question surfaced during design has been resolved
-and recorded as an ADR in `07-adrs.md` — including unindexed-field
-filtering (reject outright, `ADR-003`) and dev-mode auth/orchestration (an
-in-process OpenIddict host + .NET Aspire, `ADR-006`; the production IdP
-remains a separate, later decision, out of scope for this POC).
+Almost everything surfaced during design has been resolved and recorded as
+an ADR in `07-adrs.md` — including unindexed-field filtering (reject
+outright, `ADR-003`) and dev-mode auth/orchestration (an in-process
+OpenIddict host + .NET Aspire, `ADR-006`; the production IdP remains a
+separate, later decision, out of scope for this POC). One item is
+genuinely still open, and it's a narrow one:
 
-Two items are deliberately **deferred**, not undecided — see
-`ADR-007` and `ADR-009`'s closing note for why each is safe to build later
-without disturbing v1:
+1. **Schema-compatibility *enforcement* for a hop nobody has exercised
+   yet.** `ADR-020` closes most of this gap: every real publish against a
+   lagging `schemaVersion` now runs live through `ADR-018`'s
+   `upcastFromPrevious` `compute()` chain, using the caller's real payload
+   as the compatibility test — on failure, a reserved `EventUpcastFailed`
+   event is stored instead of silently accepting broken data. What's
+   still unresolved is the hop nobody has ever actually hit this way (every
+   publisher upgraded immediately, so the chain never ran for real) — there
+   is still no proactive, synthetic-data check for that case. See
+   `ADR-020`'s closing consequence.
+
+`ADR-007` (derived/materialized event types) is now fully designed —
+pending-join TTL, derivation-definition cycle detection (registration-time
+graph walk, plus a configured max-hop runtime safety net for the residual
+race condition), n-ary `$from`/`$on` sources, and backfill-through-a-
+derived-source are all resolved in the ADR itself. It remains
+**deferred**, not undecided — a pure scheduling choice, the same as
+`ADR-009`'s closing note explains for masking:
 
 - **Derived/materialized event types** (server-side joins/projections
   across streams) — secondary feature set, design captured in `ADR-007`,
@@ -160,3 +176,9 @@ without disturbing v1:
   `PartialReveal`/`Hash` instead of always `{"masked": "***"}`) — the
   fixed-placeholder mechanism itself is settled (`ADR-009`); only *richer*
   strategies on top of it remain a future proposal.
+
+`09-cqrs-read-models.md`'s `ProjectionHost` checkpoint-advance granularity
+(per-event vs. per-batch) is also resolved: it's a configurable
+`batchSize`, safe at any size because `SnapshotMerger`'s merge operations
+are idempotent (`ADR-016`) — reprocessing after a crash redoes work, it
+never corrupts state.
