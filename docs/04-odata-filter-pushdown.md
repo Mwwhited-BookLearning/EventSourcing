@@ -101,3 +101,9 @@ storage-layer optimization, transparent to query translation.
   token).
 - Cross-event-type joins/projections (`$expand`/`$select`) — see
   `README.md` scope notes; data model should not preclude this later.
+- Querying by parent/lineage relationship via `$filter`. `$filter` walks
+  `FilterableFields` declared inside `Payload`; the `EventParents` graph is a
+  separate concern with its own read surface — see the Lineage API in
+  `03-api-contracts.md`. Keeping these mechanically separate avoids
+  overloading OData syntax with a relationship it wasn't designed to
+  express (walking an arbitrary-depth DAG).

@@ -3,6 +3,10 @@ Feature: Schema registry
   I want to register event types with their JSON Schema and filterable fields
   So that publishers and followers have a single, versioned source of truth
 
+  # Every request in this file carries a Bearer token with the registry:admin
+  # scope unless a scenario says otherwise. See auth.feature for
+  # authentication/authorization behavior itself.
+
   Scenario: Registering a new event type creates version 1
     When I PUT "/registry/OrderPlaced" with body:
       """

@@ -3,6 +3,58 @@
 Both documents are generated from the Schema Registry; neither hand-authors
 JSON Schema. The registry is the single source of truth.
 
+## Authentication & Authorization
+
+Every endpoint in this document requires `Authorization: Bearer <JWT>` unless
+stated otherwise. Tokens are issued by an OIDC provider via the OAuth2
+**Client Credentials** grant — all three actors (Publishing System, Consuming
+System, Platform Operator) are services, not interactive users, so there is
+no authorization-code/login flow to design for v1. See `ADR-006` for the
+dev-mode provider (Keycloak) and orchestration story.
+
+Authorization is scope-based, one policy per scope, mapped to endpoints as:
+
+| Endpoint | Required scope |
+|---|---|
+| `POST /publish/{event-type}` | `events:publish` |
+| `GET /follow/{event-type}` | `events:follow` |
+| `GET /events/{id}/parents`, `/children`, `/ancestors`, `/descendants` | `events:lineage:read` |
+| `PUT /registry/{event-type}` | `registry:admin` |
+| `GET /registry/...` | `registry:admin` |
+| `GET /openapi.json`, `GET /asyncapi.json` | none (anonymous — contract shape only, no event data) |
+
+OpenAPI documents this with a shared security scheme:
+
+```yaml
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+security:
+  - bearerAuth: []   # overridden per-operation with the specific scope, e.g.:
+paths:
+  /publish/{event-type}:
+    post:
+      security:
+        - bearerAuth: [events:publish]
+      responses:
+        '401':
+          description: Missing or invalid Bearer token
+        '403':
+          description: Token valid but missing the required scope
+```
+
+**Browser SSE caveat**: the native browser `EventSource` API cannot set an
+`Authorization` header. The Follow API therefore also accepts the token via
+an `access_token` query-string parameter for browser-based followers
+(`GET /follow/{event-type}?access_token=<token>`); non-browser followers
+using an `HttpClient`-based SSE reader should prefer the header. Query-string
+tokens are more prone to leaking via server/proxy logs than header-based
+ones — mitigate with short-lived tokens, not by avoiding the mechanism
+(there is no alternative for a real `EventSource` client).
+
 ## Generation timing
 
 Recommendation: **generate on demand**, computed fresh from current registry
@@ -19,7 +71,12 @@ generation cost is measurable — track as `ADR-002`.
 - One path template: `POST /publish/{event-type}`, with `event-type` as a
   path parameter constrained by an `enum` populated from active event types
   in the registry.
-- Request body schema per event type is a `$ref` into a `components/schemas`
+- Request body is an **envelope**: `payload` (the schema-validated event
+  data) plus optional `parentEventIds` (lineage metadata — see
+  `02-data-model.md`, "Event lineage"). `parentEventIds` is never part of the
+  registered JSON Schema and is validated separately, against the event
+  type's `ParentValidationMode`, not against `payload`'s schema.
+- `payload`'s schema per event type is a `$ref` into a `components/schemas`
   section built directly from each `EventTypeDefinition.JsonSchema`.
 
 ```yaml
@@ -30,6 +87,8 @@ info:
 paths:
   /publish/{event-type}:
     post:
+      security:
+        - bearerAuth: [events:publish]
       parameters:
         - name: event-type
           in: path
@@ -42,17 +101,36 @@ paths:
         content:
           application/json:
             schema:
-              oneOf:
-                - $ref: '#/components/schemas/OrderPlaced'
-                - $ref: '#/components/schemas/OrderCancelled'
+              type: object
+              required: [payload]
+              properties:
+                payload:
+                  oneOf:
+                    - $ref: '#/components/schemas/OrderPlaced'
+                    - $ref: '#/components/schemas/OrderCancelled'
+                parentEventIds:
+                  type: array
+                  items: { type: string, format: uuid }
+                  description: >
+                    Events this event is causally parented off. Omit or use
+                    an empty array for an origin event. Parents may be of any
+                    event type.
       responses:
         '201':
           description: Event accepted and appended
         '400':
-          description: Payload failed schema validation
+          description: >
+            payload failed schema validation, OR (Strict ParentValidationMode)
+            one or more parentEventIds do not resolve to a stored event
+        '401':
+          description: Missing or invalid Bearer token
+        '403':
+          description: Token valid but missing the events:publish scope
         '404':
           description: Unknown event-type
 components:
+  securitySchemes:
+    bearerAuth: { type: http, scheme: bearer, bearerFormat: JWT }
   schemas:
     OrderPlaced:
       $ref: '#/schemas-from-registry/OrderPlaced/2'   # inlined at generation time
@@ -74,6 +152,12 @@ type — no manual authoring, no drift.
   registry knows which fields are filterable, and that list can be surfaced
   in the parameter description for discoverability.
 - Message payload again `$ref`s the same registry-sourced JSON Schema.
+  `EventId`, `SequenceNumber`, `OccurredAt`, and `parentEventIds` are
+  streamed as message **headers**, mirroring the publish-side split between
+  envelope metadata and schema-validated payload.
+- `access_token` is documented as a channel parameter alongside `filter`, for
+  browser `EventSource` clients that cannot set an `Authorization` header
+  (see the "Browser SSE caveat" above).
 
 ```yaml
 asyncapi: 3.0.0
@@ -91,8 +175,14 @@ channels:
         description: >
           OData $filter expression. Filterable fields for OrderPlaced:
           Amount (Number), Status (String).
+      access_token:
+        description: >
+          Bearer token, for clients (e.g. browser EventSource) that cannot
+          set an Authorization header. Requires the events:follow scope.
     messages:
       OrderPlaced:
+        headers:
+          $ref: '#/components/schemas/EventEnvelope'
         payload:
           $ref: '#/components/schemas/OrderPlaced'
 operations:
@@ -100,11 +190,59 @@ operations:
     action: receive
     channel:
       $ref: '#/channels/follow-order-placed'
+    security:
+      - bearerAuth: [events:follow]
 components:
   schemas:
     OrderPlaced:
       $ref: '#/schemas-from-registry/OrderPlaced/2'
+    EventEnvelope:
+      type: object
+      properties:
+        eventId: { type: string, format: uuid }
+        sequenceNumber: { type: integer }
+        occurredAt: { type: string, format: date-time }
+        parentEventIds:
+          type: array
+          items: { type: string, format: uuid }
 ```
+
+## Lineage API (event chains)
+
+Unlike `/publish` and `/follow`, these paths are not per-event-type — they
+take an `eventId` and are static entries in the generated OpenAPI document
+(no `enum` populated from the registry needed):
+
+```
+GET /events/{eventId}/parents       -- immediate parents (direct)
+GET /events/{eventId}/children      -- immediate children (direct)
+GET /events/{eventId}/ancestors     -- full transitive closure "up" the DAG
+GET /events/{eventId}/descendants   -- full transitive closure "down" the DAG
+```
+
+All four require the `events:lineage:read` scope. `404` if `eventId` itself
+is unknown. Each entry in the response:
+
+```json
+{
+  "eventId": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+  "eventType": "PaymentReceived",
+  "sequenceNumber": 42,
+  "occurredAt": "2026-07-27T10:15:00Z",
+  "resolved": true
+}
+```
+
+`"resolved": false` marks a parent reference that does not currently
+correspond to a stored event — only possible for event types registered
+with `ParentValidationMode: Permissive` (see `02-data-model.md`,
+`05-schema-registry-and-spec-generation.md`). A `resolved: false` entry
+carries only `eventId` — no `eventType`/`sequenceNumber`/`occurredAt`, since
+none exist yet — and is a leaf: traversal does not recurse past it.
+
+`ancestors`/`descendants` must be cycle-safe regardless of the queried
+event's `ParentValidationMode` — see `ADR-005` for why a cycle can exist even
+when the event you start from is Strict.
 
 ## Shared schema source
 
