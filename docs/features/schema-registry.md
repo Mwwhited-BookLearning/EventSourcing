@@ -1,11 +1,68 @@
+# Feature: Schema registry
+
+Context: full lifecycle in `../05-schema-registry-and-spec-generation.md`;
+entities in `../02-data-model.md`; per-field indexing in
+`../04-odata-filter-pushdown.md`; auth requirements in
+[`auth.md`](auth.md).
+
+## Sequence diagram
+
+```plantuml
+@startuml SchemaRegistry_Sequence
+autonumber
+actor "Platform Operator" as operator
+participant "Registry\n(RegistrationEndpoint)" as endpoint
+participant "Auth\n(JWT Bearer + scope policy)" as auth
+participant "SchemaRegistryService" as registry
+participant "IJsonPathTranslator\n(impl per provider)" as jsonPath
+database "Event & Schema Store" as db
+
+operator -> endpoint: PUT /registry/{event-type}\nAuthorization: Bearer <JWT>\n{ jsonSchema, filterableFields, parentValidationMode? }
+endpoint -> auth: validate token + registry:admin scope
+alt missing/invalid token
+  auth --> operator: 401
+else valid token, missing scope
+  auth --> operator: 403
+else authorized
+  endpoint -> registry: register(eventType, jsonSchema, filterableFields, parentValidationMode)
+  registry -> registry: validate jsonSchema is well-formed JSON Schema
+  registry -> registry: validate each filterableFields[].jsonPath resolves in jsonSchema
+  registry -> registry: validate parentValidationMode in {Strict, Permissive}
+  alt any validation fails
+    registry --> operator: 400
+  else all valid
+    registry -> registry: determine version = active version + 1 (or 1 if new)
+    registry -> db: BEGIN TRANSACTION
+    registry -> db: INSERT EventTypeDefinition, FilterableField rows
+    loop for each filterableFields[i] where IsIndexed = true
+      registry -> jsonPath: apply provider-specific index/computed-column migration
+      jsonPath -> db: CREATE INDEX / ALTER TABLE ... ADD computed column + index
+    end
+    registry -> db: mark new version IsActive = true, prior version IsActive = false
+    registry -> db: COMMIT
+    registry -> registry: invalidate OpenAPI/AsyncAPI cache (ADR-002)
+    registry --> operator: 201
+  end
+end
+@enduml
+```
+
+## Salt (UI mockup)
+
+Not applicable — no admin UI is in scope for v1; the registry is an API only
+(see `../README.md`, "What this system deliberately is not").
+
+## Gherkin
+
+```gherkin
 Feature: Schema registry
   As a platform operator
   I want to register event types with their JSON Schema and filterable fields
   So that publishers and followers have a single, versioned source of truth
 
   # Every request in this file carries a Bearer token with the registry:admin
-  # scope unless a scenario says otherwise. See auth.feature for
-  # authentication/authorization behavior itself.
+  # scope unless a scenario says otherwise. See auth.md for authentication/
+  # authorization behavior itself.
 
   Scenario: Registering a new event type creates version 1
     When I PUT "/registry/OrderPlaced" with body:
@@ -64,3 +121,4 @@ Feature: Schema registry
       """
     Then "/openapi.json" should include a path "/publish/OrderPlaced"
     And "/asyncapi.json" should include a channel "/follow/OrderPlaced"
+```
