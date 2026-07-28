@@ -112,6 +112,20 @@ point at. The registered schema itself (what `SchemaValidationService`
 validates publish payloads against) is never wrapped — only the generated
 Follow-side/AsyncAPI view and the actual SSE wire format are.
 
+## Consumer guidance: skip masked/absent fields when overlaying onto existing state
+
+Not enforced by the store — it has no visibility into a downstream
+consumer's own state — but load-bearing for anyone building a
+read-model/projection from the Follow stream (`ADR-009`'s consequences):
+if a field arrives as `{"masked": "***"}` or is absent from the payload,
+treat that as **no information provided for this field in this event**,
+not as "set it to `***`" or "clear it." Only overlay a field from
+`{"value": ...}` (or a non-maskable field's plain value). A consumer that
+naively overlays whatever it receives will clobber a previously-known good
+value with a placeholder the moment it (or a replay) sees the same field
+masked — exactly the corruption masking exists to prevent, one layer
+further downstream than the store can reach.
+
 ## Salt (UI mockup)
 
 Not applicable — masking is a read-time serialization transform with no UI

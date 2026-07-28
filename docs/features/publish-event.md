@@ -20,7 +20,7 @@ participant "ParentLinkService" as parentLink
 participant "EventAppender" as appender
 database "Event & Schema Store" as db
 
-publisher -> endpoint: POST /publish/{event-type}\nAuthorization: Bearer <JWT>\n{ payload, parentEventIds? }
+publisher -> endpoint: POST /publish/{event-type}\nAuthorization: Bearer <JWT>\n{ payload, parentEventIds?, eventId? }
 endpoint -> auth: validate token + events:publish scope
 alt missing/invalid token
   auth --> publisher: 401
@@ -32,18 +32,28 @@ else authorized
   alt event-type unknown
     registryClient --> publisher: 404
   else schema found
-    endpoint -> validator: validate(payload, schema)
-    alt payload invalid
-      validator --> publisher: 400 (validation errors)
-    else payload valid
-      endpoint -> parentLink: validate(parentEventIds, ParentValidationMode)
-      alt Strict and any parentEventId unresolved
-        parentLink -> db: SELECT missing EventIds
-        parentLink --> publisher: 400 (parent event not found)
-      else Permissive, or all parents resolved, or no parents
-        endpoint -> appender: append(StoredEvent, EventParents rows)
-        appender -> db: INSERT (single transaction)
-        appender --> publisher: 201 { eventId, sequenceNumber, schemaVersion }
+    alt eventId supplied
+      endpoint -> db: SELECT StoredEvent WHERE EventId = eventId (ADR-011)
+      alt found, PayloadHash matches
+        endpoint --> publisher: 201 (idempotent replay of the original\nresponse -- no new write, no further validation)
+      else found, PayloadHash differs
+        endpoint --> publisher: 409 (eventId already used with different content)
+      end
+    end
+    group only reached if eventId absent, or supplied-but-not-found
+      endpoint -> validator: validate(payload, schema)
+      alt payload invalid
+        validator --> publisher: 400 (validation errors)
+      else payload valid
+        endpoint -> parentLink: validate(parentEventIds, ParentValidationMode)
+        alt Strict and any parentEventId unresolved
+          parentLink -> db: SELECT missing EventIds
+          parentLink --> publisher: 400 (parent event not found)
+        else Permissive, or all parents resolved, or no parents
+          endpoint -> appender: append(StoredEvent [with eventId if supplied], EventParents rows)
+          appender -> db: INSERT (single transaction)
+          appender --> publisher: 201 { eventId, sequenceNumber, schemaVersion }
+        end
       end
     end
   end
@@ -174,4 +184,36 @@ Feature: Publish events against a registered schema
       """
     Then the response status should be 201
     And the stored event should have SchemaVersion 2
+
+  Scenario: Retrying a publish with the same eventId and identical content replays the original response, with no new write
+    Given I POST to "/publish/OrderPlaced" with body:
+      """
+      { "payload": { "Amount": 150.00, "Status": "Paid" }, "eventId": "3fa85f64-5717-4562-b3fc-2c963f66afa6" }
+      """
+    And the response status should be 201
+    When I POST the exact same request again
+    Then the response status should be 201
+    And the response body should be identical to the first response
+    And no second event should be appended to the store
+
+  Scenario: Retrying with the same eventId but different content is a conflict
+    Given I POST to "/publish/OrderPlaced" with body:
+      """
+      { "payload": { "Amount": 150.00, "Status": "Paid" }, "eventId": "3fa85f64-5717-4562-b3fc-2c963f66afa6" }
+      """
+    And the response status should be 201
+    When I POST to "/publish/OrderPlaced" with body:
+      """
+      { "payload": { "Amount": 999.00, "Status": "Paid" }, "eventId": "3fa85f64-5717-4562-b3fc-2c963f66afa6" }
+      """
+    Then the response status should be 409
+    And no second event should be appended to the store
+
+  Scenario: Publishing without eventId behaves exactly as before ADR-011
+    When I POST to "/publish/OrderPlaced" with body:
+      """
+      { "payload": { "Amount": 150.00, "Status": "Paid" } }
+      """
+    Then the response status should be 201
+    And the stored event's EventId should be freshly generated, not derivable from the request
 ```

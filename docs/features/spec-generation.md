@@ -18,7 +18,7 @@ that feature's runtime enforcement, which is a separate, later phase.
 @startuml SpecGeneration_Sequence
 autonumber
 actor "Publishing/Consuming System" as caller
-participant "EventStore.Host\n(GET /openapi.json | /asyncapi.json)" as endpoint
+participant "EventStore.Host.Core\n(GET /openapi.json | /asyncapi.json, shared by all 3 providers)" as endpoint
 participant "OpenApiDocumentBuilder /\nAsyncApiDocumentBuilder" as docBuilder
 participant "IMemoryCache" as cache
 participant "EventSchemaConverter" as converter

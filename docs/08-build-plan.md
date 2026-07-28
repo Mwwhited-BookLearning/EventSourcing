@@ -55,7 +55,8 @@ it's a genuine content dependency, not only a scheduling one.
 
 **Scope**: the project layout in `06-solution-structure.md`
 (`EventStore.Domain`, `EventStore.Persistence`, the three
-`*.Migrations.<Provider>` projects, `EventStore.Host`). Build the **full**
+`*.Migrations.<Provider>` projects, `EventStore.Host.Core`, and the three
+`EventStore.Host.<Provider>` deployables per `ADR-001`). Build the **full**
 `EventStoreContext` model now — `EventTypeDefinition`, `FilterableField`,
 `StoredEvent`, `EventParent` — even though most of it isn't used until later
 phases. Laying down one coherent schema up front avoids a second wave of
@@ -119,11 +120,14 @@ behavior) belong to Phases 4 and 8, not this one.
 
 **Scope**: `POST /publish/{event-type}` per `03-api-contracts.md` and
 [`features/publish-event.md`](features/publish-event.md): the `{ payload,
-parentEventIds? }` envelope, `SchemaValidationService` against the active
-version, `ParentLinkService` enforcing `ParentValidationMode`
+parentEventIds?, eventId? }` envelope, `SchemaValidationService` against
+the active version, `ParentLinkService` enforcing `ParentValidationMode`
 (`Strict`/`Permissive`, per [`features/event-chains.md`](features/event-chains.md)),
-`EventAppender` writing `StoredEvent` + `EventParents` in one transaction.
-Generate and expose `/openapi.json` now that the publish contract exists
+the `eventId`/`PayloadHash` idempotency short-circuit (`ADR-011`,
+including the concurrent-retry race handled at the unique-constraint
+level — `06-solution-structure.md`), `EventAppender` writing `StoredEvent`
++ `EventParents` in one transaction. Generate and expose `/openapi.json`
+now that the publish contract exists
 (`ADR-002`): `EventSchemaConverter` (parses registered `JsonSchema` text
 into the shared `Microsoft.OpenApi` `OpenApiSchema`) and
 `OpenApiDocumentBuilder` (native `Microsoft.OpenApi` document + writer),
@@ -138,10 +142,12 @@ Lineage is built here, not deferred — only the derived-event-types idea
 [`features/publish-event.md`](features/publish-event.md) and the
 publish-side scenarios in
 [`features/event-chains.md`](features/event-chains.md) pass on all three
-providers; the unique index on `StoredEvent.EventId` is verified to reject a
-duplicate; `/openapi.json` includes `/publish/{event-type}` with the
-envelope shape, served anonymously, cache-invalidated on the next
-registration.
+providers, including: retrying with the same `eventId` and identical
+content replays the original response with no new write; retrying with
+the same `eventId` and different content is `409`; omitting `eventId`
+behaves exactly as before `ADR-011`. `/openapi.json` includes
+`/publish/{event-type}` with the envelope shape (including `eventId`),
+served anonymously, cache-invalidated on the next registration.
 
 ## Phase 3 — Lineage API (read side)
 
@@ -162,13 +168,15 @@ node exactly once.
 
 ## Phase 4 — Follow API + filter pushdown
 
-**Scope**: `GET /follow/{event-type}?$filter=...` per `03-api-contracts.md`,
-[`features/follow-subscribe.md`](features/follow-subscribe.md), and
-[`features/filter-pushdown.md`](features/filter-pushdown.md):
+**Scope**: `GET /follow/{event-type}?$filter=...&mode=tail|replay` per
+`03-api-contracts.md`, [`features/follow-subscribe.md`](features/follow-subscribe.md),
+and [`features/filter-pushdown.md`](features/filter-pushdown.md):
 `ODataFilterParser`, validation against declared `FilterableFields`,
 `PredicateTranslator` + `IJsonPathTranslator` per provider, the
-`EventTailReader` polling loop, SSE responses carrying the envelope headers
-(`eventId`, `sequenceNumber`, `occurredAt`, `parentEventIds`). Generate and
+`EventTailReader` polling loop, the `mode`/`fromSequenceNumber`
+cursor-initialization logic (`ADR-010`, `06-solution-structure.md`), SSE
+responses carrying the envelope headers (`eventId`, `sequenceNumber`,
+`occurredAt`, `parentEventIds`). Generate and
 expose `/asyncapi.json` now that the follow contract exists:
 `AsyncApiDocumentBuilder` (hand-built JSON envelope around the same shared
 `OpenApiSchema` from `EventSchemaConverter`) **and**
@@ -191,7 +199,10 @@ follow channel, served anonymously, cache-invalidated on the next
 registration; a maskable property (registered ahead of Phase 8) already
 appears wrapped as `oneOf[value,masked]` in the generated document, even
 though every event still streams it unconditionally as `{"value": ...}`
-until Phase 8's enforcement lands (`features/masking.md`).
+until Phase 8's enforcement lands (`features/masking.md`); `mode=replay`
+delivers matching history then tails with no gap or duplicate,
+`fromSequenceNumber` correctly bounds where replay starts, and supplying
+`fromSequenceNumber` with `mode=tail` (or the default) is rejected `400`.
 
 ## Phase 5 — Auth (OIDC/OpenIddict) + orchestration
 
@@ -202,9 +213,10 @@ every endpoint built in Phases 1–4; the custom `ScopeRequirement` handler
 (space-delimited `scope` claim, not a bare `RequireClaim`); the new
 `EventStore.DevIdp` project (OpenIddict, EF Core InMemory store, three
 clients pre-seeded in code by `DevIdpSeeder`); `EventStore.AppHost` (Aspire)
-wiring `EventStore.Host` + a database container + `EventStore.DevIdp` (a
-project resource, not a third-party container); the `docker-compose.yml`
-fallback (two ordinary app images, no external IdP image); the
+wiring whichever single `EventStore.Host.<Provider>` it targets (`ADR-001`)
++ that provider's database container + `EventStore.DevIdp` (a project
+resource, not a third-party container); the `docker-compose.yml` fallback
+(two ordinary app images, no external IdP image); the
 browser-`EventSource` `access_token` query-string path on Follow.
 
 **Depends on**: Phases 1–4 (there is nothing to authorize before they
@@ -215,21 +227,27 @@ exist).
 spec documents staying anonymous, the SSE `access_token` path; `aspire run`
 and `docker-compose up` each produce a working dev stack from a clean
 checkout with zero manual setup (no admin console exists to configure in
-the first place — the seed is code, verified via a token request). Once
-verified end-to-end, flip `ADR-006`'s status from Proposed to Accepted.
+the first place — the seed is code, verified via a token request).
+`ADR-006` is already Accepted (confirmed) — this phase is where it gets
+verified end-to-end, not where it gets decided.
 
 ## Phase 6 — Event-type security (required claims)
 
 **Scope**: per `ADR-008` and
 [`features/event-security.md`](features/event-security.md):
-`RequiredPublishClaim` enforcement in `PublishEndpoint`, `RequiredReadClaim`
-enforcement in `FollowEndpoint` (once, at connect time) and
-`LineageEndpoint` (against every distinct `EventType` touched by a
-response, including the root `{eventId}`'s own type — fail the *whole*
-request with `403` if any check fails, per `ADR-008`'s decision not to stub
-out just the restricted node). Both claim checks run as plain application
-code after the relevant `EventTypeDefinition` is loaded, not as a static
-`AddPolicy` — see `06-solution-structure.md` for why.
+`RequiredPublishClaim` enforcement in `PublishEndpoint`;
+`RequiredReadClaim` enforcement in `FollowEndpoint` (once, at connect time,
+for its own event type — plus per-parent filtering of the
+`parentEventIds` envelope header, see below); `LineageEndpoint`'s two-tier
+check per "you can only see what you can see" — pass/fail `403` for the
+root `{eventId}`'s own type, then an independent per-node check for every
+*other* type the traversal discovers, turning a failure there into a
+`restricted: true` stub rather than failing the request (the recursive CTE
+from Phase 3 needs updating to stop expanding through a restricted node,
+not just redact it in the output — see `06-solution-structure.md`). Both
+claim checks run as plain application code after the relevant
+`EventTypeDefinition` is loaded, not as a static `AddPolicy` — see
+`06-solution-structure.md` for why.
 
 Masking (`ADR-009`) is **not** part of this phase despite sharing the same
 `RequiredReadClaim` machinery — see Phase 8. It's a deliberate priority
@@ -239,12 +257,18 @@ call, not a technical dependency that had to be split out.
 is nothing to check against before bearer auth exists).
 
 **Exit criteria**: every scenario in
-[`features/event-security.md`](features/event-security.md) passes,
-including: publish vs. read claims enforced independently for the same
-event type; a lineage query failing entirely (`403`) when any touched node
-belongs to a claim-gated type the caller lacks, even when the root event
-itself is unrestricted; and the `403`-vs-`404` distinction (restricted but
-existing vs. truly unknown) holding for all four Lineage endpoints.
+[`features/event-security.md`](features/event-security.md) and the new
+scenarios in [`features/follow-subscribe.md`](features/follow-subscribe.md)
+pass, including: publish vs. read claims enforced independently for the
+same event type; a lineage query on a **restricted root** rejected
+entirely (`403`); a lineage query on a **visible root** still succeeding
+(`200`) with a `restricted: true` stub for any discovered node the caller
+can't see, while every other node — including ones reachable only through
+a different, visible path — returns normally; the `403`-vs-`404`
+distinction (root restricted-but-existing vs. truly unknown) holding for
+all four Lineage endpoints; and a restricted parent's ID omitted from
+Follow's `parentEventIds` envelope header without blocking the event
+itself from streaming.
 
 ## Phase 7 (deferred) — Derived/materialized event types
 
@@ -304,13 +328,10 @@ yet.
 - **Integration tests against all three providers** run from Phase 0
   onward — they are not a Phase 7-style afterthought. A phase that only
   passes on one provider isn't done.
-- **Keep ADR status current** as phases land: `ADR-003`, `ADR-004`, and
-  `ADR-005` are already Accepted; `ADR-001` and `ADR-002` are still
-  **Proposed (needs confirmation)** — nothing in Phases 0–2 requires
-  resolving them first, but they should be confirmed before or during
-  those phases, not left open indefinitely (see README's "Open decisions").
-  `ADR-006` is Proposed and flips to Accepted at the end of Phase 5 (see
-  above); `ADR-008` and `ADR-009` are already Accepted (design decisions
+- **Keep ADR status current** as phases land: `ADR-001` through `ADR-006`
+  and `ADR-010` are already Accepted (confirmed design decisions) — Phase 5
+  is where `ADR-006` gets verified end-to-end, not where it gets decided.
+  `ADR-008` and `ADR-009` are already Accepted (design decisions
   confirmed) but neither's enforcement is real until its own phase lands
   (`ADR-008` → Phase 6, `ADR-009` → Phase 8); `ADR-007` stays Deferred
   until scheduled; `ADR-009`'s "Future: definable masking strategies"

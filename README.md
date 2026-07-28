@@ -11,17 +11,23 @@ An event-sourcing store with:
 - A **JSON Schema registry** for registering named, versioned event types.
 - A **publish API**, one logical operation per event type
   (`POST /publish/{event-type}`), which validates the payload against the
-  registered schema before appending it to the store.
+  registered schema before appending it to the store. An optional
+  client-supplied `eventId` makes retries safe: the same `eventId` with
+  identical content replays the original response with no new write; the
+  same `eventId` with different content is a `409` (`ADR-011`).
 - A **follow API** over Server-Sent Events (SSE)
   (`GET /follow/{event-type}?$filter=...`) that streams matching events as
   they are appended, filtered using an OData `$filter` expression that is
-  **pushed down to the database**, not evaluated in memory.
+  **pushed down to the database**, not evaluated in memory. A `mode`
+  parameter (`ADR-010`) chooses **tail** (default — new events only) or
+  **replay** (matching history first, then tail with no gap or
+  duplicate), optionally starting from a given `fromSequenceNumber`.
 - Auto-generated **OpenAPI** (publish side) and **AsyncAPI** (follow side)
   documents, both referencing the same JSON Schema definitions stored in the
   registry — no schema is ever duplicated across the two spec formats.
 - Persistence via **EF Core**, with **SQLite, PostgreSQL, and SQL Server** as
-  first-class, interchangeable providers selected at runtime via
-  configuration.
+  first-class providers — chosen at **build/deployment time**, one
+  artifact per provider, not a runtime config switch (`ADR-001`).
 - **Event lineage**: any published event may declare one or more **parent
   events**, of any event type, that it is causally derived from, forming a
   DAG across the store. Parent existence is validated per event type
@@ -38,9 +44,12 @@ An event-sourcing store with:
 - **Event-type security**: a second, independent authorization dimension on
   top of scopes — each event type can optionally require a claim to publish
   it and a *different* claim to read it (`RequiredPublishClaim`/
-  `RequiredReadClaim`), set at registration time. A Lineage API response
-  that touches any claim-gated type the caller lacks fails entirely with
-  `403` rather than partially redacting itself. See `02-data-model.md`,
+  `RequiredReadClaim`), set at registration time. Lineage visibility is
+  per node, not per request — "you can only see what you can see": the
+  root event a Lineage call names must be visible or the whole call is
+  rejected (`403`), but every node it *discovers* is checked
+  independently, coming back as a `restricted: true` stub rather than
+  failing the rest of the response. See `02-data-model.md`,
   `03-api-contracts.md`, and `ADR-008`.
 
 ## What this system deliberately is not (v1 scope)
@@ -88,13 +97,9 @@ An event-sourcing store with:
 These were surfaced during design and are **not yet finalized** — pick and
 record the decision as an ADR when you make it (template in `07-adrs.md`):
 
-1. Provider selection: runtime config switch vs. per-deployment build.
-2. OpenAPI/AsyncAPI documents: generated on-demand per request vs.
-   materialized and cached on schema registration.
-3. Whether unindexed-field filtering should be rejected outright (400) or
+1. Whether unindexed-field filtering should be rejected outright (400) or
    silently degrade to a full scan — current recommendation is **reject**.
-4. Dev-mode auth provider and orchestration (`ADR-006`): an in-process
-   OpenIddict host (`EventStore.DevIdp`) + .NET Aspire is the current
-   recommendation, with docker-compose as a fallback — confirm before
-   treating it as settled, and decide the production IdP separately (out of
-   scope for this POC).
+
+Dev-mode auth provider and orchestration (`ADR-006`, an in-process
+OpenIddict host + .NET Aspire) is confirmed, not open — the production IdP
+remains a separate, later decision (out of scope for this POC).

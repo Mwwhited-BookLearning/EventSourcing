@@ -6,7 +6,7 @@
 EventStore.sln
   src/
     EventStore.Domain/              -- entities, no EF dependency
-    EventStore.Persistence/         -- DbContext, repositories, IJsonPathTranslator + impls
+    EventStore.Persistence/         -- DbContext, repositories, IJsonPathTranslator interface + all 3 impls
     EventStore.Persistence.Migrations.Sqlite/
     EventStore.Persistence.Migrations.Postgres/
     EventStore.Persistence.Migrations.SqlServer/
@@ -15,7 +15,10 @@ EventStore.sln
     EventStore.Follow.Api/          -- GET /follow/{event-type} (SSE), OData parsing
     EventStore.Lineage.Api/         -- GET /events/{id}/parents|children|ancestors|descendants
     EventStore.SpecGeneration/      -- OpenAPI + AsyncAPI builders
-    EventStore.Host/                -- composition root: DI wiring, appsettings, Program.cs
+    EventStore.Host.Core/           -- shared, provider-agnostic composition root logic (see below)
+    EventStore.Host.Sqlite/         -- the actual deployable: Host.Core + SQLite wiring (ADR-001)
+    EventStore.Host.Postgres/       -- the actual deployable: Host.Core + PostgreSQL wiring
+    EventStore.Host.SqlServer/      -- the actual deployable: Host.Core + SQL Server wiring
     EventStore.DevIdp/              -- dev-only OpenIddict token issuer, in-process (see below)
     EventStore.ServiceDefaults/     -- Aspire scaffolding: OpenTelemetry, health checks, service discovery defaults
     EventStore.AppHost/             -- Aspire orchestration for local dev/POC (see below)
@@ -24,6 +27,17 @@ EventStore.sln
     EventStore.IntegrationTests/    -- runs against all three providers (see below)
     EventStore.Bdd/                 -- Reqnroll/SpecFlow-style step definitions for *.feature files
 ```
+
+There is no single `EventStore.Host` project. Per `ADR-001`, provider
+selection is a build-time choice — `EventStore.Host.Sqlite`,
+`.Postgres`, and `.SqlServer` are three separate, independently
+publishable ASP.NET Core executables, each referencing
+`EventStore.Host.Core` for everything that doesn't depend on which
+provider is active (endpoint mapping, auth, spec generation, schema
+registry, etc.) and adding only its own provider's ~5 lines of DI
+registration. There is no `Database:Provider` configuration value
+anywhere — "which provider" is answered by "which of the three projects
+you built and deployed."
 
 `EventStore.Bdd`'s `*.feature` files are real, tool-executed Gherkin — copy
 them out of the fenced ```` ```gherkin ``` ```` blocks in
@@ -40,60 +54,77 @@ EF Core migrations embed provider-specific SQL in their generated `Up()`/
 `Down()` methods — they are not portable even when the model is identical.
 Each `*.Migrations.<Provider>` project references
 `EventStore.Persistence` and holds only that provider's migration history.
-`dotnet ef migrations add <Name> --project src/EventStore.Persistence.Migrations.Sqlite --startup-project src/EventStore.Host` and equivalent per provider.
+`dotnet ef migrations add <Name> --project src/EventStore.Persistence.Migrations.Sqlite --startup-project src/EventStore.Host.Sqlite` and equivalent per provider (the startup project is now the matching `EventStore.Host.<Provider>`, not a single shared host).
 
 ## DI wiring (composition root)
 
+Per `ADR-001`, exactly one of the four blocks below (DbContext,
+`IJsonPathTranslator`, `IEventLineageQueryProvider`, migrations assembly)
+varies per provider — and it's the **only** thing that varies. Everything
+else lives once, in `EventStore.Host.Core`, and is shared by all three
+deployables.
+
+### `EventStore.Host.Core` — shared, provider-agnostic
+
 ```csharp
-var provider = builder.Configuration["Database:Provider"]!;
-
-builder.Services.AddDbContext<EventStoreContext>(options => provider switch
+public static class HostCoreExtensions
 {
-    "Sqlite"    => options.UseSqlite(builder.Configuration.GetConnectionString("Sqlite")),
-    "Postgres"  => options.UseNpgsql(builder.Configuration.GetConnectionString("Postgres")),
-    "SqlServer" => options.UseSqlServer(builder.Configuration.GetConnectionString("SqlServer")),
-    _ => throw new InvalidOperationException($"Unknown provider '{provider}'")
-});
-
-builder.Services.AddScoped<IJsonPathTranslator>(sp => provider switch
-{
-    "Sqlite"    => new SqliteJsonPathTranslator(),
-    "Postgres"  => new PostgresJsonPathTranslator(),
-    "SqlServer" => new SqlServerJsonPathTranslator(),
-    _ => throw new InvalidOperationException($"Unknown provider '{provider}'")
-});
-
-builder.Services.AddScoped<ISchemaRegistryReader, SchemaRegistryReader>();
-builder.Services.AddScoped<SchemaValidationService>();
-builder.Services.AddScoped<ParentLinkService>();
-builder.Services.AddScoped<ODataFilterParser>();
-builder.Services.AddScoped<IEventLineageQueryProvider>(sp => provider switch
-{
-    "Sqlite"    => new SqliteEventLineageQueryProvider(),
-    "Postgres"  => new PostgresEventLineageQueryProvider(),
-    "SqlServer" => new SqlServerEventLineageQueryProvider(),
-    _ => throw new InvalidOperationException($"Unknown provider '{provider}'")
-});
-builder.Services.AddMemoryCache(); // backs the ~60s spec-document cache, ADR-002
-builder.Services.AddSingleton<EventSchemaConverter>();      // JsonSchema text -> shared Microsoft.OpenApi OpenApiSchema
-builder.Services.AddSingleton<MaskingSchemaTransformer>();  // schema-level x-masking -> oneOf[value,masked] wrapper
-builder.Services.AddSingleton<OpenApiDocumentBuilder>();
-builder.Services.AddSingleton<AsyncApiDocumentBuilder>();
-
-builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
-    .AddJwtBearer(options =>
+    public static void AddEventStoreCommonServices(this WebApplicationBuilder builder)
     {
-        options.Authority = builder.Configuration["Authentication:Authority"]; // dev: EventStore.DevIdp's base URL
-        options.Audience = builder.Configuration["Authentication:Audience"];
-        options.RequireHttpsMetadata = !builder.Environment.IsDevelopment(); // DevIdp runs over plain HTTP locally
-    });
+        builder.Services.AddScoped<ISchemaRegistryReader, SchemaRegistryReader>();
+        builder.Services.AddScoped<SchemaValidationService>();
+        builder.Services.AddScoped<ParentLinkService>();
+        builder.Services.AddScoped<ODataFilterParser>();
+        builder.Services.AddMemoryCache(); // backs the ~60s spec-document cache, ADR-002
+        builder.Services.AddSingleton<EventSchemaConverter>();      // JsonSchema text -> shared Microsoft.OpenApi OpenApiSchema
+        builder.Services.AddSingleton<MaskingSchemaTransformer>();  // schema-level x-masking -> oneOf[value,masked] wrapper
+        builder.Services.AddSingleton<OpenApiDocumentBuilder>();
+        builder.Services.AddSingleton<AsyncApiDocumentBuilder>();
 
-builder.Services.AddAuthorizationBuilder()
-    .AddPolicy("events:publish", p => p.Requirements.Add(new ScopeRequirement("events:publish")))
-    .AddPolicy("events:follow", p => p.Requirements.Add(new ScopeRequirement("events:follow")))
-    .AddPolicy("events:lineage:read", p => p.Requirements.Add(new ScopeRequirement("events:lineage:read")))
-    .AddPolicy("registry:admin", p => p.Requirements.Add(new ScopeRequirement("registry:admin")));
+        builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
+            .AddJwtBearer(options =>
+            {
+                options.Authority = builder.Configuration["Authentication:Authority"]; // dev: EventStore.DevIdp's base URL
+                options.Audience = builder.Configuration["Authentication:Audience"];
+                options.RequireHttpsMetadata = !builder.Environment.IsDevelopment(); // DevIdp runs over plain HTTP locally
+            });
+
+        builder.Services.AddAuthorizationBuilder()
+            .AddPolicy("events:publish", p => p.Requirements.Add(new ScopeRequirement("events:publish")))
+            .AddPolicy("events:follow", p => p.Requirements.Add(new ScopeRequirement("events:follow")))
+            .AddPolicy("events:lineage:read", p => p.Requirements.Add(new ScopeRequirement("events:lineage:read")))
+            .AddPolicy("registry:admin", p => p.Requirements.Add(new ScopeRequirement("registry:admin")));
+    }
+
+    public static void MapEventStoreCommonEndpoints(this WebApplication app) { /* /publish, /follow, /events/{id}/..., /registry, /openapi.json, /asyncapi.json */ }
+}
 ```
+
+### `EventStore.Host.<Provider>` — the only per-provider code
+
+```csharp
+// EventStore.Host.Sqlite/Program.cs (Postgres/SqlServer variants are the same shape,
+// swapping UseSqlite/the translator/the query provider/the migrations assembly)
+var builder = WebApplication.CreateBuilder(args);
+builder.AddEventStoreCommonServices();
+
+builder.Services.AddDbContext<EventStoreContext>(options => options.UseSqlite(
+    builder.Configuration.GetConnectionString("Sqlite"),
+    x => x.MigrationsAssembly("EventStore.Persistence.Migrations.Sqlite")));
+builder.Services.AddScoped<IJsonPathTranslator, SqliteJsonPathTranslator>();
+builder.Services.AddScoped<IEventLineageQueryProvider, SqliteEventLineageQueryProvider>();
+
+var app = builder.Build();
+app.MapEventStoreCommonEndpoints();
+app.Run();
+```
+
+No `switch`, no `Database:Provider` config key, no risk of routing to the
+wrong migrations assembly — the provider is fixed by which project you
+built. `IJsonPathTranslator`/`IEventLineageQueryProvider`'s three
+implementation classes still live centrally in `EventStore.Persistence`
+(they're just classes); only the one-line DI *registration* choosing which
+implementation moves per host project.
 
 `ScopeRequirement`/its handler is a small custom `IAuthorizationHandler` — not
 the built-in `RequireClaim` — because OAuth2 delivers `scope` as one
@@ -144,7 +175,8 @@ There's no mature .NET library for this half — a unit test that parses
 each generated `asyncapi.json` back against the published AsyncAPI 3.0
 JSON Schema is the safety net a type system would otherwise provide.
 
-Both endpoints are thin routes in `EventStore.Host`:
+Both endpoints are thin routes mapped by `MapEventStoreCommonEndpoints`
+(`EventStore.Host.Core`, shared by all three provider deployables):
 
 ```csharp
 app.MapGet("/openapi.json", async (OpenApiDocumentBuilder b) =>
@@ -191,13 +223,54 @@ static bool HasRequiredClaim(ClaimsPrincipal user, string? requiredClaim)
 ```
 
 Called from `PublishEndpoint` (against `RequiredPublishClaim`, after
-resolving the active `EventTypeDefinition`, before schema validation),
-`FollowEndpoint` (against `RequiredReadClaim`, once at connect time,
-alongside the `$filter`-field validation), and `LineageEndpoint` (against
-`RequiredReadClaim` for every distinct `EventType` present across the
-result set — including the root `{eventId}`'s own type — failing the whole
-response with `403` if any check fails; see `03-api-contracts.md`,
-"RequiredReadClaim and the Lineage API").
+resolving the active `EventTypeDefinition`, before schema validation) and
+`FollowEndpoint` (against `RequiredReadClaim` for its own event type, once
+at connect time, alongside the `$filter`-field validation) exactly as a
+single pass/fail check. `LineageEndpoint` uses it differently, per
+`ADR-008`'s "you can only see what you can see": once for the root
+`{eventId}`'s own type (pass/fail, `403` if it fails — you can't query the
+lineage of something you can't see), then again, independently, for every
+*other* distinct `EventType` the traversal discovers — a failure there
+doesn't reject the request, it turns that one node into a `restricted:
+true` stub (see `03-api-contracts.md`) without affecting any other node in
+the response.
+
+```csharp
+// LineageEndpoint (illustrative): build the restricted-type set once,
+// same primitive as the root check, then consult it per discovered node
+var restrictedTypes = allEventTypesInResult
+    .Where(t => t.RequiredReadClaim is not null && !HasRequiredClaim(user, t.RequiredReadClaim))
+    .Select(t => t.Name)
+    .ToHashSet();
+// a node whose EventType is in restrictedTypes becomes { eventId, resolved: true, restricted: true }
+```
+
+### Publish idempotency (`ADR-011`) — the concurrent-retry edge case
+
+The lookup-then-insert sketched in `05-schema-registry-and-spec-generation.md`
+has an obvious race: two concurrent retries carrying the same *never-yet-seen*
+`eventId` can both pass the "not found" lookup before either commits.
+`EventAppender` must catch that at the database level, not assume the
+lookup was exclusive:
+
+```csharp
+try
+{
+    await db.Events.AddAsync(newEvent);
+    await db.SaveChangesAsync();
+    return PublishResult.Created(newEvent);
+}
+catch (DbUpdateException ex) when (IsUniqueConstraintViolation(ex, nameof(StoredEvent.EventId)))
+{
+    // Lost the race -- someone else's insert for this EventId committed first.
+    // Not a real error: re-run the same "found, compare hash" path the
+    // pre-check would have taken if it had run a moment later.
+    var existing = await db.Events.SingleAsync(e => e.EventId == newEvent.EventId);
+    return existing.PayloadHash == newEvent.PayloadHash
+        ? PublishResult.IdempotentReplay(existing)
+        : PublishResult.Conflict();
+}
+```
 
 ### IPayloadMasker — the data half of masking, deprioritized to a later phase
 
@@ -252,21 +325,35 @@ Follow) differs per transport. The stored `Payload` is never touched by
 any of this — masking is computed fresh at the response boundary, for
 whichever caller is asking.
 
-Runtime provider switch is the recommended v1 approach (single deployable
-artifact; `Database:Provider` in `appsettings.json` or environment
-variable) — see `ADR-001`. Startup must apply pending migrations for the
-active provider's migration assembly only.
+Per-deployment build is the accepted v1 approach (three artifacts, one per
+provider, no runtime config value) — see `ADR-001`. Each
+`EventStore.Host.<Provider>` passes its own migrations assembly directly to
+`UseSqlite`/`UseNpgsql`/`UseSqlServer` (shown in the DI wiring section
+above) — there's no assembly-selection logic to get wrong at startup,
+because each deployable only ever has one to choose from.
+
+## Follow: tail vs replay cursor (`ADR-010`)
+
+`FollowEndpoint` is one continuous poll loop
+(`04-odata-filter-pushdown.md`: `WHERE SequenceNumber > lastSeen AND
+predicate`) regardless of `mode` — only how `lastSeen` is *initialized*,
+once, at connect time, differs:
 
 ```csharp
-var migrationsAssembly = provider switch
+long lastSeen = mode switch
 {
-    "Sqlite"    => "EventStore.Persistence.Migrations.Sqlite",
-    "Postgres"  => "EventStore.Persistence.Migrations.Postgres",
-    "SqlServer" => "EventStore.Persistence.Migrations.SqlServer",
-    _ => throw new InvalidOperationException()
+    FollowMode.Tail   => await db.Events.MaxAsync(e => (long?)e.SequenceNumber) ?? 0,
+    FollowMode.Replay => fromSequenceNumber ?? 0,
+    _ => throw new UnreachableException()
 };
-// pass migrationsAssembly into the relevant options.UseSqlite/UseNpgsql/UseSqlServer(..., x => x.MigrationsAssembly(migrationsAssembly))
+// then the existing poll loop runs unchanged from here, for either mode
 ```
+
+`fromSequenceNumber` is rejected with `400` before this point if
+`mode != Replay` — validated alongside the `$filter`-field check, same
+place `RequiredReadClaim` is checked (`ADR-008`). No new persistence, no
+per-consumer state: the caller supplies the cursor on every connection: it
+isn't remembered server-side between connections.
 
 ## Event lineage (parent/child DAG) queries
 
@@ -278,8 +365,8 @@ these are the one query path in the store that isn't a pure `IQueryable`:
 ```csharp
 public interface IEventLineageQueryProvider
 {
-    Task<IReadOnlyList<LineageNode>> GetAncestorsAsync(Guid eventId);
-    Task<IReadOnlyList<LineageNode>> GetDescendantsAsync(Guid eventId);
+    Task<IReadOnlyList<LineageNode>> GetAncestorsAsync(Guid eventId, IReadOnlySet<string> restrictedTypes);
+    Task<IReadOnlyList<LineageNode>> GetDescendantsAsync(Guid eventId, IReadOnlySet<string> restrictedTypes);
 }
 ```
 
@@ -295,13 +382,28 @@ SQLite has none, so track a visited-path column/array in the CTE and stop
 recursing when a node reappears. Cap traversal depth in all three as a
 belt-and-suspenders limit regardless of provider.
 
+**`restrictedTypes` must stop the recursion itself, not just redact the
+final output** (`ADR-008`): the recursive term's `WHERE` clause excludes
+expanding through any row whose `EventType` is in `restrictedTypes` —
+that row is still returned once, as the `restricted: true` leaf, but the
+CTE never joins onward from it. A provider that fully expanded the graph
+and only masked which fields get *serialized* would still leak a
+restricted node's position and connectivity through the shape of what's
+returned beyond it — the exact leak `ADR-008` exists to prevent. This is
+the same "leaf, don't recurse past it" treatment `resolved: false` already
+gets, just for a different reason, and both need the same care taken in
+the recursive term.
+
 ## Auth: dev identity provider (EventStore.DevIdp / OpenIddict) and local orchestration
 
-For this POC, `EventStore.Host` validates Bearer JWTs against
-`EventStore.DevIdp`, a small in-process OpenIddict host, rather than a
-production IdP (see `ADR-006`). `EventStore.DevIdp` is a plain ASP.NET Core
-project — not a third-party container — so both orchestration paths below
-just run it like any other project in the solution.
+For this POC, whichever `EventStore.Host.<Provider>` is deployed validates
+Bearer JWTs against `EventStore.DevIdp`, a small in-process OpenIddict
+host, rather than a production IdP (see `ADR-006`) — this is shared,
+provider-agnostic auth wiring from `EventStore.Host.Core`
+(`AddEventStoreCommonServices`), so it's identical across all three
+deployables. `EventStore.DevIdp` is a plain ASP.NET Core project — not a
+third-party container — so both orchestration paths below just run it like
+any other project in the solution.
 
 ```csharp
 // EventStore.DevIdp/Program.cs (sketch)
@@ -335,10 +437,13 @@ defined in code — see [`features/auth.md`](../docs/features/auth.md),
 ```csharp
 var builder = DistributedApplication.CreateBuilder(args);
 
-var db = builder.AddPostgres("db").WithDataVolume(); // swap for AddSqlServer(...) per Database:Provider
+var db = builder.AddPostgres("db").WithDataVolume();
 var devIdp = builder.AddProject<Projects.EventStore_DevIdp>("devidp"); // a project resource, not a container
 
-builder.AddProject<Projects.EventStore_Host>("eventstore")
+// Per ADR-001, the AppHost targets exactly one Host.<Provider> project --
+// swap which Projects.EventStore_Host_* type is referenced here to run
+// locally against a different provider, there is no config value to flip.
+builder.AddProject<Projects.EventStore_Host_Postgres>("eventstore")
     .WithReference(db)
     .WithReference(devIdp)
     .WithEnvironment("Authentication__Authority", devIdp.GetEndpoint("http"));
@@ -347,18 +452,20 @@ builder.Build().Run();
 ```
 
 `EventStore.ServiceDefaults` wires the standard Aspire cross-cutting
-concerns (OpenTelemetry, health checks, service discovery) into
-`EventStore.Host` (and `EventStore.DevIdp`) via `builder.AddServiceDefaults()`
-— no lineage/auth logic lives there.
+concerns (OpenTelemetry, health checks, service discovery) into whichever
+`EventStore.Host.<Provider>` is running (and `EventStore.DevIdp`) via
+`builder.AddServiceDefaults()` — no lineage/auth logic lives there.
 
 **`docker-compose.yml` (repo root, non-Aspire-tooling fallback):** two
-ordinary app images — `eventstore` and `devidp` — plus the chosen database;
-`devidp` is built from the same `EventStore.DevIdp` project, not pulled from
-a third-party registry, so there's no external image or volume-mounted
-realm config to manage. CI or anyone without the Aspire CLI gets an
-identical dev environment either way. Aspire is preferred day-to-day
-because it also wires telemetry/health checks automatically; compose stays
-as the lowest-common-denominator path.
+ordinary app images — `eventstore` (built from whichever
+`EventStore.Host.<Provider>` project matches the compose file's database
+service, per `ADR-001` — not a generic image with a provider env var) and
+`devidp` — plus that one database; `devidp` is built from the same
+`EventStore.DevIdp` project, not pulled from a third-party registry, so
+there's no external image or volume-mounted realm config to manage. CI or
+anyone without the Aspire CLI gets an identical dev environment either way.
+Aspire is preferred day-to-day because it also wires telemetry/health
+checks automatically; compose stays as the lowest-common-denominator path.
 
 Because `EventStore.DevIdp` uses an EF Core **InMemory** store, there is
 nothing to import or persist — every fresh start re-seeds the three clients

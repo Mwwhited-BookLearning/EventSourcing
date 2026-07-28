@@ -106,9 +106,11 @@ the number of registered event types becomes large enough (hundreds+) that
 generation cost is measurable — track as `ADR-002`.
 
 **Both endpoints are anonymous** (per the scope table above) and both are
-served by `GET /openapi.json` / `GET /asyncapi.json` in `EventStore.Host`,
-each a thin route that asks its builder for the (possibly cached) document
-and returns it as `application/json` — no other endpoint-specific logic.
+served by `GET /openapi.json` / `GET /asyncapi.json`, mapped once in
+`EventStore.Host.Core` and shared identically by all three
+`EventStore.Host.<Provider>` deployables (`ADR-001`) — each a thin route
+that asks its builder for the (possibly cached) document and returns it as
+`application/json`, no other endpoint-specific logic.
 
 **How each document is actually built** — both `OpenApiDocumentBuilder` and
 `AsyncApiDocumentBuilder` parse every active event type's registered schema
@@ -137,9 +139,12 @@ masking's runtime enforcement (`IPayloadMasker`); see `ADR-002` and
   in the registry.
 - Request body is an **envelope**: `payload` (the schema-validated event
   data) plus optional `parentEventIds` (lineage metadata — see
-  `02-data-model.md`, "Event lineage"). `parentEventIds` is never part of the
-  registered JSON Schema and is validated separately, against the event
-  type's `ParentValidationMode`, not against `payload`'s schema.
+  `02-data-model.md`, "Event lineage") and optional `eventId` (idempotency
+  key — see "Publish idempotency", `ADR-011`). Neither `parentEventIds`
+  nor `eventId` is ever part of the registered JSON Schema; `parentEventIds`
+  is validated against the event type's `ParentValidationMode`, `eventId`
+  against any existing `StoredEvent` with the same id — neither against
+  `payload`'s schema.
 - `payload`'s schema per event type is a `$ref` into a `components/schemas`
   section built directly from each `EventTypeDefinition.JsonSchema`.
 
@@ -179,9 +184,22 @@ paths:
                     Events this event is causally parented off. Omit or use
                     an empty array for an origin event. Parents may be of any
                     event type.
+                eventId:
+                  type: string
+                  format: uuid
+                  description: >
+                    Optional idempotency key (ADR-011). Omit for normal
+                    publish (server-generated EventId, no idempotency
+                    guarantee). Supplying it and retrying with identical
+                    payload/parentEventIds replays the original response
+                    with no new write; retrying with the same eventId but
+                    different content is a 409.
       responses:
         '201':
-          description: Event accepted and appended
+          description: >
+            Event accepted and appended, OR (eventId supplied, matching an
+            existing event's content) an idempotent replay of the original
+            response — no new write in that case.
         '400':
           description: >
             payload failed schema validation, OR (Strict ParentValidationMode)
@@ -192,6 +210,10 @@ paths:
           description: Token valid but missing the events:publish scope
         '404':
           description: Unknown event-type
+        '409':
+          description: >
+            eventId was already used for a stored event whose content
+            (payload/parentEventIds) differs from this request
 components:
   securitySchemes:
     bearerAuth: { type: http, scheme: bearer, bearerFormat: JWT }
@@ -204,6 +226,27 @@ At generation time, `$ref`s under `components/schemas` are populated by
 inlining the stored JSON Schema text for the active version of each event
 type — no manual authoring, no drift.
 
+### Publish idempotency (`ADR-011`)
+
+`eventId` is opt-in: omit it and every publish behaves exactly as before
+this ADR (server-generated `EventId`, no idempotency guarantee). Supply it
+to make retries safe:
+
+1. First attempt: `{ "payload": {...}, "eventId": "3fa8...afa6" }` → `201`,
+   stored with that `EventId`.
+2. Connection drops before the response arrives; caller retries the exact
+   same request → the store finds the existing row by `EventId`, confirms
+   the content hash matches, and replays the **original** `201` response.
+   No second `StoredEvent` is created.
+3. Caller instead retries with the same `eventId` but a *different*
+   `payload` → `409 Conflict` — this `eventId` is already bound to
+   different content, which is treated as a caller error (idempotency-key
+   reuse), not a fresh publish and not silently accepted.
+
+Checked immediately after the `RequiredPublishClaim` check (`ADR-008`),
+before schema/parent-link validation — an idempotent replay skips both
+(they already passed the first time) and performs no write at all.
+
 ## AsyncAPI (follow side)
 
 - AsyncAPI version: 3.0.x.
@@ -215,6 +258,13 @@ type — no manual authoring, no drift.
   syntax), not translated into structured AsyncAPI parameters — the schema
   registry knows which fields are filterable, and that list can be surfaced
   in the parameter description for discoverability.
+- `mode` (`ADR-010`): `tail` (default — only events from connection time
+  forward) or `replay` (replay matching history first, then tail with no
+  gap or duplicate). `fromSequenceNumber` (optional, only valid with
+  `mode=replay`, default `0`) sets where the replay starts; supplying it
+  with `mode=tail` is rejected (`400`). Applies identically whether or not
+  `$filter` is present — replay only returns matching events, using the
+  same predicate as live tailing.
 - Message payload again `$ref`s the same registry-sourced JSON Schema.
   `EventId`, `SequenceNumber`, `OccurredAt`, and `parentEventIds` are
   streamed as message **headers**, mirroring the publish-side split between
@@ -224,7 +274,14 @@ type — no manual authoring, no drift.
   (see the "Browser SSE caveat" above).
 - Connecting requires `events:follow` plus, if the event type has one set,
   `RequiredReadClaim` (`ADR-008`) — checked once at connect time, same point
-  as the `$filter`-field validation, not per streamed event.
+  as the `$filter`-field validation, not per streamed event. That check
+  gates the connection's *own* event type only, per node visibility
+  (`ADR-008`, "you can only see what you can see") — it doesn't extend to
+  the `parentEventIds` header on each streamed event: any parent whose
+  type is restricted for this caller is omitted from that list (the
+  connection's own visibility check is computed once at connect time; this
+  per-event filter reuses that same "can I see this type" set, looked up
+  per referenced parent, not re-evaluated as a full claim check per event).
 - **Masking** (`ADR-009`) has two independent halves on different
   schedules — see `ADR-002` for the full mechanism. The **schema** half:
   any property carrying `x-masking` is documented in this AsyncAPI output,
@@ -276,6 +333,15 @@ channels:
         description: >
           Bearer token, for clients (e.g. browser EventSource) that cannot
           set an Authorization header. Requires the events:follow scope.
+      mode:
+        description: >
+          "tail" (default) streams only events from connection time
+          forward. "replay" replays matching history first, then tails
+          with no gap or duplicate.
+      fromSequenceNumber:
+        description: >
+          Only valid with mode=replay (400 otherwise). Replay starts after
+          this SequenceNumber; defaults to 0 (full matching history).
     messages:
       OrderPlaced:
         headers:
@@ -319,7 +385,8 @@ GET /events/{eventId}/descendants   -- full transitive closure "down" the DAG
 
 All four require the `events:lineage:read` scope, plus `RequiredReadClaim`
 on every event type touched by the response — see "RequiredReadClaim and
-the Lineage API" below. `404` if `eventId` itself is unknown. Each entry in
+the Lineage API" below. `404` if `eventId` itself is unknown or the caller
+lacks `RequiredReadClaim` for *it specifically* — see below. Each entry in
 the response:
 
 ```json
@@ -328,16 +395,24 @@ the response:
   "eventType": "PaymentReceived",
   "sequenceNumber": 42,
   "occurredAt": "2026-07-27T10:15:00Z",
-  "resolved": true
+  "resolved": true,
+  "restricted": false
 }
 ```
 
-`"resolved": false` marks a parent reference that does not currently
-correspond to a stored event — only possible for event types registered
-with `ParentValidationMode: Permissive` (see `02-data-model.md`,
-`05-schema-registry-and-spec-generation.md`). A `resolved: false` entry
-carries only `eventId` — no `eventType`/`sequenceNumber`/`occurredAt`, since
-none exist yet — and is a leaf: traversal does not recurse past it.
+Two independent reasons a node can be a leaf, each with its own flag —
+either flag makes traversal stop at that node, but they mean different
+things and both omit `eventType`/`sequenceNumber`/`occurredAt`:
+
+- `"resolved": false` — the reference does not currently correspond to a
+  stored event at all, only possible for event types registered with
+  `ParentValidationMode: Permissive` (`02-data-model.md`,
+  `05-schema-registry-and-spec-generation.md`). Entry: `{"eventId": "...",
+  "resolved": false}`.
+- `"restricted": true` — the event **exists** (`"resolved": true`) but the
+  caller lacks `RequiredReadClaim` for its type, so nothing further about
+  it is revealed. Entry: `{"eventId": "...", "resolved": true, "restricted":
+  true}`. See "RequiredReadClaim and the Lineage API" below.
 
 `ancestors`/`descendants` must be cycle-safe regardless of the queried
 event's `ParentValidationMode` — see `ADR-005` for why a cycle can exist even
@@ -347,21 +422,36 @@ when the event you start from is Strict.
 
 Unlike `$filter` (single event type) or Follow (one event type per
 connection), a single lineage response can span multiple event types —
-that's the point of cross-type parenting. If **any** event touched by the
-response — the root `{eventId}` itself, or any parent/child/ancestor/
-descendant reached during traversal — belongs to an event type whose
-`RequiredReadClaim` the caller's token lacks, the **entire request fails
-with `403`**. No partial results, no stubbing-out of just the restricted
-node: per `ADR-008`, this was chosen over hiding just the offending node
-because a hidden node's *position* in the graph is itself information (it
-would reveal that something exists there, and roughly what it connects to,
-even with its details redacted).
+that's the point of cross-type parenting. Per `ADR-008`, visibility is
+evaluated **per node, not per request** — "you can only see what you can
+see":
 
-This means a single `403` from `/ancestors` or `/descendants` doesn't tell
-the caller *which* node was restricted, or how many there were — consistent
-with `ADR-008`'s decision not to leak existence information via a different
-status code either. `/parents` and `/children` follow the same rule; they
-just have a smaller set of nodes to check.
+- The **root** `{eventId}` a call names directly is a special case: if it
+  exists but the caller lacks `RequiredReadClaim` for its type, the
+  **whole request is rejected with `403`** (not `404` — this deliberately
+  leaks that *something* exists at that `eventId`, distinguishable from a
+  truly unknown one). You cannot ask about the lineage of something you
+  can't see at all.
+- Every node the traversal *discovers* from there — parents, children,
+  ancestors, descendants — is checked **independently**. A node the
+  caller can't see comes back as a `restricted: true` stub (above) and
+  traversal doesn't recurse past it, but every *other* node in the result
+  — including ones on the far side of a restricted node from a different
+  path, or ones that are simply unrelated to it — is returned normally.
+  Lacking access to a parent's type never hides a child the caller
+  otherwise has rights to, and vice versa: the two directions are
+  evaluated completely independently, not linked.
+- This means `/ancestors` and `/descendants` return `200` with a mix of
+  full nodes and `restricted: true` stubs whenever the caller has partial
+  access across the discovered graph — there's no single status code
+  signaling "some nodes were hidden," the stubs themselves are the signal.
+  `/parents` and `/children` follow the identical rule; they just have a
+  smaller set of nodes to check (no recursion).
+- The same per-node check applies to Follow's `parentEventIds` envelope
+  header (`03-api-contracts.md`, "AsyncAPI (follow side)"): any parent
+  whose type is restricted for the connected caller is omitted from that
+  event's `parentEventIds` list, not surfaced as a bare ID they can't
+  otherwise learn anything about.
 
 ## Shared schema source
 
