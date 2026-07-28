@@ -11,6 +11,8 @@ public class EventTypeDefinition
     public DateTimeOffset RegisteredAt { get; set; }
     public bool IsActive { get; set; }                 // latest version flag
     public ParentValidationMode ParentValidationMode { get; set; } = ParentValidationMode.Strict;
+    public string? RequiredPublishClaim { get; set; }  // "type:value", e.g. "clearance:secret" — null = no extra restriction
+    public string? RequiredReadClaim { get; set; }     // gates Follow + Lineage; null = no extra restriction
 
     public List<FilterableField> FilterableFields { get; set; } = new();
 }
@@ -171,3 +173,49 @@ the registered JSON Schema, so it can't collide with schema validation or
   type (deferred — see `ADR-007`) would use to record which source events it
   was computed from: no schema change would be needed here to support that
   later.
+
+## Event-type security (required claims)
+
+`RequiredPublishClaim` and `RequiredReadClaim` are a second, orthogonal
+authorization dimension from the operation-level scopes in `ADR-006`:
+scopes (`events:publish`, `events:follow`, `events:lineage:read`,
+`registry:admin`) gate *whether you can call the operation at all*;
+these two fields gate *whether you may touch a specific event type*, per
+`ADR-008`. Both are optional, single `"type:value"` claim strings (e.g.
+`"clearance:secret"`), checked with `ClaimsPrincipal.HasClaim(type, value)`
+— v1 supports exactly one required claim per direction, not an AND/OR set.
+
+- `RequiredPublishClaim` gates `POST /publish/{event-type}` for this type.
+- `RequiredReadClaim` gates `GET /follow/{event-type}` (checked at connect
+  time) **and** the Lineage API — see `03-api-contracts.md`, "Lineage API",
+  for why a restricted node anywhere in an ancestors/descendants traversal
+  fails the whole request rather than being stubbed out.
+- Both are `null` by default — registering an event type with neither set
+  behaves exactly as before this feature existed.
+- Enforcement needs the caller's claims to already be populated by JWT
+  bearer auth (`ADR-006`), so this can only be enforced once that auth
+  middleware exists — see `08-build-plan.md`, Phase 6.
+
+Property-level **masking** — wrapping individual field *values* in a
+`{"value": ...}` / `{"masked": "***"}` envelope for callers who lack a
+field-specific claim — is a related, finer-grained feature (`ADR-009`, v1
+scope). No new column on `EventTypeDefinition` for it: masking rules live
+inside the registered `JsonSchema` text itself, as an `x-masking` extension
+on a property (`{ "requiredClaim": "type:value", "strategy": "FixedValue",
+"maskedValue": "***" }`), an array's `items` (when scalar — wraps each
+element), or a property nested inside a complex-object `items` schema
+(wraps just that property per element). Unlike an earlier, since-replaced
+`null`-out design, this works on **any** scalar-typed field — including
+required, non-nullable ones — because the wrapper is a new type at that
+position, not a mutation of the original type's slot. It applies only to
+query/stream responses, never to the stored or published `Payload`; see
+`ADR-009` and `06-solution-structure.md` for the schema-plus-data
+transform that computes it.
+
+`x-masking` also carries three **optional, schema-only** descriptive
+fields — `regulatoryClassification`, `governanceBody`,
+`regulationReference` (e.g. `"PHI"` / `"HHS/OCR"` /
+`"HIPAA 45 CFR §164.514(b)"`). These are documentation, not behavior: the
+masking transform never reads them, and they never appear in the runtime
+wrapper — they exist so a schema self-documents *why* a field is masked,
+discoverable via the registry and generated specs, per `ADR-009`.
