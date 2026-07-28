@@ -30,10 +30,18 @@ An event-sourcing store with:
   (`GET /events/{id}/parents|children|ancestors|descendants`, see
   `03-api-contracts.md`).
 - **OAuth2/OIDC bearer-token auth** on every endpoint except the public spec
-  documents, scope-checked per operation. For local dev/this POC, a
-  containerized Keycloak dev IdP plus a **.NET Aspire** AppHost (with a
-  `docker-compose.yml` fallback) orchestrate the store, its database, and
-  the IdP together — see `03-api-contracts.md` and `ADR-006`.
+  documents, scope-checked per operation. For local dev/this POC, an
+  in-process **OpenIddict** token issuer (`EventStore.DevIdp`, no separate
+  container) plus a **.NET Aspire** AppHost (with a `docker-compose.yml`
+  fallback) orchestrate the store, its database, and the dev IdP together —
+  see `03-api-contracts.md` and `ADR-006`.
+- **Event-type security**: a second, independent authorization dimension on
+  top of scopes — each event type can optionally require a claim to publish
+  it and a *different* claim to read it (`RequiredPublishClaim`/
+  `RequiredReadClaim`), set at registration time. A Lineage API response
+  that touches any claim-gated type the caller lacks fails entirely with
+  `403` rather than partially redacting itself. See `02-data-model.md`,
+  `03-api-contracts.md`, and `ADR-008`.
 
 ## What this system deliberately is not (v1 scope)
 
@@ -52,6 +60,14 @@ An event-sourcing store with:
   set — build after the primary system is working. The design is captured
   in `ADR-007` so it isn't lost; nothing in v1 blocks it (see ADR-007's
   consequences for why).
+- **Property-level masking** is designed but not built alongside the
+  primary system — a caller lacking a field-specific claim would receive
+  `{"masked": "***"}` instead of `{"value": ...}` for that field (any
+  scalar field, including required ones — see `ADR-009`), but this is a
+  deliberate priority call (`08-build-plan.md`, Phase 8), not an unresolved
+  design question like derived event types above. Richer masking-content
+  strategies than the fixed placeholder (`PartialReveal`/`Hash`) are a
+  further, undecided proposal on top of that.
 
 ## Document index
 
@@ -64,7 +80,8 @@ An event-sourcing store with:
 | `05-schema-registry-and-spec-generation.md` | Schema registration lifecycle, validation, spec regeneration |
 | `06-solution-structure.md` | .NET solution/project layout, DI wiring, migrations strategy |
 | `07-adrs.md` | Architecture Decision Records for the key choices made so far |
-| `features/*.md` | One standalone doc per feature: context, PlantUML sequence diagrams, a Salt UI mockup where a real UI surface exists, and the embedded Gherkin scenarios for that feature |
+| `08-build-plan.md` | Implementation phases, dependencies between them, and exit criteria (tied to `features/*.md` scenarios) |
+| `features/*.md` | One standalone doc per feature: context, PlantUML sequence diagrams, an ER diagram for features touching persistent data, a Salt UI mockup where a real UI surface exists, and the embedded Gherkin scenarios for that feature |
 
 ## Open decisions flagged for the implementer
 
@@ -76,7 +93,8 @@ record the decision as an ADR when you make it (template in `07-adrs.md`):
    materialized and cached on schema registration.
 3. Whether unindexed-field filtering should be rejected outright (400) or
    silently degrade to a full scan — current recommendation is **reject**.
-4. Dev-mode auth provider and orchestration (`ADR-006`): Keycloak +
-   .NET Aspire is the current recommendation, with docker-compose as a
-   fallback — confirm before treating it as settled, and decide the
-   production IdP separately (out of scope for this POC).
+4. Dev-mode auth provider and orchestration (`ADR-006`): an in-process
+   OpenIddict host (`EventStore.DevIdp`) + .NET Aspire is the current
+   recommendation, with docker-compose as a fallback — confirm before
+   treating it as settled, and decide the production IdP separately (out of
+   scope for this POC).

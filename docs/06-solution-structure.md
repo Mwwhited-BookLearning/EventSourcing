@@ -16,6 +16,7 @@ EventStore.sln
     EventStore.Lineage.Api/         -- GET /events/{id}/parents|children|ancestors|descendants
     EventStore.SpecGeneration/      -- OpenAPI + AsyncAPI builders
     EventStore.Host/                -- composition root: DI wiring, appsettings, Program.cs
+    EventStore.DevIdp/              -- dev-only OpenIddict token issuer, in-process (see below)
     EventStore.ServiceDefaults/     -- Aspire scaffolding: OpenTelemetry, health checks, service discovery defaults
     EventStore.AppHost/             -- Aspire orchestration for local dev/POC (see below)
   tests/
@@ -79,9 +80,9 @@ builder.Services.AddSingleton<AsyncApiDocumentBuilder>();
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(options =>
     {
-        options.Authority = builder.Configuration["Authentication:Authority"]; // dev: Keycloak realm issuer URL
+        options.Authority = builder.Configuration["Authentication:Authority"]; // dev: EventStore.DevIdp's base URL
         options.Audience = builder.Configuration["Authentication:Audience"];
-        options.RequireHttpsMetadata = !builder.Environment.IsDevelopment(); // dev Keycloak container runs over plain HTTP
+        options.RequireHttpsMetadata = !builder.Environment.IsDevelopment(); // DevIdp runs over plain HTTP locally
     });
 
 builder.Services.AddAuthorizationBuilder()
@@ -96,6 +97,85 @@ the built-in `RequireClaim` — because OAuth2 delivers `scope` as one
 space-delimited string claim (`"events:publish events:follow"`), and
 `RequireClaim` does an exact-value match, not a "one of the space-separated
 tokens" match. See `ADR-006`.
+
+### Event-type security (required claims) — why this isn't a fifth `AddPolicy`
+
+`RequiredPublishClaim`/`RequiredReadClaim` (`ADR-008`) can't be wired as
+static ASP.NET Core policies the way the four scopes are: a policy's
+requirement is fixed at startup, but which claim is required depends on
+*which event type* the request names, which is only known once the route
+value is bound and the registry is queried. So this check is plain
+application code, run after the `EventTypeDefinition` is loaded — not a
+declarative `[Authorize(Policy = "...")]`:
+
+```csharp
+static bool HasRequiredClaim(ClaimsPrincipal user, string? requiredClaim)
+{
+    if (requiredClaim is null) return true;
+    var (type, value) = SplitOnce(requiredClaim, ':');
+    return user.HasClaim(type, value); // a single discrete claim -- the built-in check is fine here,
+}                                       // unlike ScopeRequirement's space-delimited-claim problem above
+```
+
+Called from `PublishEndpoint` (against `RequiredPublishClaim`, after
+resolving the active `EventTypeDefinition`, before schema validation),
+`FollowEndpoint` (against `RequiredReadClaim`, once at connect time,
+alongside the `$filter`-field validation), and `LineageEndpoint` (against
+`RequiredReadClaim` for every distinct `EventType` present across the
+result set — including the root `{eventId}`'s own type — failing the whole
+response with `403` if any check fails; see `03-api-contracts.md`,
+"RequiredReadClaim and the Lineage API").
+
+### Masking — a pure, schema-plus-data transform, deprioritized to a later phase
+
+Masking (`ADR-009`) is design-complete but scheduled after Phases 0–6, per
+the user's own sequencing call — recorded here so the shape isn't lost, not
+because it's blocked on anything technical.
+
+The transform is a pure function of the extended `JsonSchema` (the one
+carrying `x-masking`) and the current payload data — nothing endpoint- or
+transport-specific:
+
+```csharp
+public interface IPayloadMasker
+{
+    // Pure: only needs the schema and the data. Claim-checking is injected,
+    // not resolved internally -- this knows nothing about ClaimsPrincipal,
+    // HttpContext, or where the data came from.
+    JsonNode Mask(JsonSchema schema, JsonNode payload, Func<string, bool> hasClaim);
+}
+```
+
+Internally it walks the schema recursively, exactly per `ADR-009`'s rule:
+a scalar property carrying `x-masking` wraps its value; an array's `items`
+carrying it (when `items` is scalar) wraps each element; a property nested
+inside a complex-object `items` schema wraps just that property per
+element. None of that recursion needs anything beyond `schema` and
+`payload` — `hasClaim` is only consulted at the leaves where `x-masking`
+actually appears. `x-masking.regulatoryClassification`/`governanceBody`/
+`regulationReference` are read by nothing in this transform — they're
+schema-only documentation (`02-data-model.md`), so `IPayloadMasker` simply
+never looks at them.
+
+Because it's a pure `(schema, data) -> data` step with claim-checking
+injected, it composes as a link in a small command chain rather than logic
+embedded in `FollowEndpoint` specifically:
+
+```csharp
+// FollowEndpoint's per-event pipeline (illustrative):
+var maskedPayload = payloadMasker.Mask(activeSchema, rawPayload, claimType => user.HasClaim(...));
+```
+
+The *set* of claims to check is fixed for the life of one Follow connection
+(same JWT throughout), so `hasClaim` can close over a claim set computed
+once at connect time — but the masker itself doesn't know or care that
+that's how its caller chose to supply it. A future direct "read event by
+id" endpoint reuses `IPayloadMasker` unchanged; only the surrounding
+pipeline (an ASP.NET Core middleware for a discrete request/response, or
+an explicit per-event step for a long-lived SSE connection like today's
+Follow) differs per transport. The stored `Payload` is never touched by
+any of this — masking is computed fresh at the response boundary, for
+whichever caller is asking.
 
 Runtime provider switch is the recommended v1 approach (single deployable
 artifact; `Database:Provider` in `appsettings.json` or environment
@@ -140,11 +220,40 @@ SQLite has none, so track a visited-path column/array in the CTE and stop
 recursing when a node reappears. Cap traversal depth in all three as a
 belt-and-suspenders limit regardless of provider.
 
-## Auth: dev identity provider (Keycloak) and local orchestration
+## Auth: dev identity provider (EventStore.DevIdp / OpenIddict) and local orchestration
 
-For this POC, `EventStore.Host` validates Bearer JWTs against a dev-mode
-Keycloak realm rather than a production IdP (see `ADR-006`). Two equivalent
-ways to stand the whole thing up locally:
+For this POC, `EventStore.Host` validates Bearer JWTs against
+`EventStore.DevIdp`, a small in-process OpenIddict host, rather than a
+production IdP (see `ADR-006`). `EventStore.DevIdp` is a plain ASP.NET Core
+project — not a third-party container — so both orchestration paths below
+just run it like any other project in the solution.
+
+```csharp
+// EventStore.DevIdp/Program.cs (sketch)
+var builder = WebApplication.CreateBuilder(args);
+
+builder.Services.AddDbContext<DevIdpDbContext>(o => o.UseInMemoryDatabase("devidp"));
+builder.Services.AddOpenIddict()
+    .AddCore(o => o.UseEntityFrameworkCore().UseDbContext<DevIdpDbContext>())
+    .AddServer(o =>
+    {
+        o.SetTokenEndpointUris("/connect/token");
+        o.AllowClientCredentialsFlow();
+        o.RegisterScopes("events:publish", "events:follow", "events:lineage:read", "registry:admin");
+        o.AddDevelopmentEncryptionCertificate().AddDevelopmentSigningCertificate();
+        o.UseAspNetCore().EnableTokenEndpointPassthrough();
+    })
+    .AddValidation(o => o.UseLocalServer().UseAspNetCore());
+
+var app = builder.Build();
+await DevIdpSeeder.SeedClientsAsync(app.Services); // publisher-client / follower-client / operator-client
+app.MapDefaultEndpoints(); // OpenIddict exposes /.well-known/openid-configuration automatically
+app.Run();
+```
+
+`DevIdpSeeder` is the single place the three clients and their scopes are
+defined in code — see [`features/auth.md`](../docs/features/auth.md),
+"Seeded clients (dev)", for the table it must match.
 
 **`EventStore.AppHost` (.NET Aspire, preferred for local `dotnet run`/`aspire run`):**
 
@@ -152,35 +261,36 @@ ways to stand the whole thing up locally:
 var builder = DistributedApplication.CreateBuilder(args);
 
 var db = builder.AddPostgres("db").WithDataVolume(); // swap for AddSqlServer(...) per Database:Provider
-var keycloak = builder.AddKeycloak("keycloak", 8080)
-    .WithRealmImport("./keycloak-realm-event-store.json"); // pre-seeded realm + 3 clients + scopes, committed to the repo
+var devIdp = builder.AddProject<Projects.EventStore_DevIdp>("devidp"); // a project resource, not a container
 
 builder.AddProject<Projects.EventStore_Host>("eventstore")
     .WithReference(db)
-    .WithReference(keycloak)
-    .WithEnvironment("Authentication__Authority", $"{keycloak.GetEndpoint("http")}/realms/event-store");
+    .WithReference(devIdp)
+    .WithEnvironment("Authentication__Authority", devIdp.GetEndpoint("http"));
 
 builder.Build().Run();
 ```
 
 `EventStore.ServiceDefaults` wires the standard Aspire cross-cutting
 concerns (OpenTelemetry, health checks, service discovery) into
-`EventStore.Host` via `builder.AddServiceDefaults()` — no lineage/auth logic
-lives there.
+`EventStore.Host` (and `EventStore.DevIdp`) via `builder.AddServiceDefaults()`
+— no lineage/auth logic lives there.
 
-**`docker-compose.yml` (repo root, non-Aspire-tooling fallback):** the same
-three services — `eventstore`, the chosen database, and `keycloak` in
-`start-dev` mode importing the same committed realm export — so CI or
-anyone without the Aspire CLI gets an identical dev environment. Aspire is
-preferred day-to-day because it also wires telemetry/health checks
-automatically for a .NET solution; compose stays as the lowest-common-
-denominator path.
+**`docker-compose.yml` (repo root, non-Aspire-tooling fallback):** two
+ordinary app images — `eventstore` and `devidp` — plus the chosen database;
+`devidp` is built from the same `EventStore.DevIdp` project, not pulled from
+a third-party registry, so there's no external image or volume-mounted
+realm config to manage. CI or anyone without the Aspire CLI gets an
+identical dev environment either way. Aspire is preferred day-to-day
+because it also wires telemetry/health checks automatically; compose stays
+as the lowest-common-denominator path.
 
-The Keycloak realm export must be committed (`keycloak-realm-event-store.json`)
-so either path produces a working IdP — three clients
-(`publisher-client`/`follower-client`/`operator-client`, `client_credentials`
-grant) with `events:publish`/`events:follow`+`events:lineage:read`/
-`registry:admin` scopes respectively — with no manual admin-console setup.
+Because `EventStore.DevIdp` uses an EF Core **InMemory** store, there is
+nothing to import or persist — every fresh start re-seeds the three clients
+from `DevIdpSeeder`. That is strictly less setup than Keycloak's
+realm-export approach, at the cost of having no admin console to eyeball
+the result (verify via a token request instead — see
+[`features/auth.md`](../docs/features/auth.md)).
 
 ## Integration test strategy
 

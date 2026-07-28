@@ -10,7 +10,8 @@ stated otherwise. Tokens are issued by an OIDC provider via the OAuth2
 **Client Credentials** grant — all three actors (Publishing System, Consuming
 System, Platform Operator) are services, not interactive users, so there is
 no authorization-code/login flow to design for v1. See `ADR-006` for the
-dev-mode provider (Keycloak) and orchestration story.
+dev-mode provider (an in-process OpenIddict host, `EventStore.DevIdp`) and
+orchestration story.
 
 Authorization is scope-based, one policy per scope, mapped to endpoints as:
 
@@ -54,6 +55,46 @@ using an `HttpClient`-based SSE reader should prefer the header. Query-string
 tokens are more prone to leaking via server/proxy logs than header-based
 ones — mitigate with short-lived tokens, not by avoiding the mechanism
 (there is no alternative for a real `EventSource` client).
+
+### Event-type security (required claims) — a second authorization dimension
+
+The scope table above answers "can this caller call this *operation* at
+all." A separate, per-event-type check (`ADR-008`) answers "may this caller
+touch *this event type's data*": `EventTypeDefinition.RequiredPublishClaim`
+and `RequiredReadClaim` (`02-data-model.md`), each an optional single
+`"type:value"` claim string, checked with `ClaimsPrincipal.HasClaim`. Unlike
+the four scopes, these aren't static ASP.NET Core policies registered at
+startup — they're data loaded from the registry per request, so the check
+happens in application code after the event type is resolved, not via
+`[Authorize(Policy = "...")]` (see `06-solution-structure.md`).
+
+Both checks apply, in order: scope first (cheap, static), then the
+per-event-type claim (needs a registry lookup). A `403` from either layer
+looks the same to the caller; if you need to distinguish "missing scope"
+from "missing required claim" for debugging, that's in the response detail,
+not the status code.
+
+- `POST /publish/{event-type}`: 403 if `RequiredPublishClaim` is set and the
+  caller's token lacks it — in addition to the existing `events:publish`
+  scope check.
+- `GET /follow/{event-type}`: 403 **at connection time** if
+  `RequiredReadClaim` is set and the caller's token lacks it — in addition
+  to `events:follow`.
+- Lineage API: see the dedicated note under "Lineage API (event chains)"
+  below — a restricted node anywhere in the result fails the *whole*
+  request, it is not stubbed out.
+- A caller who lacks `RequiredReadClaim` for an event that does exist gets
+  `403`, not `404` — distinguishable from a truly unknown `eventId`, which
+  is still `404`. This deliberately leaks existence rather than hiding it
+  behind a uniform `404`; see `ADR-008`'s consequences for why that
+  trade-off was made explicitly rather than left as an oversight.
+
+Property-level **masking** (wrapping individual field values in a
+`{value:...}`/`{masked:"***"}` envelope within an event the caller
+otherwise has `RequiredReadClaim` for) is a related, finer-grained feature
+— design accepted, build deprioritized to after Phases 0–6 — see `ADR-009`
+and the "Masking" note under "AsyncAPI (follow side)" below for where it's
+actually applied.
 
 ## Generation timing
 
@@ -158,6 +199,32 @@ type — no manual authoring, no drift.
 - `access_token` is documented as a channel parameter alongside `filter`, for
   browser `EventSource` clients that cannot set an `Authorization` header
   (see the "Browser SSE caveat" above).
+- Connecting requires `events:follow` plus, if the event type has one set,
+  `RequiredReadClaim` (`ADR-008`) — checked once at connect time, same point
+  as the `$filter`-field validation, not per streamed event.
+- **Masking** (`ADR-009`, design accepted, build deprioritized to after
+  Phases 0–6): any property in the message payload's schema carrying an
+  `x-masking` extension is checked per connection (using the same claims
+  already validated for `RequiredReadClaim`). Its *documented* type in
+  this AsyncAPI output — for every caller, regardless of claims — is a
+  wrapper, `oneOf: [{value: <the property's real type>}, {masked:
+  string}]`, never the bare original type. At serialization time, a caller
+  holding the property's `requiredClaim` gets `{"value": <real value>}`;
+  one who doesn't gets `{"masked": "***"}` (or whatever `maskedValue` was
+  configured). The same rule recurses into arrays: `x-masking` on a scalar
+  `items` schema wraps each element; on a property nested inside a
+  complex-object `items` schema, wraps just that property per element.
+  This happens after `RequiredReadClaim`/`$filter` are satisfied; it never
+  changes *whether* an event is streamed, only the shape of the masked
+  field(s) within it. The registered/publish-side schema
+  (`SchemaValidationService` validates against, and what `/openapi.json`
+  documents) is **not** wrapped — publishers always send the plain,
+  unwrapped value; only this generated AsyncAPI view and the actual SSE
+  wire format wrap it. `x-masking`'s optional
+  `regulatoryClassification`/`governanceBody`/`regulationReference` fields
+  are schema-only documentation — surfaced in the generated AsyncAPI
+  property description for discoverability, never in the runtime
+  `value`/`masked` wrapper itself.
 
 ```yaml
 asyncapi: 3.0.0
@@ -220,8 +287,10 @@ GET /events/{eventId}/ancestors     -- full transitive closure "up" the DAG
 GET /events/{eventId}/descendants   -- full transitive closure "down" the DAG
 ```
 
-All four require the `events:lineage:read` scope. `404` if `eventId` itself
-is unknown. Each entry in the response:
+All four require the `events:lineage:read` scope, plus `RequiredReadClaim`
+on every event type touched by the response — see "RequiredReadClaim and
+the Lineage API" below. `404` if `eventId` itself is unknown. Each entry in
+the response:
 
 ```json
 {
@@ -243,6 +312,26 @@ none exist yet — and is a leaf: traversal does not recurse past it.
 `ancestors`/`descendants` must be cycle-safe regardless of the queried
 event's `ParentValidationMode` — see `ADR-005` for why a cycle can exist even
 when the event you start from is Strict.
+
+### RequiredReadClaim and the Lineage API
+
+Unlike `$filter` (single event type) or Follow (one event type per
+connection), a single lineage response can span multiple event types —
+that's the point of cross-type parenting. If **any** event touched by the
+response — the root `{eventId}` itself, or any parent/child/ancestor/
+descendant reached during traversal — belongs to an event type whose
+`RequiredReadClaim` the caller's token lacks, the **entire request fails
+with `403`**. No partial results, no stubbing-out of just the restricted
+node: per `ADR-008`, this was chosen over hiding just the offending node
+because a hidden node's *position* in the graph is itself information (it
+would reveal that something exists there, and roughly what it connects to,
+even with its details redacted).
+
+This means a single `403` from `/ancestors` or `/descendants` doesn't tell
+the caller *which* node was restricted, or how many there were — consistent
+with `ADR-008`'s decision not to leak existence information via a different
+status code either. `/parents` and `/children` follow the same rule; they
+just have a smaller set of nodes to check.
 
 ## Shared schema source
 
