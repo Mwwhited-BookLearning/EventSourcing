@@ -135,7 +135,7 @@ An event-sourcing store with:
 | `04-odata-filter-pushdown.md` | JSON path pushdown design across SQLite/Postgres/SQL Server |
 | `05-schema-registry-and-spec-generation.md` | Schema registration lifecycle, validation, spec regeneration |
 | `06-solution-structure.md` | .NET solution/project layout, DI wiring, migrations strategy |
-| `07-adrs.md` | Architecture Decision Records for the key choices made so far |
+| `07-adrs.md` | ADR template + index — the ADRs themselves live one per file under `adrs/` |
 | `08-build-plan.md` | Implementation phases, dependencies between them, and exit criteria (tied to `features/*.md` scenarios) |
 | `09-cqrs-read-models.md` | CQRS read side: `IProjection<TReadModel>`/`ProjectionHost`, checkpointing, `ChangeKind`-driven snapshot merge, rebuild — the write/read seam this project exists to demonstrate |
 | `references.md` | Bibliography: every real-world RFC/standard/pattern/library this design adopts, plus ones considered and deliberately not adopted, with why |
@@ -143,23 +143,22 @@ An event-sourcing store with:
 
 ## Open decisions flagged for the implementer
 
-Almost everything surfaced during design has been resolved and recorded as
-an ADR in `07-adrs.md` — including unindexed-field filtering (reject
-outright, `ADR-003`) and dev-mode auth/orchestration (an in-process
+**None outstanding.** Every question surfaced during design has been
+resolved and recorded as an ADR (`07-adrs.md`'s index, ADRs live one per
+file under `adrs/`) — including unindexed-field filtering (reject
+outright, `ADR-003`), dev-mode auth/orchestration (an in-process
 OpenIddict host + .NET Aspire, `ADR-006`; the production IdP remains a
-separate, later decision, out of scope for this POC). One item is
-genuinely still open, and it's a narrow one:
-
-1. **Schema-compatibility *enforcement* for a hop nobody has exercised
-   yet.** `ADR-020` closes most of this gap: every real publish against a
-   lagging `schemaVersion` now runs live through `ADR-018`'s
-   `upcastFromPrevious` `compute()` chain, using the caller's real payload
-   as the compatibility test — on failure, a reserved `EventUpcastFailed`
-   event is stored instead of silently accepting broken data. What's
-   still unresolved is the hop nobody has ever actually hit this way (every
-   publisher upgraded immediately, so the chain never ran for real) — there
-   is still no proactive, synthetic-data check for that case. See
-   `ADR-020`'s closing consequence.
+separate, later decision, out of scope for this POC), and
+schema-compatibility enforcement (`ADR-020`: every real publish against a
+lagging `schemaVersion` runs live through `ADR-018`'s
+`upcastFromPrevious` `compute()` chain against the caller's real payload,
+producing a reserved `EventUpcastFailed` event on failure instead of
+silently accepting broken data). A hop nobody has ever actually published
+a lagging event against is deliberately left unvalidated ahead of time —
+`ADR-020` records this as a considered, settled choice, not a gap: if it's
+never exercised it has no observable effect, and if it ever is, the first
+real attempt discovers the outcome immediately via the same
+`EventUpcastFailed` path. No proactive, synthetic-data check was wanted.
 
 `ADR-007` (derived/materialized event types) is now fully designed —
 pending-join TTL, derivation-definition cycle detection (registration-time
