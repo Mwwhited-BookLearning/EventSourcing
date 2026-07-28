@@ -11,7 +11,10 @@ covers only what's specific to `RequiredPublishClaim`/`RequiredReadClaim`.
 
 This is a second, independent authorization dimension from the scopes in
 `auth.md`: scopes gate the *operation*; this feature gates the *event
-type*. Both must pass.
+type*. Both must pass. Follow and Lineage below are shown as `GET` for
+readability — per `ADR-012` both are actually `QUERY`, with their
+parameters in the request body; the method change doesn't affect any of
+the claim-checking logic this doc is about.
 
 ## Sequence diagram — publish gated by RequiredPublishClaim
 

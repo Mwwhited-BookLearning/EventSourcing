@@ -4,6 +4,10 @@ Context: data model in `../02-data-model.md` ("Event lineage"); API contract
 in `../03-api-contracts.md` ("Lineage API"); decision record `ADR-005` in
 `../07-adrs.md`. Builds on [`publish-event.md`](publish-event.md) — this doc
 covers only the parts specific to `parentEventIds` and the Lineage API.
+Per `ADR-012`, all four Lineage endpoints are `QUERY`, not `GET`, with
+optional `$top`/`$skip` pagination in the request body — this doc still
+writes `GET /events/{id}/...` as shorthand where the method itself isn't
+the point; read it as `QUERY` throughout.
 
 ## Sequence diagram — publishing with parents
 
@@ -49,7 +53,7 @@ participant "IEventLineageQueryProvider\n(impl per provider)" as recursiveReader
 participant "CycleGuard" as guard
 database "Event & Schema Store" as db
 
-client -> endpoint: GET /events/{id}/ancestors
+client -> endpoint: QUERY /events/{id}/ancestors\nbody: $top=...&$skip=... (both optional, ADR-012)
 endpoint -> db: does {id} exist?
 alt unknown eventId
   endpoint --> client: 404
@@ -222,4 +226,12 @@ Feature: Event chains (parent/child lineage across events)
     When I GET "/events/order-1/ancestors"
     Then the response should complete without an infinite loop
     And the response should include "payment-1" exactly once
+
+  Scenario: $top and $skip page a large descendant list, omitting both still returns everything
+    Given an "OrderPlaced" event "order-1" was published with body { "Amount": 150.00 }
+    And 5 "OrderShipped" events were each published parented off "order-1"
+    When I GET "/events/order-1/descendants?$top=2&$skip=1"
+    Then the response should include exactly 2 descendants
+    When I GET "/events/order-1/descendants"
+    Then the response should include all 5 descendants
 ```

@@ -76,9 +76,9 @@ migrations once Phases 1–3 start using tables that Phase 0 didn't create.
 
 ## Phase 1 — Schema Registry
 
-**Scope**: `PUT`/`GET /registry/{event-type}` per
-`05-schema-registry-and-spec-generation.md` and
-[`features/schema-registry.md`](features/schema-registry.md): structural
+**Scope**: `PUT`/`GET /registry/{event-type}` and `QUERY /registry`
+(paginated listing, `ADR-012`) per `05-schema-registry-and-spec-generation.md`
+and [`features/schema-registry.md`](features/schema-registry.md): structural
 JSON Schema validation, `FilterableField` path validation against the
 schema, versioning (`IsActive` flip, no mutation of prior versions),
 `ParentValidationMode` accepted and validated as an enum on the request.
@@ -108,8 +108,9 @@ enforced — that needs JWT claims to exist first, so enforcement is Phase 6.
 
 **Exit criteria**: every scenario in
 [`features/schema-registry.md`](features/schema-registry.md) passes, on all
-three providers, including the index/computed-column verification; plus
-the two registration-rejection scenarios in
+three providers, including the index/computed-column verification and
+`QUERY /registry`'s `$top`/`$skip` pagination (omitting both still
+returns everything); plus the two registration-rejection scenarios in
 [`features/masking.md`](features/masking.md) ("x-masking directly on an
 object-typed property is rejected" and "a masking strategy other than
 FixedValue is rejected") and the "regulatory metadata fields are optional"
@@ -151,11 +152,14 @@ served anonymously, cache-invalidated on the next registration.
 
 ## Phase 3 — Lineage API (read side)
 
-**Scope**: `GET /events/{id}/parents|children|ancestors|descendants` per
+**Scope**: `QUERY /events/{id}/parents|children|ancestors|descendants`
+(`ADR-012` — replacing `GET`, adding `$top`/`$skip` pagination) per
 `03-api-contracts.md` and
 [`features/event-chains.md`](features/event-chains.md): `EventParentReader`
 (plain LINQ join) for direct parents/children, `IEventLineageQueryProvider`
-(provider-specific recursive CTE) + `CycleGuard` for ancestors/descendants.
+(provider-specific recursive CTE) + `CycleGuard` for ancestors/descendants,
+routed via `MapMethods(..., ["QUERY"], ...)` reading `$top`/`$skip` (and,
+once Phase 6 lands, the visibility check) from the request body.
 
 **Depends on**: Phase 2 (needs published events with parent links to
 traverse).
@@ -164,11 +168,13 @@ traverse).
 [`features/event-chains.md`](features/event-chains.md) pass on all three
 providers — specifically including the scenario where a cycle exists across
 two `Permissive`-mode events and traversal still terminates, returning each
-node exactly once.
+node exactly once; `$top`/`$skip` correctly slice the result, and omitting
+both still returns everything.
 
 ## Phase 4 — Follow API + filter pushdown
 
-**Scope**: `GET /follow/{event-type}?$filter=...&mode=tail|replay` per
+**Scope**: `QUERY /follow/{event-type}` (`ADR-012` — replacing `GET`,
+`$filter`/`mode`/`fromSequenceNumber` now in the request body) per
 `03-api-contracts.md`, [`features/follow-subscribe.md`](features/follow-subscribe.md),
 and [`features/filter-pushdown.md`](features/filter-pushdown.md):
 `ODataFilterParser`, validation against declared `FilterableFields`,
@@ -176,7 +182,9 @@ and [`features/filter-pushdown.md`](features/filter-pushdown.md):
 `EventTailReader` polling loop, the `mode`/`fromSequenceNumber`
 cursor-initialization logic (`ADR-010`, `06-solution-structure.md`), SSE
 responses carrying the envelope headers (`eventId`, `sequenceNumber`,
-`occurredAt`, `parentEventIds`). Generate and
+`occurredAt`, `parentEventIds`). No `access_token` query parameter — browser
+clients authenticate via `fetch()` with a real `Authorization` header, same
+as everyone else (`ADR-012`). Generate and
 expose `/asyncapi.json` now that the follow contract exists:
 `AsyncApiDocumentBuilder` (hand-built JSON envelope around the same shared
 `OpenApiSchema` from `EventSchemaConverter`) **and**
@@ -216,15 +224,18 @@ clients pre-seeded in code by `DevIdpSeeder`); `EventStore.AppHost` (Aspire)
 wiring whichever single `EventStore.Host.<Provider>` it targets (`ADR-001`)
 + that provider's database container + `EventStore.DevIdp` (a project
 resource, not a third-party container); the `docker-compose.yml` fallback
-(two ordinary app images, no external IdP image); the
-browser-`EventSource` `access_token` query-string path on Follow.
+(two ordinary app images, no external IdP image); CORS (`ADR-014`) —
+`Cors:AllowedOrigins` config, the named policy allowing `QUERY` and
+`Authorization` for browser callers of Follow/Lineage/Registry (`ADR-012`).
 
 **Depends on**: Phases 1–4 (there is nothing to authorize before they
 exist).
 
 **Exit criteria**: every scenario in
 [`features/auth.md`](features/auth.md) passes — 401/403/201 paths, public
-spec documents staying anonymous, the SSE `access_token` path; `aspire run`
+spec documents staying anonymous, a browser `fetch()` call to Follow
+succeeding cross-origin once its origin is in `Cors:AllowedOrigins` and
+failing closed when it isn't; `aspire run`
 and `docker-compose up` each produce a working dev stack from a clean
 checkout with zero manual setup (no admin console exists to configure in
 the first place — the seed is code, verified via a token request).

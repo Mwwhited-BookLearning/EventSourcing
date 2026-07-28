@@ -11,7 +11,8 @@ only). Depends on [`event-security.md`](event-security.md) — masking only
 ever applies to callers who already cleared `RequiredReadClaim` for the
 event type (or the type has none). Design is complete; per `08-build-plan.md`
 Phase 8, building it is a lower priority than everything else, not blocked
-on anything technical.
+on anything technical. Follow is shown below as `GET` for readability —
+per `ADR-012` it's actually `QUERY`, unrelated to anything masking-specific.
 
 v1 supports exactly one masking strategy, `"FixedValue"`: a maskable
 property's value is wrapped as `{"value": <real value>}` for a caller

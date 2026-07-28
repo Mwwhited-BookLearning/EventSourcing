@@ -3,7 +3,10 @@
 Context: scopes-to-endpoints table and OpenAPI/AsyncAPI security schemes in
 `../03-api-contracts.md`; dev-mode OpenIddict (`EventStore.DevIdp`) +
 orchestration decision in `ADR-006` (`../07-adrs.md`); DI wiring in
-`../06-solution-structure.md`.
+`../06-solution-structure.md`. Follow moved from `GET` to the HTTP `QUERY`
+method in `ADR-012`, which is why the browser story below is `fetch()`,
+not `EventSource` — and why there's no `access_token` query parameter to
+test here anymore.
 
 ## Sequence diagram — token acquisition and an authorized call
 
@@ -28,22 +31,25 @@ end
 @enduml
 ```
 
-## Sequence diagram — browser SSE without a settable header
+## Sequence diagram — browser SSE via fetch() (ADR-012)
 
 ```plantuml
 @startuml Auth_BrowserSSE_Sequence
 autonumber
-actor "Browser\n(EventSource)" as browser
+actor "Browser\n(fetch(), not EventSource)" as browser
 participant "Follow API" as api
 
 note over browser
-  Native EventSource cannot set
-  an Authorization header.
+  Follow is QUERY, not GET (ADR-012) --
+  EventSource can only issue GET and can't
+  set headers, so it can't be used here at
+  all. fetch() can do both: a QUERY request
+  with a real Authorization header, reading
+  the text/event-stream response body manually.
 end note
-browser -> api: GET /follow/OrderPlaced?$filter=...&access_token=<JWT>
-api -> api: no Authorization header present -> fall back to access_token query param
-api -> api: validate token + events:follow scope (same path as the header case)
-alt token missing/invalid (no header, no access_token)
+browser -> api: QUERY /follow/OrderPlaced\nAuthorization: Bearer <JWT>\nbody: $filter=...
+api -> api: validate token + events:follow scope\n(identical to every other caller -- no query-string fallback exists)
+alt token missing/invalid
   api --> browser: connection rejected 401
 else valid
   api --> browser: SSE connection open (200)
@@ -136,12 +142,14 @@ Feature: OAuth2/OIDC bearer-token authentication and scope-based authorization
     When I GET "/asyncapi.json" without an Authorization header
     Then the response status should be 200
 
-  Scenario: Browser-based SSE clients supply the token via query string, not a header
+  Scenario: A browser fetch()-based SSE client authenticates with a real header, like everyone else
     Given I have a Bearer token for client "follower-client"
-    When I open an SSE connection to "/follow/OrderPlaced?access_token=<token>"
+    When I open a QUERY-based SSE connection to "/follow/OrderPlaced" with that token in the Authorization header
     Then the connection should be accepted
 
-  Scenario: An SSE connection with neither a header nor an access_token is rejected
-    When I open an SSE connection to "/follow/OrderPlaced"
+  Scenario: A QUERY-based SSE connection without an Authorization header is rejected
+    When I open a QUERY-based SSE connection to "/follow/OrderPlaced" without an Authorization header
     Then the connection should be rejected with 401
+    # No access_token query-string fallback exists (ADR-012) -- there is
+    # exactly one way to authenticate Follow, the same as every other endpoint.
 ```

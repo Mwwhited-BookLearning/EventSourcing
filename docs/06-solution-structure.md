@@ -12,8 +12,8 @@ EventStore.sln
     EventStore.Persistence.Migrations.SqlServer/
     EventStore.SchemaRegistry/      -- registration service, validation, ParentLinkService
     EventStore.Publish.Api/         -- POST /publish/{event-type}
-    EventStore.Follow.Api/          -- GET /follow/{event-type} (SSE), OData parsing
-    EventStore.Lineage.Api/         -- GET /events/{id}/parents|children|ancestors|descendants
+    EventStore.Follow.Api/          -- QUERY /follow/{event-type} (SSE), OData parsing (ADR-012)
+    EventStore.Lineage.Api/         -- QUERY /events/{id}/parents|children|ancestors|descendants (ADR-012)
     EventStore.SpecGeneration/      -- OpenAPI + AsyncAPI builders
     EventStore.Host.Core/           -- shared, provider-agnostic composition root logic (see below)
     EventStore.Host.Sqlite/         -- the actual deployable: Host.Core + SQLite wiring (ADR-001)
@@ -75,11 +75,21 @@ public static class HostCoreExtensions
         builder.Services.AddScoped<SchemaValidationService>();
         builder.Services.AddScoped<ParentLinkService>();
         builder.Services.AddScoped<ODataFilterParser>();
+        builder.Services.AddProblemDetails(); // ADR-013: one error shape, every endpoint
         builder.Services.AddMemoryCache(); // backs the ~60s spec-document cache, ADR-002
         builder.Services.AddSingleton<EventSchemaConverter>();      // JsonSchema text -> shared Microsoft.OpenApi OpenApiSchema
         builder.Services.AddSingleton<MaskingSchemaTransformer>();  // schema-level x-masking -> oneOf[value,masked] wrapper
         builder.Services.AddSingleton<OpenApiDocumentBuilder>();
         builder.Services.AddSingleton<AsyncApiDocumentBuilder>();
+
+        builder.Services.AddCors(o => o.AddPolicy("EventStoreCors", policy =>
+        {
+            var origins = builder.Configuration.GetSection("Cors:AllowedOrigins").Get<string[]>() ?? [];
+            policy.WithOrigins(origins) // ADR-014: empty by default -- deny every browser origin until configured
+                  .WithMethods("GET", "PUT", "QUERY") // QUERY per ADR-012 -- a non-simple method, always preflighted
+                  .WithHeaders("Authorization", "Content-Type");
+            // no .AllowCredentials() -- Bearer-in-header only, never cookies
+        }));
 
         builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
             .AddJwtBearer(options =>
@@ -96,7 +106,11 @@ public static class HostCoreExtensions
             .AddPolicy("registry:admin", p => p.Requirements.Add(new ScopeRequirement("registry:admin")));
     }
 
-    public static void MapEventStoreCommonEndpoints(this WebApplication app) { /* /publish, /follow, /events/{id}/..., /registry, /openapi.json, /asyncapi.json */ }
+    public static void MapEventStoreCommonEndpoints(this WebApplication app)
+    {
+        app.UseCors("EventStoreCors"); // ADR-014 -- before endpoint mapping, applies to all of them
+        // /publish, /follow, /events/{id}/..., /registry, /openapi.json, /asyncapi.json
+    }
 }
 ```
 
@@ -331,6 +345,25 @@ provider, no runtime config value) — see `ADR-001`. Each
 `UseSqlite`/`UseNpgsql`/`UseSqlServer` (shown in the DI wiring section
 above) — there's no assembly-selection logic to get wrong at startup,
 because each deployable only ever has one to choose from.
+
+## Routing `QUERY` and reading its body (`ADR-012`)
+
+`MapMethods` accepts any method string — ASP.NET Core routing has no fixed
+verb enum, so `QUERY` needs no framework changes:
+
+```csharp
+app.MapMethods("/follow/{eventType}", ["QUERY"], FollowEndpoint.Handle);
+app.MapMethods("/events/{eventId}/ancestors", ["QUERY"], LineageEndpoint.GetAncestors);
+// ...and the other three Lineage routes, and QUERY /registry
+```
+
+The request body (`application/x-www-form-urlencoded`) is read via
+`HttpRequest.ReadFormAsync()`/`Request.Form`, which is exactly the API
+shape `Request.Query` already has (`IFormCollection` mirrors
+`IQueryCollection`) — every place that used to read
+`Request.Query["$filter"]` now reads `(await Request.ReadFormAsync())["$filter"]`,
+same string, same `ODataFilterParser`, nothing else changes. `$top`/`$skip`
+on the Lineage and Registry-list endpoints are read the same way.
 
 ## Follow: tail vs replay cursor (`ADR-010`)
 

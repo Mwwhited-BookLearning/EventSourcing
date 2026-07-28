@@ -1,8 +1,10 @@
 # OData `$filter` Pushdown Design
 
-Goal: an incoming `$filter` string on `GET /follow/{event-type}` is
-translated into a LINQ predicate that EF Core compiles into native SQL JSON
-extraction for whichever provider is active — never evaluated client-side.
+Goal: an incoming `$filter` string on `QUERY /follow/{event-type}` (the
+HTTP `QUERY` method, `ADR-012` — the string itself travels in the request
+body, not a URL) is translated into a LINQ predicate that EF Core compiles
+into native SQL JSON extraction for whichever provider is active — never
+evaluated client-side.
 
 ## Constraint: filterable fields must be pre-declared
 
@@ -61,6 +63,25 @@ public interface IJsonPathTranslator
 | SQLite | `json_extract` | `CAST(json_extract(Payload, '$.Amount') AS REAL) > 100` |
 | PostgreSQL | `jsonb ->> path` | `(Payload::jsonb ->> 'Amount')::numeric > 100` |
 | SQL Server | `JSON_VALUE` | `TRY_CAST(JSON_VALUE(Payload, '$.Amount') AS DECIMAL(18,2)) > 100` |
+
+`Boolean` fields (`FilterableFieldType.Boolean`, e.g. `$filter=IsActive eq true`):
+
+| Provider | Example generated fragment |
+|---|---|
+| SQLite | `json_extract(Payload, '$.IsActive') = 1` — SQLite's `json_extract` returns a native `0`/`1` integer for a JSON boolean already; no `CAST` needed |
+| PostgreSQL | `(Payload::jsonb ->> 'IsActive')::boolean = true` |
+| SQL Server | `JSON_VALUE(Payload, '$.IsActive') = 'true'` — `JSON_VALUE` always returns text, and SQL Server's string→`BIT` conversion doesn't accept `'true'`/`'false'`, so this compares the extracted text directly rather than casting |
+
+`DateTimeOffset` fields (`FilterableFieldType.DateTimeOffset`, e.g.
+`$filter=OccurredAt gt 2026-01-01T00:00:00Z`) — published values must be
+ISO-8601 for these to compare correctly, since JSON has no native date
+type and extraction always returns text:
+
+| Provider | Example generated fragment |
+|---|---|
+| SQLite | `json_extract(Payload, '$.OccurredAt') > '2026-01-01T00:00:00Z'` — SQLite has no native datetime type either; this is a lexicographic **text** comparison, correct only if every value is consistently zero-padded ISO-8601 (which publish-time validation should enforce for any field declared `DateTimeOffset`) |
+| PostgreSQL | `(Payload::jsonb ->> 'OccurredAt')::timestamptz > '2026-01-01T00:00:00Z'` |
+| SQL Server | `TRY_CAST(JSON_VALUE(Payload, '$.OccurredAt') AS DATETIMEOFFSET) > '2026-01-01T00:00:00Z'` |
 
 Registration in `OnModelCreating`:
 

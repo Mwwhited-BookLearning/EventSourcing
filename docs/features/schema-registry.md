@@ -3,7 +3,10 @@
 Context: full lifecycle in `../05-schema-registry-and-spec-generation.md`;
 entities in `../02-data-model.md`; per-field indexing in
 `../04-odata-filter-pushdown.md`; auth requirements in
-[`auth.md`](auth.md).
+[`auth.md`](auth.md). The list-all-event-types endpoint is
+`QUERY /registry` with optional `$top`/`$skip` pagination (`ADR-012`) — the
+two single-event-type lookups (`GET /registry/{event-type}` and
+`/{version}`) are unaffected, still plain `GET`.
 
 ## Sequence diagram
 
@@ -166,4 +169,11 @@ Feature: Schema registry
       """
     Then "/openapi.json" should include a path "/publish/OrderPlaced"
     And "/asyncapi.json" should include a channel "/follow/OrderPlaced"
+
+  Scenario: Listing registered event types supports $top/$skip pagination (ADR-012)
+    Given the event types "OrderPlaced", "OrderCancelled", "PaymentReceived" are each registered with a minimal schema
+    When I QUERY "/registry" with body "$top=2&$skip=1"
+    Then the response should include exactly 2 event types
+    When I QUERY "/registry" with an empty body
+    Then the response should include all 3 event types
 ```

@@ -3,10 +3,17 @@
 Context: full contract in `../03-api-contracts.md`; the `$filter` pushdown
 mechanics (per-provider SQL translation) are covered in depth in
 [`filter-pushdown.md`](filter-pushdown.md), not repeated here; auth
-requirements, including the browser `EventSource` `access_token`
-query-string caveat, in [`auth.md`](auth.md); the `mode`/
-`fromSequenceNumber` tail-vs-replay design in `ADR-010`
-(`../07-adrs.md`) and `../06-solution-structure.md`.
+requirements, including the browser `fetch()`-based SSE story, in
+[`auth.md`](auth.md); the `mode`/`fromSequenceNumber` tail-vs-replay design
+in `ADR-010` (`../07-adrs.md`) and `../06-solution-structure.md`.
+
+**Note on notation**: per `ADR-012`, Follow is `QUERY /follow/{event-type}`,
+not `GET` — `$filter`, `mode`, and `fromSequenceNumber` travel in the
+`QUERY` request body (`application/x-www-form-urlencoded`), not a literal
+URL query string. This doc (and the other feature docs referencing Follow)
+still write them as `?$filter=...&mode=...` throughout, purely as
+shorthand for "these parameter values" — read every such string as body
+content, not a URL.
 
 ## Sequence diagram
 
@@ -21,8 +28,8 @@ participant "PredicateTranslator" as translator
 participant "EventTailReader" as tailReader
 database "Event & Schema Store" as db
 
-follower -> endpoint: GET /follow/{event-type}?$filter=...&mode=tail|replay[&fromSequenceNumber=N][&access_token=...]
-endpoint -> auth: validate token (header, or access_token query param) + events:follow scope
+follower -> endpoint: QUERY /follow/{event-type}\nAuthorization: Bearer <JWT>\nbody: $filter=...&mode=tail|replay[&fromSequenceNumber=N]
+endpoint -> auth: validate token (header only -- no query-string fallback, ADR-012) + events:follow scope
 alt missing/invalid token
   auth --> follower: connection rejected 401
 else valid token, missing scope
@@ -105,8 +112,8 @@ the follow/tail path reads.
 
 ## Salt (UI mockup)
 
-Not applicable — following is a machine-to-machine (or browser-`EventSource`)
-API with no UI surface in scope.
+Not applicable — following is a machine-to-machine (or browser-`fetch()`,
+per `ADR-012`) API with no UI surface in scope.
 
 ## Gherkin
 
