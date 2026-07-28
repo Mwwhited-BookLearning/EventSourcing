@@ -40,6 +40,49 @@ end
 @enduml
 ```
 
+## Data model (ER diagram)
+
+```plantuml
+@startuml FilterPushdown_ER
+hide circle
+skinparam linetype ortho
+
+entity "FilterableField" as ff {
+  * Id : int <<PK>>
+  --
+  EventTypeName : string <<FK>>
+  EventTypeVersion : int <<FK>>
+  JsonPath : string
+  DataType : enum {String, Number, Boolean, DateTimeOffset}
+  IsIndexed : bool
+}
+
+entity "StoredEvent" as event {
+  * SequenceNumber : bigint <<PK>>
+  --
+  EventType : string
+  SchemaVersion : int
+  Payload : text
+  OccurredAt : datetimeoffset
+}
+
+ff ..> event : "JsonPath is evaluated against Payload at\nquery time via json_extract/->>/JSON_VALUE\n-- NOT a DB relationship, Payload is plain TEXT"
+
+note right of ff
+  IsIndexed = true triggers a provider-specific
+  expression index / computed column over Payload
+  for this JsonPath (see 02-data-model.md,
+  "Per-provider index strategy").
+end note
+@enduml
+```
+
+Full entity set is in `../02-data-model.md`. The relationship here is
+deliberately drawn as logical-only: `Payload` has no native JSON column type
+(`ADR-004`), so there is nothing for a real foreign key to point at — the
+`JsonPath` string is only meaningful once handed to the provider's
+extraction function at query time.
+
 ## Salt (UI mockup)
 
 Not applicable — filter pushdown is an internal query-translation concern

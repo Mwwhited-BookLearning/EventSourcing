@@ -50,6 +50,13 @@ end
 @enduml
 ```
 
+## Data model (ER diagram)
+
+Not applicable — this feature has no persistent entities of its own in
+`EventStoreContext`. Identity/token state (clients, scopes, realm config)
+lives entirely inside Keycloak, external to the store's own database; see
+`ADR-006`.
+
 ## Salt (UI mockup)
 
 The one real UI surface in this feature is Keycloak's own admin console —
