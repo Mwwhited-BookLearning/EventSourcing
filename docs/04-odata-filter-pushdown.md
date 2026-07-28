@@ -96,9 +96,11 @@ storage-layer optimization, transparent to query translation.
 ## Explicitly out of scope for v1
 
 - Filtering inside JSON arrays (`any`/`all` lambda operators).
-- `$orderby`, `$top`, `$skip` on the follow stream (ordering is always by
-  `SequenceNumber` ascending, tailing from connection time or a resume
-  token).
+- `$orderby`, `$top`, `$skip` on the follow stream — ordering is always by
+  `SequenceNumber` ascending. Where to start from (tail from now, or
+  replay from a given point) is **in scope and specified** via the `mode`/
+  `fromSequenceNumber` parameters — see `03-api-contracts.md` and
+  `ADR-010` — just not via OData query options.
 - Cross-event-type joins/projections (`$expand`/`$select`) — see
   `README.md` scope notes; data model should not preclude this later.
 - Querying by parent/lineage relationship via `$filter`. `$filter` walks

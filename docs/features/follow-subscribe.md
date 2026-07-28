@@ -4,7 +4,9 @@ Context: full contract in `../03-api-contracts.md`; the `$filter` pushdown
 mechanics (per-provider SQL translation) are covered in depth in
 [`filter-pushdown.md`](filter-pushdown.md), not repeated here; auth
 requirements, including the browser `EventSource` `access_token`
-query-string caveat, in [`auth.md`](auth.md).
+query-string caveat, in [`auth.md`](auth.md); the `mode`/
+`fromSequenceNumber` tail-vs-replay design in `ADR-010`
+(`../07-adrs.md`) and `../06-solution-structure.md`.
 
 ## Sequence diagram
 
@@ -19,7 +21,7 @@ participant "PredicateTranslator" as translator
 participant "EventTailReader" as tailReader
 database "Event & Schema Store" as db
 
-follower -> endpoint: GET /follow/{event-type}?$filter=...[&access_token=...]
+follower -> endpoint: GET /follow/{event-type}?$filter=...&mode=tail|replay[&fromSequenceNumber=N][&access_token=...]
 endpoint -> auth: validate token (header, or access_token query param) + events:follow scope
 alt missing/invalid token
   auth --> follower: connection rejected 401
@@ -31,20 +33,27 @@ else authorized
     endpoint --> follower: connection rejected 404
   else $filter references a field not in FilterableFields
     parser --> follower: connection rejected 400
-  else filter valid or absent
+  else fromSequenceNumber given with mode=tail (or default)
+    endpoint --> follower: connection rejected 400 (see ADR-010)
+  else filter valid or absent, mode valid
     endpoint -> translator: build predicate against declared FilterableFields
+    endpoint -> endpoint: initialize lastSeen (see follow-tail-vs-replay-cursor\nin 06-solution-structure.md):\nmode=tail -> current max SequenceNumber\nmode=replay -> fromSequenceNumber ?? 0
     endpoint -> follower: SSE connection open (200)
     loop every poll interval, while connection open
       endpoint -> tailReader: poll WHERE SequenceNumber > lastSeen AND predicate
       tailReader -> db: SELECT ... (predicate pushed down, see filter-pushdown.md)
       db --> tailReader: matching StoredEvent rows (if any)
       tailReader --> endpoint: matching events
-      endpoint -> follower: SSE event(s): headers{eventId, sequenceNumber,\nparentEventIds}, data{payload}
+      endpoint -> follower: SSE event(s): headers{eventId, sequenceNumber,\nparentEventIds (any restricted parent omitted, ADR-008)}, data{payload}
     end
   end
 end
 @enduml
 ```
+
+`mode=replay` and `mode=tail` (the default) share this exact loop; only
+`lastSeen`'s initial value differs — see `ADR-010` and
+`06-solution-structure.md`, "Follow: tail vs replay cursor".
 
 ## Data model (ER diagram)
 
@@ -146,4 +155,44 @@ Feature: Follow an event type via SSE
   Scenario: Connecting to an unknown event type is rejected
     When I open an SSE connection to "/follow/NonExistentType"
     Then the connection should be rejected with 404
+
+  Scenario: A restricted parent's ID is omitted from the envelope, not exposed unresolved
+    Given the event type "PatientAdmitted" is registered with read claim "clearance:phi"
+    And a "PatientAdmitted" event "admit-1" was published with body {"PatientId": "abc-123"}
+    And I open an SSE connection to "/follow/OrderPlaced" with no additional claims
+    When an "OrderPlaced" event with body {"Amount": 50, "Status": "Paid"} parented off "admit-1" is published
+    Then I should receive that event on the SSE stream
+    And its parentEventIds should not include "admit-1"
+    # order-1 itself streams normally -- lacking access to its parent's type
+    # never blocks the event whose type you can see (ADR-008).
+
+  Scenario: Connecting with mode=replay streams matching history, then tails new events with no gap
+    Given an "OrderPlaced" event with body {"Amount": 50, "Status": "Paid"} was published
+    And an "OrderPlaced" event with body {"Amount": 150, "Status": "Paid"} was published
+    When I open an SSE connection to "/follow/OrderPlaced?mode=replay"
+    Then I should receive both existing events on the SSE stream
+    When an "OrderPlaced" event with body {"Amount": 75, "Status": "Paid"} is published
+    Then I should receive that new event too, without a gap or a duplicate
+
+  Scenario: Connecting with mode=replay and fromSequenceNumber only replays events after that point
+    Given an "OrderPlaced" event "order-1" with body {"Amount": 50, "Status": "Paid"} was published
+    And an "OrderPlaced" event "order-2" with body {"Amount": 150, "Status": "Paid"} was published
+    When I open an SSE connection to "/follow/OrderPlaced?mode=replay&fromSequenceNumber={order-1's SequenceNumber}"
+    Then I should receive "order-2" on the SSE stream
+    And I should not receive "order-1" on the SSE stream
+
+  Scenario: mode=replay combines with $filter, replaying only matching history
+    Given an "OrderPlaced" event with body {"Amount": 50, "Status": "Paid"} was published
+    And an "OrderPlaced" event with body {"Amount": 150, "Status": "Paid"} was published
+    When I open an SSE connection to "/follow/OrderPlaced?mode=replay&$filter=Amount gt 100"
+    Then I should receive only the event with Amount 150 from the replay
+
+  Scenario: Connecting without mode defaults to tail-only, unchanged from before ADR-010
+    Given an "OrderPlaced" event with body {"Amount": 50, "Status": "Paid"} was published
+    When I open an SSE connection to "/follow/OrderPlaced"
+    Then I should not receive that pre-existing event on the SSE stream
+
+  Scenario: Supplying fromSequenceNumber without mode=replay is rejected
+    When I open an SSE connection to "/follow/OrderPlaced?fromSequenceNumber=0"
+    Then the connection should be rejected with 400
 ```

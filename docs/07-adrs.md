@@ -12,32 +12,61 @@ Consequences: <trade-offs accepted>
 
 ---
 
-## ADR-001: Runtime-switched database provider (vs. per-deployment build)
+## ADR-001: Per-deployment database provider build (vs. runtime switch)
 
-Status: Proposed (needs confirmation)
+Status: Accepted
 
 Context: The store must run on SQLite, PostgreSQL, or SQL Server. Provider
 selection could be a compile-time/per-deployment choice or a runtime
 config switch.
 
-Decision: Runtime config switch (`Database:Provider` in configuration),
-single deployable artifact, with per-provider migrations assemblies
-selected at startup based on the same config value.
+Decision: **Per-deployment build.** Exactly one provider is chosen at
+build/publish time, not read from configuration at startup. Three thin
+composition-root projects — `EventStore.Host.Sqlite`,
+`EventStore.Host.Postgres`, `EventStore.Host.SqlServer` — each hardcode
+their one provider's `UseSqlite`/`UseNpgsql`/`UseSqlServer` call, register
+that provider's `IJsonPathTranslator`/`IEventLineageQueryProvider`
+implementations unconditionally (no `switch`), and reference exactly that
+provider's migrations assembly directly. All three share the same
+provider-agnostic setup (DI for everything else, endpoint mapping) via
+`EventStore.Host.Core` — see `06-solution-structure.md`. There is no
+`Database:Provider` configuration value anywhere in this design; it's
+superseded by "which of the three projects did you build."
 
-Consequences: Simpler CI/CD (one artifact). Requires all three migration
-histories to be kept in sync manually when the model changes (add a
-migration to all three provider projects together). Startup logic must
-correctly route to the matching migrations assembly.
+Consequences: CI/CD must build and publish **three** artifacts instead of
+one — more pipeline complexity than the runtime-switch alternative. In
+exchange, startup has zero provider-branching logic and zero risk of a
+misconfigured `Database:Provider` value routing to the wrong migrations
+assembly at runtime — the three `switch` statements the runtime-switch
+design needed (DbContext options, `IJsonPathTranslator`,
+`IEventLineageQueryProvider`, migrations assembly) all collapse to a
+single unconditional registration per project, because each project only
+ever runs against one provider. Moving a running deployment to a different
+provider means redeploying a different artifact, not flipping a config
+value — an explicit, accepted trade against the runtime-switch design's
+main convenience. Still requires all three migration histories to be kept
+in sync manually when the model changes (unchanged from the runtime-switch
+alternative — this risk is about EF Core migrations not being portable
+across providers, not about how the provider is selected).
 
 ---
 
 ## ADR-002: On-demand OpenAPI/AsyncAPI generation (vs. materialized cache)
 
-Status: Proposed (needs confirmation)
+Status: Accepted
 
 Context: Spec documents must always reflect current registry state.
 Generating on every request is simplest but has a cost; materializing on
-registration requires invalidation logic.
+registration requires invalidation logic. Decisively in on-demand's favor:
+schemas can be **registered live**, at any time, without a redeploy — a
+build-time-generated spec would go stale the instant a new event type or
+schema version is registered, defeating the entire point of a live
+registry. Materializing-on-registration (rebuild eagerly, serve the cached
+result until the next registration) was the only real alternative to
+generating fresh per-request, and it still needs the same invalidation
+hook this design already has (`05-schema-registry-and-spec-generation.md`,
+registration step 10) — it just moves the rebuild earlier for no real
+benefit at this scale, so it wasn't worth the extra complexity.
 
 Decision: Generate on demand, with a short (~60s) in-memory cache
 invalidated on schema registration events. Revisit if event-type count
@@ -101,8 +130,9 @@ than a full invalidation pipeline. A single shared `OpenApiSchema`
 representation means custom keywords JSON Schema 2020-12 supports but
 OpenAPI's dialect doesn't fully model are a residual fidelity risk on
 parse — worth a round-trip unit test with an unusual keyword, not assumed
-safe. The 60s in-memory cache is per-instance; if `EventStore.Host` is ever
-scaled to multiple instances, a registration on one instance does not
+safe. The 60s in-memory cache is per-instance; if a given
+`EventStore.Host.<Provider>` deployment is ever scaled to multiple
+instances, a registration on one instance does not
 invalidate another's cache — bounded by the same 60s TTL either way, so
 still "no staleness bugs" *up to* that bound, just not synchronously
 consistent across instances. Revisit with a distributed cache if that
@@ -205,7 +235,7 @@ Consequences:
 
 ## ADR-006: Dev-mode OAuth2/OIDC bearer-token auth via an in-process OpenIddict host, orchestrated with .NET Aspire
 
-Status: Proposed (needs confirmation)
+Status: Accepted — OpenIddict confirmed as the dev/POC provider.
 
 Context: All four API surfaces (Publish, Follow, Lineage, Registry) are
 currently unauthenticated. The three system actors (Publishing System,
@@ -230,8 +260,9 @@ Decision:
   scopes — no realm-export JSON, no admin console, no persistent identity
   database to provision. Token endpoint is `/connect/token`; the standard
   `/.well-known/openid-configuration` discovery document is exposed so
-  `EventStore.Host`'s JWT-bearer validation needs zero OpenIddict-specific
-  code. This is a dev-only choice — pointing `Authority` at a production IdP
+  every `EventStore.Host.<Provider>`'s shared JWT-bearer validation
+  (`EventStore.Host.Core`) needs zero OpenIddict-specific code. This is a
+  dev-only choice — pointing `Authority` at a production IdP
   (Entra ID, Auth0, Keycloak, Duende IdentityServer, etc.) requires no code
   change, only configuration, since validation is generic OIDC.
 - Authorization: one policy per required scope
@@ -240,16 +271,18 @@ Decision:
   `/openapi.json` and `/asyncapi.json` remain anonymous — they expose
   contract shape only, never event data.
 - Local multi-service orchestration: a new `EventStore.AppHost` (.NET
-  Aspire) project wires `EventStore.Host` together with a database
-  container (Postgres or SQL Server, matching `Database:Provider`) and
-  `EventStore.DevIdp` — as an Aspire **project** resource
+  Aspire) project wires whichever single `EventStore.Host.<Provider>` it
+  targets (per `ADR-001` — the AppHost picks one, there's no runtime
+  `Database:Provider` switch) together with that provider's database
+  container and `EventStore.DevIdp` — as an Aspire **project** resource
   (`AddProject<Projects.EventStore_DevIdp>`), not a container resource,
   since it's just another .NET project in the same solution — injecting
   connection strings and the OIDC `Authority` via Aspire service discovery.
   A `docker-compose.yml` at the repo root provides an equivalent path for
-  tooling that doesn't run the Aspire CLI (e.g. CI); both `EventStore.Host`
-  and `EventStore.DevIdp` are built as ordinary app images there, with no
-  third-party image or volume-mounted config to manage.
+  tooling that doesn't run the Aspire CLI (e.g. CI); both the chosen
+  `EventStore.Host.<Provider>` and `EventStore.DevIdp` are built as
+  ordinary app images there, with no third-party image or volume-mounted
+  config to manage.
 
 Consequences:
 - No user-interactive login flow is implemented or needed for v1 — all
@@ -279,8 +312,9 @@ Consequences:
   verify the seed via the discovery document / a token request, not a UI.
 - Aspire changes *how the process is launched and wired* (connection
   strings, `Authority`, service discovery) — it does not change the
-  per-provider migrations-assembly startup logic from `ADR-001`, which still
-  runs exactly as before inside `EventStore.Host`.
+  per-deployment provider build from `ADR-001`, which still determines the
+  DbContext/migrations wiring exactly as described there, independent of
+  whether Aspire or plain `docker run` launched the process.
 
 ---
 
@@ -380,12 +414,35 @@ Decision:
 - `RequiredPublishClaim` gates `POST /publish/{event-type}`.
   `RequiredReadClaim` gates `GET /follow/{event-type}` (checked once, at
   connect time) **and** all four Lineage API endpoints.
-- For the Lineage API specifically: if **any** event touched by a response
-  — the root `{eventId}` or any node reached during traversal — belongs to
-  an event type whose `RequiredReadClaim` the caller lacks, the **whole
-  request fails with `403`**, chosen over stubbing out just the offending
-  node. `03-api-contracts.md`, "RequiredReadClaim and the Lineage API",
-  has the full reasoning.
+- **Visibility is per node, not per request: "you can only see what you can
+  see."** For the Lineage API and the Follow envelope's `parentEventIds`
+  alike, each event a response touches is checked independently against
+  the caller's `RequiredReadClaim`. A node the caller can't see is
+  **not** shown — not its `eventType`, `sequenceNumber`, `occurredAt`, or
+  payload — but that does *not* fail the rest of the response: other
+  nodes the caller *can* see are still returned. Lacking access to a
+  parent never blocks access to a child the caller otherwise has rights
+  to, and vice versa — the two are evaluated completely independently.
+  `03-api-contracts.md`, "RequiredReadClaim and the Lineage API", has the
+  concrete response shape.
+  - The one exception is the **root** `{eventId}` a Lineage call names
+    directly: that one must be visible to the caller or the whole request
+    is rejected (`403`) — you cannot ask about the lineage of something
+    you can't see at all. Everything the traversal *discovers* from there
+    (parents, children, ancestors, descendants) is visibility-checked
+    per node as above, not gated by the root's check.
+  - Traversal does not recurse past a node the caller can't see, for the
+    same reason it doesn't recurse past a `resolved: false` (Permissive
+    dangling) node: nothing about what's beyond an invisible node is
+    revealed either. Both are "leaves" to the caller, for related but
+    distinct reasons — one because it doesn't exist yet, one because the
+    caller isn't allowed to see it.
+  - **This is also why publish never needed to check `RequiredReadClaim`
+    on a referenced parent** (an earlier open question): read visibility
+    is entirely a per-viewer, read-time decision, never baked in when the
+    link is created. `ParentLinkService` (`ADR-005`) still only checks
+    *existence*, regardless of who's publishing or who might later be
+    unable to read that parent back.
 - The check is enforced in application code after the event type is
   resolved from the registry, not as a static ASP.NET Core policy — see
   `06-solution-structure.md`. It requires the caller's claims to already be
@@ -399,13 +456,25 @@ Consequences:
   write-only-to-some, read-only-to-others, both, or neither — flexible, but
   it also means there are two places to get the claim wrong when
   registering a sensitive event type, not one.
-- A caller who lacks `RequiredReadClaim` for an event that **does** exist
-  gets `403`, not `404` — this deliberately leaks that *something* exists at
-  that `eventId` (distinguishable from a truly unknown `eventId`, which is
+- A caller who lacks `RequiredReadClaim` for the **root** event a Lineage
+  call names directly, when that event **does** exist, gets `403`, not
+  `404` — this deliberately leaks that *something* exists at that
+  `eventId` (distinguishable from a truly unknown `eventId`, which is still
   `404`), rather than hiding existence the way returning `404` for both
   cases would. That's a conscious trade-off for consistency with how the
   scope-based `403`s already behave, not an oversight; revisit if this ever
-  needs to defend against enumeration/existence-probing specifically.
+  needs to defend against enumeration/existence-probing specifically. A
+  node merely *discovered* during traversal, by contrast, is stubbed
+  (`restricted: true`, per node, see above) rather than surfaced as a
+  distinct status code — there's no equivalent "does this discovered node
+  exist" question being asked directly, so there's nothing analogous to
+  leak.
+- The recursive CTE (`IEventLineageQueryProvider`,
+  `06-solution-structure.md`) must enforce the stop-at-invisible-node rule
+  *during* recursion, not just redact fields in the final output — a
+  provider that fully expanded the graph and only masked the display would
+  still silently reveal a restricted node's position and connectivity, the
+  exact leak this design exists to prevent.
 - Tightening a claim on a new schema version takes effect immediately for
   new requests, but does **not** retroactively affect an already-open
   Follow SSE connection (the check runs once at connect time) — a caller
@@ -568,6 +637,25 @@ Consequences:
   tooling ever needs to query/aggregate by classification reliably (free
   text invites drift like `"PHI"` vs. `"phi"` vs. `"Protected Health Info"`
   meaning the same thing).
+- **Consumer guidance: masked/absent fields must be skipped, never
+  overlaid, when building a projection.** A consumer that maintains its
+  own materialized state by applying incoming event fields onto existing
+  records (a read-model/projection built from the Follow stream) must
+  treat a field that arrives as `{"masked": "***"}` — or is legitimately
+  absent from the payload — as **no information provided**, not as an
+  instruction to write `"***"`, `null`, or the wrapper object itself over
+  whatever value it already has for that field. Only a `{"value": ...}`
+  branch (or, for a non-maskable field, its plain value) should ever
+  update a consumer's own state. This is guidance for consumers, not
+  something the store enforces or can verify — the store has no
+  visibility into a downstream consumer's state to overlay onto in the
+  first place (`Payload` itself is append-only and never mutated). Getting
+  this wrong would let a caller who *temporarily* loses the claim (or
+  simply reprocesses history from an earlier connection with fewer
+  claims) silently clobber good previously-known data in their own
+  projection with a placeholder — exactly the kind of corruption masking
+  exists to prevent, just one layer further downstream than the store
+  itself can reach.
 
 ### Future: definable masking strategies (proposal, not decided)
 
@@ -590,3 +678,122 @@ it's unambiguous what's built versus sketched:
   this same future pass if a real need shows up.
 - None of this is scheduled; it's recorded so `"FixedValue"`-only v1
   doesn't get treated as the final word by accident.
+
+---
+
+## ADR-010: Explicit tail-vs-replay mode on Follow, via a `mode` parameter
+
+Status: Accepted
+
+Context: `GET /follow/{event-type}` previously had no way to ask for
+anything other than new events from the moment of connecting — a caller
+who wanted the matching history that already exists in the store first had
+no path to it short of a separate, unspecified mechanism.
+`04-odata-filter-pushdown.md` had gestured at "tailing from connection
+time or a resume token" without ever specifying either.
+
+Decision:
+- `GET /follow/{event-type}` gains a `mode` query parameter:
+  `mode=tail` (**default** — unchanged from the existing behavior, no
+  history) or `mode=replay`.
+- `mode=replay` accepts an optional `fromSequenceNumber` (non-negative
+  integer, default `0`): replay every matching event with
+  `SequenceNumber > fromSequenceNumber`, then — with no gap and no
+  duplicate — keep streaming new matching events exactly as `mode=tail`
+  already does. This is one continuous poll loop
+  (`WHERE SequenceNumber > lastSeen AND predicate`,
+  `04-odata-filter-pushdown.md`), not two separate code paths: the only
+  difference between the modes is the *initial* value of `lastSeen` —
+  "current max `SequenceNumber` at connect time" for `tail`, `fromSequenceNumber`
+  (or `0`) for `replay`.
+- `fromSequenceNumber` is rejected (`400`) if supplied together with
+  `mode=tail` (or the default) — silently ignoring it would let a caller
+  believe they got a replay they didn't get.
+- Applies uniformly regardless of `$filter`: replay only returns matching
+  (filtered) historical events, using the same predicate as live tailing —
+  no special-casing needed, per the "one continuous poll loop" point
+  above. Applies uniformly regardless of `RequiredReadClaim` (`ADR-008`)
+  and masking (`ADR-009`) too — both are checked once at connect time,
+  independent of which mode was requested.
+
+Consequences:
+- `fromSequenceNumber` is a **raw sequence number the consumer must track
+  themselves** (from the `sequenceNumber` field already present on every
+  streamed event's envelope headers) — this is deliberately not a
+  server-managed consumer-group checkpoint the way Kafka's committed
+  offsets are. A consumer that wants to resume after a disconnect persists
+  the last `sequenceNumber` it successfully processed and reconnects with
+  `mode=replay&fromSequenceNumber=<that value>`; the store keeps no
+  per-consumer state at all.
+- Connecting with `mode=replay&fromSequenceNumber=0` against an event type
+  with a large amount of history bursts that entire matching history at
+  the caller as fast as the connection can carry it — there is no
+  batching, pacing, or backpressure control on the replay burst. Consumers
+  must be able to absorb that burst; this is an accepted v1 limitation, not
+  solved here.
+- This resolves `04-odata-filter-pushdown.md`'s previously-vague "tailing
+  from connection time or a resume token" mention — that line is removed
+  from "out of scope" now that it's specified here instead.
+
+---
+
+## ADR-011: Publish idempotency via an optional client-supplied `eventId` + a stored payload hash
+
+Status: Accepted
+
+Context: `EventId` was always server-generated (`Guid.NewGuid()`), so the
+unique index on it (`02-data-model.md`) never actually caught a real
+duplicate — a publisher whose connection drops after a successful insert
+but before the response arrives has no safe way to retry: retrying just
+creates a second, distinct `StoredEvent` with a fresh `EventId`, a true
+duplicate the store cannot detect at all.
+
+Decision:
+- The publish envelope gains an optional `eventId` field (a `Guid`,
+  alongside `payload`/`parentEventIds`). Omitted: behavior is unchanged —
+  the server generates a fresh `EventId`, no idempotency is possible
+  (there's nothing for a retry to be checked against).
+- `StoredEvent` gains a `PayloadHash` column: a hash (e.g. SHA-256) over a
+  canonical serialization of `{ eventType, payload, parentEventIds:
+  <sorted> }` — computed and stored on every publish, whether or not
+  `eventId` was supplied.
+- When `eventId` **is** supplied, `PublishEndpoint` looks it up (via the
+  existing unique index) immediately after resolving the active
+  `EventTypeDefinition` and the `RequiredPublishClaim` check
+  (`ADR-008`) — before schema/parent-link validation, as a short-circuit:
+  - **Not found**: proceed exactly as the unsupplied case, except the
+    caller's `eventId` is used for the new row instead of a generated one.
+  - **Found, `PayloadHash` matches** the incoming request's: this is an
+    **idempotent replay** — return the identical response as the original
+    successful publish (`201`, same body). No new row, no re-validation;
+    the store performs no write at all.
+  - **Found, `PayloadHash` differs**: `409 Conflict` — the same `eventId`
+    was reused for genuinely different content. This is a caller bug
+    (idempotency-key reuse), not silently accepted and not treated as a
+    fresh publish.
+
+Consequences:
+- This is opt-in: a publisher that never supplies `eventId` gets no
+  idempotency guarantee, same as before this ADR — an accepted trade
+  rather than forcing every publisher to manage an idempotency key.
+- The hash **must** include `eventType`, not just `payload` and
+  `parentEventIds` — otherwise two genuinely different event types
+  publishing byte-identical payload/parent content could collide
+  undetected as "the same request retried," which they are not.
+- Two concurrent retries with the same never-yet-seen `eventId` can both
+  pass the "not found" check before either commits, and race at the
+  database's unique-constraint level on insert. The loser's insert fails;
+  it must catch that specific constraint violation and re-run the lookup
+  (which will now find the winner's row) rather than surfacing a raw DB
+  error — functionally the same "found, compare hash" path, just entered
+  via a failed insert instead of a preceding `SELECT`.
+- An idempotent replay skips schema and parent-link validation entirely
+  (it already passed the first time) — this means a schema *version*
+  change between the original publish and a much-later retry with the
+  same `eventId` has no effect on the replay; it returns the original,
+  historically-valid result, consistent with `StoredEvent.SchemaVersion`
+  recording whichever version validated a given event at the time
+  (`05-schema-registry-and-spec-generation.md`).
+- `PayloadHash` has no index of its own — the unique index on `EventId` is
+  what makes the lookup fast; the hash is only consulted after that lookup
+  finds a match, purely as a content-equality check.

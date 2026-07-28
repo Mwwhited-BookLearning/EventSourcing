@@ -193,6 +193,18 @@ Both `SchemaValidationService` and `ParentLinkService` must pass before the
 failure and a Strict-mode missing-parent failure both produce `400` with no
 partial write, same as today's payload-only validation.
 
+If the request supplied `eventId` (`ADR-011`), an idempotency check runs
+**before** either of the above, right after `RequiredPublishClaim`
+(`ADR-008`): look up `StoredEvent` by `EventId`. Found + matching
+`PayloadHash` → replay the original response, skip
+`SchemaValidationService`/`ParentLinkService`/`EventAppender` entirely, no
+write. Found + different `PayloadHash` → `409`, likewise skipping further
+validation — the conflict is a definitive answer regardless of whether the
+new content would itself have been valid. Not found → proceed through
+`SchemaValidationService`/`ParentLinkService`/`EventAppender` exactly as
+below, using the caller's `EventId` for the new row instead of a generated
+one.
+
 ## Versioning policy
 
 - New, backward-compatible fields (optional, with defaults): safe to add as

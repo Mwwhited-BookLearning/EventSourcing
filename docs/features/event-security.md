@@ -69,7 +69,7 @@ end
 @enduml
 ```
 
-## Sequence diagram — lineage: any restricted node fails the whole request
+## Sequence diagram — lineage: per-node visibility ("you can only see what you can see")
 
 ```plantuml
 @startuml EventSecurity_Lineage_Sequence
@@ -87,18 +87,22 @@ else scope present
   endpoint -> db: does {id} exist?
   alt unknown eventId
     endpoint --> client: 404
-  else known eventId
-    endpoint -> db: resolve full node set (root + transitive closure, per event-chains.md)
-    endpoint -> endpoint: for every DISTINCT EventType touched (including the root),\ncheck RequiredReadClaim against caller's claims
-    alt any touched EventType requires a claim the caller lacks
-      endpoint --> client: 403 for the WHOLE response\n(no partial results, no stubbed-out node --\nposition-in-the-graph is itself information)
-    else caller holds every required claim
-      endpoint --> client: 200 [ full node list, as in event-chains.md ]
-    end
+  else known eventId, but caller lacks RequiredReadClaim for ITS OWN type
+    endpoint --> client: 403 for the whole request\n(can't query the lineage of something you can't see at all)
+  else root visible
+    endpoint -> db: resolve full node set (root + transitive closure, per event-chains.md;\nrecursion stops at any node whose type is restricted -- see 06-solution-structure.md)
+    endpoint -> endpoint: independently, per DISCOVERED node (not the root, already handled above):\ncheck RequiredReadClaim against caller's claims
+    endpoint -> endpoint: a node the caller can't see -> {eventId, resolved:true, restricted:true} stub, leaf, no recursion past it.\nEvery other node -- reachable via a different path, or unrelated -- returns normally, regardless.
+    endpoint --> client: 200 [ mix of full nodes and restricted:true stubs, per event-chains.md ]
   end
 end
 @enduml
 ```
+
+Only the root's own visibility is pass/fail (`403` if it exists but is
+restricted). Every node the traversal *discovers* is independent —
+lacking access to one ancestor never hides a sibling ancestor, a
+descendant, or anything else the caller has rights to.
 
 ## Data model (ER diagram)
 
@@ -209,22 +213,40 @@ Feature: Event-type security (required claims)
     When I open an SSE connection to "/follow/OrderPlaced"
     Then the connection should be accepted
 
-  Scenario: A lineage query is rejected if any touched node's event type is claim-gated
+  Scenario: A lineage query on a restricted root is rejected entirely
     Given an "OrderPlaced" event "order-1" was published with body { "Amount": 150.00 }
     And a "PatientAdmitted" event "admit-1" was published with body { "PatientId": "abc-123" } parented off "order-1"
     And I have a Bearer token for client "follower-client" with no additional claims
     When I GET "/events/admit-1/ancestors"
     Then the response status should be 403
-    When I GET "/events/order-1/descendants"
-    Then the response status should be 403
 
-  Scenario: A lineage query succeeds once the caller holds every required claim
+  Scenario: A lineage query on a visible root still succeeds when a discovered node is restricted, stubbed not failed
+    Given an "OrderPlaced" event "order-1" was published with body { "Amount": 150.00 }
+    And a "PatientAdmitted" event "admit-1" was published with body { "PatientId": "abc-123" } parented off "order-1"
+    And I have a Bearer token for client "follower-client" with no additional claims
+    When I GET "/events/order-1/descendants"
+    Then the response status should be 200
+    And the response should include "admit-1" as { "resolved": true, "restricted": true } with no eventType, sequenceNumber, or occurredAt
+
+  Scenario: A lineage query succeeds and shows full detail once the caller holds every required claim
     Given an "OrderPlaced" event "order-1" was published with body { "Amount": 150.00 }
     And a "PatientAdmitted" event "admit-1" was published with body { "PatientId": "abc-123" } parented off "order-1"
     And I have a Bearer token for client "follower-client" with claim "clearance" value "phi"
     When I GET "/events/order-1/descendants"
     Then the response status should be 200
-    And the response should include "admit-1"
+    And the response should include "admit-1" fully, not stubbed
+
+  Scenario: Lacking access to a parent does not hide an otherwise-visible child
+    Given a "PatientAdmitted" event "admit-1" was published with body { "PatientId": "abc-123" }
+    And an "OrderPlaced" event "order-1" was published with body { "Amount": 150.00 } parented off "admit-1"
+    And I have a Bearer token for client "follower-client" with no additional claims
+    When I GET "/events/order-1/ancestors"
+    Then the response status should be 200
+    And the response should include "admit-1" as { "resolved": true, "restricted": true }
+    When I GET "/events/order-1/parents"
+    Then the response status should be 200
+    # order-1 itself is fully visible even though its own parent is restricted --
+    # visibility of a node never depends on the visibility of its neighbors.
 
   Scenario: A restricted-but-existing event is distinguishable from an unknown one (403 vs 404)
     Given I have a Bearer token for client "follower-client" with no additional claims

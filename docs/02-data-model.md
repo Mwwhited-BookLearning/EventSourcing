@@ -38,11 +38,12 @@ public enum FilterableFieldType { String, Number, Boolean, DateTimeOffset }
 public class StoredEvent
 {
     public long SequenceNumber { get; set; }   // global monotonic order, identity column
-    public Guid EventId { get; set; }          // unique — see index note below
+    public Guid EventId { get; set; }          // unique — client-supplied for idempotent retries, or server-generated (ADR-011)
     public string EventType { get; set; } = default!;  // normalized lowercase
     public int SchemaVersion { get; set; }
     public string? StreamId { get; set; }              // optional aggregate/stream key
     public string Payload { get; set; } = default!;    // JSON text, validated at publish time
+    public string PayloadHash { get; set; } = default!; // hash of {EventType, Payload, sorted parentEventIds} -- ADR-011
     public DateTimeOffset OccurredAt { get; set; }
 }
 
@@ -129,7 +130,9 @@ public class EventStoreContext : DbContext
 5. **Per-provider migrations**: EF Core migrations are not portable across
    providers even with an identical model (different SQL emitted). Keep
    one migrations assembly/folder per provider — see
-   `06-solution-structure.md`.
+   `06-solution-structure.md`. Each provider's migrations assembly is
+   referenced directly by exactly one deployable (`EventStore.Host.<Provider>`,
+   `ADR-001`) — there is no runtime selection between them.
 
 ## Per-provider index strategy for filterable fields
 
@@ -173,6 +176,19 @@ the registered JSON Schema, so it can't collide with schema validation or
   type (deferred — see `ADR-007`) would use to record which source events it
   was computed from: no schema change would be needed here to support that
   later.
+
+## Publish idempotency (`ADR-011`)
+
+`PayloadHash` (a hash of `{EventType, Payload, sorted parentEventIds}`) is
+stored on every `StoredEvent`, whether or not the publisher supplied their
+own `eventId`. It's only ever consulted after the existing unique index on
+`EventId` finds a match — a publisher who supplies the same `eventId`
+again with an identical hash gets the original response replayed with no
+new write; a matching `eventId` with a *different* hash is `409 Conflict`.
+A publisher who never supplies `eventId` gets no idempotency guarantee, by
+design — this is opt-in, not automatic dedup by content alone (two
+genuinely different events that happen to share identical content would
+otherwise be wrongly merged).
 
 ## Event-type security (required claims)
 

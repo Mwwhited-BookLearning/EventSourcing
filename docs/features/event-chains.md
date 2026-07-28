@@ -66,10 +66,16 @@ else known eventId
     db --> recursiveReader: full transitive closure
     recursiveReader --> endpoint: nodes, each resolved:true/false
   end
-  endpoint --> client: 200 [ { eventId, eventType, sequenceNumber, occurredAt, resolved } , ... ]
+  endpoint --> client: 200 [ { eventId, eventType, sequenceNumber, occurredAt, resolved, restricted } , ... ]
 end
 @enduml
 ```
+
+This diagram is claims-agnostic — it's the lineage mechanics only.
+`restricted: true` (a node whose type the caller lacks `RequiredReadClaim`
+for, per `ADR-008`) is a second, independent reason a node can be a leaf
+alongside `resolved: false`; see [`event-security.md`](event-security.md)
+for that check and `03-api-contracts.md` for the full response shape.
 
 ## Data model (ER diagram)
 
