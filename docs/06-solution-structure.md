@@ -293,6 +293,25 @@ catch (DbUpdateException ex) when (IsUniqueConstraintViolation(ex, nameof(Stored
 }
 ```
 
+### Hash chain (`ADR-019`) — computed in the same `EventAppender` step
+
+`ChainHash` is computed immediately before the insert above, inside the
+same transaction, off whichever row currently has the highest
+`SequenceNumber` (there is no separate "get the chain tail" query beyond
+that one lookup, already needed to assign the next `SequenceNumber`):
+
+```csharp
+var priorChainHash = await db.Events
+    .OrderByDescending(e => e.SequenceNumber)
+    .Select(e => e.ChainHash)
+    .FirstOrDefaultAsync() ?? SeedChainHash; // fixed constant for SequenceNumber = 1
+
+newEvent.ChainHash = Sha256Hex($"{priorChainHash}|{newEvent.PayloadHash}|{newEvent.SequenceNumber}");
+```
+
+Identical on every provider — no `IJsonPathTranslator`-style abstraction
+needed, since this is plain application code, not a query pushed to SQL.
+
 ### IPayloadMasker — the data half of masking, deprioritized to a later phase
 
 This is the second of masking's two halves — `MaskingSchemaTransformer`
@@ -434,6 +453,70 @@ the same "leaf, don't recurse past it" treatment `resolved: false` already
 gets, just for a different reason, and both need the same care taken in
 the recursive term.
 
+## Event upcasting (`ADR-018`)
+
+`IEventUpcaster` implementations are resolved the same way
+`IJsonPathTranslator`s are — registered in DI, one per `(EventType,
+FromVersion)`, looked up by an `UpcastChain` rather than a runtime
+`switch`:
+
+```csharp
+public class UpcastChain
+{
+    private readonly IReadOnlyDictionary<(string EventType, int FromVersion), IEventUpcaster> _upcasters;
+
+    public JsonNode Apply(string eventType, int storedVersion, int currentVersion, JsonNode payload)
+    {
+        var node = payload;
+        for (var v = storedVersion; v < currentVersion; v++)
+            node = _upcasters.TryGetValue((eventType, v), out var upcaster)
+                ? upcaster.Upcast(node)
+                : node; // no upcaster registered for this gap -- passed through as-is (ADR-018's accepted risk)
+        return node;
+    }
+}
+```
+
+Called from `FollowEndpoint` (per streamed event, before masking's
+transform runs — masking operates on the *current* schema shape, so it
+must see the upcasted payload, not the as-stored one) and from
+`ProjectionHost` (per event, before `SnapshotMerger` — `09-cqrs-read-
+models.md`, `ADR-016`), never from `LineageEndpoint` (which never
+includes `Payload`).
+
+## Auth: DPoP proof validation (`ADR-017`)
+
+Alongside the existing JWT-bearer validation in
+`AddEventStoreCommonServices`, a small middleware validates the `DPoP`
+header on every request once the bearer token itself has already been
+validated:
+
+```csharp
+app.Use(async (context, next) =>
+{
+    if (context.User.Identity?.IsAuthenticated == true)
+    {
+        var proofValid = DPoPValidator.Validate(
+            proofHeader: context.Request.Headers["DPoP"],
+            httpMethod: context.Request.Method,
+            httpUri: context.Request.GetEncodedUrl(),
+            expectedJkt: context.User.FindFirstValue("cnf_jkt"), // from the access token's cnf.jkt claim
+            presentedAccessToken: context.Request.Headers.Authorization);
+        if (!proofValid)
+        {
+            await Results.Problem(statusCode: 401, type: "dpop-proof-invalid").ExecuteAsync(context);
+            return;
+        }
+    }
+    await next(context);
+});
+```
+
+`DevIdpSeeder` (`ADR-006`) generates and holds a key pair per seeded
+client (`publisher-client`, `follower-client`, `operator-client`,
+`projections-client`); the token endpoint embeds each client's `jwk`
+thumbprint as `cnf.jkt` on every access token it issues to that client.
+
 ## Auth: dev identity provider (EventStore.DevIdp / OpenIddict) and local orchestration
 
 For this POC, whichever `EventStore.Host.<Provider>` is deployed validates
@@ -533,3 +616,15 @@ side is an HTTP client calling `QUERY /follow/{event-type}` — the same
 public contract any external follower uses (`ADR-015`). This is enforced
 by the project reference graph itself, not just a convention someone could
 accidentally violate: there is no project reference to violate it with.
+
+## Suggested References
+
+- [EF Core](https://learn.microsoft.com/en-us/ef/core/) — DbContexts, migrations, both sides of the write/read split.
+- [OpenIddict](https://openiddict.com/) — `EventStore.DevIdp`'s token issuer (`ADR-006`).
+- [.NET Aspire](https://learn.microsoft.com/en-us/dotnet/aspire/get-started/aspire-overview) — `EventStore.AppHost` orchestration.
+- [Testcontainers](https://testcontainers.com/) — the integration test strategy across all three providers.
+- [ASP.NET Core Minimal APIs — Routing](https://learn.microsoft.com/en-us/aspnet/core/fundamentals/minimal-apis) — `MapMethods`, used for the `QUERY` routes (`ADR-012`).
+- [RFC 9449](https://datatracker.ietf.org/doc/html/rfc9449) — DPoP, the proof-validation middleware sketched above (`ADR-017`).
+- [Axon Framework — Event Versioning](https://docs.axoniq.io/axon-framework-reference/4.11/events/event-versioning/) — the upcaster-chain shape `UpcastChain` follows (`ADR-018`).
+
+See `references.md` for the full bibliography.

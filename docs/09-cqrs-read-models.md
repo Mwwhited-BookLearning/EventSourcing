@@ -172,3 +172,15 @@ concrete Orders domain carried end-to-end through this design: `Full` and
 for one event's trip from Follow through the snapshot merge to the
 upserted row, and the Gherkin scenarios a `Phase 9` implementation
 (`08-build-plan.md`) is built against.
+
+## Suggested References
+
+- [Martin Fowler — Event Sourcing](https://martinfowler.com/eaaDev/EventSourcing.html) / [CQRS](https://martinfowler.com/bliki/CQRS.html) — the two patterns this whole document sits on top of.
+- [Greg Young — CQRS Documents](https://cqrs.files.wordpress.com/2010/11/cqrs_documents.pdf) (2010) — the pattern's origin text.
+- [RFC 7396](https://datatracker.ietf.org/doc/html/rfc7396) — JSON Merge Patch, the exact semantics `SnapshotMerger`'s `Partial` case implements (see `ADR-016`'s closing note on the one deliberate divergence — no delete-on-`null`).
+- [Azure Architecture Center — CQRS pattern](https://learn.microsoft.com/en-us/azure/architecture/patterns/cqrs) / [Event Sourcing pattern](https://learn.microsoft.com/en-us/azure/architecture/patterns/event-sourcing).
+
+See `references.md` for the full bibliography, including real off-the-shelf
+event-store products (EventStoreDB, Marten) this design deliberately
+doesn't adopt — building the mechanism from scratch is the point of this
+project (`README.md`), not a gap.

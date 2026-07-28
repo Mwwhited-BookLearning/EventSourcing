@@ -51,6 +51,7 @@ public class StoredEvent
     public string? StreamId { get; set; }              // optional aggregate/stream key
     public string Payload { get; set; } = default!;    // JSON text, validated at publish time
     public string PayloadHash { get; set; } = default!; // hash of {EventType, Payload, sorted parentEventIds} -- ADR-011
+    public string ChainHash { get; set; } = default!;    // SHA-256(prior ChainHash || PayloadHash || SequenceNumber) -- ADR-019
     public DateTimeOffset OccurredAt { get; set; }
 }
 
@@ -196,6 +197,35 @@ A publisher who never supplies `eventId` gets no idempotency guarantee, by
 design — this is opt-in, not automatic dedup by content alone (two
 genuinely different events that happen to share identical content would
 otherwise be wrongly merged).
+
+## Tamper evidence (`ADR-019`)
+
+`ChainHash` is a *different* guarantee from `PayloadHash` above, computed
+from it: every `StoredEvent` chains its `PayloadHash` and `SequenceNumber`
+onto the immediately preceding event's `ChainHash`, so altering any past
+row breaks every `ChainHash` after it — detectable by replaying the chain
+from `SequenceNumber = 1`, not just comparing one row to itself. See
+`ADR-019` for why this is a linear chain, not a full Merkle tree.
+
+## Event upcasting (`ADR-018`)
+
+`StoredEvent.SchemaVersion` (above) is what makes a version-spanning
+`mode=replay` (`ADR-010`) possible to reconcile at read time: an
+`IEventUpcaster` per `(EventType, FromVersion)` transforms an old-shaped
+payload forward, version by version, so every consumer sees the current
+shape regardless of which version originally validated a given row.
+`Payload` itself is never rewritten — see `ADR-018` and
+`06-solution-structure.md` for the transform mechanics.
+
+## Suggested References
+
+- [EF Core](https://learn.microsoft.com/en-us/ef/core/) — the ORM this whole model is expressed against.
+- [JSON Schema (2020-12)](https://json-schema.org/specification) — what `EventTypeDefinition.JsonSchema` validates against.
+- [RFC 8259](https://datatracker.ietf.org/doc/html/rfc8259) — JSON, the format `Payload`/`JsonSchema` are stored as text in.
+- [FIPS 180-4](https://csrc.nist.gov/pubs/fips/180-4/final) — SHA-256, used for both `PayloadHash` (`ADR-011`) and `ChainHash` (`ADR-019`).
+- [RFC 4122](https://datatracker.ietf.org/doc/html/rfc4122) — UUID, the format of `EventId`.
+
+See `references.md` for the full bibliography.
 
 ## Event-type security (required claims)
 

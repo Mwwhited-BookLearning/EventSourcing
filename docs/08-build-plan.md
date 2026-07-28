@@ -30,6 +30,7 @@ state "Phase 6\nEvent-Type Security" as p6
 state "Phase 7 (deferred)\nDerived Event Types" as p7
 state "Phase 8 (lower priority)\nMasking (data enforcement)" as p8
 state "Phase 9\nCQRS Projections" as p9
+state "Phase 10\nHardening & Evolution" as p10
 
 p0 --> p1
 p1 --> p2
@@ -42,6 +43,9 @@ p6 --> p7
 p6 --> p8
 p4 --> p9
 p5 --> p9
+p5 --> p10
+p2 --> p10
+p4 --> p10
 @enduml
 ```
 
@@ -64,7 +68,12 @@ authenticate as one) — **not** on Phase 6, because the worked example
 doesn't require a claim-gated event type to demonstrate the merge rule,
 though a real projection over a claim-gated type would need Phase 6's
 enforcement to already exist so its client's claims mean anything. It's
-independent of Phases 7 and 8 entirely.
+independent of Phases 7 and 8 entirely. Phase 10 depends on Phase 5 (DPoP
+hardens the auth model Phase 5 already built), Phase 2 (hash chaining
+extends `EventAppender`, built in Phase 2), and Phase 4 (event upcasting
+matters most for Follow's `mode=replay`) — it's independent of Phases 6
+through 9, since none of DPoP/upcasting/hash-chaining touch event-type
+security, masking, derived events, or projections.
 
 ## Phase 0 — Scaffolding & persistence
 
@@ -383,6 +392,35 @@ checkpoint to `0` + replay) reproduces the exact same end state as the
 incrementally-built one; and resuming after downtime delivers no gap and
 no duplicate, reusing `ADR-010`'s guarantee rather than reimplementing it.
 
+## Phase 10 — Hardening & evolution (DPoP, event upcasting, hash-chained tamper evidence)
+
+**Scope**: three independent hardening additions layered onto an already-
+working system, per `ADR-017`, `ADR-018`, `ADR-019`:
+- **DPoP** (`ADR-017`): key-pair generation per seeded OAuth2 client in
+  `DevIdpSeeder`; `cnf.jkt` embedding at token issuance; the DPoP-proof
+  validation middleware in `EventStore.Host.Core`, alongside the existing
+  JWT-bearer validation.
+- **Event upcasting** (`ADR-018`): `IEventUpcaster` + `UpcastChain`
+  (`06-solution-structure.md`), wired into `FollowEndpoint` (before
+  masking's transform) and `ProjectionHost` (before `SnapshotMerger`).
+- **Hash-chained tamper evidence** (`ADR-019`): `ChainHash` computed in
+  `EventAppender` alongside the existing `SequenceNumber`/`PayloadHash`
+  assignment; the `GET /events/verify?throughSequenceNumber=<n>`
+  verification endpoint (or equivalent offline tool).
+
+**Depends on**: Phase 5 (DPoP), Phase 2 (hash chaining), Phase 4 (event
+upcasting). Independent of Phases 6 through 9.
+
+**Exit criteria**: a request with a valid bearer token but a missing or
+mismatched DPoP proof is rejected `401` (`dpop-proof-invalid`); a request
+with both valid throughout succeeds exactly as before this phase; a
+`mode=replay` burst spanning a registered upcaster's version gap presents
+every event in the current schema's shape to the caller, verified against
+both `FollowEndpoint` and a `ProjectionHost` consumer; and deliberately
+corrupting one historical `Payload` (test-only, direct database edit) is
+detected by the verification endpoint at exactly that `SequenceNumber`,
+with every event before it verifying clean.
+
 ## Cross-cutting, every phase
 
 - **Integration tests against all three providers** run from Phase 0
@@ -398,4 +436,13 @@ no duplicate, reusing `ADR-010`'s guarantee rather than reimplementing it.
   proposal stays unscheduled/unnumbered until someone decides to build it.
   `ADR-015` and `ADR-016` are already Accepted — Phase 9 is where they get
   verified end-to-end (a real `ProjectionHost` process, a real rebuild), not
-  where they get decided.
+  where they get decided. `ADR-017`, `ADR-018`, and `ADR-019` are likewise
+  already Accepted — Phase 10 is where each gets built and verified, not
+  decided.
+
+## Suggested References
+
+- [Cucumber — Gherkin Reference](https://cucumber.io/docs/gherkin/reference/) — the scenario format every phase's exit criteria are tied to.
+- [Testcontainers](https://testcontainers.com/) — the cross-cutting "every phase" integration-test requirement.
+
+See `references.md` for the full bibliography.
