@@ -9,11 +9,19 @@ read available to every caller.
 ## Registration API
 
 ```
-PUT  /registry/{event-type}            -- register new version
-GET  /registry/{event-type}            -- get active version's schema
-GET  /registry/{event-type}/{version}  -- get specific version
-GET  /registry                         -- list all registered event types
+PUT   /registry/{event-type}            -- register new version
+GET   /registry/{event-type}            -- get active version's schema
+GET   /registry/{event-type}/{version}  -- get specific version
+QUERY /registry                         -- list all registered event types, paginated
 ```
+
+`QUERY /registry` (`ADR-012`, replacing the earlier `GET /registry`) takes
+optional `$top`/`$skip` in the request body
+(`application/x-www-form-urlencoded`) — a simple limit/offset slice over
+the full list, no `@odata.count`/`@odata.nextLink`. Omitting both returns
+every registered event type, unchanged from before `ADR-012`. The two
+single-event-type lookups above have nothing to paginate or filter and
+stay plain `GET`.
 
 Registration payload:
 

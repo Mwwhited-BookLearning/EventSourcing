@@ -3,7 +3,10 @@
 Context: full design in `../04-odata-filter-pushdown.md`; this is the query-
 translation mechanics underlying [`follow-subscribe.md`](follow-subscribe.md)
 — that doc covers the SSE connection lifecycle, this one covers what happens
-inside a single poll/query once a `$filter` has been accepted.
+inside a single poll/query once a `$filter` has been accepted. `$filter`
+itself travels in the `QUERY` request body per `ADR-012`, not a URL query
+string, but the string content and its translation into SQL — this
+doc's actual subject — are unaffected by that transport change.
 
 ## Sequence diagram
 

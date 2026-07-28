@@ -3,6 +3,16 @@
 Both documents are generated from the Schema Registry; neither hand-authors
 JSON Schema. The registry is the single source of truth.
 
+## Error responses
+
+Every non-`2xx` response, from every endpoint in this document, is **RFC
+9457 Problem Details** (`application/problem+json`) — see `ADR-013` for
+the full decision, the per-situation `type`/status/extension table, and
+why. In the endpoint-specific sections below, a response line like
+`'403': Token valid but missing the events:publish scope` means "a
+Problem Details response with that `detail`," not a bespoke body — assume
+the shape from `ADR-013` throughout rather than a per-endpoint schema.
+
 ## Authentication & Authorization
 
 Every endpoint in this document requires `Authorization: Bearer <JWT>` unless
@@ -18,10 +28,10 @@ Authorization is scope-based, one policy per scope, mapped to endpoints as:
 | Endpoint | Required scope |
 |---|---|
 | `POST /publish/{event-type}` | `events:publish` |
-| `GET /follow/{event-type}` | `events:follow` |
-| `GET /events/{id}/parents`, `/children`, `/ancestors`, `/descendants` | `events:lineage:read` |
+| `QUERY /follow/{event-type}` (`ADR-012`) | `events:follow` |
+| `QUERY /events/{id}/parents`, `/children`, `/ancestors`, `/descendants` (`ADR-012`) | `events:lineage:read` |
 | `PUT /registry/{event-type}` | `registry:admin` |
-| `GET /registry/...` | `registry:admin` |
+| `QUERY /registry` (list, paginated — `ADR-012`), `GET /registry/{event-type}`, `GET /registry/{event-type}/{version}` | `registry:admin` |
 | `GET /openapi.json`, `GET /asyncapi.json` | none (anonymous — contract shape only, no event data) |
 
 OpenAPI documents this with a shared security scheme:
@@ -47,14 +57,16 @@ paths:
           description: Token valid but missing the required scope
 ```
 
-**Browser SSE caveat**: the native browser `EventSource` API cannot set an
-`Authorization` header. The Follow API therefore also accepts the token via
-an `access_token` query-string parameter for browser-based followers
-(`GET /follow/{event-type}?access_token=<token>`); non-browser followers
-using an `HttpClient`-based SSE reader should prefer the header. Query-string
-tokens are more prone to leaking via server/proxy logs than header-based
-ones — mitigate with short-lived tokens, not by avoiding the mechanism
-(there is no alternative for a real `EventSource` client).
+**Browser SSE, post-`ADR-012`**: Follow is `QUERY`, not `GET`, so the
+native browser `EventSource` API — which can only issue `GET`, with no
+body and no custom headers — cannot connect to it at all. A browser client
+uses `fetch()` with a `QUERY` request and manually reads the
+`text/event-stream` response body instead. Because `fetch()` *can* set a
+real `Authorization` header, there is no more `access_token` query-string
+workaround for Follow — that mechanism existed specifically to work around
+`EventSource`'s limitation, and is removed along with it (`ADR-012`),
+not merely superseded. Every caller of Follow, browser or not,
+authenticates identically: header only.
 
 ### Event-type security (required claims) — a second authorization dimension
 
@@ -77,12 +89,13 @@ not the status code.
 - `POST /publish/{event-type}`: 403 if `RequiredPublishClaim` is set and the
   caller's token lacks it — in addition to the existing `events:publish`
   scope check.
-- `GET /follow/{event-type}`: 403 **at connection time** if
+- `QUERY /follow/{event-type}` (`ADR-012`): 403 **at connection time** if
   `RequiredReadClaim` is set and the caller's token lacks it — in addition
   to `events:follow`.
-- Lineage API: see the dedicated note under "Lineage API (event chains)"
-  below — a restricted node anywhere in the result fails the *whole*
-  request, it is not stubbed out.
+- Lineage API: see "RequiredReadClaim and the Lineage API" below — only
+  the root `{eventId}` a call names is pass/fail (`403` if restricted);
+  every node the traversal *discovers* is checked independently and
+  stubbed (`restricted: true`), never fails the rest of the response.
 - A caller who lacks `RequiredReadClaim` for an event that does exist gets
   `403`, not `404` — distinguishable from a truly unknown `eventId`, which
   is still `404`. This deliberately leaks existence rather than hiding it
@@ -250,14 +263,18 @@ before schema/parent-link validation — an idempotent replay skips both
 ## AsyncAPI (follow side)
 
 - AsyncAPI version: 3.0.x.
+- **Method is `QUERY`, not `GET`** (`ADR-012`) — the SSE binding
+  (`bindings.sse`) documents `method: QUERY`, flagged there as a risk
+  since some AsyncAPI tooling may not yet recognize it.
 - One channel per event type (or one parameterized channel — decide based on
   how many event types typically exist; parameterized is simpler to
   maintain if the set is large).
-- SSE binding (`bindings.sse`) on the channel.
-- `$filter` documented as a channel/operation parameter (string, OData
-  syntax), not translated into structured AsyncAPI parameters — the schema
-  registry knows which fields are filterable, and that list can be surfaced
-  in the parameter description for discoverability.
+- `$filter`, `mode`, and `fromSequenceNumber` are documented as channel/
+  operation parameters (unchanged semantics), but per `ADR-012` they now
+  travel in the `QUERY` request body (`application/x-www-form-urlencoded`,
+  same OData syntax as before), not the URL — the schema registry still
+  knows which fields are filterable, and that list can be surfaced in the
+  parameter description for discoverability.
 - `mode` (`ADR-010`): `tail` (default — only events from connection time
   forward) or `replay` (replay matching history first, then tail with no
   gap or duplicate). `fromSequenceNumber` (optional, only valid with
@@ -269,9 +286,10 @@ before schema/parent-link validation — an idempotent replay skips both
   `EventId`, `SequenceNumber`, `OccurredAt`, and `parentEventIds` are
   streamed as message **headers**, mirroring the publish-side split between
   envelope metadata and schema-validated payload.
-- `access_token` is documented as a channel parameter alongside `filter`, for
-  browser `EventSource` clients that cannot set an `Authorization` header
-  (see the "Browser SSE caveat" above).
+- No `access_token` parameter — removed along with native `EventSource`
+  support (`ADR-012`); a browser client now authenticates via a real
+  `Authorization` header through `fetch()`, identically to every other
+  caller (see "Browser SSE, post-`ADR-012`" above).
 - Connecting requires `events:follow` plus, if the event type has one set,
   `RequiredReadClaim` (`ADR-008`) — checked once at connect time, same point
   as the `$filter`-field validation, not per streamed event. That check
@@ -323,16 +341,12 @@ channels:
     address: /follow/OrderPlaced
     bindings:
       sse:
-        method: GET
-    parameters:
+        method: QUERY   # ADR-012 -- was GET; risk: some tooling may not recognize this value yet
+    parameters:          # ADR-012: all of these travel in the QUERY request body, not the URL
       filter:
         description: >
           OData $filter expression. Filterable fields for OrderPlaced:
           Amount (Number), Status (String).
-      access_token:
-        description: >
-          Bearer token, for clients (e.g. browser EventSource) that cannot
-          set an Authorization header. Requires the events:follow scope.
       mode:
         description: >
           "tail" (default) streams only events from connection time
@@ -377,11 +391,18 @@ take an `eventId` and are static entries in the generated OpenAPI document
 (no `enum` populated from the registry needed):
 
 ```
-GET /events/{eventId}/parents       -- immediate parents (direct)
-GET /events/{eventId}/children      -- immediate children (direct)
-GET /events/{eventId}/ancestors     -- full transitive closure "up" the DAG
-GET /events/{eventId}/descendants   -- full transitive closure "down" the DAG
+QUERY /events/{eventId}/parents       -- immediate parents (direct)
+QUERY /events/{eventId}/children      -- immediate children (direct)
+QUERY /events/{eventId}/ancestors     -- full transitive closure "up" the DAG
+QUERY /events/{eventId}/descendants   -- full transitive closure "down" the DAG
 ```
+
+`ADR-012`: all four moved from `GET` to `QUERY` and gained optional
+`$top`/`$skip` pagination (a simple limit/offset slice over the result
+array — no `@odata.count`/`@odata.nextLink`), carried in the request body
+(`application/x-www-form-urlencoded`) alongside nothing else — there's no
+other filter expression here, just the new pagination parameters. Omitting
+both returns everything, unchanged from before `ADR-012`.
 
 All four require the `events:lineage:read` scope, plus `RequiredReadClaim`
 on every event type touched by the response — see "RequiredReadClaim and

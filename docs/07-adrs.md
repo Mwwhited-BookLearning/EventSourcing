@@ -207,8 +207,8 @@ Decision:
 - Any event type may be listed as a parent of any other event type — chains
   are not restricted to same-type lineage.
 - Read access to the DAG is via a dedicated Lineage API
-  (`GET /events/{id}/parents|children|ancestors|descendants`), not via
-  `$filter` on the follow API.
+  (`/events/{id}/parents|children|ancestors|descendants`, later `QUERY`
+  per `ADR-012`), not via `$filter` on the follow API.
 
 Consequences:
 - `Strict` mode plus the append-only, monotonically increasing
@@ -292,12 +292,15 @@ Consequences:
   `scope` is a single space-delimited string claim, not a repeated claim —
   a naive `RequireClaim` check silently fails to match a token carrying
   multiple scopes.
-- The browser `EventSource` API cannot set an `Authorization` header, so the
-  Follow API must additionally accept the bearer token via an
-  `access_token` query-string parameter for browser-based followers.
-  Query-string tokens are more prone to leaking via server/proxy logs than
-  header-based ones — mitigated with short-lived tokens, since there is no
-  header-based alternative for a real `EventSource` client.
+- ~~The browser `EventSource` API cannot set an `Authorization` header, so
+  the Follow API must additionally accept the bearer token via an
+  `access_token` query-string parameter for browser-based followers.~~
+  **Superseded by `ADR-012`**: Follow moved from `GET` to the HTTP `QUERY`
+  method specifically for its OData query capabilities, which as a side
+  effect rules out `EventSource` entirely (it can only issue `GET`) —
+  browser clients now use `fetch()`, which sets a real header, so this
+  workaround (and the query-string-token leakage risk it carried) no
+  longer exists for Follow at all.
 - Client/scope seeding lives in `EventStore.DevIdp`'s own startup code, not
   a committed realm-export file — simpler than Keycloak's JSON import, but
   means the seed data is C#, not declarative config; keep it in one place
@@ -412,8 +415,8 @@ Decision:
   allowed to read them back (or vice versa) — one claim does not imply the
   other.
 - `RequiredPublishClaim` gates `POST /publish/{event-type}`.
-  `RequiredReadClaim` gates `GET /follow/{event-type}` (checked once, at
-  connect time) **and** all four Lineage API endpoints.
+  `RequiredReadClaim` gates `QUERY /follow/{event-type}` (`ADR-012`;
+  checked once, at connect time) **and** all four Lineage API endpoints.
 - **Visibility is per node, not per request: "you can only see what you can
   see."** For the Lineage API and the Follow envelope's `parentEventIds`
   alike, each event a response touches is checked independently against
@@ -513,7 +516,20 @@ otherwise-visible event should be hidden from callers who lack a
 finer-grained claim — e.g. an `OrderPlaced` event's `Amount` might be
 visible to everyone with `RequiredReadClaim` for the type, but a
 `CustomerTaxId` property on it might need its own `pii:view` claim, and be
-hidden from everyone else. An earlier version of this ADR tried to solve
+hidden from everyone else.
+
+**Explicitly settled alongside this: there is no erasure/deletion
+mechanism, and none is wanted.** A regulated field (`regulatoryClassification`,
+`ADR-009` below) that some caller must never see is handled entirely by
+masking it at read time — the store persists it exactly as published,
+forever, same as everything else (`ADR-004`, `ADR-005`'s append-only
+design). If a real deletion requirement ever surfaces (e.g. a legal
+erasure order for specific data), that is a deliberately unsolved,
+separate problem — not something this design silently precludes, but not
+something it builds for either, since it was asked for and confirmed not
+needed here.
+
+An earlier version of this ADR tried to solve
 this by replacing the value with `null`, but that only works for
 properties whose declared type already permits `null` — it doesn't "work
 on all fields," which is a real requirement, not a nice-to-have.
@@ -685,15 +701,19 @@ it's unambiguous what's built versus sketched:
 
 Status: Accepted
 
-Context: `GET /follow/{event-type}` previously had no way to ask for
+Context: `/follow/{event-type}` previously had no way to ask for
 anything other than new events from the moment of connecting — a caller
 who wanted the matching history that already exists in the store first had
 no path to it short of a separate, unspecified mechanism.
 `04-odata-filter-pushdown.md` had gestured at "tailing from connection
-time or a resume token" without ever specifying either.
+time or a resume token" without ever specifying either. (Written when
+Follow was still `GET`; `ADR-012` later moves it to the HTTP `QUERY`
+method — an unrelated, purely transport-level change made after this one,
+which is why "a `mode` parameter" below deliberately avoids the phrase
+"query parameter," to not collide with that later method name.)
 
 Decision:
-- `GET /follow/{event-type}` gains a `mode` query parameter:
+- `/follow/{event-type}` gains a `mode` parameter:
   `mode=tail` (**default** — unchanged from the existing behavior, no
   history) or `mode=replay`.
 - `mode=replay` accepts an optional `fromSequenceNumber` (non-negative
@@ -797,3 +817,188 @@ Consequences:
 - `PayloadHash` has no index of its own — the unique index on `EventId` is
   what makes the lookup fast; the hash is only consulted after that lookup
   finds a match, purely as a content-equality check.
+
+---
+
+## ADR-012: HTTP `QUERY` method (RFC 10008) for OData data-queries, replacing `GET`
+
+Status: Accepted
+
+Context: `$filter` (Follow), and now pagination for Lineage and the
+registry listing, are genuine data queries expressed via query-string
+parameters on a `GET`. `GET` has no well-defined semantics for a request
+body, which pushes arbitrarily complex OData expressions into URL length
+limits. The HTTP `QUERY` method (RFC 10008) exists specifically for this:
+a safe, cacheable method like `GET`, but with a request body.
+
+Decision:
+- Every endpoint whose query is genuinely filterable/pageable moves from
+  `GET` to `QUERY`, with the OData expression moved from the URL query
+  string into the request body (`application/x-www-form-urlencoded`,
+  **the same syntax** as before — `$filter=Amount gt 100&mode=replay` —
+  parsed by the exact same `ODataFilterParser`/parsing code, just read
+  from `Request.Form` instead of `Request.Query`; ASP.NET Core's
+  `IFormCollection` mirrors `IQueryCollection`'s API for exactly this
+  content type, so the change is mechanical, not a rewrite):
+  - `QUERY /follow/{event-type}` — `$filter`, `mode`, `fromSequenceNumber`
+    (`ADR-010`) all move into the body. The path segment (`{event-type}`)
+    stays in the URL — it identifies *which resource*, the body customizes
+    *what you get back*.
+  - `QUERY /events/{id}/parents|children|ancestors|descendants` — same
+    principle, and picks up **`$top`/`$skip` pagination** as a natural
+    consequence of the endpoint shape changing anyway (previously
+    undesigned — a deep DAG traversal could return an unbounded result
+    set). This is a simple limit/offset slice over the existing response
+    array, not full OData collection semantics — no `@odata.count` or
+    `@odata.nextLink`, consistent with how `$filter` elsewhere already
+    borrows OData syntax without claiming full spec compliance. Both are
+    optional; omitting them returns everything, unchanged from before.
+  - `QUERY /registry` (the list-all-event-types endpoint) — same `$top`/
+    `$skip` pagination, same reasoning.
+- **Unchanged, stays `GET`**: single-resource-by-key fetches with nothing
+  to query — `GET /registry/{event-type}`, `GET /registry/{event-type}/{version}`,
+  `GET /openapi.json`, `GET /asyncapi.json`. There's no filter expression
+  to move into a body for any of these; forcing them onto `QUERY` would
+  add nothing.
+- Routed via `MapMethods(pattern, ["QUERY"], handler)` — ASP.NET Core's
+  routing accepts any method string, not a fixed enum, so this needs no
+  framework changes.
+
+Consequences:
+- **Breaks native browser `EventSource` for Follow entirely** —
+  `EventSource` can only issue `GET`, has no method override and no body
+  support. A browser client must switch to `fetch()` with a `QUERY`
+  request and manually parse the `text/event-stream` response body
+  (hand-rolled `ReadableStream` reading, or a small SSE-over-fetch
+  library) — `new EventSource(url)` no longer works for this endpoint.
+- **The `access_token`-in-URL workaround (`ADR-006`) is removed for
+  Follow, not merely unnecessary.** It existed specifically because
+  `EventSource` couldn't set an `Authorization` header; `fetch()` can, so
+  keeping a leakier, redundant auth path around with no remaining
+  justification would be worse than removing it. Follow now authenticates
+  exactly like every other endpoint — header only.
+- `QUERY` is a "non-simple" method for CORS purposes: every browser call
+  triggers a preflight (`OPTIONS`), which is why `ADR-014`'s CORS policy
+  explicitly lists it in `WithMethods(...)`.
+- AsyncAPI's SSE binding must document `method: QUERY` for the Follow
+  channel. `QUERY` is a very new HTTP method — some AsyncAPI-consuming
+  tooling may not yet recognize it as a valid binding value. This is a
+  documented risk, not something resolved here; if it becomes a real
+  blocker, the fallback is a vendor extension (`x-method: QUERY`)
+  alongside whatever the binding's schema will actually accept.
+- `04-odata-filter-pushdown.md`'s pipeline step 1 ("parse `$filter` string")
+  now reads that string from the request body, not the URL — the parser
+  itself (`Microsoft.OData.UriParser`) is unaffected, since it only ever
+  operated on the string content, never the transport it arrived by.
+
+---
+
+## ADR-013: Canonical error responses via RFC 9457 Problem Details
+
+Status: Accepted
+
+Context: Error responses were described inconsistently across the design
+— different feature docs implied different response bodies for `400`/
+`401`/`403`/`404`/`409` without ever settling on one shape. Left alone,
+every endpoint would plausibly grow its own ad hoc error format.
+
+Decision: Every error response across every endpoint uses **RFC 9457
+Problem Details** (`application/problem+json`), via ASP.NET Core's
+built-in support (`builder.Services.AddProblemDetails()`,
+`Results.Problem(...)`/`Results.ValidationProblem(...)` in minimal APIs) —
+no custom error DTO, no library beyond what's already in the framework.
+Standard members: `type` (a URI identifying the problem category — see
+below), `title` (short, stable summary), `status`, `detail`
+(occurrence-specific human-readable text), `instance` (the request path).
+Anything beyond that is carried in Problem Details' standard
+`Extensions` dictionary, not by inventing new top-level fields:
+
+| Situation | `status` | `type` slug | Extensions |
+|---|---|---|---|
+| Payload fails schema validation | `400` | `validation-failed` | Uses `ValidationProblemDetails`'s `errors: { "<path>": ["<message>"] }`, not a custom shape — this is the one case with an existing framework type built for exactly this |
+| Strict-mode parent event(s) not found | `400` | `parent-not-found` | `missingParentEventIds: [...]` |
+| `$filter` references an undeclared field | `400` | `filter-field-not-filterable` | `field: "InternalNotes"` |
+| `fromSequenceNumber` supplied with `mode=tail` | `400` | `invalid-replay-parameters` | — |
+| Missing/invalid Bearer token | `401` | `unauthenticated` | — |
+| Missing scope, or missing `RequiredPublishClaim`/`RequiredReadClaim` | `403` | `forbidden` | `reason: "missing_scope"` \| `"missing_required_claim"` — this is exactly the "response detail, not the status code" distinction `ADR-008` already promised |
+| Unknown event-type / unknown `eventId` | `404` | `not-found` | — |
+| `eventId` reused with different content | `409` | `event-id-conflict` | `eventId: "..."` |
+| `x-masking` malformed at registration (`ADR-009`) | `400` | `masking-invalid` | `path: "<property path>"`, `reason: "..."` |
+
+`type` values are placeholder slugs here (`https://eventstore.example/problems/<slug>`
+in the examples below) — RFC 9457 wants `type` to ideally resolve to human
+documentation, but doesn't require it; picking a real base URL (or
+defaulting every `type` to `about:blank`, ASP.NET Core's built-in fallback)
+is an implementation-time decision this design doesn't need to make.
+
+```json
+{
+  "type": "https://eventstore.example/problems/parent-not-found",
+  "title": "One or more parent events do not exist",
+  "status": 400,
+  "detail": "parentEventIds referenced an event that has not been published.",
+  "instance": "/publish/OrderShipped",
+  "missingParentEventIds": ["00000000-0000-0000-0000-000000000000"]
+}
+```
+
+Consequences:
+- Every response consumers need to parse has one shape, not N ad hoc ones
+  — a caller can always check `status` + `type` first and fall back to
+  `detail` for a human, without needing per-endpoint response schemas.
+- `403`'s `reason` extension is the only place the scope-vs-claim
+  distinction from `ADR-008` actually surfaces; the status code alone
+  still can't be used to tell them apart, by design.
+- OpenAPI/AsyncAPI generation documents every non-`2xx` response as
+  `$ref: '#/components/schemas/ProblemDetails'` (a single shared schema)
+  plus a `type`-specific `example`, rather than a bespoke schema per
+  status code per endpoint.
+- This doesn't apply to Lineage's `restricted: true` stubs (`ADR-008`) —
+  those are `200` responses with a marked node, not an error at all; there
+  is no HTTP error status for "some of what you asked for is hidden."
+
+---
+
+## ADR-014: CORS policy — configurable allowlist, deny by default
+
+Status: Accepted
+
+Context: A browser calling any of these APIs directly from a web page's
+JavaScript is subject to CORS — the *browser's* enforcement, not the
+server's; it doesn't affect server-to-server calls at all. Nothing in the
+design said which origins, if any, are allowed.
+
+Decision:
+- ASP.NET Core's built-in CORS middleware, one named policy, wired in
+  `EventStore.Host.Core` (`app.UseCors(...)`) so it's identical across all
+  three `EventStore.Host.<Provider>` deployables (`ADR-001`).
+- Allowed origins come from configuration (`Cors:AllowedOrigins`, a plain
+  string array), not a hardcoded list — unlike the database provider
+  (`ADR-001`), there's no reason this needs to be a build-time choice: it's
+  an ordinary environment-varying setting with no NuGet/migrations
+  implications, so runtime configuration is the right fit here.
+- **Deny by default**: an empty/unset `Cors:AllowedOrigins` means no
+  cross-origin browser call succeeds, for any origin. Server-to-server
+  calls (the majority of this system's traffic — none of the three system
+  actors are literally browsers) are entirely unaffected either way.
+- The policy explicitly allows: the `Authorization` header (needed once a
+  browser client uses `fetch()` with a real Bearer header instead of the
+  old `access_token`-in-URL workaround — see `ADR-012`); and every method
+  actually used, including `QUERY` (`ADR-012`) — a "non-simple" method
+  that always triggers a browser preflight (`OPTIONS`) request, which
+  ASP.NET Core's CORS middleware answers automatically once the method is
+  listed, no extra code needed.
+- `AllowCredentials()` is **not** set — auth is Bearer-token-in-header
+  only, never cookies, so there's nothing that needs it, and leaving it
+  off keeps the policy simpler (credentialed CORS has stricter rules
+  around wildcard origins that don't need to apply here).
+
+Consequences:
+- Exact-string origin matching by default (ASP.NET Core's standard
+  `WithOrigins(...)`); wildcard-port localhost matching for local dev (if
+  wanted) needs `SetIsOriginAllowed(...)` with a predicate instead of the
+  plain list — a small addition, not designed further here since it's a
+  dev-convenience detail, not a behavioral decision.
+- A fresh deployment with nothing configured is CORS-closed to every
+  browser origin — safe-by-default, but means "why can't my browser client
+  connect" is the first thing to check `Cors:AllowedOrigins` for.

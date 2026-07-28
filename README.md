@@ -16,7 +16,8 @@ An event-sourcing store with:
   identical content replays the original response with no new write; the
   same `eventId` with different content is a `409` (`ADR-011`).
 - A **follow API** over Server-Sent Events (SSE)
-  (`GET /follow/{event-type}?$filter=...`) that streams matching events as
+  (`QUERY /follow/{event-type}` — the HTTP `QUERY` method, `ADR-012`, not
+  `GET`) that streams matching events as
   they are appended, filtered using an OData `$filter` expression that is
   **pushed down to the database**, not evaluated in memory. A `mode`
   parameter (`ADR-010`) chooses **tail** (default — new events only) or
@@ -32,9 +33,9 @@ An event-sourcing store with:
   events**, of any event type, that it is causally derived from, forming a
   DAG across the store. Parent existence is validated per event type
   (`Strict` or `Permissive`, see `02-data-model.md` and `ADR-005`). The DAG
-  is queryable via a dedicated Lineage API
-  (`GET /events/{id}/parents|children|ancestors|descendants`, see
-  `03-api-contracts.md`).
+  is queryable via a dedicated, paginated Lineage API
+  (`QUERY /events/{id}/parents|children|ancestors|descendants` — the HTTP
+  `QUERY` method, `ADR-012`, not `GET` — see `03-api-contracts.md`).
 - **OAuth2/OIDC bearer-token auth** on every endpoint except the public spec
   documents, scope-checked per operation. For local dev/this POC, an
   in-process **OpenIddict** token issuer (`EventStore.DevIdp`, no separate
@@ -77,6 +78,11 @@ An event-sourcing store with:
   design question like derived event types above. Richer masking-content
   strategies than the fixed placeholder (`PartialReveal`/`Hash`) are a
   further, undecided proposal on top of that.
+- **No deletion/erasure of stored data, ever — not even for regulated
+  fields.** This was raised and explicitly settled, not overlooked:
+  masking is the only redaction mechanism this system has, and it's a
+  read-time presentation transform, never a storage-layer change. See
+  `ADR-009`.
 
 ## Document index
 
@@ -94,12 +100,20 @@ An event-sourcing store with:
 
 ## Open decisions flagged for the implementer
 
-These were surfaced during design and are **not yet finalized** — pick and
-record the decision as an ADR when you make it (template in `07-adrs.md`):
+None outstanding. Every question surfaced during design has been resolved
+and recorded as an ADR in `07-adrs.md` — including unindexed-field
+filtering (reject outright, `ADR-003`) and dev-mode auth/orchestration (an
+in-process OpenIddict host + .NET Aspire, `ADR-006`; the production IdP
+remains a separate, later decision, out of scope for this POC).
 
-1. Whether unindexed-field filtering should be rejected outright (400) or
-   silently degrade to a full scan — current recommendation is **reject**.
+Two items are deliberately **deferred**, not undecided — see
+`ADR-007` and `ADR-009`'s closing note for why each is safe to build later
+without disturbing v1:
 
-Dev-mode auth provider and orchestration (`ADR-006`, an in-process
-OpenIddict host + .NET Aspire) is confirmed, not open — the production IdP
-remains a separate, later decision (out of scope for this POC).
+- **Derived/materialized event types** (server-side joins/projections
+  across streams) — secondary feature set, design captured in `ADR-007`,
+  build after the primary system works.
+- **Masking-content strategies beyond the fixed placeholder** (e.g.
+  `PartialReveal`/`Hash` instead of always `{"masked": "***"}`) — the
+  fixed-placeholder mechanism itself is settled (`ADR-009`); only *richer*
+  strategies on top of it remain a future proposal.

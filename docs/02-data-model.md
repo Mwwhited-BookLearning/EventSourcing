@@ -202,7 +202,7 @@ these two fields gate *whether you may touch a specific event type*, per
 — v1 supports exactly one required claim per direction, not an AND/OR set.
 
 - `RequiredPublishClaim` gates `POST /publish/{event-type}` for this type.
-- `RequiredReadClaim` gates `GET /follow/{event-type}` (checked at connect
+- `RequiredReadClaim` gates `QUERY /follow/{event-type}` (`ADR-012`; checked at connect
   time) **and** the Lineage API — see `03-api-contracts.md`, "Lineage API",
   for why a restricted node anywhere in an ancestors/descendants traversal
   fails the whole request rather than being stubbed out.
@@ -235,3 +235,9 @@ fields — `regulatoryClassification`, `governanceBody`,
 masking transform never reads them, and they never appear in the runtime
 wrapper — they exist so a schema self-documents *why* a field is masked,
 discoverable via the registry and generated specs, per `ADR-009`.
+
+**There is no deletion/erasure mechanism for regulated data, by design.**
+`Payload` is never mutated or removed once stored, for a masked field the
+same as any other — masking is a read-time presentation transform, not a
+storage-layer redaction. `ADR-009` records this as explicitly settled, not
+merely unaddressed.
