@@ -74,6 +74,9 @@ builder.Services.AddScoped<IEventLineageQueryProvider>(sp => provider switch
     "SqlServer" => new SqlServerEventLineageQueryProvider(),
     _ => throw new InvalidOperationException($"Unknown provider '{provider}'")
 });
+builder.Services.AddMemoryCache(); // backs the ~60s spec-document cache, ADR-002
+builder.Services.AddSingleton<EventSchemaConverter>();      // JsonSchema text -> shared Microsoft.OpenApi OpenApiSchema
+builder.Services.AddSingleton<MaskingSchemaTransformer>();  // schema-level x-masking -> oneOf[value,masked] wrapper
 builder.Services.AddSingleton<OpenApiDocumentBuilder>();
 builder.Services.AddSingleton<AsyncApiDocumentBuilder>();
 
@@ -97,6 +100,76 @@ the built-in `RequireClaim` — because OAuth2 delivers `scope` as one
 space-delimited string claim (`"events:publish events:follow"`), and
 `RequireClaim` does an exact-value match, not a "one of the space-separated
 tokens" match. See `ADR-006`.
+
+### Spec generation — one shared schema model, two document builders
+
+Add the `Microsoft.OpenApi` NuGet package (the official .NET OpenAPI 3.1
+object model) to `EventStore.SpecGeneration`. It's used for more than just
+building `openapi.json`: `EventSchemaConverter` parses every active event
+type's registered `JsonSchema` text into `Microsoft.OpenApi.Models.OpenApiSchema`
+**once**, and both builders share that same object — there is no separate
+AsyncAPI-flavored schema representation. This works because AsyncAPI 3.0
+deliberately reuses OpenAPI's Schema Object dialect, and because
+`OpenApiSchema.Extensions` carries unrecognized keywords (including custom
+ones like `x-masking`) through rather than dropping them (verify this with
+a round-trip unit test on an unusual keyword — see `ADR-002`'s
+consequences).
+
+```csharp
+public class EventSchemaConverter
+{
+    public OpenApiSchema Parse(string jsonSchemaText) => /* Microsoft.OpenApi reader */;
+}
+
+public class MaskingSchemaTransformer
+{
+    // Schema-level, claims-independent -- NOT the same thing as IPayloadMasker below.
+    // Runs once per document build; the wire *shape* is identical for every caller.
+    public OpenApiSchema Wrap(OpenApiSchema schema) { /* recurse; wrap x-masking nodes */ }
+}
+```
+
+`OpenApiDocumentBuilder` uses the **unwrapped** `OpenApiSchema` and builds
+the whole `OpenApiDocument` (paths, security schemes, info) natively via
+`Microsoft.OpenApi`'s own object model, serialized with
+`document.SerializeAsV31(writer)` — no hand-rolled JSON on the OpenAPI side
+at all.
+
+`AsyncApiDocumentBuilder` runs each schema through
+`MaskingSchemaTransformer.Wrap(...)` first, then hand-builds the
+channels/messages/operations/components envelope as a
+`System.Text.Json.Nodes.JsonObject` tree, embedding the transformed
+schema's `Microsoft.OpenApi`-serialized JSON into `components.schemas`.
+There's no mature .NET library for this half — a unit test that parses
+each generated `asyncapi.json` back against the published AsyncAPI 3.0
+JSON Schema is the safety net a type system would otherwise provide.
+
+Both endpoints are thin routes in `EventStore.Host`:
+
+```csharp
+app.MapGet("/openapi.json", async (OpenApiDocumentBuilder b) =>
+    Results.Text(await b.GetOrBuildJsonAsync(), "application/json")).AllowAnonymous();
+app.MapGet("/asyncapi.json", async (AsyncApiDocumentBuilder b) =>
+    Results.Text(await b.GetOrBuildJsonAsync(), "application/json")).AllowAnonymous();
+```
+
+Each builder's `GetOrBuildJsonAsync()` checks `IMemoryCache` first
+(`"openapi-document"` / `"asyncapi-document"`, ~60s absolute expiration per
+`ADR-002`); on a miss it calls `ISchemaRegistryReader.GetActiveEventTypesAsync()`
+and rebuilds. `SchemaRegistryService` calls `IMemoryCache.Remove(...)` on
+both keys after a successful registration (`05-schema-registry-and-spec-
+generation.md`, registration step 10) — that's the entire invalidation
+mechanism, no pub/sub or distributed cache needed for a single instance
+(see `ADR-002`'s consequences for the multi-instance caveat).
+
+**`MaskingSchemaTransformer` is not deferred alongside masking.** It's
+schema-only and claims-independent, so it's needed the moment
+`AsyncApiDocumentBuilder` exists (Phase 4) — only `IPayloadMasker` below
+(the data-level, per-caller half) is deprioritized to Phase 8. Factor the
+"find every `x-masking` node" tree-walk into one shared helper both
+transformers call, so the recursion rule (scalar node / scalar array
+`items` / property nested inside complex-object `items`) is implemented
+once.
 
 ### Event-type security (required claims) — why this isn't a fifth `AddPolicy`
 
@@ -126,11 +199,13 @@ result set — including the root `{eventId}`'s own type — failing the whole
 response with `403` if any check fails; see `03-api-contracts.md`,
 "RequiredReadClaim and the Lineage API").
 
-### Masking — a pure, schema-plus-data transform, deprioritized to a later phase
+### IPayloadMasker — the data half of masking, deprioritized to a later phase
 
-Masking (`ADR-009`) is design-complete but scheduled after Phases 0–6, per
-the user's own sequencing call — recorded here so the shape isn't lost, not
-because it's blocked on anything technical.
+This is the second of masking's two halves — `MaskingSchemaTransformer`
+above is the schema half, and is *not* deprioritized. `IPayloadMasker` is
+design-complete but scheduled after Phases 0–6, per the user's own
+sequencing call — recorded here so the shape isn't lost, not because it's
+blocked on anything technical.
 
 The transform is a pure function of the extended `JsonSchema` (the one
 carrying `x-masking`) and the current payload data — nothing endpoint- or

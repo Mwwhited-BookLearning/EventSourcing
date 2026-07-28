@@ -23,7 +23,7 @@ state "Phase 4\nFollow API + Filter Pushdown" as p4
 state "Phase 5\nAuth + Orchestration" as p5
 state "Phase 6\nEvent-Type Security" as p6
 state "Phase 7 (deferred)\nDerived Event Types" as p7
-state "Phase 8 (lower priority)\nMasking" as p8
+state "Phase 8 (lower priority)\nMasking (data enforcement)" as p8
 
 p0 --> p1
 p1 --> p2
@@ -43,9 +43,13 @@ because it wraps every endpoint built in 1–4, so it can't meaningfully start
 until they all exist. Phase 6 depends on Phase 5 specifically because
 `RequiredPublishClaim`/`RequiredReadClaim` enforcement needs the caller's
 JWT claims to already be populated — there's nothing to check against
-before JWT bearer auth exists (`ADR-008`). Phases 7 and 8 both depend only
-on Phase 6, not on each other — like 3/4, they're independent and can run
-in either order once the primary system (0–6) is stable.
+before JWT bearer auth exists (`ADR-008`). Phases 7 and 8 both depend on
+Phase 6, not on each other — like 3/4, they're independent and can run in
+either order once the primary system (0–6) is stable. Phase 8 also has a
+real, non-transitive dependency on Phase 4 specifically (the shared
+`x-masking` node-finding helper introduced there) — already guaranteed by
+the diagram's ordering (4 → 5 → 6 → 8), just called out explicitly since
+it's a genuine content dependency, not only a scheduling one.
 
 ## Phase 0 — Scaffolding & persistence
 
@@ -79,7 +83,16 @@ schema, versioning (`IsActive` flip, no mutation of prior versions),
 `ParentValidationMode` accepted and validated as an enum on the request.
 Per-provider index/computed-column migrations for `IsIndexed = true` fields
 (`04-odata-filter-pushdown.md`) are built here too, even though nothing
-queries through them until Phase 4.
+queries through them until Phase 4. **`x-masking` structural validation**
+also belongs here: reject `strategy` other than `"FixedValue"`, reject
+placement directly on an `object`-/`array`-typed property, validate
+`requiredClaim`'s `"type:value"` format and that
+`regulatoryClassification`/`governanceBody`/`regulationReference` are
+non-empty strings if present (`ADR-009`) — this is pure data validation on
+the registration payload with no claims involved, so it doesn't wait for
+Phase 6/8 the way enforcement does, and Phase 4's `MaskingSchemaTransformer`
+needs to be able to assume any `x-masking` it encounters is already
+well-formed.
 
 Not in scope yet: `ParentValidationMode` is stored but not *enforced*
 (that's `ParentLinkService`, Phase 2); `registry:admin` scope is not
@@ -87,12 +100,20 @@ enforced (that's Phase 5) — accept requests unauthenticated for now.
 `RequiredPublishClaim`/`RequiredReadClaim` (`ADR-008`) are likewise accepted
 and validated for format (a well-formed `"type:value"` string) but not
 enforced — that needs JWT claims to exist first, so enforcement is Phase 6.
+`x-masking`'s *validation* is this phase's job (above); its *enforcement*
+(`IPayloadMasker`) is still Phase 8.
 
 **Depends on**: Phase 0.
 
 **Exit criteria**: every scenario in
 [`features/schema-registry.md`](features/schema-registry.md) passes, on all
-three providers, including the index/computed-column verification.
+three providers, including the index/computed-column verification; plus
+the two registration-rejection scenarios in
+[`features/masking.md`](features/masking.md) ("x-masking directly on an
+object-typed property is rejected" and "a masking strategy other than
+FixedValue is rejected") and the "regulatory metadata fields are optional"
+scenario there — the rest of that doc's scenarios (actual masking/wrapping
+behavior) belong to Phases 4 and 8, not this one.
 
 ## Phase 2 — Publish API
 
@@ -103,7 +124,10 @@ version, `ParentLinkService` enforcing `ParentValidationMode`
 (`Strict`/`Permissive`, per [`features/event-chains.md`](features/event-chains.md)),
 `EventAppender` writing `StoredEvent` + `EventParents` in one transaction.
 Generate and expose `/openapi.json` now that the publish contract exists
-(`ADR-002`).
+(`ADR-002`): `EventSchemaConverter` (parses registered `JsonSchema` text
+into the shared `Microsoft.OpenApi` `OpenApiSchema`) and
+`OpenApiDocumentBuilder` (native `Microsoft.OpenApi` document + writer),
+`IMemoryCache`-backed per `ADR-002`.
 
 Lineage is built here, not deferred — only the derived-event-types idea
 (`ADR-007`) is deferred, not `EventParents` (`ADR-005`, already Accepted).
@@ -116,7 +140,8 @@ publish-side scenarios in
 [`features/event-chains.md`](features/event-chains.md) pass on all three
 providers; the unique index on `StoredEvent.EventId` is verified to reject a
 duplicate; `/openapi.json` includes `/publish/{event-type}` with the
-envelope shape.
+envelope shape, served anonymously, cache-invalidated on the next
+registration.
 
 ## Phase 3 — Lineage API (read side)
 
@@ -144,7 +169,14 @@ node exactly once.
 `PredicateTranslator` + `IJsonPathTranslator` per provider, the
 `EventTailReader` polling loop, SSE responses carrying the envelope headers
 (`eventId`, `sequenceNumber`, `occurredAt`, `parentEventIds`). Generate and
-expose `/asyncapi.json` now that the follow contract exists.
+expose `/asyncapi.json` now that the follow contract exists:
+`AsyncApiDocumentBuilder` (hand-built JSON envelope around the same shared
+`OpenApiSchema` from `EventSchemaConverter`) **and**
+`MaskingSchemaTransformer` — even though masking's runtime enforcement
+(`IPayloadMasker`) doesn't land until Phase 8, the schema-level `x-masking`
+→ `oneOf[value,masked]` wrapper is claims-independent and must exist now so
+`/asyncapi.json` never documents a maskable property's bare, unwrapped type
+(`ADR-002`, `ADR-009`).
 
 **Depends on**: Phase 2 (needs published events to tail). Independent of
 Phase 3 — can be built before, after, or alongside it.
@@ -155,7 +187,11 @@ Phase 3 — can be built before, after, or alongside it.
 three providers, including the scenario outline that runs the same query
 identically across SQLite/Postgres/SQL Server, and the 400-before-any-SQL
 rejection for an undeclared filter field; `/asyncapi.json` includes the
-follow channel.
+follow channel, served anonymously, cache-invalidated on the next
+registration; a maskable property (registered ahead of Phase 8) already
+appears wrapped as `oneOf[value,masked]` in the generated document, even
+though every event still streams it unconditionally as `{"value": ...}`
+until Phase 8's enforcement lands (`features/masking.md`).
 
 ## Phase 5 — Auth (OIDC/OpenIddict) + orchestration
 
@@ -227,23 +263,27 @@ path — see `ADR-007` for the open questions (unbounded pending-join state,
 n-ary `$select`, backfill over a derived source) still unresolved before
 this can be scoped into its own phase plan.
 
-## Phase 8 (lower priority) — Property-level masking
+## Phase 8 (lower priority) — Property-level masking (data enforcement)
 
 **Scope**: per `ADR-009` and [`features/masking.md`](features/masking.md)
 — design-complete, scheduled after Phase 6 purely as a priority call, not
-because anything is unresolved (contrast with Phase 7). Registration-time
-validation of `x-masking` (reject placement directly on an `object`-/
-`array`-typed property; reject any `strategy` other than `"FixedValue"`);
-the `IPayloadMasker` pure `(schema, data, hasClaim) -> data` transform
+because anything is unresolved (contrast with Phase 7). This is only the
+**data** half — `x-masking` structural validation moved to Phase 1 and the
+**schema** half (`MaskingSchemaTransformer`) moved to Phase 4, since
+neither needs claims (see those phases). What's left here: the
+`IPayloadMasker` pure `(schema, data, hasClaim) -> data` transform
 (`06-solution-structure.md`) wired into `FollowEndpoint`'s per-event
 pipeline; the per-connection masked-node set computed once at connect time
 alongside `RequiredReadClaim`; the recursive wrapping rule through array
-`items` (scalar: wrap each element; complex object: wrap only the
-masked properties within each element).
+`items` (scalar: wrap each element; complex object: wrap only the masked
+properties within each element) applied to actual payload *data*, reusing
+the same node-finding helper `MaskingSchemaTransformer` already
+established in Phase 4.
 
 **Depends on**: Phase 6 (reuses its claim-checking primitive and the
-connect-time check already happening for `RequiredReadClaim`). Independent
-of Phase 7 — neither depends on the other.
+connect-time check already happening for `RequiredReadClaim`) and Phase 4
+(the shared node-finding helper). Independent of Phase 7 — neither depends
+on the other.
 
 **Exit criteria**: every scenario in
 [`features/masking.md`](features/masking.md) passes: registration rejecting

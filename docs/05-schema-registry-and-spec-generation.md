@@ -115,8 +115,9 @@ enforcement, the wrapper shape, or the `FixedValue` strategy reads them.
    already stored under them — publish validates against whichever version
    is active *at publish time*, and `StoredEvent.SchemaVersion` records
    which version validated a given event).
-10. Invalidate the OpenAPI/AsyncAPI cache (if using the cached-generation
-    approach — see `ADR-002`).
+10. Invalidate the OpenAPI/AsyncAPI cache: `IMemoryCache.Remove("openapi-document")`
+    and `IMemoryCache.Remove("asyncapi-document")` — see `ADR-002` and
+    `06-solution-structure.md` for the concrete cache/build mechanism.
 
 Changing `ParentValidationMode` on a new version only affects publishes
 validated against that version going forward; existing `EventParents` rows

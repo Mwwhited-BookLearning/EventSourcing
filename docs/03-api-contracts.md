@@ -105,6 +105,29 @@ staleness bugs without needing a cache-invalidation pipeline. Revisit only if
 the number of registered event types becomes large enough (hundreds+) that
 generation cost is measurable — track as `ADR-002`.
 
+**Both endpoints are anonymous** (per the scope table above) and both are
+served by `GET /openapi.json` / `GET /asyncapi.json` in `EventStore.Host`,
+each a thin route that asks its builder for the (possibly cached) document
+and returns it as `application/json` — no other endpoint-specific logic.
+
+**How each document is actually built** — both `OpenApiDocumentBuilder` and
+`AsyncApiDocumentBuilder` parse every active event type's registered schema
+into the *same* `Microsoft.OpenApi` `OpenApiSchema` object (via
+`EventSchemaConverter`), since AsyncAPI 3.0 deliberately reuses OpenAPI's
+Schema Object dialect — there is one shared schema representation, not two.
+`OpenApiDocumentBuilder` embeds it **unwrapped** (publish payloads are
+never wrapped by masking, per `ADR-009`) and serializes the whole document
+natively via `Microsoft.OpenApi`'s own writer. `AsyncApiDocumentBuilder`
+first runs it through `MaskingSchemaTransformer` — which rewrites any
+`x-masking`-carrying node into the `oneOf[value,masked]` wrapper described
+below — then hand-builds the surrounding channels/messages/operations
+envelope as JSON, since no mature .NET library fits AsyncAPI generation
+from a runtime registry. `MaskingSchemaTransformer` is schema-only and
+claims-independent (the wire *shape* is the same for every caller), so it
+exists as soon as AsyncAPI generation does — it is not deferred alongside
+masking's runtime enforcement (`IPayloadMasker`); see `ADR-002` and
+`06-solution-structure.md` for the full mechanism.
+
 ## OpenAPI (publish side)
 
 - OpenAPI version: 3.1.x (aligns with JSON Schema 2020-12 — schemas are
@@ -202,27 +225,34 @@ type — no manual authoring, no drift.
 - Connecting requires `events:follow` plus, if the event type has one set,
   `RequiredReadClaim` (`ADR-008`) — checked once at connect time, same point
   as the `$filter`-field validation, not per streamed event.
-- **Masking** (`ADR-009`, design accepted, build deprioritized to after
-  Phases 0–6): any property in the message payload's schema carrying an
-  `x-masking` extension is checked per connection (using the same claims
-  already validated for `RequiredReadClaim`). Its *documented* type in
-  this AsyncAPI output — for every caller, regardless of claims — is a
-  wrapper, `oneOf: [{value: <the property's real type>}, {masked:
-  string}]`, never the bare original type. At serialization time, a caller
-  holding the property's `requiredClaim` gets `{"value": <real value>}`;
-  one who doesn't gets `{"masked": "***"}` (or whatever `maskedValue` was
-  configured). The same rule recurses into arrays: `x-masking` on a scalar
-  `items` schema wraps each element; on a property nested inside a
-  complex-object `items` schema, wraps just that property per element.
-  This happens after `RequiredReadClaim`/`$filter` are satisfied; it never
-  changes *whether* an event is streamed, only the shape of the masked
-  field(s) within it. The registered/publish-side schema
-  (`SchemaValidationService` validates against, and what `/openapi.json`
-  documents) is **not** wrapped — publishers always send the plain,
-  unwrapped value; only this generated AsyncAPI view and the actual SSE
-  wire format wrap it. `x-masking`'s optional
-  `regulatoryClassification`/`governanceBody`/`regulationReference` fields
-  are schema-only documentation — surfaced in the generated AsyncAPI
+- **Masking** (`ADR-009`) has two independent halves on different
+  schedules — see `ADR-002` for the full mechanism. The **schema** half:
+  any property carrying `x-masking` is documented in this AsyncAPI output,
+  for every caller regardless of claims, as a wrapper —
+  `oneOf: [{value: <the property's real type>}, {masked: string}]`, never
+  the bare original type — because `MaskingSchemaTransformer` rewrites it
+  unconditionally at document-build time. This half exists as soon as
+  AsyncAPI generation does (design-accepted, not deprioritized). The
+  **data** half: which branch is actually populated
+  (`{"value": <real value>}` for a caller holding the property's
+  `requiredClaim`, `{"masked": "***"}` — or whatever `maskedValue` was
+  configured — for one who doesn't) is filled in by `IPayloadMasker` at
+  serialization time, once per connection using the claims already
+  validated for `RequiredReadClaim`; *this* half is build-deprioritized to
+  after Phases 0–6 (`08-build-plan.md`, Phase 8). Until Phase 8 lands, the
+  schema is already correct but every maskable property streams as
+  `{"value": <real value>}` unconditionally — the wrapper shape never
+  lies, only the enforcement is pending. The same recursion rule applies
+  to both halves: `x-masking` on a scalar `items` schema wraps each
+  element; on a property nested inside a complex-object `items` schema,
+  wraps just that property per element. Masking never changes *whether* an
+  event is streamed, only the shape of the masked field(s) within it. The
+  registered/publish-side schema (`SchemaValidationService` validates
+  against, and what `/openapi.json` documents) is **not** wrapped —
+  publishers always send the plain, unwrapped value; only this generated
+  AsyncAPI view and the actual SSE wire format wrap it. `x-masking`'s
+  optional `regulatoryClassification`/`governanceBody`/`regulationReference`
+  fields are schema-only documentation — surfaced in the generated AsyncAPI
   property description for discoverability, never in the runtime
   `value`/`masked` wrapper itself.
 
