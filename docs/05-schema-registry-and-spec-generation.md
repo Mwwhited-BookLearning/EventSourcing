@@ -1,5 +1,11 @@
 # Schema Registry — Lifecycle and Validation
 
+All endpoints in this document require the `registry:admin` scope (see
+`03-api-contracts.md`, "Authentication & Authorization", and `ADR-006`) —
+schema registration controls validation rules and filterable-field indexes
+for the whole store, so it is treated as an administrative operation, not a
+read available to every caller.
+
 ## Registration API
 
 ```
@@ -17,9 +23,16 @@ Registration payload:
   "filterableFields": [
     { "jsonPath": "$.Amount", "dataType": "Number", "isIndexed": true },
     { "jsonPath": "$.Status", "dataType": "String", "isIndexed": false }
-  ]
+  ],
+  "parentValidationMode": "Strict"
 }
 ```
+
+`parentValidationMode` is optional and defaults to `"Strict"` (the other
+value is `"Permissive"` — see `02-data-model.md`, "Event lineage", and
+`ADR-005`). It governs how `parentEventIds` on a `POST /publish/{event-type}`
+for *this* event type are validated; it has no effect on this event type's
+own eligibility to be listed as someone else's parent, which is unrestricted.
 
 ## Registration steps
 
@@ -27,20 +40,27 @@ Registration payload:
    (structural validation, not business validation).
 2. Validate each `filterableFields` entry's `jsonPath` actually resolves
    against the schema's declared properties.
-3. Determine version number: increment from the current active version for
+3. Validate `parentValidationMode`, if present, is one of `Strict` /
+   `Permissive`.
+4. Determine version number: increment from the current active version for
    this event type name (or `1` if new).
-4. Persist `EventTypeDefinition` + `FilterableField` rows in a single
-   transaction.
-5. For each `FilterableField` with `IsIndexed = true`, apply the
+5. Persist `EventTypeDefinition` (including `ParentValidationMode`) +
+   `FilterableField` rows in a single transaction.
+6. For each `FilterableField` with `IsIndexed = true`, apply the
    provider-specific index/computed-column migration (see
    `04-odata-filter-pushdown.md`).
-6. Mark the new version `IsActive = true`; mark the prior version
+7. Mark the new version `IsActive = true`; mark the prior version
    `IsActive = false` (previous versions remain queryable for events
    already stored under them — publish validates against whichever version
    is active *at publish time*, and `StoredEvent.SchemaVersion` records
    which version validated a given event).
-7. Invalidate the OpenAPI/AsyncAPI cache (if using the cached-generation
+8. Invalidate the OpenAPI/AsyncAPI cache (if using the cached-generation
    approach — see `ADR-002`).
+
+Changing `ParentValidationMode` on a new version only affects publishes
+validated against that version going forward; existing `EventParents` rows
+recorded under the previous version are untouched — consistent with the
+append-only, no-mutation treatment of schema versioning generally.
 
 ## Validation at publish time
 
@@ -68,6 +88,32 @@ public class SchemaValidationService
 - On success, `StoredEvent.SchemaVersion` is set to the version that
   validated it, so historical events remain interpretable even after the
   schema evolves.
+
+`SchemaValidationService` only validates `payload`. A separate,
+independently testable `ParentLinkService` validates `parentEventIds`
+against the active version's `ParentValidationMode`:
+
+```csharp
+public class ParentLinkService
+{
+    public async Task<ParentLinkResult> ValidateAsync(
+        EventTypeDefinition definition, IReadOnlyList<Guid> parentEventIds)
+    {
+        if (definition.ParentValidationMode == ParentValidationMode.Permissive)
+            return ParentLinkResult.Success(parentEventIds); // dangling refs allowed as-is
+
+        var missing = await _events.FindMissingEventIdsAsync(parentEventIds);
+        return missing.Count == 0
+            ? ParentLinkResult.Success(parentEventIds)
+            : ParentLinkResult.Failure(missing); // 400 — Strict mode
+    }
+}
+```
+
+Both `SchemaValidationService` and `ParentLinkService` must pass before the
+`EventAppender` writes the `StoredEvent` + `EventParents` rows — a payload
+failure and a Strict-mode missing-parent failure both produce `400` with no
+partial write, same as today's payload-only validation.
 
 ## Versioning policy
 

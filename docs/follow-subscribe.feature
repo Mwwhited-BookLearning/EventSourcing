@@ -3,6 +3,10 @@ Feature: Follow an event type via SSE
   I want to subscribe to a stream of events of a given type
   So that I receive matching events as they are published
 
+  # Every connection in this file carries a Bearer token with the
+  # events:follow scope unless a scenario says otherwise. See auth.feature
+  # for authentication/authorization behavior itself.
+
   Background:
     Given the event type "OrderPlaced" version 1 is registered with schema:
       """
