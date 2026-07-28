@@ -21,8 +21,17 @@ EventStore.sln
   tests/
     EventStore.UnitTests/
     EventStore.IntegrationTests/    -- runs against all three providers (see below)
-    EventStore.Bdd/                 -- Reqnroll/SpecFlow-style step definitions for features/*.feature
+    EventStore.Bdd/                 -- Reqnroll/SpecFlow-style step definitions for *.feature files
 ```
+
+`EventStore.Bdd`'s `*.feature` files are real, tool-executed Gherkin — copy
+them out of the fenced ```` ```gherkin ``` ```` blocks in
+`../docs/features/*.md` when scaffolding this project. The design package
+keeps the narrative doc (context + sequence diagram + Gherkin) as the single
+source during design; once implementation starts, the extracted `.feature`
+files become the executable source of truth for BDD tests and are free to
+diverge (e.g. gain step-definition-specific tags) — resync manually if the
+design doc changes.
 
 ## Why separate migrations projects
 

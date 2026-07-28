@@ -64,7 +64,7 @@ An event-sourcing store with:
 | `05-schema-registry-and-spec-generation.md` | Schema registration lifecycle, validation, spec regeneration |
 | `06-solution-structure.md` | .NET solution/project layout, DI wiring, migrations strategy |
 | `07-adrs.md` | Architecture Decision Records for the key choices made so far |
-| `features/*.feature` | Gherkin BDD scenarios for the core behaviors |
+| `features/*.md` | One standalone doc per feature: context, PlantUML sequence diagrams, a Salt UI mockup where a real UI surface exists, and the embedded Gherkin scenarios for that feature |
 
 ## Open decisions flagged for the implementer
 

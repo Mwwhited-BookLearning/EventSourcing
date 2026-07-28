@@ -1,7 +1,10 @@
 # C4 Architecture
 
 Diagrams use PlantUML with the C4-PlantUML macros
-(`https://github.com/plantuml-stdlib/C4-PlantUML`).
+(`https://github.com/plantuml-stdlib/C4-PlantUML`). These are the static
+structural views; for the runtime/dynamic view of a specific feature (plain
+PlantUML sequence diagrams, plus the Gherkin scenarios they illustrate), see
+`features/*.md`.
 
 ## Context diagram
 

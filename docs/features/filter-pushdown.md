@@ -1,7 +1,60 @@
+# Feature: OData filter pushdown to the database
+
+Context: full design in `../04-odata-filter-pushdown.md`; this is the query-
+translation mechanics underlying [`follow-subscribe.md`](follow-subscribe.md)
+— that doc covers the SSE connection lifecycle, this one covers what happens
+inside a single poll/query once a `$filter` has been accepted.
+
+## Sequence diagram
+
+```plantuml
+@startuml FilterPushdown_Sequence
+autonumber
+participant "FollowEndpoint /\nbounded-read caller" as caller
+participant "ODataFilterParser" as parser
+participant "FilterableFields\n(registry)" as fields
+participant "PredicateTranslator" as translator
+participant "IJsonPathTranslator\n(impl per provider)" as jsonPath
+participant "EF Core" as ef
+database "SQLite / PostgreSQL / SQL Server" as db
+
+caller -> parser: parse("$filter=Amount gt 100")
+parser -> parser: build OData AST (FilterClause)
+parser -> fields: for each referenced property, is it a declared FilterableField?
+alt any property not declared filterable
+  fields --> caller: 400, before any SQL is executed
+else all properties declared
+  parser -> translator: translate(AST)
+  translator -> jsonPath: JsonFunctions.JsonValue(Payload, "$.Amount") -> provider extraction
+  note right of jsonPath
+    SQLite:     json_extract(Payload, '$.Amount')
+    PostgreSQL: (Payload::jsonb ->> 'Amount')
+    SQL Server: JSON_VALUE(Payload, '$.Amount')
+  end note
+  translator -> translator: CAST extracted text to FilterableField.DataType
+  translator -> ef: Expression<Func<StoredEvent,bool>>
+  ef -> db: SELECT ... WHERE <native JSON extraction> > 100
+  db --> ef: matching rows (index used if IsIndexed = true)
+  ef --> caller: matching StoredEvent(s)
+end
+@enduml
+```
+
+## Salt (UI mockup)
+
+Not applicable — filter pushdown is an internal query-translation concern
+with no UI surface.
+
+## Gherkin
+
+```gherkin
 Feature: OData filter pushdown to the database
   As the follow API
   I want $filter expressions translated into native SQL JSON extraction
   So that filtering is executed by the database, not in application memory
+
+  # Runs under the same events:follow-scoped requests as follow-subscribe.md;
+  # see auth.md for authentication/authorization behavior itself.
 
   Scenario Outline: Filter predicate is pushed down identically on every provider
     Given the active database provider is "<provider>"
@@ -39,3 +92,4 @@ Feature: OData filter pushdown to the database
     Given the event type "OrderPlaced" is registered with filterable field "$.Amount" of type "Number", indexed
     When I query "/follow/OrderPlaced?$filter=Amount gt 100"
     Then the query execution plan should reference the index created for "$.Amount"
+```
