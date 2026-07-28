@@ -47,6 +47,51 @@ end
 @enduml
 ```
 
+## Data model (ER diagram)
+
+```plantuml
+@startuml SchemaRegistry_ER
+hide circle
+skinparam linetype ortho
+
+entity "EventTypeDefinition" as etd {
+  * Name : string <<PK>>
+  * Version : int <<PK>>
+  --
+  JsonSchema : text
+  RegisteredAt : datetimeoffset
+  IsActive : bool
+  ParentValidationMode : enum {Strict, Permissive}
+}
+
+entity "FilterableField" as ff {
+  * Id : int <<PK>>
+  --
+  EventTypeName : string <<FK>>
+  EventTypeVersion : int <<FK>>
+  JsonPath : string
+  DataType : enum {String, Number, Boolean, DateTimeOffset}
+  IsIndexed : bool
+}
+
+etd ||--o{ ff : "(Name, Version) = (EventTypeName, EventTypeVersion)"
+
+note right of etd
+  Registering a new version inserts a new
+  (Name, Version) row and flips IsActive on the
+  prior version -- old versions are never mutated
+  or deleted (see 05-schema-registry-and-spec-
+  generation.md, "Versioning policy").
+end note
+@enduml
+```
+
+This is the one relationship in the whole data model that's a real,
+DB-enforced foreign key end to end — both sides are hand-authored at
+registration time, unlike `StoredEvent`'s soft references to this table
+(see [`publish-event.md`](publish-event.md),
+[`follow-subscribe.md`](follow-subscribe.md)).
+
 ## Salt (UI mockup)
 
 Not applicable — no admin UI is in scope for v1; the registry is an API only

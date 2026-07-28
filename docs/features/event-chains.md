@@ -71,6 +71,48 @@ end
 @enduml
 ```
 
+## Data model (ER diagram)
+
+```plantuml
+@startuml EventChains_ER
+hide circle
+skinparam linetype ortho
+
+entity "StoredEvent" as event {
+  * SequenceNumber : bigint <<PK>>
+  --
+  EventId : uuid <<unique>>
+  EventType : string
+  SchemaVersion : int
+  Payload : text
+  OccurredAt : datetimeoffset
+}
+
+entity "EventParent" as parent {
+  * ChildEventId : uuid <<PK, FK>>
+  * ParentEventId : uuid <<PK>>
+}
+
+event ||--o{ parent : "ChildEventId -- real FK,\nthe child always exists at insert time"
+event ..o{ parent : "ParentEventId -- NO DB FK;\nmust tolerate dangling refs under\nPermissive mode (see ADR-005)"
+
+note right of parent
+  Composite PK (ChildEventId, ParentEventId).
+  Index on ParentEventId supports descendant
+  traversal (find children of X).
+end note
+@enduml
+```
+
+The asymmetry is the whole point of this diagram: `ChildEventId` is a real,
+DB-enforced foreign key (the child row is always inserted in the same
+transaction, so it always exists); `ParentEventId` deliberately has none,
+because `Permissive`-mode event types must be able to insert a reference
+that doesn't resolve yet. That asymmetry is also why cycles are possible
+under `Permissive` mode and why traversal must be cycle-safe regardless of
+which event type you start from (see the sequence diagram above and
+`ADR-005`).
+
 ## Salt (UI mockup)
 
 Not applicable — lineage is a read API with no UI surface in scope.
