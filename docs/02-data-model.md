@@ -13,8 +13,15 @@ public class EventTypeDefinition
     public ParentValidationMode ParentValidationMode { get; set; } = ParentValidationMode.Strict;
     public string? RequiredPublishClaim { get; set; }  // "type:value", e.g. "clearance:secret" — null = no extra restriction
     public string? RequiredReadClaim { get; set; }     // gates Follow + Lineage; null = no extra restriction
+    public ChangeKind ChangeKind { get; set; }          // Full | Partial — required, no default (ADR-016)
 
     public List<FilterableField> FilterableFields { get; set; } = new();
+}
+
+public enum ChangeKind
+{
+    Full,    // this event type's payload replaces everything known about its key
+    Partial  // this event type's payload merges onto (never overlays a missing/masked field over) existing state
 }
 
 public enum ParentValidationMode
@@ -241,3 +248,15 @@ discoverable via the registry and generated specs, per `ADR-009`.
 same as any other — masking is a read-time presentation transform, not a
 storage-layer redaction. `ADR-009` records this as explicitly settled, not
 merely unaddressed.
+
+## Read-side data model (CQRS projections)
+
+`ChangeKind` above is the one write-side model addition for the read side
+— everything else a projection needs (`ProjectionCheckpoint`,
+`ProjectionSnapshot`, and each projection's own read-model tables, e.g.
+`OrderSummary`) lives in a **separate** `ProjectionsDbContext`, in a
+separate database, owned by `EventStore.Projections.Host`, not this
+`EventStoreContext`. See `09-cqrs-read-models.md` and `ADR-015`/`ADR-016`
+for the full design — deliberately not duplicated here, since keeping the
+write-side model doc from growing read-side entities is itself part of
+demonstrating the CQRS split this project exists to show.

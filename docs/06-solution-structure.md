@@ -22,6 +22,13 @@ EventStore.sln
     EventStore.DevIdp/              -- dev-only OpenIddict token issuer, in-process (see below)
     EventStore.ServiceDefaults/     -- Aspire scaffolding: OpenTelemetry, health checks, service discovery defaults
     EventStore.AppHost/             -- Aspire orchestration for local dev/POC (see below)
+
+    -- CQRS read side (09-cqrs-read-models.md, ADR-015/016) -- a separate
+    -- deployable, a separate database, talking to the write side only via
+    -- QUERY /follow like any other consumer:
+    EventStore.Projections.Abstractions/  -- IProjection<T>, ChangeKind-agnostic; projection authors depend on only this
+    EventStore.Projections.Host/          -- ProjectionHost, SnapshotMerger, ProjectionsDbContext (ProjectionCheckpoint, ProjectionSnapshot)
+    Samples.Orders.Projections/           -- worked example: OrderSummaryProjection (features/cqrs-projections.md)
   tests/
     EventStore.UnitTests/
     EventStore.IntegrationTests/    -- runs against all three providers (see below)
@@ -513,3 +520,16 @@ the result (verify via a token request instead — see
 three providers using Testcontainers (Postgres, SQL Server) and an
 in-memory/temp-file SQLite database, so pushdown-filter behavior is proven
 identical on all three, not just unit-tested against mocks.
+
+## CQRS read side (`EventStore.Projections.*`)
+
+`ProjectionHost`'s DI wiring, `SnapshotMerger`, checkpoint/rebuild
+mechanics, and `ProjectionsDbContext` are described in full in
+`09-cqrs-read-models.md` — not repeated here. The one thing worth stating
+at the solution-layout level: `EventStore.Projections.Host` references
+none of `EventStore.Persistence`, `EventStore.Host.Core`, or any
+`EventStore.Host.<Provider>` project. Its only dependency on the write
+side is an HTTP client calling `QUERY /follow/{event-type}` — the same
+public contract any external follower uses (`ADR-015`). This is enforced
+by the project reference graph itself, not just a convention someone could
+accidentally violate: there is no project reference to violate it with.

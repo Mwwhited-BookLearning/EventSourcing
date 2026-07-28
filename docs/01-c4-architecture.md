@@ -62,6 +62,11 @@ System_Boundary(system, "Open Event Sourcing Store") {
     ContainerDb(db, "Event & Schema Store", "EF Core over SQLite / PostgreSQL / SQL Server (one provider per deployable, ADR-001)", "Events table, EventParents table, EventTypes/Schemas table")
 }
 
+System_Boundary(readSide, "CQRS Read Side (example) -- separate deployable and database, ADR-015") {
+    Container(projectionHost, "Projection Host", ".NET (background service)", "ProjectionHost + SnapshotMerger: consumes QUERY /follow like any external follower; applies Full-replace/Partial-merge per ChangeKind (ADR-016); OrderSummaryProjection is the worked example")
+    ContainerDb(readDb, "Read Model Store", "EF Core, one provider, its own database -- never shared with the write side", "ProjectionCheckpoint, ProjectionSnapshot, OrderSummary (example read model)")
+}
+
 Rel(publisher, publishApi, "Publishes events", "HTTPS/JSON, Bearer")
 Rel(follower, followApi, "Subscribes with $filter/mode", "SSE, Bearer")
 Rel(follower, lineageApi, "Queries event lineage", "HTTPS/JSON, Bearer")
@@ -80,6 +85,10 @@ Rel(registry, db, "Persist schema metadata", "EF Core")
 Rel(specGen, registry, "Read schema/event-type metadata")
 Rel(publisher, specGen, "GET /openapi.json (anonymous)")
 Rel(follower, specGen, "GET /asyncapi.json (anonymous)")
+
+Rel(projectionHost, followApi, "QUERY /follow/{event-type}\nmode=replay&fromSequenceNumber=<checkpoint> (ADR-015)", "HTTPS/JSON, Bearer")
+Rel(projectionHost, idp, "Validates Bearer token (its own client, e.g. projections-client)")
+Rel(projectionHost, readDb, "Upsert snapshot + read-model rows", "EF Core")
 
 @enduml
 ```
@@ -180,3 +189,37 @@ Rel(recursiveReader, db, "WITH RECURSIVE ... (native per provider)")
 
 @enduml
 ```
+
+## Component diagram — Projection Host (CQRS read side)
+
+```plantuml
+@startuml C4_Component_ProjectionHost
+!include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Component.puml
+
+Container_Boundary(projectionHost, "Projection Host") {
+    Component(runner, "ProjectionRunner", "Background service, one loop per registered IProjection<T>", "Reads checkpoint; QUERY /follow/{event-type} mode=replay&fromSequenceNumber=<checkpoint> (ADR-015); never mode=tail")
+    Component(merger, "SnapshotMerger", "Pure function", "Full: replace snapshot. Partial: merge-patch, absent fields untouched (ADR-016; same overlay rule as ADR-009's masking guidance)")
+    Component(checkpointStore, "CheckpointStore", "EF Core repository", "ProjectionCheckpoint: LastSequenceNumber per projection")
+    Component(snapshotStore, "SnapshotStore", "EF Core repository", "ProjectionSnapshot: current merged JSON per (ProjectionName, Key)")
+    Component(orderProjection, "OrderSummaryProjection", "IProjection<OrderSummary> (worked example)", "GetKey(OrderId); Project(mergedSnapshot) -> OrderSummary row -- never sees raw events, ChangeKind, or merge logic")
+}
+
+Container(followApi, "Follow API", "write side")
+ContainerDb(readDb, "Read Model Store")
+
+Rel(runner, checkpointStore, "read/advance checkpoint")
+Rel(runner, followApi, "QUERY /follow/{event-type}", "HTTPS/JSON, Bearer")
+Rel(runner, snapshotStore, "load existing snapshot for key")
+Rel(runner, merger, "apply(ChangeKind, existing, incoming)")
+Rel(merger, snapshotStore, "upsert merged snapshot")
+Rel(runner, orderProjection, "Project(key, mergedSnapshot)")
+Rel(orderProjection, readDb, "upsert OrderSummary row (via runner)")
+Rel(checkpointStore, readDb, "persist checkpoint")
+Rel(snapshotStore, readDb, "persist snapshot")
+
+@enduml
+```
+
+A **full rebuild** is not a separate component or code path here — it's
+`checkpointStore` reset to `0` plus `readDb`'s tables truncated, then the
+exact same `runner` loop shown above runs again from scratch (`ADR-015`).
