@@ -924,6 +924,7 @@ Anything beyond that is carried in Problem Details' standard
 | Unknown event-type / unknown `eventId` | `404` | `not-found` | — |
 | `eventId` reused with different content | `409` | `event-id-conflict` | `eventId: "..."` |
 | `x-masking` malformed at registration (`ADR-009`) | `400` | `masking-invalid` | `path: "<property path>"`, `reason: "..."` |
+| `changeKind` missing or not `Full`/`Partial` at registration (`ADR-016`) | `400` | `change-kind-required` | — |
 
 `type` values are placeholder slugs here (`https://eventstore.example/problems/<slug>`
 in the examples below) — RFC 9457 wants `type` to ideally resolve to human
@@ -1002,3 +1003,178 @@ Consequences:
 - A fresh deployment with nothing configured is CORS-closed to every
   browser origin — safe-by-default, but means "why can't my browser client
   connect" is the first thing to check `Cors:AllowedOrigins` for.
+
+---
+
+## ADR-015: Read-model projections consume the public Follow API, not a private hook
+
+Status: Accepted
+
+Context: this project's purpose (`README.md`) includes demonstrating CQRS
+alongside event sourcing — a read side that materializes query-optimized
+read models from the event stream, kept separate from the write side. The
+naive way to feed that read side is a private, store-internal notification
+mechanism (an in-process event bus, a change-data-capture hook on
+`Events`). But this design already has a public, general-purpose consumer
+API with exactly the resume/no-gap/no-duplicate semantics a projection
+needs: `QUERY /follow/{event-type}` with `mode=tail`/`mode=replay`
+(`ADR-010`). Building a second, parallel consumption path would duplicate
+that guarantee under a different name for no real benefit, and would mean
+a projection sees the store's internals rather than the same contract any
+external follower sees.
+
+Decision:
+- **Projections are Follow consumers, full stop** — a `ProjectionHost`
+  process authenticates like any other `follower-client` (`ADR-006`) and
+  issues ordinary `QUERY /follow/{event-type}` calls. Nothing about the
+  store's public contract changes to support projections; nothing
+  projection-specific is added to `EventStore.Host.*`.
+- **Always `mode=replay`, never `mode=tail`.** A `ProjectionHost` tracks its
+  own resume position per projection (`ProjectionCheckpoint.LastSequenceNumber`,
+  starting at `0` for a projection that has never run) and always connects
+  with `mode=replay&fromSequenceNumber=<checkpoint>`. Per `ADR-010`,
+  replay-then-tail is one continuous poll loop on the server side — there
+  is no behavioral difference from `mode=tail` once a projection is caught
+  up, so there is no reason to ever use `mode=tail` and track two code
+  paths for "starting fresh" vs. "resuming."
+- **A full rebuild is not a separate mechanism — it's the same mechanism
+  starting from zero.** Truncate the projection's read-model table(s) and
+  its `ProjectionSnapshot` rows (`ADR-016`), reset
+  `ProjectionCheckpoint.LastSequenceNumber` to `0`, reconnect. Replay from
+  `0` regenerates the read model from the complete history exactly as the
+  original incremental build would have, by construction — see `ADR-016`
+  for why this determinism holds.
+- **The read side is a separate physical store from the write side** —
+  its own `DbContext`, its own database, reachable only via HTTP from the
+  write side (there is no shared connection string, no cross-database
+  query, no read replica of `EventStoreContext`). This is deliberate, not
+  incidental: sharing a database would blur exactly the write/read
+  separation CQRS exists to make explicit, undermining the point of using
+  this as a teaching example for it. Unlike `ADR-001`'s write-side
+  three-provider build, the read side does **not** need a per-provider
+  split — `09-cqrs-read-models.md` explains why (its schema is ordinary
+  typed relational columns, not portable JSON-text-plus-native-JSON-function
+  querying, so there's no provider-specific translation layer to isolate
+  in the first place). One EF Core provider (SQLite, for the example) is
+  enough.
+- Runs as its own deployable (`EventStore.Projections.Host`,
+  `06-solution-structure.md`) — not in-process inside any
+  `EventStore.Host.<Provider>` — so the write/read split is real at the
+  deployment level, not just conceptual.
+
+Consequences:
+- **Read models are eventually consistent with the write side, inherently
+  and by design** — a `ProjectionHost` only sees an event after it's been
+  published and after its own poll interval elapses. This design does not
+  attempt read-after-write consistency (e.g. a client publishing and then
+  immediately querying a projection and expecting to see it) — that would
+  need an explicit sync signal this system doesn't provide, same category
+  of "not solved here" as Follow's unbounded replay burst (`ADR-010`).
+- Projections inherit Follow's existing guarantees for free (no gap, no
+  duplicate across a reconnect, `ADR-010`) and its existing limitations for
+  free too (an unbounded burst on `fromSequenceNumber=0` against a large
+  history, no batching/backpressure) — same accepted trade any other Follow
+  consumer already accepts, not a new risk introduced by projections.
+- Because rebuild is just "replay from `0` again," there is no separate
+  rebuild code path to maintain, test, or let drift from the normal
+  incremental path — a real simplification, not just a convenient framing.
+- A `ProjectionHost` is subject to `RequiredReadClaim` (`ADR-008`) and
+  masking (`ADR-009`) exactly like any other Follow caller — it is not a
+  store-internal trust boundary that bypasses either. If a projection needs
+  to see a claim-gated event type, its service identity (a fourth OAuth2
+  client, alongside the three in `ADR-006`) needs that claim like anyone
+  else. This is a genuine constraint on what a projection can be built
+  over, not an oversight — see `09-cqrs-read-models.md`.
+- Running a dedicated process per projection group, rather than in-process
+  inside the write-side host, is more moving parts for this example than
+  an in-process background service would be — an accepted cost for making
+  the CQRS split legible as two things you actually deploy separately, not
+  just two namespaces in one process.
+
+---
+
+## ADR-016: Event-type `ChangeKind` (Full | Partial) and centralized snapshot merge
+
+Status: Accepted
+
+Context: a real business event stream mixes events that establish or
+wholesale-replace an entity's known state (e.g. `OrderPlaced`, carrying
+everything known about a new order) with events that carry only a delta
+(e.g. `OrderAddressUpdated`, carrying only the changed address field). A
+projection applying these onto its own materialized state needs a single,
+uniform rule for which is which and how each gets applied — otherwise every
+`IProjection<TReadModel>` implementation reinvents its own ad hoc merge
+logic, and the rule quietly drifts across projections.
+
+Decision:
+- `EventTypeDefinition` gains a **required** field, `ChangeKind`
+  (`Full` | `Partial`) — set at registration
+  (`05-schema-registry-and-spec-generation.md`), alongside
+  `ParentValidationMode`/`RequiredPublishClaim`/`RequiredReadClaim`.
+  Unlike those three, **`ChangeKind` has no default** — registering an
+  event type without it is rejected (`400`), because guessing wrong here
+  (assuming `Full` for something that's actually a delta, or vice versa)
+  silently corrupts every projection over that type, whereas the other
+  three fields default to "no extra restriction," a safe no-op.
+- **The merge rule, applied once, centrally, in `ProjectionHost`**
+  (`ADR-015`) — never reimplemented per projection:
+  - `ProjectionHost` maintains one JSON snapshot per **projection-defined
+    key** (`IProjection<TReadModel>.GetKey(StoredEvent)`,
+    `09-cqrs-read-models.md`) per projection, in a `ProjectionSnapshot`
+    table (`{ProjectionName, Key, SnapshotJson, LastAppliedSequenceNumber}`).
+  - Applying a `Full` event **replaces** that key's whole snapshot with the
+    event's payload.
+  - Applying a `Partial` event **merges** the event's payload onto the
+    existing snapshot for that key: a field present in the incoming
+    payload overwrites; a field **absent** is left untouched. **This is
+    deliberately the same overlay rule masking's consumer guidance already
+    states** (`ADR-009`: "masked/absent fields must be skipped, never
+    overlaid") — one overlay rule for the whole design, not two
+    similar-but-subtly-different ones that could drift apart. A `Partial`
+    event whose payload happens to contain a masked field (because
+    `ProjectionHost`'s own claims don't cover it) is, from the merge's
+    point of view, simply an absent field — no special-casing needed
+    beyond the rule already stated.
+  - Only **after** the merge does `ProjectionHost` call
+    `IProjection<TReadModel>.Project(mergedSnapshotJson)` to map the
+    fully-current-state JSON into the strongly-typed read-model row that
+    gets upserted. **Individual projections never see raw events, never
+    see `ChangeKind`, and never implement merge logic at all** — they only
+    ever receive "the current, fully-merged state for this key," already
+    resolved.
+- A `Partial` event for a key with no existing snapshot (its `Full`/origin
+  event hasn't been seen yet, or never will be, under this key) simply
+  starts a snapshot from just that event's fields — there is no "wait for
+  the `Full` event first" ordering enforcement. Whether a given key's first
+  event is actually `Full` is a **producer discipline** concern, same
+  category as `StreamId`'s freeform convention elsewhere in this design:
+  the store has no way to know what a projection's key even is (key
+  extraction is projection-defined, per above), so it has no way to enforce
+  anything about ordering relative to it.
+
+Consequences:
+- One overlay rule, shared by name and by cross-reference between
+  `ADR-009` and here, rather than two independently-maintained "ignore
+  missing on merge" rules that could quietly diverge — a direct, deliberate
+  payoff of building projections as an ordinary Follow consumer (`ADR-015`)
+  subject to the same masking behavior as anyone else, rather than a
+  privileged internal path.
+- `ChangeKind` being required with no default means every existing/future
+  event type registration must decide this explicitly — a small but real
+  addition to the registration payload's required fields
+  (`03-api-contracts.md`), not purely additive the way the three optional
+  fields were.
+- Getting a type's `ChangeKind` wrong at registration is a silent data
+  problem, not a loud one: a `Partial` type mistakenly registered as `Full`
+  causes every projection over it to lose previously-known fields on the
+  next event for a key; a `Full` type mistakenly registered as `Partial`
+  causes stale fields to survive an event that meant to replace them
+  entirely. Neither failure mode produces an error anywhere — this is a
+  real risk accepted for v1, not something this design detects.
+- `ProjectionSnapshot` grows one row per distinct key per projection,
+  unboundedly, same shape of accepted gap as Follow's unbounded replay
+  burst (`ADR-010`) — no TTL or eviction is designed here.
+- Two different projections over the same event types may use different
+  key-extraction logic and therefore maintain entirely separate snapshot
+  spaces — `ChangeKind`'s Full/Partial semantics apply per key within one
+  projection's snapshot space, not globally across projections.

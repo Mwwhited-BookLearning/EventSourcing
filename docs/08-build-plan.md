@@ -9,7 +9,12 @@ database provider the scenario applies to.
 Phases 7 and 8 are both out of the critical path, for two different
 reasons: Phase 7 per the unresolved open questions in `ADR-007`; Phase 8
 purely as a priority call (masking's design is complete, per `ADR-009` —
-it's just scheduled after everything else, not blocked on anything).
+it's just scheduled after everything else, not blocked on anything). Phase
+9 (CQRS projections) is independent of both 7 and 8 — it depends only on
+Follow (Phase 4) and auth (Phase 5) existing, since a projection is just
+another Follow caller (`ADR-015`) — but it's sequenced last in this list
+because it's this project's demonstration of CQRS *on top of* the rest of
+the design, not a dependency any other phase needs.
 
 ## Dependency overview
 
@@ -24,6 +29,7 @@ state "Phase 5\nAuth + Orchestration" as p5
 state "Phase 6\nEvent-Type Security" as p6
 state "Phase 7 (deferred)\nDerived Event Types" as p7
 state "Phase 8 (lower priority)\nMasking (data enforcement)" as p8
+state "Phase 9\nCQRS Projections" as p9
 
 p0 --> p1
 p1 --> p2
@@ -34,6 +40,8 @@ p4 --> p5
 p5 --> p6
 p6 --> p7
 p6 --> p8
+p4 --> p9
+p5 --> p9
 @enduml
 ```
 
@@ -49,7 +57,14 @@ either order once the primary system (0–6) is stable. Phase 8 also has a
 real, non-transitive dependency on Phase 4 specifically (the shared
 `x-masking` node-finding helper introduced there) — already guaranteed by
 the diagram's ordering (4 → 5 → 6 → 8), just called out explicitly since
-it's a genuine content dependency, not only a scheduling one.
+it's a genuine content dependency, not only a scheduling one. Phase 9
+depends only on Phase 4 (Follow must exist — a projection is a Follow
+caller, `ADR-015`) and Phase 5 (it needs its own OAuth2 client to
+authenticate as one) — **not** on Phase 6, because the worked example
+doesn't require a claim-gated event type to demonstrate the merge rule,
+though a real projection over a claim-gated type would need Phase 6's
+enforcement to already exist so its client's claims mean anything. It's
+independent of Phases 7 and 8 entirely.
 
 ## Phase 0 — Scaffolding & persistence
 
@@ -334,6 +349,40 @@ definable masking strategies" proposal — `PartialReveal`/`Hash`, whole-
 object/array masking) is not scheduled as part of this phase or any other
 yet.
 
+## Phase 9 — CQRS read-model projections (worked example)
+
+**Scope**: per `ADR-015`, `ADR-016`, `09-cqrs-read-models.md`, and
+[`features/cqrs-projections.md`](features/cqrs-projections.md):
+`EventStore.Projections.Abstractions` (`IProjection<TReadModel>`);
+`EventStore.Projections.Host` (`ProjectionHost`'s replay-from-checkpoint
+loop against `QUERY /follow/{event-type}`, `SnapshotMerger`'s
+Full-replace-vs-Partial-merge-patch logic, `ProjectionsDbContext` —
+`ProjectionCheckpoint` + `ProjectionSnapshot`, its own separate database);
+the required `changeKind` field on event-type registration (`ADR-016`,
+already validated starting Phase 1's registry work — this phase is where
+it's finally *consumed*, not where it's first accepted); a fourth seeded
+OAuth2 client (`projections-client`, `events:follow` scope) in
+`EventStore.DevIdp`'s `DevIdpSeeder` (`ADR-006`); the worked example itself,
+`Samples.Orders.Projections`' `OrderSummaryProjection` over the four Orders
+event types.
+
+**Depends on**: Phase 4 (Follow must exist — a projection is an ordinary
+Follow caller) and Phase 5 (needs its own OAuth2 client). Independent of
+Phases 6, 7, and 8.
+
+**Exit criteria**: every scenario in
+[`features/cqrs-projections.md`](features/cqrs-projections.md) passes:
+a `Full` event establishes a read-model row from scratch; a `Partial`
+event merges onto existing state without disturbing fields it doesn't
+carry; independent `Partial` events for the same key don't clobber each
+other's fields; a field the projection's own client lacks the claim to see
+is never overlaid as a placeholder (reusing `ADR-009`'s overlay rule,
+demonstrated here rather than merely stated); registering an event type
+without `changeKind` is rejected `400`; a full rebuild (truncate + reset
+checkpoint to `0` + replay) reproduces the exact same end state as the
+incrementally-built one; and resuming after downtime delivers no gap and
+no duplicate, reusing `ADR-010`'s guarantee rather than reimplementing it.
+
 ## Cross-cutting, every phase
 
 - **Integration tests against all three providers** run from Phase 0
@@ -347,3 +396,6 @@ yet.
   (`ADR-008` → Phase 6, `ADR-009` → Phase 8); `ADR-007` stays Deferred
   until scheduled; `ADR-009`'s "Future: definable masking strategies"
   proposal stays unscheduled/unnumbered until someone decides to build it.
+  `ADR-015` and `ADR-016` are already Accepted — Phase 9 is where they get
+  verified end-to-end (a real `ProjectionHost` process, a real rebuild), not
+  where they get decided.

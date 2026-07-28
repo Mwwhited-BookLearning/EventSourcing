@@ -52,7 +52,8 @@ Registration payload:
   ],
   "parentValidationMode": "Strict",
   "requiredPublishClaim": "clearance:secret",
-  "requiredReadClaim": "clearance:secret"
+  "requiredReadClaim": "clearance:secret",
+  "changeKind": "Full"
 }
 ```
 
@@ -61,6 +62,15 @@ value is `"Permissive"` — see `02-data-model.md`, "Event lineage", and
 `ADR-005`). It governs how `parentEventIds` on a `POST /publish/{event-type}`
 for *this* event type are validated; it has no effect on this event type's
 own eligibility to be listed as someone else's parent, which is unrestricted.
+
+`changeKind` is **required, with no default** — `"Full"` or `"Partial"`,
+one or the other must always be supplied (`400` if omitted or any other
+value). Unlike the three fields above, there's no safe default to fall
+back to: it tells a CQRS read-model projection (`09-cqrs-read-models.md`,
+`ADR-016`) whether an event of this type replaces everything known about
+its key or merges only the fields it carries — guessing wrong here would
+silently corrupt every projection over the type, not merely omit an
+optional restriction.
 
 `requiredPublishClaim` and `requiredReadClaim` are both optional and default
 to unset (no extra restriction). Each is a single `"type:value"` string —
@@ -100,6 +110,9 @@ enforcement, the wrapper shape, or the `FixedValue` strategy reads them.
 4. Validate `requiredPublishClaim`/`requiredReadClaim`, if present, are each
    a non-empty `"type:value"` string (reject `400` on a malformed claim
    string, e.g. missing the `:` separator, before persisting anything).
+   Validate `changeKind` is present and is exactly `"Full"` or `"Partial"`
+   — reject `400` if missing or any other value (`ADR-016`; unlike the two
+   claim fields, this one has no default to fall back to).
 5. Scan `jsonSchema` recursively for any node carrying `x-masking`: reject
    `400` if `strategy` is anything other than `"FixedValue"`, if
    `requiredClaim` is malformed, if `regulatoryClassification`/
@@ -112,9 +125,10 @@ enforcement, the wrapper shape, or the `FixedValue` strategy reads them.
 6. Determine version number: increment from the current active version for
    this event type name (or `1` if new).
 7. Persist `EventTypeDefinition` (including `ParentValidationMode`,
-   `RequiredPublishClaim`, `RequiredReadClaim`) + `FilterableField` rows in a
-   single transaction. `x-masking` extensions are not extracted into their
-   own columns — they persist as part of the `JsonSchema` text itself.
+   `RequiredPublishClaim`, `RequiredReadClaim`, `ChangeKind`) + `FilterableField`
+   rows in a single transaction. `x-masking` extensions are not extracted
+   into their own columns — they persist as part of the `JsonSchema` text
+   itself.
 8. For each `FilterableField` with `IsIndexed = true`, apply the
    provider-specific index/computed-column migration (see
    `04-odata-filter-pushdown.md`).

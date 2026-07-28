@@ -4,6 +4,20 @@ This folder is a self-contained design handoff for building the system in a
 new repository. Read documents in order; each assumes the decisions made in
 the previous ones.
 
+**This is a worked example, not just a store.** The point of building this
+project is to show, concretely and end-to-end, how event sourcing, complex
+business event streaming, and CQRS fit together — not just to describe
+each in isolation. `01`–`08` are the event-sourced **write side**: an
+append-only store of record, a schema registry, and the publish/follow/
+lineage APIs a real business event stream needs (filtering, causal
+chains/lineage, security, masking). `09` and `features/cqrs-projections.md`
+are the **CQRS read side**: a generic projection framework, fed exclusively through
+the write side's own public Follow API, that turns events carrying either
+**full state replacements** or **partial deltas** (`ChangeKind`, `ADR-016`)
+into query-optimized read models — with a worked example (an `Orders`
+domain) carried through both sides so the seam between them, not just each
+half separately, is something you can actually read and follow.
+
 ## What this system is
 
 An event-sourcing store with:
@@ -52,6 +66,20 @@ An event-sourcing store with:
   independently, coming back as a `restricted: true` stub rather than
   failing the rest of the response. See `02-data-model.md`,
   `03-api-contracts.md`, and `ADR-008`.
+- **CQRS read-model projections**: a generic `IProjection<TReadModel>` +
+  `ProjectionHost` framework that materializes query-optimized read models
+  by consuming the store's own public Follow API — never a private,
+  store-internal hook — so a projection sees exactly the same contract any
+  external consumer does (`ADR-015`). Every event type declares a required
+  `ChangeKind` (`Full` | `Partial`, `ADR-016`) at registration: a `Full`
+  event replaces everything known about its key; a `Partial` event
+  merges only the fields it carries, leaving the rest untouched — the same
+  "never overlay a missing/masked field" rule masking's consumers already
+  follow, applied here by the framework itself, once, centrally, so no
+  projection reimplements it. A full rebuild is just replaying from
+  sequence `0` again — not a separate mechanism. See
+  `09-cqrs-read-models.md`, `features/cqrs-projections.md`, and
+  `ADR-015`/`ADR-016`.
 
 ## What this system deliberately is not (v1 scope)
 
@@ -96,7 +124,8 @@ An event-sourcing store with:
 | `06-solution-structure.md` | .NET solution/project layout, DI wiring, migrations strategy |
 | `07-adrs.md` | Architecture Decision Records for the key choices made so far |
 | `08-build-plan.md` | Implementation phases, dependencies between them, and exit criteria (tied to `features/*.md` scenarios) |
-| `features/*.md` | One standalone doc per feature: context, PlantUML sequence diagrams, an ER diagram for features touching persistent data, a Salt UI mockup where a real UI surface exists, and the embedded Gherkin scenarios for that feature |
+| `09-cqrs-read-models.md` | CQRS read side: `IProjection<TReadModel>`/`ProjectionHost`, checkpointing, `ChangeKind`-driven snapshot merge, rebuild — the write/read seam this project exists to demonstrate |
+| `features/*.md` | One standalone doc per feature: context, PlantUML sequence diagrams, an ER diagram for features touching persistent data, a Salt UI mockup where a real UI surface exists, and the embedded Gherkin scenarios for that feature (`features/cqrs-projections.md` is the worked Orders example tying `09` together end-to-end) |
 
 ## Open decisions flagged for the implementer
 
