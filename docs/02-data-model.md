@@ -211,11 +211,26 @@ from `SequenceNumber = 1`, not just comparing one row to itself. See
 
 `StoredEvent.SchemaVersion` (above) is what makes a version-spanning
 `mode=replay` (`ADR-010`) possible to reconcile at read time: an
-`IEventUpcaster` per `(EventType, FromVersion)` transforms an old-shaped
-payload forward, version by version, so every consumer sees the current
-shape regardless of which version originally validated a given row.
-`Payload` itself is never rewritten — see `ADR-018` and
-`06-solution-structure.md` for the transform mechanics.
+an optional `upcastFromPrevious` OData `compute()` expression list, set
+per version (`>= 2`), reshapes an old-shaped payload forward, version by
+version, so every consumer sees the current shape regardless of which
+version originally validated a given row. Deliberately not a general
+transform language — an upcast mapping is always many-source-fields-to-
+one-destination-field or one-to-one, never one-to-many or many-to-many,
+so `compute()`'s expression-list shape is already sufficient. `Payload`
+itself is never rewritten — see `ADR-018` and `06-solution-structure.md`
+for the transform mechanics.
+
+## Publish-time upcast validation and the reserved `EventUpcastFailed` type (`ADR-020`)
+
+Publish now declares a required `SchemaVersion` up front (not implicitly
+"whichever is active") and, if that version is behind the active one, is
+upcast-validated live against the caller's real payload before responding.
+On failure, `EventUpcastFailed` — the first event type in this design an
+operator never registers, reserved at the platform level rather than via
+`PUT /registry/{event-type}` — is stored in the original event's place,
+carrying the original `EventType`/`SchemaVersion`/`Payload` verbatim plus
+which upcast hop failed and why. See `ADR-020` for the full mechanics.
 
 ## Suggested References
 

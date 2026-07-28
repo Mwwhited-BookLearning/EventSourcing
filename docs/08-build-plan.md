@@ -144,9 +144,12 @@ behavior) belong to Phases 4 and 8, not this one.
 ## Phase 2 — Publish API
 
 **Scope**: `POST /publish/{event-type}` per `03-api-contracts.md` and
-[`features/publish-event.md`](features/publish-event.md): the `{ payload,
-parentEventIds?, eventId? }` envelope, `SchemaValidationService` against
-the active version, `ParentLinkService` enforcing `ParentValidationMode`
+[`features/publish-event.md`](features/publish-event.md): the `{
+schemaVersion, payload, parentEventIds?, eventId? }` envelope
+(`schemaVersion` required — `ADR-020`), `SchemaValidationService` against
+the *declared* version (rejected `400` if that version doesn't exist, not
+automatically "whichever is active"), `ParentLinkService` enforcing
+`ParentValidationMode`
 (`Strict`/`Permissive`, per [`features/event-chains.md`](features/event-chains.md)),
 the `eventId`/`PayloadHash` idempotency short-circuit (`ADR-011`,
 including the concurrent-retry race handled at the unique-constraint
@@ -160,6 +163,13 @@ into the shared `Microsoft.OpenApi` `OpenApiSchema`) and
 
 Lineage is built here, not deferred — only the derived-event-types idea
 (`ADR-007`) is deferred, not `EventParents` (`ADR-005`, already Accepted).
+
+`ADR-020`'s live upcast-validation-on-publish and `EventUpcastFailed`
+dead-letter behavior are **not** part of this phase — they depend on
+`UpcastChain` (`ADR-018`), which doesn't exist until Phase 10. Until then,
+a publish with `schemaVersion` behind the active version is simply
+accepted and stored at the declared version, exactly as if `ADR-020`
+didn't exist yet; Phase 10 is where the live-validation behavior turns on.
 
 **Depends on**: Phase 1 (needs a registered schema to validate against).
 
@@ -407,6 +417,12 @@ working system, per `ADR-017`, `ADR-018`, `ADR-019`:
   `EventAppender` alongside the existing `SequenceNumber`/`PayloadHash`
   assignment; the `GET /events/verify?throughSequenceNumber=<n>`
   verification endpoint (or equivalent offline tool).
+- **Publish-time upcast validation** (`ADR-020`): this is where
+  `PublishEndpoint` starts actually calling `UpcastChain` when
+  `schemaVersion` is behind active, and where the reserved
+  `EventUpcastFailed` event type and its dead-letter path are built —
+  Phase 2 already accepts the required `schemaVersion` field, this phase
+  is what makes it do anything beyond validate-and-store.
 
 **Depends on**: Phase 5 (DPoP), Phase 2 (hash chaining), Phase 4 (event
 upcasting). Independent of Phases 6 through 9.
@@ -436,9 +452,12 @@ with every event before it verifying clean.
   proposal stays unscheduled/unnumbered until someone decides to build it.
   `ADR-015` and `ADR-016` are already Accepted — Phase 9 is where they get
   verified end-to-end (a real `ProjectionHost` process, a real rebuild), not
-  where they get decided. `ADR-017`, `ADR-018`, and `ADR-019` are likewise
-  already Accepted — Phase 10 is where each gets built and verified, not
-  decided.
+  where they get decided. `ADR-017`, `ADR-018`, `ADR-019`, and `ADR-020`
+  are likewise already Accepted — Phase 10 is where each gets built and
+  verified, not decided. `ADR-007` now carries no unresolved technical
+  questions of its own (pending-join TTL, derivation-cycle detection,
+  n-ary sources, and backfill-through-a-derived-source are all resolved in
+  the ADR) — it stays Deferred purely on scheduling, same as `ADR-009`.
 
 ## Suggested References
 

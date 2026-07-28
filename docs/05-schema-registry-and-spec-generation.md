@@ -53,9 +53,13 @@ Registration payload:
   "parentValidationMode": "Strict",
   "requiredPublishClaim": "clearance:secret",
   "requiredReadClaim": "clearance:secret",
-  "changeKind": "Full"
+  "changeKind": "Full",
+  "upcastFromPrevious": "Amount as Amount, Status as Status"
 }
 ```
+
+(`upcastFromPrevious` is omitted entirely for version `1` of any event
+type — there is no "previous" to upcast from.)
 
 `parentValidationMode` is optional and defaults to `"Strict"` (the other
 value is `"Permissive"` — see `02-data-model.md`, "Event lineage", and
@@ -112,7 +116,11 @@ enforcement, the wrapper shape, or the `FixedValue` strategy reads them.
    string, e.g. missing the `:` separator, before persisting anything).
    Validate `changeKind` is present and is exactly `"Full"` or `"Partial"`
    — reject `400` if missing or any other value (`ADR-016`; unlike the two
-   claim fields, this one has no default to fall back to).
+   claim fields, this one has no default to fall back to). If
+   `upcastFromPrevious` is present (only meaningful for version `>= 2`),
+   parse it as an OData `compute()` expression list and validate every
+   alias names a real property of *this* version's schema — reject `400`
+   on a parse failure or an unmapped alias (`ADR-018`).
 5. Scan `jsonSchema` recursively for any node carrying `x-masking`: reject
    `400` if `strategy` is anything other than `"FixedValue"`, if
    `requiredClaim` is malformed, if `regulatoryClassification`/
@@ -147,13 +155,18 @@ recorded under the previous version are untouched — consistent with the
 append-only, no-mutation treatment of schema versioning generally.
 
 **Registering a new version does not, by itself, do anything about
-reading the old version's events back in the new shape** — that's
-`IEventUpcaster` (`ADR-018`), a **code**-registered component per
-`(EventType, FromVersion)`, the same pattern as `IJsonPathTranslator`
-rather than another field on this registration payload. This registration
-API has no `changeKindUpcaster` or similar field; upcasting is entirely a
-read-time, DI-resolved concern, described in full in
-`06-solution-structure.md`.
+reading the old version's events back in the new shape** — that needs an
+optional `upcastFromPrevious` field on the registration payload: an OData
+`compute()` expression list (`ADR-018`), e.g.
+`"upcastFromPrevious": "Amount as Amount, 'USD' as Currency"`. Unlike the
+earlier code-registered sketch of this same ADR, this *is* an ordinary
+registration field, validated the same way `x-masking` already is: each
+`compute()` alias must name a real property of this version's schema, and
+the expression itself must parse — both rejected `400` if not. Evaluating
+the expression against real historical data to confirm the output
+actually satisfies the schema is **not** checked at registration — see
+`ADR-018`'s consequences for why this only narrows, not closes, the
+open compatibility-enforcement question.
 
 Changing `RequiredPublishClaim`/`RequiredReadClaim` on a new version takes
 effect immediately for that event type — unlike `SchemaVersion`, there is no
