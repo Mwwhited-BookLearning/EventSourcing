@@ -17,11 +17,16 @@ the shape from `ADR-013` throughout rather than a per-endpoint schema.
 
 Every endpoint in this document requires `Authorization: Bearer <JWT>` unless
 stated otherwise. Tokens are issued by an OIDC provider via the OAuth2
-**Client Credentials** grant — all three actors (Publishing System, Consuming
-System, Platform Operator) are services, not interactive users, so there is
-no authorization-code/login flow to design for v1. See `ADR-006` for the
-dev-mode provider (an in-process OpenIddict host, `EventStore.DevIdp`) and
-orchestration story.
+**Client Credentials** grant — all four actors (Publishing System, Consuming
+System, Platform Operator, and `ProjectionHost` — `ADR-015`) are services,
+not interactive users, so there is no authorization-code/login flow to
+design for v1. See `ADR-006` for the dev-mode provider (an in-process
+OpenIddict host, `EventStore.DevIdp`) and orchestration story.
+
+Every request also carries a `DPoP` header — a signed proof-of-possession
+JWT (`ADR-017`) — alongside the bearer token; a technically-valid bearer
+token with a missing or invalid DPoP proof is rejected `401` the same as a
+missing token, per the error table below.
 
 Authorization is scope-based, one policy per scope, mapped to endpoints as:
 
@@ -488,3 +493,16 @@ public interface ISchemaRegistryReader
 `OpenApiDocumentBuilder` and `AsyncApiDocumentBuilder` both depend on this
 interface only — neither talks to EF Core directly, keeping spec generation
 decoupled from persistence.
+
+## Suggested References
+
+- [OpenAPI Specification v3.1.1](https://spec.openapis.org/oas/v3.1.1.html) — the publish-side contract format (`ADR-002`).
+- [AsyncAPI Specification v3.0](https://www.asyncapi.com/docs/reference/specification/v3.0.0) — the follow-side contract format (`ADR-002`).
+- [RFC 9457](https://datatracker.ietf.org/doc/html/rfc9457) — Problem Details, every error response's shape (`ADR-013`).
+- [RFC 10008](https://datatracker.ietf.org/doc/html/rfc10008) — the HTTP QUERY method (`ADR-012`).
+- [RFC 6749 §4.4](https://datatracker.ietf.org/doc/html/rfc6749#section-4.4) / [RFC 6750](https://datatracker.ietf.org/doc/html/rfc6750) — Client Credentials grant and bearer token usage (`ADR-006`).
+- [RFC 9449](https://datatracker.ietf.org/doc/html/rfc9449) — DPoP, the proof header every request now also carries (`ADR-017`).
+- [WHATWG HTML — Server-Sent Events](https://html.spec.whatwg.org/multipage/server-sent-events.html) — the Follow stream's wire format.
+- [OASIS OData v4.01 — URL Conventions](https://docs.oasis-open.org/odata/odata/v4.01/odata-v4.01-part2-url-conventions.html) — the `$filter`/`$top`/`$skip` syntax borrowed (not fully complied with — see `04-odata-filter-pushdown.md`).
+
+See `references.md` for the full bibliography.

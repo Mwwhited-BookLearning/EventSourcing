@@ -10,6 +10,12 @@ Decision: <what was decided>
 Consequences: <trade-offs accepted>
 ```
 
+Every ADR below cites the real-world RFC/standard/library it's grounded
+in inline, where relevant — there's no separate "Suggested References"
+section for this file, since one per-ADR would just duplicate what's
+already cited in that ADR's own text. `references.md` is the consolidated
+index across every ADR here plus every other numbered doc.
+
 ---
 
 ## ADR-001: Per-deployment database provider build (vs. runtime switch)
@@ -247,8 +253,9 @@ IdP like Keycloak (JVM, admin console, realm database) is more machinery
 than a `client_credentials`-only, no-human-login POC actually needs.
 
 Decision:
-- Authentication: OAuth2 **Client Credentials** grant against an OIDC
-  provider; every API request carries `Authorization: Bearer <JWT>`. APIs
+- Authentication: OAuth2 **Client Credentials** grant (RFC 6749 §4.4)
+  against an OIDC provider; every API request carries `Authorization:
+  Bearer <JWT>` per RFC 6750's Bearer Token Usage. APIs
   validate the token via standard JWT-bearer middleware against the
   provider's OIDC discovery document (`Authentication:Authority` config
   value) — no custom token-validation code.
@@ -301,6 +308,11 @@ Consequences:
   browser clients now use `fetch()`, which sets a real header, so this
   workaround (and the query-string-token leakage risk it carried) no
   longer exists for Follow at all.
+- **Plain bearer tokens are usable by anyone who possesses them (RFC
+  6750's own stated risk)** — this ADR doesn't address that on its own;
+  `ADR-017` hardens every token this identity provider issues into a
+  DPoP-bound one (RFC 9449), closing that specific gap without changing
+  anything about the grant type or client model decided here.
 - Client/scope seeding lives in `EventStore.DevIdp`'s own startup code, not
   a committed realm-export file — simpler than Keycloak's JSON import, but
   means the seed data is C#, not declarative config; keep it in one place
@@ -754,6 +766,11 @@ Consequences:
 - This resolves `04-odata-filter-pushdown.md`'s previously-vague "tailing
   from connection time or a resume token" mention — that line is removed
   from "out of scope" now that it's specified here instead.
+- A `mode=replay` burst against a long-lived event type can span every
+  schema version that type has ever had — this ADR says nothing about
+  reconciling those different shapes into one; `ADR-018` (event upcasting)
+  is what actually resolves that, layered on top of the cursor mechanics
+  decided here.
 
 ---
 
@@ -773,10 +790,10 @@ Decision:
   alongside `payload`/`parentEventIds`). Omitted: behavior is unchanged —
   the server generates a fresh `EventId`, no idempotency is possible
   (there's nothing for a retry to be checked against).
-- `StoredEvent` gains a `PayloadHash` column: a hash (e.g. SHA-256) over a
-  canonical serialization of `{ eventType, payload, parentEventIds:
-  <sorted> }` — computed and stored on every publish, whether or not
-  `eventId` was supplied.
+- `StoredEvent` gains a `PayloadHash` column: a SHA-256 digest (FIPS
+  180-4) over a canonical serialization of `{ eventType, payload,
+  parentEventIds: <sorted> }` — computed and stored on every publish,
+  whether or not `eventId` was supplied.
 - When `eventId` **is** supplied, `PublishEndpoint` looks it up (via the
   existing unique index) immediately after resolving the active
   `EventTypeDefinition` and the `RequiredPublishClaim` check
@@ -817,6 +834,11 @@ Consequences:
 - `PayloadHash` has no index of its own — the unique index on `EventId` is
   what makes the lookup fast; the hash is only consulted after that lookup
   finds a match, purely as a content-equality check.
+- `PayloadHash` answers content-equality only — it says nothing about
+  tamper-evidence across the store's history. `ADR-019` reuses the same
+  SHA-256 primitive to build a hash *chain* (`ChainHash`) on top of every
+  `StoredEvent`, a genuinely different guarantee layered on the same
+  computation this ADR introduces.
 
 ---
 
@@ -920,6 +942,7 @@ Anything beyond that is carried in Problem Details' standard
 | `$filter` references an undeclared field | `400` | `filter-field-not-filterable` | `field: "InternalNotes"` |
 | `fromSequenceNumber` supplied with `mode=tail` | `400` | `invalid-replay-parameters` | — |
 | Missing/invalid Bearer token | `401` | `unauthenticated` | — |
+| Missing/invalid DPoP proof, or proof doesn't match the token's `cnf.jkt` (`ADR-017`) | `401` | `dpop-proof-invalid` | `reason: "..."` |
 | Missing scope, or missing `RequiredPublishClaim`/`RequiredReadClaim` | `403` | `forbidden` | `reason: "missing_scope"` \| `"missing_required_claim"` — this is exactly the "response detail, not the status code" distinction `ADR-008` already promised |
 | Unknown event-type / unknown `eventId` | `404` | `not-found` | — |
 | `eventId` reused with different content | `409` | `event-id-conflict` | `eventId: "..."` |
@@ -965,12 +988,14 @@ Consequences:
 Status: Accepted
 
 Context: A browser calling any of these APIs directly from a web page's
-JavaScript is subject to CORS — the *browser's* enforcement, not the
+JavaScript is subject to CORS (the WHATWG Fetch standard's Cross-Origin
+Resource Sharing protocol) — the *browser's* enforcement, not the
 server's; it doesn't affect server-to-server calls at all. Nothing in the
 design said which origins, if any, are allowed.
 
 Decision:
-- ASP.NET Core's built-in CORS middleware, one named policy, wired in
+- ASP.NET Core's built-in CORS middleware (implementing that same Fetch
+  standard protocol), one named policy, wired in
   `EventStore.Host.Core` (`app.UseCors(...)`) so it's identical across all
   three `EventStore.Host.<Provider>` deployables (`ADR-001`).
 - Allowed origins come from configuration (`Cors:AllowedOrigins`, a plain
@@ -1178,3 +1203,211 @@ Consequences:
   key-extraction logic and therefore maintain entirely separate snapshot
   spaces — `ChangeKind`'s Full/Partial semantics apply per key within one
   projection's snapshot space, not globally across projections.
+- The merge itself is exactly **JSON Merge Patch (RFC 7396)** applied to
+  the snapshot: "a field present in the incoming payload overwrites; a
+  field absent is left untouched" is RFC 7396's semantics verbatim, with
+  one deliberate narrowing — RFC 7396 also lets an explicit `null` value
+  *delete* a key from the target, which this design does not want (a
+  `Partial` event's field is never expected to erase a previously-known
+  fact, only add to or overwrite it); `MergePatch` in
+  `09-cqrs-read-models.md` implements the overwrite-if-present half only,
+  not the delete-on-null half.
+
+---
+
+## ADR-017: DPoP-bound access tokens (RFC 9449)
+
+Status: Accepted — hardens `ADR-006`; built in Phase 10
+(`08-build-plan.md`).
+
+Context: `ADR-006` issues plain OAuth2 bearer tokens (Client Credentials
+Grant, RFC 6749 §4.4; Bearer Token Usage, RFC 6750). `ADR-012` already
+removed the one deliberate token-in-URL leak vector this design had
+(Follow's `access_token` query parameter, superseded when Follow moved off
+`GET`). What's left is the ordinary risk RFC 6750 itself names in its own
+security considerations: a bearer token is usable by *any* party who
+possesses it, however it was obtained — a token leaked via logs, a
+compromised host, or an SSRF-style relay is fully usable by an attacker,
+indistinguishable from the legitimate client, until it expires.
+
+Decision:
+- Every access token `EventStore.DevIdp` issues is **DPoP-bound (RFC
+  9449)**, not a plain bearer token. Each of the four OAuth2 clients
+  (`publisher-client`, `follower-client`, `operator-client`,
+  `projections-client` — `ADR-006`/`ADR-015`) generates its own asymmetric
+  key pair and proves possession of the private key on every request.
+- **Token request**: the client includes a DPoP proof JWT (`typ:
+  dpop+jwt`, signed with its private key, carrying `jwk` — its public key
+  — plus `htm`/`htu` bound to the token endpoint, `iat`, `jti`) in a
+  `DPoP` header on its `POST /connect/token` call. `EventStore.DevIdp`
+  embeds a `cnf.jkt` claim (the JWK thumbprint) in the issued access
+  token, binding it to that specific key.
+- **API request**: the client attaches a fresh DPoP proof (new
+  `htm`/`htu` bound to the actual API call, `ath` = hash of the access
+  token being presented) alongside `Authorization: Bearer <token>` on
+  every request to any `EventStore.Host.<Provider>` endpoint.
+- **Resource-server validation** (`EventStore.Host.Core`, alongside the
+  existing JWT-bearer validation): verify the proof's signature against
+  its own embedded `jwk`; check `htm`/`htu` match the request; check `ath`
+  matches the presented token; check the proof's `jwk` thumbprint matches
+  the token's `cnf.jkt`; enforce a short proof lifetime via `iat`, tracked
+  by `jti` for replay detection.
+- **Server-chosen nonce challenge (RFC 9449 §8) is out of scope for v1** —
+  this is a dev/POC deployment with a small, fixed set of trusted clients,
+  not a public browser-facing token-acquisition surface that needs
+  defending against pre-generated-proof attacks.
+
+Consequences:
+- Every seeded client now manages a key pair, not just a client secret —
+  `DevIdpSeeder` (`ADR-006`) grows a key-generation step; more moving
+  parts for a dev/POC identity provider than the client-secret-only model,
+  an accepted cost for demonstrating the real mechanism rather than a
+  bearer-only story.
+- A leaked access token is no longer usable by itself — replaying it with
+  a different key produces a proof that fails the `cnf.jkt` check. This is
+  the actual value this ADR buys: defense in depth against exactly the
+  log/relay-leak scenario RFC 6750 warns about.
+- `EventStore.Host.Core`'s JWT-bearer validation now has a second, coupled
+  check that must also pass — a request with a technically-valid bearer
+  token but a missing/invalid DPoP proof is rejected `401`, a new failure
+  mode `03-api-contracts.md`'s Problem Details table (`ADR-013`) must
+  cover.
+- Client clock skew becomes an operational concern for the first time
+  (proof `iat` freshness checking) — nothing else in this design needed
+  client/server time agreement.
+
+---
+
+## ADR-018: Event upcasting for schema evolution
+
+Status: Accepted
+
+Context: `EventTypeDefinition` already supports multiple schema versions
+(`02-data-model.md`), and `StoredEvent.SchemaVersion` records which
+version validated a given event at publish time (`ADR-011`'s
+consequences). But nothing in the design so far reshapes an old-version
+payload into the current version's shape for a consumer. `ADR-010`'s
+`mode=replay` makes this a concrete problem, not a hypothetical one:
+replaying an event type's full history from `fromSequenceNumber=0` can
+burst events spanning every schema version that type has ever had, in one
+stream — and a consumer, especially a CQRS projection
+(`09-cqrs-read-models.md`) whose `Project` function expects one consistent
+shape, has no designed way to reconcile that today.
+
+Decision:
+- A new, **code-registered** component per event type — same pattern as
+  `IJsonPathTranslator`, not a `PUT /registry` field —
+  `IEventUpcaster`, one per `(EventType, FromVersion)` pair:
+```csharp
+public interface IEventUpcaster
+{
+    string EventType { get; }
+    int FromVersion { get; }
+    JsonNode Upcast(JsonNode payloadAtFromVersion);
+}
+```
+- An `UpcastChain` (the same shape as Axon Framework's upcaster chain —
+  see `docs/references.md`) resolves and applies, in order, every
+  registered upcaster between a `StoredEvent`'s `SchemaVersion` and the
+  event type's current active version, before the payload reaches a
+  consumer — Follow and any CQRS projection (`ProjectionHost`,
+  `ADR-015`). Lineage never includes `Payload` at all (`ADR-009`), so it's
+  unaffected.
+- `StoredEvent.Payload` is never rewritten — upcasting is a read-time
+  transform, computed fresh per response, the same non-destructive posture
+  already taken for masking (`ADR-009`) and for never deleting/mutating
+  stored data (`ADR-009`'s closing note).
+- Registering a new schema version does **not** require a matching
+  upcaster to exist — a purely additive-optional-field change may need no
+  transform at all. Whether a version gap that *does* need one is missing
+  its upcaster is a runtime data problem, not something registration
+  validates; schema-compatibility *checking* at registration time (in the
+  style of Confluent Schema Registry's BACKWARD/FORWARD/FULL modes — see
+  `docs/references.md`) is a further, undecided extension, not built here.
+
+Consequences:
+- Follow/`ProjectionHost` consumers, across a `mode=replay` burst spanning
+  many schema versions, now see one consistent (current-version) shape
+  throughout, instead of branching on `SchemaVersion` themselves — the
+  direct fix for the gap in Context.
+- An upcaster runs per event, on every read — for a high-volume replay
+  this is a real, uncached cost; no upcast-result caching is designed
+  here, the same category of accepted v1 cost as Follow's unbounded
+  replay burst (`ADR-010`).
+- `IEventUpcaster` is deliberately symmetrical with
+  `IJsonPathTranslator`/`IEventLineageQueryProvider`
+  (`06-solution-structure.md`) — resolved via DI, one registration per
+  `(type, version)` pair, no runtime `switch` — consistent with this
+  design's pattern for version-/provider-specific logic.
+- **Not decided here**, unlike `ADR-007`'s or `ADR-009`'s deferrals (which
+  are fully designed, just scheduled later): whether to add
+  compatibility-mode *enforcement* at registration time. v1 only builds
+  the transform mechanism, trusting whoever registers a new version to
+  also register the matching upcaster.
+
+---
+
+## ADR-019: Hash-chained events for tamper evidence
+
+Status: Accepted
+
+Context: `StoredEvent.PayloadHash` (`ADR-011`) already exists, but purely
+as a content-equality check for idempotent-retry detection — it says
+nothing about *when* or in what order an event was appended relative to
+any other, and nothing detects whether a row in `Events` was ever altered
+after the fact (e.g., a direct database edit bypassing the application
+entirely). An event-sourced store of record is exactly the shape of system
+where that guarantee has real value — Certificate Transparency (RFC 9162)
+and Merkle-tree verifiable logs generally (see `docs/references.md`)
+exist to solve precisely this: making tampering with *any* past entry
+detectable, without needing to trust the store operator.
+
+Decision:
+- `StoredEvent` gains a `ChainHash` column:
+  `ChainHash[n] = SHA-256(ChainHash[n-1] || PayloadHash[n] || SequenceNumber[n])`,
+  computed by `EventAppender` at insert time, chained off the immediately
+  preceding `SequenceNumber`'s `ChainHash` (a fixed seed value for
+  `SequenceNumber = 1`, the store's first-ever event).
+- This is a **linear hash chain, not a full Merkle tree** — deliberately
+  simpler than Certificate Transparency's binary tree, since this design
+  has no need for CT's specific inclusion/consistency-proof-against-a-
+  partial-view use case (one store, not a federation of independently
+  operated logs cross-checking each other). A linear chain gives the same
+  tamper-evidence property (altering any past `Payload`/`PayloadHash`
+  breaks every subsequent `ChainHash`) with a far simpler verification
+  procedure: replay the chain from `SequenceNumber = 1` and compare the
+  final `ChainHash` to what's stored.
+- A read-only verification endpoint,
+  `GET /events/verify?throughSequenceNumber=<n>` (or an offline tool —
+  left as an implementation detail, not fixed here), recomputes the chain
+  from `1` through `n` and reports the first `SequenceNumber` where the
+  stored and recomputed `ChainHash` diverge, if any.
+- `ChainHash` is computed once, at publish time, in the same transaction
+  as the `StoredEvent` insert (`EventAppender`) — never recomputed or
+  backfilled. There is no migration path today that alters historical
+  `Payload` content (`ADR-009`'s closing note); if one ever existed, it
+  would invalidate the chain from that point forward by design, not as an
+  oversight to work around.
+
+Consequences:
+- Complementary to, not a replacement for, `PayloadHash`/`ADR-011` —
+  `PayloadHash` answers "is this retry identical to what I already
+  stored," `ChainHash` answers "has anything in this store's history been
+  altered since it was written." Different questions, same SHA-256
+  primitive, deliberately reused rather than introducing a second hash
+  algorithm.
+- Verification is `O(n)` from the seed — cheap for a periodic integrity
+  audit, not designed for cheaply verifying one arbitrary event's position
+  in isolation (that needs real Merkle inclusion proofs — an explicitly
+  rejected complexity for v1, per the linear-chain choice above).
+- This gives tamper-**evidence**, not tamper-**prevention** — an attacker
+  with direct database write access could still rewrite `Events` and
+  recompute every downstream `ChainHash` to match. What this closes is the
+  *undetected* part: recomputing the entire chain from `1` is a far more
+  detectable act (e.g., against an independently-stored periodic
+  checkpoint of `ChainHash` at various `SequenceNumber`s) than simply
+  editing one row and hoping no one checks.
+- No provider-specific translation needed (unlike `IJsonPathTranslator`) —
+  `ChainHash` computation is plain application code in `EventAppender`,
+  identical on SQLite/Postgres/SQL Server; only the column itself (`TEXT`,
+  portable per `ADR-004`) is persisted per provider.

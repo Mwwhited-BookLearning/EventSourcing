@@ -130,3 +130,14 @@ storage-layer optimization, transparent to query translation.
   `03-api-contracts.md`. Keeping these mechanically separate avoids
   overloading OData syntax with a relationship it wasn't designed to
   express (walking an arbitrary-depth DAG).
+
+## Suggested References
+
+- [OASIS OData v4.01 — URL Conventions](https://docs.oasis-open.org/odata/odata/v4.01/odata-v4.01-part2-url-conventions.html) — the `$filter` grammar this design borrows (`ADR-003`).
+- [RFC 9535](https://datatracker.ietf.org/doc/html/rfc9535) — JSONPath, the syntax `FilterableField.JsonPath` (`$.Amount`) follows.
+- [SQLite — JSON Functions](https://sqlite.org/json1.html) — `json_extract`.
+- [PostgreSQL — JSON Functions and Operators](https://www.postgresql.org/docs/current/functions-json.html) — `->>`.
+- [SQL Server — JSON_VALUE](https://learn.microsoft.com/en-us/sql/t-sql/functions/json-value-transact-sql) and [TRY_CAST](https://learn.microsoft.com/en-us/sql/t-sql/functions/try-cast-transact-sql).
+- [RFC 3339](https://datatracker.ietf.org/doc/html/rfc3339) — the date-time text format `DateTimeOffset` filterable fields must be published in for lexicographic/native comparison to be correct.
+
+See `references.md` for the full bibliography.

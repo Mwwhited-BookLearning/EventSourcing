@@ -35,7 +35,7 @@ Rel(publisher, eventStore, "POST /publish/{event-type}\nBearer <JWT>", "HTTPS/JS
 Rel(follower, eventStore, "QUERY /follow/{event-type}\nBearer <JWT>, $filter/mode in body (ADR-012)", "SSE")
 Rel(follower, eventStore, "QUERY /events/{id}/parents|children|ancestors|descendants\nBearer <JWT> (ADR-012)", "HTTPS/JSON")
 Rel(operator, eventStore, "PUT /registry/{event-type}\nBearer <JWT>", "HTTPS/JSON")
-Rel(eventStore, idp, "Validates Bearer token", "OIDC discovery + JWKS")
+Rel(eventStore, idp, "Validates Bearer token + DPoP proof (ADR-017)", "OIDC discovery + JWKS")
 Rel(eventStore, publisher, "OpenAPI contract (anonymous)", "HTTPS")
 Rel(eventStore, follower, "AsyncAPI contract (anonymous)", "HTTPS")
 
@@ -78,7 +78,7 @@ Rel(lineageApi, idp, "Validates Bearer token")
 Rel(registry, idp, "Validates Bearer token")
 
 Rel(publishApi, registry, "Fetch schema + ParentValidationMode + RequiredPublishClaim for validation")
-Rel(publishApi, db, "Append event; validate/insert EventParents rows", "EF Core")
+Rel(publishApi, db, "Append event; validate/insert EventParents rows + ChainHash (ADR-019)", "EF Core")
 Rel(followApi, db, "Query events (filter pushed to SQL)", "EF Core")
 Rel(lineageApi, db, "Direct joins (parents/children); recursive CTE (ancestors/descendants), stopping at restricted/unresolved nodes", "EF Core / raw SQL")
 Rel(registry, db, "Persist schema metadata", "EF Core")
@@ -142,6 +142,7 @@ Container_Boundary(followApi, "Follow API") {
     Component(tailReader, "EventTailReader", "EF Core repository", "Polls Events where SequenceNumber > lastSeen (cursor set by mode, ADR-010), applies pushed-down predicate")
     Component(parentFilter, "parentEventIds visibility filter", "restrictedTypes set", "ADR-008 -- omits any parent whose type the caller can't see")
     Component(masker, "IPayloadMasker", "schema+data transform", "ADR-009 -- Phase 8, not yet built; wraps maskable fields per caller's claims")
+    Component(upcaster, "UpcastChain", "IEventUpcaster per (EventType, FromVersion)", "ADR-018 -- reshapes an old-version payload to current shape before masking runs")
 }
 
 ContainerDb(db, "Event & Schema Store")
@@ -153,8 +154,9 @@ Rel(odataParser, predicateBuilder, "AST")
 Rel(predicateBuilder, jsonPathTranslator, "uses registered translation")
 Rel(sseEndpoint, tailReader, "poll for new matching events")
 Rel(tailReader, db, "SELECT ... WHERE json_extract/JSON_VALUE/->> (pushed down)")
+Rel(sseEndpoint, upcaster, "reshape to current schema version")
 Rel(sseEndpoint, parentFilter, "filter each event's parentEventIds")
-Rel(sseEndpoint, masker, "mask payload before sending (Phase 8)")
+Rel(upcaster, masker, "mask payload before sending (Phase 8)")
 
 @enduml
 ```
@@ -223,3 +225,13 @@ Rel(snapshotStore, readDb, "persist snapshot")
 A **full rebuild** is not a separate component or code path here — it's
 `checkpointStore` reset to `0` plus `readDb`'s tables truncated, then the
 exact same `runner` loop shown above runs again from scratch (`ADR-015`).
+
+## Suggested References
+
+- [C4 model](https://c4model.com/) — Simon Brown; the notation these diagrams follow (Context/Container/Component).
+- [C4-PlantUML](https://github.com/plantuml-stdlib/C4-PlantUML) — the macro library used to render them.
+- [PlantUML](https://plantuml.com/) — the underlying diagram engine.
+
+See `references.md` for the full bibliography, including the standards
+behind what each container/component actually does (cross-referenced from
+the docs where they're decided, e.g. `03-api-contracts.md`, `07-adrs.md`).

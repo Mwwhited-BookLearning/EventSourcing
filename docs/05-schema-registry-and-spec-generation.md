@@ -146,6 +146,15 @@ validated against that version going forward; existing `EventParents` rows
 recorded under the previous version are untouched — consistent with the
 append-only, no-mutation treatment of schema versioning generally.
 
+**Registering a new version does not, by itself, do anything about
+reading the old version's events back in the new shape** — that's
+`IEventUpcaster` (`ADR-018`), a **code**-registered component per
+`(EventType, FromVersion)`, the same pattern as `IJsonPathTranslator`
+rather than another field on this registration payload. This registration
+API has no `changeKindUpcaster` or similar field; upcasting is entirely a
+read-time, DI-resolved concern, described in full in
+`06-solution-structure.md`.
+
 Changing `RequiredPublishClaim`/`RequiredReadClaim` on a new version takes
 effect immediately for that event type — unlike `SchemaVersion`, there is no
 "claim required as of version N" history to preserve; the check always uses
@@ -235,8 +244,14 @@ one.
   register as a new version; do not mutate the old version's stored schema
   text, since existing `StoredEvent` rows reference it by
   `SchemaVersion` for replay/audit purposes.
-- Compatibility-mode enforcement (e.g. rejecting breaking changes outright)
-  is not in v1 — flag as a v2 candidate if needed.
+- Compatibility-mode enforcement (e.g. rejecting breaking changes outright,
+  in the style of Confluent Schema Registry's BACKWARD/FORWARD/FULL modes
+  — see `references.md`) is not in v1 — flag as a v2 candidate if needed.
+  `ADR-018`'s `IEventUpcaster` builds the *transform* half of schema
+  evolution (reshaping an old payload forward); this bullet is about the
+  *enforcement* half (stopping an incompatible version from being
+  registered at all) — the two are independent, and only the first is
+  built.
 
 ## Relationship to spec generation
 
@@ -244,3 +259,12 @@ The registry is read-only from the perspective of `OpenApiDocumentBuilder`
 and `AsyncApiDocumentBuilder` (see `03-api-contracts.md`) — they only ever
 call `ISchemaRegistryReader.GetActiveEventTypesAsync()`. This keeps
 registration logic and spec generation logic independently testable.
+
+## Suggested References
+
+- [JSON Schema (2020-12)](https://json-schema.org/specification) — the registration payload's `jsonSchema` field.
+- [OpenAPI Specification v3.1.1](https://spec.openapis.org/oas/v3.1.1.html) / [AsyncAPI v3.0](https://www.asyncapi.com/docs/reference/specification/v3.0.0) — the two generated contract formats (`ADR-002`).
+- [Microsoft.OpenApi](https://github.com/microsoft/OpenAPI.NET) — the .NET object model both document builders share.
+- [Confluent Schema Registry — Schema Evolution](https://docs.confluent.io/platform/current/schema-registry/fundamentals/schema-evolution.html) — the compatibility-mode model referenced above as the not-yet-built enforcement half of schema evolution.
+
+See `references.md` for the full bibliography.

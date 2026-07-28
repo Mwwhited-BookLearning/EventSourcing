@@ -51,11 +51,24 @@ An event-sourcing store with:
   (`QUERY /events/{id}/parents|children|ancestors|descendants` — the HTTP
   `QUERY` method, `ADR-012`, not `GET` — see `03-api-contracts.md`).
 - **OAuth2/OIDC bearer-token auth** on every endpoint except the public spec
-  documents, scope-checked per operation. For local dev/this POC, an
-  in-process **OpenIddict** token issuer (`EventStore.DevIdp`, no separate
-  container) plus a **.NET Aspire** AppHost (with a `docker-compose.yml`
-  fallback) orchestrate the store, its database, and the dev IdP together —
-  see `03-api-contracts.md` and `ADR-006`.
+  documents, scope-checked per operation, and **DPoP-bound (RFC 9449)**
+  rather than plain bearer — every token is cryptographically tied to the
+  client's own key, so a leaked token alone isn't enough to use it
+  (`ADR-017`). For local dev/this POC, an in-process **OpenIddict** token
+  issuer (`EventStore.DevIdp`, no separate container) plus a **.NET
+  Aspire** AppHost (with a `docker-compose.yml` fallback) orchestrate the
+  store, its database, and the dev IdP together — see `03-api-contracts.md`
+  and `ADR-006`.
+- **Event upcasting**: every event type's schema can evolve across
+  versions; an `IEventUpcaster` chain reshapes an old-version payload to
+  the current version's shape at read time — for Follow, and for CQRS
+  projections — so a `mode=replay` burst spanning years of schema changes
+  still presents one consistent shape to a consumer. `Payload` itself is
+  never rewritten. See `ADR-018`.
+- **Hash-chained tamper evidence**: every stored event chains its content
+  hash onto the one before it, so altering any past event — even directly
+  in the database, bypassing the application entirely — is detectable by
+  replaying the chain, not just trusting the store. See `ADR-019`.
 - **Event-type security**: a second, independent authorization dimension on
   top of scopes — each event type can optionally require a claim to publish
   it and a *different* claim to read it (`RequiredPublishClaim`/
@@ -125,6 +138,7 @@ An event-sourcing store with:
 | `07-adrs.md` | Architecture Decision Records for the key choices made so far |
 | `08-build-plan.md` | Implementation phases, dependencies between them, and exit criteria (tied to `features/*.md` scenarios) |
 | `09-cqrs-read-models.md` | CQRS read side: `IProjection<TReadModel>`/`ProjectionHost`, checkpointing, `ChangeKind`-driven snapshot merge, rebuild — the write/read seam this project exists to demonstrate |
+| `references.md` | Bibliography: every real-world RFC/standard/pattern/library this design adopts, plus ones considered and deliberately not adopted, with why |
 | `features/*.md` | One standalone doc per feature: context, PlantUML sequence diagrams, an ER diagram for features touching persistent data, a Salt UI mockup where a real UI surface exists, and the embedded Gherkin scenarios for that feature (`features/cqrs-projections.md` is the worked Orders example tying `09` together end-to-end) |
 
 ## Open decisions flagged for the implementer
