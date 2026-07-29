@@ -90,16 +90,30 @@ Decision:
   another's.
 
 Consequences:
-- This is the natural home for `ADR-032`'s noted-but-deferred OS-level
+- ~~This is the natural home for `ADR-032`'s noted-but-deferred OS-level
   virtual file system (OneDrive/Google Drive/iCloud-style mounted
   attachments) — built on top of that ADR's WebDAV surface, a client
-  shell-integration concern, not a server one.
+  shell-integration concern, not a server one.~~ **Superseded**:
+  `ADR-032` decided against building any WebDAV surface at all (no
+  clean library, and the capability wasn't needed once its other
+  access paths were confirmed already served via plain HTTP and
+  GraphQL) — this client-side virtual-filesystem extension point no
+  longer has a server-side surface to build on, and is dropped, not
+  just deferred, unless `ADR-032` is revisited first.
 - No new server-side mechanism — every piece this ADR needs
   (content-addressed registries, `Optional<T>` incremental updates, a
   durable outbox/inbox transport) already exists from earlier ADRs. This
   is client-side composition of already-designed primitives, which is
   exactly why it was safe to sequence last.
-- Template engine choice (raw HTML+JS with a small injected binding
-  runtime, vs. a lightweight templating syntax compiled client-side) is
-  left open, same as `docs/design-docs/03 §3.4` leaves it — not resolved
-  here, a real remaining decision for whoever builds this.
+- **Resolved: raw HTML+JS with a small injected binding runtime** —
+  not a compiled/templating-syntax alternative. The deciding reason:
+  this ADR's own `ViewDefinition` model already commits to "the UI is
+  runtime data, interpreted by a generic renderer" (content-addressed,
+  versioned, fetched at runtime, never precompiled) — exactly the web
+  platform's native mode, needing zero extra machinery. A custom
+  templating syntax would need its own client-side compiler bundled
+  into the runtime, solving a problem raw HTML+JS-plus-binding-runtime
+  already solves for free — the identical reasoning [the UI framework
+  comparison](../comparisons/ui-framework.md) already used to prefer
+  Vue over Blazor for the same underlying property, applied a second
+  time at the template-syntax layer specifically.

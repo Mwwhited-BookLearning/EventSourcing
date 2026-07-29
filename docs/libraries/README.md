@@ -35,7 +35,6 @@ server) and [NWebDav](dotnet/nwebdav.md) (`ADR-032`'s WebDAV surface).
 | [.NET Aspire](dotnet/aspire.md) | dotnet | Local orchestration, service discovery, OpenTelemetry wiring | `ADR-006`, `ADR-026` |
 | [EF Core](dotnet/efcore.md) | dotnet | ORM / data access | `02-data-model.md`, `06-solution-structure.md` |
 | [HotChocolate](dotnet/hotchocolate.md) | dotnet | GraphQL server (schema, resolvers, Subscriptions, DataLoader) | `ADR-037` |
-| [NWebDav](dotnet/nwebdav.md) | dotnet | WebDAV server surface for binary attachments | `ADR-032` |
 | [Jint](dotnet/jint.md) | dotnet | Sandboxed JS execution for complex upcast mappings | `ADR-018`, `ADR-037` |
 | [CEL for .NET](dotnet/cel-dotnet.md) | dotnet | Declarative expression evaluation for common upcast mappings | `ADR-018`, `ADR-037` (candidates only — ecosystem immature, not locked in) |
 | [Testcontainers](dotnet/testcontainers.md) | dotnet | Disposable real-database integration tests | `06-solution-structure.md` |
@@ -47,6 +46,8 @@ server) and [NWebDav](dotnet/nwebdav.md) (`ADR-032`'s WebDAV surface).
 | [AsyncAPI React component](web/asyncapi-react.md) | web | AsyncAPI documentation UI | `ADR-025` |
 
 ## Compared, not adopted
+
+- **WebDAV, entirely** ([NWebDav](dotnet/nwebdav.md), [Dav.AspNetCore.Server](dotnet/dav-aspnetcore-server.md), IT Hit WebDAV Server Engine) — `ADR-032` decided to skip WebDAV outright rather than adopt any of the three; see [the comparison](../comparisons/webdav-library.md). The attachment store's actual access paths (upload, fetch+range, browse/list) are served by plain HTTP and GraphQL instead.
 
 Real alternatives weighed in full in `docs/comparisons/` — recorded
 there, not duplicated here, since a library that wasn't picked doesn't

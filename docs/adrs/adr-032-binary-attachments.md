@@ -58,18 +58,41 @@ Decision:
   deliberately-unsolved, separate problem `ADR-009`'s closing note
   already names for regulated event data, not newly invented here.
 
-## Browsable access: WebDAV, not a bespoke file API
+## Access paths, matched to standards individually — not one protocol for everything
 
-Rather than inventing a bespoke "list/browse my attachments" API, expose
-the attachment store through **WebDAV** (RFC 4918 — `PROPFIND` for
-listing, `GET`/`PUT` for content, `MKCOL`/`COPY`/`MOVE` for organizing),
-concretely via [NWebDav](../libraries/dotnet/nwebdav.md) rather than a
-hand-rolled protocol implementation —
-a real, decades-old standard every major OS already speaks natively
-(Windows Explorer, macOS Finder, and most file managers can mount a
-WebDAV URL directly, no bespoke client needed). This is the same
-"adopt a real standard instead of a bespoke one" instinct this whole
-design already applies everywhere else (`references.md`).
+Rather than reaching for one protocol to cover every way an attachment
+gets touched, each real access path is matched to whichever existing
+standard already fits it — several were already fully solved by
+mechanisms this design had adopted for other reasons, before WebDAV
+ever entered the picture:
+
+- **Upload** — plain `POST /attachments` (raw bytes, returns
+  `ContentHash`), per the Decision above. No protocol beyond ordinary
+  HTTP needed.
+- **Fetch by reference, with random/seekable access** — plain `GET`
+  against a content-addressed URL, using `ADR-031`'s existing HTTP
+  Range-request support (RFC 7233). Also already fully solved, no new
+  protocol.
+- **Browse/list what's available for an entity** — a GraphQL query
+  against the owning entity (`ADR-037`): `entity(id) { attachments {
+  contentHash, filename, mimeType, sizeBytes } }`. GraphQL's own nested-
+  field resolution already *is* the right standard for "list the
+  children of a resource" — no separate browsing API, WebDAV or
+  otherwise, needed for this either.
+- **OS-native file-manager mounting** (Explorer/Finder browsing a
+  WebDAV URL like a network drive) — the one access path that genuinely
+  has no equivalent among what's already adopted. **Decided: skipped,
+  not built.** [The WebDAV library comparison](../comparisons/webdav-library.md)
+  found no clean library (NWebDav archived, `Dav.AspNetCore.Server`
+  thin, IT Hit commercial), and — now that the other three access
+  paths are confirmed already served without it — this was only ever a
+  "nice to have" mounting convenience, not a real gap. Explicitly not
+  hand-rolled either: implementing RFC 4918 correctly (locking
+  semantics, the XML property model, every required method) from
+  scratch to avoid a library trade-off would cost more than the
+  convenience is worth for a capability nothing else in this design
+  depends on. Revisit only if a real, specific need for native
+  mounting shows up — not preemptively, and not by default.
 
 - **A virtual hierarchy, not a real folder tree.** Attachments are
   content-addressed (above), not stored at a path — WebDAV's collection/
