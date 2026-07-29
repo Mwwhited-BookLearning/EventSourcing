@@ -246,26 +246,39 @@ based log redaction — a second, additive enforcement surface (logs),
 never touching what `StoredEvent.Payload` actually persists, same as
 every enforcement point this ADR already describes.
 
-## Future: definable masking strategies (proposal, not decided)
+## Future: declined masking strategies (KISS — not scheduled)
 
 `"FixedValue"`, `"PartialReveal"`, and `"Hash"` are all decided and
-built now (see the Decision above — both later strategies moved out of
-this proposal section once decided). This section stays as a proposal
-for later, kept explicitly separate from the Decision above so it's
-unambiguous what's built versus sketched:
+built now (see the Decision above). Format-preserving encryption,
+generalization/bucketing, and tokenization were compared in
+`docs/comparisons/masking-strategies.md` and are **explicitly declined**,
+applying KISS (prefer the simplest design that satisfies a *stated*
+requirement over building speculative capability for one that hasn't
+shown up):
 
-- Tokenization (a separate-party, separate-mechanism reversal model —
-  see `docs/comparisons/masking-strategies.md`) explicitly does **not**
-  fit the `oneOf` wrapper the way the three strategies above do, and
-  would need its own mechanism entirely if ever built — not a fourth
-  `strategy` value. Generalization/bucketing, by contrast, *would* fit as
-  an ordinary fourth `IMaskingStrategy` implementation if it's ever
-  decided (see the Decision's Strategy-pattern seam above) — the open
-  question is whether it's worth building, not whether it fits.
+- Tokenization (a separate-party, separate-mechanism reversal model)
+  explicitly does **not** fit the `oneOf` wrapper the way the three built
+  strategies do, and would need its own mechanism entirely if ever
+  built — not a fourth `strategy` value. The clearest decline of the
+  three: no stated need for "someone other than the reader reverses this
+  later," and this isn't where it would be built even if there were.
+- Generalization/bucketing *would* fit as an ordinary fourth
+  `IMaskingStrategy` implementation (see the Decision's Strategy-pattern
+  seam above) if it's ever decided — declined for now anyway, since a
+  fourth strategy plus the documentation discipline of never overclaiming
+  k-anonymity is real added surface for no stated need.
+- Format-preserving encryption (real FF1/FF3-1, not `PartialReveal`'s
+  simpler reveal-and-mask) is declined because it would be this design's
+  first cryptographic key-management surface — `Hash` avoided that cost
+  by reusing `HmacRedactor`'s existing keying; FPE has no equivalent
+  existing primitive to reuse.
 - Whole-object or whole-array masking (collapsing an entire nested object
   or array into one `{value:...}`/`{masked:...}` at that position, instead
   of recursing into it) is explicitly out of scope for v1 (see the
-  "not valid directly on `object`/`array`" rule above) — a candidate for
-  this same future pass if a real need shows up.
-- None of this is scheduled; it's recorded so `"FixedValue"`-only v1
-  doesn't get treated as the final word by accident.
+  "not valid directly on `object`/`array`" rule above) — a candidate to
+  revisit if a real need shows up, same as the three above.
+- None of this is scheduled, and none is expected — it's recorded so
+  `"FixedValue"`/`"PartialReveal"`/`"Hash"` don't get treated as
+  permanently incomplete by accident. Revisit only if a concrete
+  requirement for one of these shows up; see
+  `docs/comparisons/masking-strategies.md` for the full reasoning.

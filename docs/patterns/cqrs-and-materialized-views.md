@@ -27,26 +27,46 @@ concrete mechanism for what you query instead.
 
 ```plantuml
 @startuml CQRS_Component
-!include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Component.puml
-
-Person(writer, "Command Sender")
-Person(reader, "Query Sender")
-
-Container_Boundary(write, "Write Side") {
-  Component(cmdHandler, "Command Handler", "Validates + appends")
+skinparam shadowing false
+skinparam defaultTextAlignment center
+skinparam wrapWidth 200
+skinparam rectangle<<Person>> {
+  BackgroundColor #08427B
+  FontColor white
 }
-ContainerDb(log, "Event Log", "Append-only, source of truth")
-
-Container_Boundary(read, "Read Side") {
-  Component(projector, "Projector", "Folds events into a query-shaped view")
+skinparam rectangle<<Component>> {
+  BackgroundColor #85BBF0
+  FontColor black
 }
-ContainerDb(view, "Materialized View", "Disposable, rebuildable cache")
+skinparam database<<Container>> {
+  BackgroundColor #438DD5
+  FontColor white
+}
+skinparam rectangle<<Boundary>> {
+  BackgroundColor transparent
+  BorderColor #666666
+  BorderStyle dashed
+}
+skinparam ArrowColor #666666
 
-Rel(writer, cmdHandler, "Command")
-Rel(cmdHandler, log, "Append")
-Rel(projector, log, "Replay / tail")
-Rel(projector, view, "Write (never read by a client directly)")
-Rel(reader, view, "Query")
+rectangle "**Command Sender**\n<<Person>>" <<Person>> as writer
+rectangle "**Query Sender**\n<<Person>>" <<Person>> as reader
+
+rectangle "Write Side" <<Boundary>> as write {
+  rectangle "**Command Handler**\n<<Component>>\n--\nValidates + appends" <<Component>> as cmdHandler
+}
+database "**Event Log**\n<<Container>>\n--\nAppend-only, source of truth" <<Container>> as log
+
+rectangle "Read Side" <<Boundary>> as read {
+  rectangle "**Projector**\n<<Component>>\n--\nFolds events into a query-shaped view" <<Component>> as projector
+}
+database "**Materialized View**\n<<Container>>\n--\nDisposable, rebuildable cache" <<Container>> as view
+
+writer --> cmdHandler : Command
+cmdHandler --> log : Append
+projector --> log : Replay / tail
+projector --> view : Write (never read by a client directly)
+reader --> view : Query
 note right of view
   Never updated by a client request.
   Rebuilt by replaying the log from

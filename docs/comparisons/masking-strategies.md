@@ -2,14 +2,15 @@
 
 # Masking Content Strategies: Partial Reveal vs. Format-Preserving vs. Generalization/Bucketing vs. Tokenization
 
-**Partially decided.** Raised by `ADR-009`'s own "Future: definable
-masking strategies" section and `docs/10-open-questions.md`'s
-masking-strategies row. `FixedValue`, `PartialReveal`, and keyed `Hash`
-are now all decided and built (`ADR-009`, shared by `ADR-052`); this
-comparison narrows what's left rather than closing it entirely — there is
-still no single "winner" among generalization/bucketing and tokenization
-without a specific application need to drive the choice, and this
-comparison says so plainly rather than picking one to look decisive.
+**Decided.** Raised by `ADR-009`'s own "Future: definable masking
+strategies" section and `docs/10-open-questions.md`'s masking-strategies
+row (now removed — resolved, not just narrowed). `FixedValue`,
+`PartialReveal`, and keyed `Hash` are decided and built (`ADR-009`, shared
+by `ADR-052`); format-preserving encryption, generalization/bucketing, and
+tokenization are all **declined**, applying KISS — no stated need for any
+of the three, and each would add real surface (key management, a fourth
+strategy class, or a whole second component) for a requirement that
+hasn't shown up. See the Recommendation below for why each specifically.
 
 **Stated requirement driving this comparison:** `ADR-009` originally
 shipped exactly one masking-content strategy, `"FixedValue"` (a
@@ -148,12 +149,17 @@ tokenization, masking, and redaction](https://www.pkware.com/blog/encryption-tok
 
 ## Recommendation
 
-**Partial reveal and keyed hashing are both now decided and built; no
-single winner for the rest of the menu — the honest answer is that the
-right next strategy beyond those two depends on which application need
-shows up first, and none has yet.** What this comparison *does* resolve
-is which remaining options are cheap, architecture-compatible increments
-versus which are a different mechanism wearing a masking-shaped costume:
+**Decided, applying KISS: ship the two built increments, decline the
+other two rather than leave them open indefinitely.** Partial reveal and
+keyed hashing are both decided and built; format-preserving encryption,
+generalization/bucketing, and tokenization are all **declined for now** —
+not because they wouldn't ever fit, but because Keep It Simple (KISS —
+prefer the simplest design that satisfies a *stated* requirement; don't
+build speculative capability for a need that hasn't shown up) says a
+still-open "maybe later" is worse than an honest "no, until something
+concrete asks for it." Nothing here forecloses adding one later — it's
+just no longer tracked as an open question, since there is nothing to
+resolve without a real requirement driving the choice:
 
 - **Partial reveal (Option A)** is decided and built as `ADR-009`'s
   `"PartialReveal"` strategy — the safest, cheapest real increment beyond
@@ -166,25 +172,27 @@ versus which are a different mechanism wearing a masking-shaped costume:
   `Microsoft.Extensions.Compliance.Redaction`'s `HmacRedactor` rather than
   a bare/unsalted hash, specifically to avoid the small-value-space
   reversal risk a bare hash would carry.
-- **Format-preserving masking (Option B)** fits the wrapper just as
-  cleanly, but *only* if scoped honestly: a non-cryptographic
-  shape-preserving substitution needs nothing new; real FPE (FF1/FF3-1)
-  is legitimate and standardized but is the first thing in this design
-  that would need key management, which is a real, non-trivial addition
-  this project doesn't currently have a home for.
-- **Generalization/bucketing (Option C)** fits as a single-value
-  transform, but must never be marketed as delivering k-anonymity's
-  formal guarantee — that guarantee is a dataset-wide property this
-  design's per-event transform structurally cannot compute. If built, it
-  should be named and documented as bucketing, not k-anonymity.
-- **Tokenization (Option D)** does not fit `ADR-009`'s architecture as
-  designed. Its defining property — reversal by a different party through
-  a different mechanism, later — needs a new component (vault or
-  keyed-reversal authority plus a resolution endpoint), not a new
-  `x-masking.strategy` value. Absent a stated requirement for "someone
-  other than the reader must be able to reverse this later," this should
-  stay out of scope rather than be forced into the existing wrapper.
+- **Format-preserving masking (Option B) — declined.** It would fit the
+  wrapper cleanly, but real FPE (FF1/FF3-1) is the first thing in this
+  design that would need key management as a *new* capability (`Hash`
+  reuses an existing keyed primitive; this would not), and the
+  non-cryptographic substitution variant only saves that cost by not
+  actually being encryption — not a trade this design needs to make
+  absent a stated requirement for it.
+- **Generalization/bucketing (Option C) — declined.** Fits as a
+  single-value transform, but adds a fourth `IMaskingStrategy` for a need
+  nobody has stated yet, and would have to be documented carefully to
+  never be marketed as k-anonymity (a dataset-wide guarantee this
+  design's per-event transform structurally cannot compute) — extra
+  surface and an ongoing documentation burden for a speculative case.
+- **Tokenization (Option D) — declined, and doesn't fit anyway.** Its
+  defining property — reversal by a different party through a different
+  mechanism, later — needs a whole new component (vault or
+  keyed-reversal authority plus a resolution endpoint), not a
+  `x-masking.strategy` value at all. The clearest KISS call of the three:
+  no stated need for "someone other than the reader reverses this
+  later," and even if there were, this isn't where it would be built.
 
-`docs/10-open-questions.md` is updated to reflect this: narrowed from "a
-further, undecided proposal" to the specific shape above, still open
-pending a real driving requirement.
+`docs/10-open-questions.md`'s masking-strategies row is removed — this is
+no longer an open fork, it's a decision (decline all three, revisit only
+if a real requirement shows up).

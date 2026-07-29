@@ -94,6 +94,22 @@ larger batch of unrelated changes.
 
 ## Conventions established so far
 
+- **No external `!include` in any PlantUML diagram, ever — hand-style C4
+  notation in plain PlantUML instead.** `C4-PlantUML` (both the remote
+  `raw.githubusercontent.com` form and the bundled `<C4/...>` stdlib
+  form) fails silently — a blank or broken diagram, no readable error —
+  in any renderer without live internet access or that exact stdlib path
+  configured, which is most local/offline PlantUML setups actually used
+  against this repo. This happened repeatedly, not once, across
+  `01-c4-architecture.md` and two pattern docs
+  (`cqrs-and-materialized-views.md`, `mvvm-client-architecture.md`) — all
+  three now use plain `rectangle`/`database` elements with `<<stereotype>>`
+  tags and a `skinparam` color tier per level (Person/System/Container/
+  Component, dashed boundary boxes) instead, fully self-contained. Applies
+  to every PlantUML diagram in this repo going forward, not just C4 ones —
+  never reach for an external library `!include` of any kind; style it by
+  hand. See `references.md`'s Reference-only entry for `C4-PlantUML` for
+  the full reasoning.
 - **ADRs are additive history, not editable state.** When a later decision
   changes an earlier one, don't delete the old text — strike it through
   (`~~...~~`) and add "Superseded by `ADR-XXX`" (see `ADR-006`'s
@@ -334,8 +350,13 @@ foundational, locked-in decisions, for quick orientation:
   (`ADR-009`) — a keyed HMAC via `Microsoft.Extensions.Compliance.
   Redaction`'s `HmacRedactor` (`ADR-050`), not a bare hash, specifically
   to avoid small-value-space reversal (a bare SHA-256 of a 9-digit SSN is
-  brute-forceable). Only tokenization and generalization/bucketing remain
-  undecided in `docs/comparisons/masking-strategies.md`.
+  brute-forceable). Format-preserving encryption, generalization/
+  bucketing, and tokenization are now explicitly **declined** (not merely
+  left open) in `docs/comparisons/masking-strategies.md`, applying
+  KISS — each would add real surface (new key management, a fourth
+  strategy, or a whole second component) for a requirement nobody has
+  stated; `docs/10-open-questions.md`'s masking-strategies row is removed
+  accordingly.
 - **Masking/redaction content strategies are an explicit Strategy-pattern
   seam, per direct request** — `ADR-009`'s `IMaskingStrategy` (one class
   per strategy, keyed-registered via .NET's built-in keyed DI services,
