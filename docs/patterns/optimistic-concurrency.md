@@ -51,6 +51,15 @@ manual reconciliation) is a **policy choice**, not a fact being
 discovered — worth stating explicitly rather than pretending there's a
 correct answer hiding somewhere.
 
+## Also known as
+
+**Optimistic Offline Lock** is Fowler's specific name (used above);
+more casually this is just called **optimistic locking** or **optimistic
+concurrency control (OCC)**. The low-level, single-value version of the
+same idea is **Compare-And-Swap (CAS)** — the same "check it hasn't
+changed, then commit" logic, at the granularity of one memory word/
+register instead of one business record.
+
 ## How this application uses it
 
 `ADR-024` is this pattern, applied at the property level rather than the

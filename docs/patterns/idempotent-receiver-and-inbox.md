@@ -53,6 +53,16 @@ end
 @enduml
 ```
 
+## Also known as
+
+**Idempotent Receiver** is the mechanism behind what's often called
+**exactly-once processing** or **deduplication** in casual usage — worth
+noting those looser terms describe the *goal*, while Idempotent Receiver
+names the *mechanism* that achieves it. **Dead Letter Channel** is
+essentially always called a **Dead Letter Queue (DLQ)** in practice —
+same pattern, the more common name in most messaging systems' own
+documentation (Azure Service Bus, AWS SQS, RabbitMQ all say "DLQ").
+
 ## How this application uses it
 
 **Idempotent Receiver**: `ADR-011`'s `eventId` + `PayloadHash` mechanism

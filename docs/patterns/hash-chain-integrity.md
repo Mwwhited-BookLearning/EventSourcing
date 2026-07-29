@@ -60,6 +60,20 @@ every downstream hash to match — what the chain actually defeats is
 a far more conspicuous act (checkable against any independently-held
 earlier checkpoint) than editing one row and hoping nobody checks.
 
+## Also known as
+
+Sometimes called a **blockchain** in casual usage — worth actively
+resisting that name here: a blockchain specifically implies decentralized
+*consensus* among mutually-distrusting parties over which chain is
+canonical (proof-of-work, proof-of-stake, or similar); a hash chain is
+just the tamper-evidence data structure underneath that, with no
+consensus mechanism at all — this design has exactly one authoritative
+writer per store (`ADR-001`), so "blockchain" would overclaim what
+`ADR-019` actually provides. Also called a **tamper-evident log** or
+(loosely) a **verifiable log** — the latter more precisely describes a
+full Merkle-tree structure like Certificate Transparency's, not the
+simpler linear chain `ADR-019` chose.
+
 ## How this application uses it
 
 `ADR-019` is a deliberately **linear** chain, not a Merkle tree — chosen

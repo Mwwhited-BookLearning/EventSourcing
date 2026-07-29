@@ -18,6 +18,17 @@ into query-optimized read models — with a worked example (an `Orders`
 domain) carried through both sides so the seam between them, not just each
 half separately, is something you can actually read and follow.
 
+**Governing principle: never lose or corrupt data, as close to absolutely
+as the design can make it.** Every trade-off in this package defaults
+toward that — persist first and flag problems as advisory metadata rather
+than rejecting (`ADR-023`), never mutate or delete a stored event
+(`ADR-009`'s closing note), detect tampering rather than merely hope for
+its absence (`ADR-019`), detect late/out-of-order arrival rather than
+silently let it corrupt already-applied data (`ADR-029`). Where a genuine
+throughput need forces a lighter durability bar (`ADR-031`'s streaming
+channels), that's stated as an explicit, narrow exception with its own
+reasoning — never a silent default.
+
 ## What this system is
 
 An event-sourcing store with:

@@ -63,6 +63,15 @@ Reader -> Reader: fold events left-to-right\n=> current state, derived, never st
   either a new event (a tombstone) or a redaction concern layered on top,
   never a row-level `DELETE`.
 
+## Also known as
+
+**Event-Driven State**, **append-only log architecture** (the Kafka-
+world framing: "the log as source of truth"). Distinct from — not a
+variant of — **Command Sourcing** (storing the *commands* that were
+issued, not the events they produced; a related but different idea, since
+a command can fail or be rejected while an event, by definition, already
+happened).
+
 ## How this application uses it
 
 The `Events` table (`02-data-model.md`) *is* the store of record —
