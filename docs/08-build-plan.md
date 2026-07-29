@@ -63,6 +63,7 @@ state "Phase 18\nGraphQL-Only Query Layer" as p18
 state "Phase 19\nCompatibility & Deployment Discipline" as p19
 state "Phase 20\nMVVM Client" as p20
 state "Phase 21\nTicket Exchange" as p21
+state "Phase 22\nDelegated Grants & App Permissions" as p22
 
 p0 --> p1
 p1 --> p2
@@ -97,6 +98,9 @@ p14 --> p20
 p15 --> p20
 p14 --> p21
 p15 --> p21
+p17 --> p22
+p6 --> p22
+p12 --> p22
 @enduml
 ```
 
@@ -602,20 +606,27 @@ sharded cross-`EntityType` query fans out and merges correctly.
 
 **Scope**: `ADR-035` (`AuthorityStatus`, `authorityDecision` events,
 `RejectionBehavior` — annotate-only default per
-`docs/comparisons/authority-rejection-behavior.md`) and `ADR-036`
-(DID/UCAN self-attestation, server-side OAuth Token Exchange, RFC 8693).
+`docs/comparisons/authority-rejection-behavior.md`), `ADR-036`
+(DID/UCAN self-attestation, server-side OAuth Token Exchange, RFC 8693),
+and `ADR-042` (the gated authoritative fold + `LiveEntityStoreRow` —
+revises `ADR-035`'s original "folds identically" framing).
 
 **Depends on**: Phase 11 (the trust axis rides on `StoredEvent`, which
 Phase 11 already extended for other reasons), Phase 5 (auth/token
 issuance infrastructure to extend for token exchange).
 
 **Exit criteria**: [`features/non-authoritative-capture.md`](features/non-authoritative-capture.md)
-passes on all seven scenarios — an event submitted with a self-attested
+passes on all its scenarios — an event submitted with a self-attested
 UCAN persists with `AuthorityStatus: unattested` even when the identity
 provider is unreachable at submission time, never blocking ingestion and
-independent of `SchemaStatus`; a later `authorityDecision: rejected` event
-leaves the original event's `Payload` untouched on an `Annotate`-type,
-triggers a compensating patch on a `Compensate`-type, and either way
+independent of `SchemaStatus`; that event reaches `LiveEntityStoreRow`
+immediately (wrapped `isAuthoritative: false`) but not the authoritative
+Entity Store; once an `authorityDecision: accepted` event lands, the
+authoritative Entity Store catches up to what the Live View already
+showed; a later `authorityDecision: rejected` event leaves the original
+event's `Payload` untouched on an `Annotate`-type, triggers a
+compensating patch on a `Compensate`-type (only relevant for an event
+already accepted and folded, per `ADR-042`'s narrowing), and either way
 denormalizes `AuthorityDecisionRef` back onto the original event; two
 servers disagreeing about review status resolves via `ConflictFlag`
 (`ADR-024`, reused), not a new mechanism.
@@ -695,6 +706,28 @@ same ticket presented a second time is rejected; a ticket presented with
 a signature computed from the wrong shared secret is rejected before any
 content is served.
 
+## Phase 22 — Delegated access grants & application-defined permissions
+
+**Scope**: `ADR-043` (delegated, capped, time-boxed read-access grants
+via UCAN delegation — "secondary opinion" access) and `ADR-044`
+(application-defined permission types via per-`AppId` `AppTrustRoot`
+registration, resolving what the UCAN spec itself leaves out-of-band).
+
+**Depends on**: Phase 17 (both build directly on `ADR-036`'s UCAN
+exchange infrastructure), Phase 6 (`ADR-008`'s claim-check model, which
+gains the entity-scope extension here), Phase 12 (`AppTrustRoot` is
+`AppId`-scoped).
+
+**Exit criteria**: a user holding a claim can delegate a subset of it,
+scoped to one specific `EntityId` and an expiration, to a named grantee;
+the grantee's exchanged JWT passes `RequiredReadClaim` for that entity
+only, not blanket; an attempted over-broad delegation (broader than the
+granter's own claim) fails UCAN validation, not a bespoke check; a UCAN
+rooted in a DID that isn't a registered `AppTrustRoot` for the target
+`AppId` is rejected; a UCAN rooted in a registered `AppTrustRoot` is
+accepted for that `AppId`'s own custom permission strings with no
+central-IdP-side pre-registration of those strings.
+
 ## Cross-cutting, every phase
 
 - **Integration tests against all three providers** run from Phase 0
@@ -730,7 +763,9 @@ content is served.
   into other docs is still outstanding independent of the build plan).
   `ADR-040` is Accepted — Phase 21 is where it gets built and verified.
   `ADR-041` is Accepted and cross-cutting, not tied to any one phase — see
-  above.
+  above. `ADR-042` (Accepted, revises `ADR-035`) is verified in Phase 17
+  alongside it, not a separate phase. `ADR-043`/`ADR-044` (both Accepted)
+  are Phase 22.
 
 ## Suggested References
 

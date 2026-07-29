@@ -9,6 +9,12 @@ CQRS projections, except this one runs for every entity automatically
 `patterns/cqrs-and-materialized-views.md` for the general pattern this
 table is an instance of.
 
+**This is the *authoritative* view, gated on `AuthorityStatus` (`ADR-042`)**:
+an event only folds here once `AuthorityStatus` reaches `accepted` — an
+`unattested`/`pending_review` event is fully persisted in the Event Log
+but does not yet update this table. See `LiveEntityStoreRow` below for
+the ungated, "everything including not-yet-approved data" counterpart.
+
 ```csharp
 public class EntityStoreRow
 {
@@ -29,6 +35,42 @@ public class EntityStoreRow
     public DateTimeOffset UpdatedAt { get; set; }
 }
 ```
+
+## Live View — the ungated counterpart (`ADR-042`)
+
+A second, framework-level, always-on materialized view, folded by the
+exact same mechanism as `EntityStoreRow` above, minus the
+`AuthorityStatus` gate — every event updates this the moment it's
+received, `unattested`/`pending_review`/`rejected` included. This is
+what a "live monitoring" consumer reads when seeing not-yet-approved
+data immediately is more valuable than waiting for review.
+
+```csharp
+public class LiveEntityStoreRow
+{
+    public string EntityId { get; set; } = default!;    // same {appId}:{entityType}:{uniqueId} key as EntityStoreRow, PK
+    public string EntityType { get; set; } = default!;
+    public string Data { get; set; } = default!;         // folds every event immediately, no AuthorityStatus gate
+    public string Extensions { get; set; } = default!;
+    public string AuthorityStatus { get; set; } = default!; // the MOST RECENT contributing event's status -- unattested/pending_review/accepted/rejected, never rolled up/hidden
+    public long LastAppliedSequenceNumber { get; set; }
+    public DateTimeOffset UpdatedAt { get; set; }
+}
+```
+
+**Every read of this table is wrapped with `isAuthoritative: false` at
+the query surface** — a whole-row/whole-view marker, not a per-field one
+(contrast `ADR-009`'s masking wrapper, which redacts individual field
+*values* — a deliberately different granularity, not the same
+mechanism reused). There is no query mode that silently omits this
+marker; a caller reading `LiveEntityStoreRow` always sees it labeled.
+`EntityStoreRow` itself never carries this marker at all — only
+`LiveEntityStoreRow` does, so there's no ambiguous case where a caller
+has to check a flag to know which view they're looking at.
+
+A rejected event's contribution stays visible here too (never deleted,
+`README.md`'s governing principle) — re-labeled `rejected` once the
+decision lands, not removed.
 
 ## Why `Version` and `LastAppliedSequenceNumber` are two different columns
 

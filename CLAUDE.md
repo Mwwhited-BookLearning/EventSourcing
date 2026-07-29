@@ -248,6 +248,27 @@ foundational, locked-in decisions, for quick orientation:
   (first-party) kept, but no AutoMapper, no third-party structured-logging
   framework, and `System.Text.Json` over `Newtonsoft.Json`. No rework
   elsewhere — nothing previously accepted conflicted with this.
+- **Gated authoritative publish** (`ADR-042`, revises `ADR-035`) — the
+  Entity Store now only folds an event once `AuthorityStatus` reaches
+  `accepted`; a new `LiveEntityStoreRow` folds everything immediately
+  instead, wrapped `isAuthoritative: false` at the query surface.
+  Composes Write-Audit-Publish + the Quarantine pattern (deliberately
+  inverted — visible-but-labeled, not blocked) + a second CQRS
+  materialized view; see `docs/patterns/interactions/
+  gated-authoritative-publish.md`. `AuthorityStatus`'s default also
+  flipped from `unattested` to `accepted` for ordinary authenticated
+  publishes — it only starts below `accepted` when a publish declares a
+  reason not to trust it yet (self-attestation, or an explicit
+  review-pending marker — covering both the "unauthorized submitter"
+  and "unvalidated detector output" trigger cases named this session).
+- **Delegated access grants + application-defined permissions**
+  (`ADR-043`, `ADR-044`) — reuse `ADR-036`'s UCAN delegation for
+  "secondary opinion"-style temporary, capped, entity-scoped access
+  grants (explicitly disambiguated from the classical Four Eyes/
+  two-person rule, which is a different mechanism), and resolve the one
+  thing the UCAN spec itself leaves out-of-band — which DID is a root of
+  trust for a capability namespace — via a new per-`AppId` `AppTrustRoot`
+  registry. No new cryptographic mechanism either time.
 
 Also landed, independent of the entity/persist-everything direction
 (tooling/infrastructure, decided alongside the merge but not part of it):
@@ -285,7 +306,8 @@ superseded and pointing at the ADR that superseded it.
 
 **Genuinely still outstanding** (named, not silently missing):
 - Streaming Channel and Attachment component diagrams (`01-c4-
-  architecture.md` says so itself).
+  architecture.md` says so itself), and now also a Live View component
+  (`ADR-042`) alongside the Entity Store's — not drawn this pass.
 - `03-api-contracts.md`'s Follow/Lineage/Registry-listing sections still
   describe the OData contract in full detail, not just a banner —
   rewriting them for the actual GraphQL contract shape is real,

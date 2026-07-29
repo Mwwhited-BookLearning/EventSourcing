@@ -54,6 +54,27 @@ public class FilterableField
 public enum FilterableFieldType { String, Number, Boolean, DateTimeOffset }
 ```
 
+## Application-defined permission trust roots (`ADR-044`)
+
+```csharp
+public class AppTrustRoot
+{
+    public string AppId { get; set; } = default!;       // part of the composite key (ADR-030)
+    public string IssuerDid { get; set; } = default!;   // the DID this AppId trusts as a root of trust for its own custom permission/capability namespace
+    public string? Description { get; set; }
+    public DateTimeOffset RegisteredAt { get; set; }
+}
+```
+
+Registering a DID here is what makes it authoritative for
+minting/delegating `AppId`-scoped custom permissions via UCAN (`ADR-036`)
+— resolving the one thing the UCAN spec itself leaves out-of-band (which
+DID counts as a root of trust for a given namespace). The core engine
+never validates *what* a permission string means, only that a presented
+UCAN's delegation chain roots in a DID registered here for the `AppId`
+the request is scoped to. Who may register/deregister a trust root is
+not designed further here — see `10-open-questions.md`.
+
 ## Per-provider index strategy for filterable fields
 
 When a `FilterableField` is marked `IsIndexed = true`, the registry service
@@ -85,6 +106,12 @@ these two fields gate *whether you may touch a specific event type*, per
   time) **and** the Lineage API — see `../03-api-contracts.md`, "Lineage API",
   for why a restricted node anywhere in an ancestors/descendants traversal
   fails the whole request rather than being stubbed out.
+- **Claims can optionally carry an entity-scope restriction (`ADR-043`)**:
+  a delegated/granted claim (e.g. from a "secondary opinion" access
+  grant) may be scoped to one specific `EntityId` rather than applying
+  blanket, in which case the check becomes "does the caller have this
+  claim, *and* does it apply to this `EntityId`" — an ordinary, unscoped
+  claim (the default) is unaffected and behaves exactly as above.
 - Both are `null` by default — registering an event type with neither set
   behaves exactly as before this feature existed.
 - Enforcement needs the caller's claims to already be populated by JWT

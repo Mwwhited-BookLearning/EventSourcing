@@ -62,3 +62,5 @@ Consequences: <trade-offs accepted>
 | [040](adrs/adr-040-ticket-exchange-headerless-clients.md) | URL-embeddable ticket exchange for header-incapable clients (streaming/WebDAV playback) | Accepted |
 | [041](adrs/adr-041-explicit-composition-first-party-libraries.md) | Explicit composition and first-party libraries over convention-magic (constructor injection, Pure DI, no AutoMapper/third-party logging, `System.Text.Json`) | Accepted |
 | [042](adrs/adr-042-gated-authoritative-publish.md) | Gated authoritative publish — Entity Store only reflects approved data; a separate Live View shows the rest (revises `ADR-035`) | Accepted |
+| [043](adrs/adr-043-delegated-temporary-access-grants.md) | Delegated, capped, time-boxed read-access grants ("secondary opinion" access) — reuses UCAN delegation (`ADR-036`) | Accepted |
+| [044](adrs/adr-044-application-defined-permissions.md) | Application-defined permission/grant types via per-`AppId` trust roots (resolves what UCAN itself leaves out-of-band) | Accepted |

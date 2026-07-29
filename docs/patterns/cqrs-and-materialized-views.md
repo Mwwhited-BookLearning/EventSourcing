@@ -110,3 +110,10 @@ explicitly.
   consequences say plainly that this design does not attempt
   read-after-write consistency — a real, named cost of the pattern,
   called out rather than glossed over.
+- **A second, differently-gated materialized view over the same events**
+  (`ADR-042`'s `LiveEntityStoreRow`, alongside the authoritative Entity
+  Store) is this pattern's own "multiple, differently-shaped read models
+  can coexist" property, put to a genuinely new use — see [Gated
+  authoritative publish](interactions/gated-authoritative-publish.md)
+  for how it composes with Write-Audit-Publish and the Quarantine
+  pattern at that specific point.

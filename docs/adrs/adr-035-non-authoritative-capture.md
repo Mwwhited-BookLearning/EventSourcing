@@ -23,9 +23,14 @@ Decision:
   Neither ever gates `Status`, per `ADR-023`.
 - **Lifecycle**: `unattested → pending_review → accepted | rejected`
   (or `unattested` directly to `accepted`/`rejected` on immediate
-  confirmation). An `unattested` event is folded into the Entity Store,
-  replicated (`ADR-033`), and queryable — identically to an `accepted`
-  one; the only difference is a label.
+  confirmation). ~~An `unattested` event is folded into the Entity
+  Store, replicated (`ADR-033`), and queryable — identically to an
+  `accepted` one; the only difference is a label.~~ **Superseded by
+  `ADR-042`**: the Entity Store now only folds an event once
+  `AuthorityStatus` reaches `accepted`; an `unattested`/`pending_review`
+  event is fully persisted and queryable in the Event Log and a
+  separate Live View, but does not yet update the authoritative Entity
+  Store.
 - **Accept/reject decisions are new events, never mutations** — an
   `authorityDecision` event (`targetEventId`, `decision`,
   `decidingActorId`, `reason`), the same "corrections are additive"
