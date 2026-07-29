@@ -6,13 +6,22 @@ structural views; for the runtime/dynamic view of a specific feature (plain
 PlantUML sequence diagrams, plus the Gherkin scenarios they illustrate), see
 `features/*.md`.
 
-**Deployment note**: per `ADR-001`, the Publish/Follow/Lineage/Registry/Spec
-Generator containers below are built as **three separate deployables** —
-`EventStore.Host.Sqlite`/`.Postgres`/`.SqlServer` — one per database
-provider, not a single artifact with a runtime switch. C4 Container
+**This diagram reflects the post-integration shape** (`ADR-021` onward —
+see `CLAUDE.md`'s "Integration status"). If you're looking for the
+OData-era, single-store, reject-on-invalid picture this superseded, it's
+in git history, not here.
+
+**Deployment note**: per `ADR-001`, the Publish/Schema-Registry/Spec-
+Generator/GraphQL-Gateway containers below are built as **three separate
+deployables per site** — `EventStore.Host.Sqlite`/`.Postgres`/`.SqlServer`
+— one per database provider, not a single artifact with a runtime switch.
+Per `ADR-034`, a *site* itself holds a subset of shards (by `EntityType`);
+per `ADR-033`, at least two sites replicate any given shard. C4 Container
 diagrams describe logical architecture, not deployment topology, so this
-is a note rather than three copies of every box; see
-`06-solution-structure.md` for the actual project split.
+is a note rather than a full multi-site deployment diagram — see
+`06-solution-structure.md` for the project split and
+`docs/comparisons/peer-sync-topology.md`/`sharding-strategy.md` for the
+topology decisions themselves.
 
 ## Context diagram
 
@@ -20,24 +29,25 @@ is a note rather than three copies of every box; see
 @startuml C4_Context
 !include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Context.puml
 
-Person(publisher, "Publishing System", "Emits domain events")
-Person(follower, "Consuming System", "Subscribes to event streams")
-Person(operator, "Platform Operator", "Registers event types / schemas")
+Person(publisher, "Publishing System", "Emits domain patches/actions -- may be self-attested (ADR-035/036)")
+Person(follower, "Consuming System", "Queries current state, history, and subscribes to live changes")
+Person(operator, "Platform Operator", "Registers event types / schemas, per AppId (ADR-030)")
 
-System(eventStore, "Open Event Sourcing Store", "Validates, persists, and streams events. Publishes OpenAPI + AsyncAPI contracts.")
-System_Ext(idp, "EventStore.DevIdp", "Dev-mode OIDC token issuer (OpenIddict, in-process) -- ADR-006")
+System(eventStore, "Open Event-Sourced Entity Platform", "Multi-tenant framework: persists everything, folds into an Entity Store, exposes GraphQL. One instance per site.")
+System_Ext(idp, "EventStore.DevIdp", "Dev-mode OIDC token issuer + OAuth Token Exchange (OpenIddict, in-process) -- ADR-006/036")
+System_Ext(peerSite, "Peer Site", "Another instance of the same platform, replicating shared shards -- ADR-033")
 
-Rel(publisher, idp, "Obtains Bearer token", "OAuth2 client_credentials")
+Rel(publisher, idp, "Obtains Bearer token (ordinary, or exchanged from a self-attested UCAN)", "OAuth2 client_credentials / RFC 8693")
 Rel(follower, idp, "Obtains Bearer token", "OAuth2 client_credentials")
 Rel(operator, idp, "Obtains Bearer token", "OAuth2 client_credentials")
 
-Rel(publisher, eventStore, "POST /publish/{event-type}\nBearer <JWT>", "HTTPS/JSON")
-Rel(follower, eventStore, "QUERY /follow/{event-type}\nBearer <JWT>, $filter/mode in body (ADR-012)", "SSE")
-Rel(follower, eventStore, "QUERY /events/{id}/parents|children|ancestors|descendants\nBearer <JWT> (ADR-012)", "HTTPS/JSON")
+Rel(publisher, eventStore, "POST /publish/{event-type}\nBearer <JWT> + DPoP proof -- always 202, never 400 for shape/authority problems (ADR-023)", "HTTPS/JSON")
+Rel(follower, eventStore, "GraphQL Query (current state, history) / Subscription (live changes)\nBearer <JWT>, over HTTP QUERY -- never GET, keeps PII/PHI out of URLs (ADR-037)", "HTTPS")
 Rel(operator, eventStore, "PUT /registry/{event-type}\nBearer <JWT>", "HTTPS/JSON")
-Rel(eventStore, idp, "Validates Bearer token + DPoP proof (ADR-017)", "OIDC discovery + JWKS")
+Rel(eventStore, idp, "Validates Bearer token + DPoP proof; exchanges self-attested UCANs (ADR-017/036)", "OIDC discovery + JWKS")
+Rel(eventStore, peerSite, "Gossip replication -- durable, fault/abend/restart-tolerant peer-sync outbox/inbox (ADR-033)", "HTTPS/JSON, bidirectional")
 Rel(eventStore, publisher, "OpenAPI contract (anonymous)", "HTTPS")
-Rel(eventStore, follower, "AsyncAPI contract (anonymous)", "HTTPS")
+Rel(eventStore, follower, "GraphQL SDL, per AppId (anonymous)", "HTTPS")
 
 @enduml
 ```
@@ -51,143 +61,168 @@ Rel(eventStore, follower, "AsyncAPI contract (anonymous)", "HTTPS")
 Person(publisher, "Publishing System")
 Person(follower, "Consuming System")
 Person(operator, "Platform Operator")
-System_Ext(idp, "EventStore.DevIdp", "Dev-mode OIDC token issuer (OpenIddict) -- ADR-006")
+System_Ext(idp, "EventStore.DevIdp", "OIDC + Token Exchange -- ADR-006/036")
+System_Ext(peerSite, "Peer Site(s)", "ADR-033")
 
-System_Boundary(system, "Open Event Sourcing Store") {
-    Container(publishApi, "Publish API", ".NET (ASP.NET Core)", "POST /publish/{event-type}; validates against registered JSON Schema; RequiredPublishClaim check (ADR-008); eventId/PayloadHash idempotency (ADR-011); records parentEventIds")
-    Container(followApi, "Follow API", ".NET (ASP.NET Core, SSE)", "QUERY /follow/{event-type} (ADR-012); parses OData $filter/mode/fromSequenceNumber from the request body; RequiredReadClaim + restricted-parentEventIds filtering (ADR-008)")
-    Container(lineageApi, "Lineage API", ".NET (ASP.NET Core)", "QUERY /events/{id}/parents|children|ancestors|descendants (ADR-012, with $top/$skip); walks the event-parent DAG; per-node RequiredReadClaim visibility (ADR-008)")
-    Container(registry, "Schema Registry Service", ".NET", "CRUD for named/versioned JSON Schemas; marks indexed/filterable fields; sets ParentValidationMode, RequiredPublishClaim/RequiredReadClaim, x-masking (ADR-005/008/009); QUERY /registry paginated listing")
-    Container(specGen, "Spec Generator", ".NET", "Builds OpenAPI (publish, lineage) and AsyncAPI (follow) documents from registry state; MaskingSchemaTransformer wraps maskable properties (ADR-002/009)")
-    ContainerDb(db, "Event & Schema Store", "EF Core over SQLite / PostgreSQL / SQL Server (one provider per deployable, ADR-001)", "Events table, EventParents table, EventTypes/Schemas table")
+System_Boundary(system, "Open Event-Sourced Entity Platform (one site)") {
+    Container(inbox, "Inbox / Publish Endpoint", ".NET (ASP.NET Core)", "POST /publish; persists first, always 202 unless the envelope itself is unparseable (ADR-023); Idempotent Receiver (ADR-011)")
+    Container(router, "Router", "Background service", "Schema validation, entity resolution (ADR-021), live upcast validation + materialization (ADR-020/027), non-authoritative claim capture (ADR-035) -- all advisory, none block Inbox's 202")
+    ContainerDb(eventLog, "Event Log", "EF Core over SQLite/Postgres/SqlServer (ADR-001)", "StoredEvent, EventParent -- insert-only, hash-chained (ADR-019)")
+    Container(fold, "Fold / Projector", "Background service", "Logical-order fold (OccurredAt, not arrival order -- ADR-029); optimistic-concurrency conflict flagging (ADR-024); always-on, not opt-in")
+    ContainerDb(entityStore, "Entity Store", "Mutable, versioned, hashed, sharded by EntityType (ADR-021/034)", "Current materialized state -- the only thing GraphQL reads read from")
+    Container(registry, "Schema Registry Service", ".NET", "CRUD for named/versioned JSON Schemas, AppId-scoped (ADR-030); FilterableFields, ChangeKind, EntityIdField, upcast/downcast maps (ADR-018/028)")
+    Container(graphql, "GraphQL Gateway", ".NET (Hot Chocolate-class), QUERY method", "Query (entity + change history), Subscription (live changes, replaces OData $filter/Follow) -- per-AppId schema (ADR-030/037); depth/cost limiting")
+    Container(specGen, "Spec Generator", ".NET", "Builds OpenAPI (publish) + GraphQL SDL from registry state; MaskingSchemaTransformer (ADR-002/009)")
+    Container(streaming, "Streaming Channel Service", ".NET", "Batch ingest + tail/replay for telemetry & media channels (ADR-031) -- bypasses schema validation/hash-chain/fold entirely")
+    ContainerDb(streamStore, "Streaming Channel Store", "Plain append-only table, v1 engine choice (ADR-031)", "TelemetryChannel, TelemetrySample")
+    Container(attachments, "Attachment Service", ".NET + WebDAV endpoint", "Content-addressed binary uploads, browsable via WebDAV (ADR-032)")
+    ContainerDb(attachmentStore, "Attachment Store", "Content-addressed", "Attachment, AttachmentRef")
+    Container(peerSync, "Peer Sync Outbox/Inbox", "Durable store + background service, gossip topology", "Fault/abend/restart-tolerant (ADR-033); reuses the same durable transport as Inbox above")
 }
 
 System_Boundary(readSide, "CQRS Read Side (example) -- separate deployable and database, ADR-015") {
-    Container(projectionHost, "Projection Host", ".NET (background service)", "ProjectionHost + SnapshotMerger: consumes QUERY /follow like any external follower; applies Full-replace/Partial-merge per ChangeKind (ADR-016); OrderSummaryProjection is the worked example")
-    ContainerDb(readDb, "Read Model Store", "EF Core, one provider, its own database -- never shared with the write side", "ProjectionCheckpoint, ProjectionSnapshot, OrderSummary (example read model)")
+    Container(projectionHost, "Projection Host", ".NET (background service)", "Opt-in custom projections, on top of the always-on Entity Store above (ADR-015/016)")
+    ContainerDb(readDb, "Read Model Store", "EF Core, its own database", "ProjectionCheckpoint, ProjectionSnapshot, OrderSummary (example)")
 }
 
-Rel(publisher, publishApi, "Publishes events", "HTTPS/JSON, Bearer")
-Rel(follower, followApi, "Subscribes with $filter/mode", "SSE, Bearer")
-Rel(follower, lineageApi, "Queries event lineage", "HTTPS/JSON, Bearer")
+Rel(publisher, inbox, "Publishes patches/actions", "HTTPS/JSON, Bearer + DPoP")
+Rel(follower, graphql, "Query / Subscription", "HTTPS (QUERY method), Bearer + DPoP")
 Rel(operator, registry, "Registers schemas", "HTTPS/JSON, Bearer")
+Rel(publisher, streaming, "Batch-ingests channel samples", "HTTPS, Bearer")
+Rel(publisher, attachments, "Uploads binary content", "HTTPS/WebDAV, Bearer")
 
-Rel(publishApi, idp, "Validates Bearer token")
-Rel(followApi, idp, "Validates Bearer token")
-Rel(lineageApi, idp, "Validates Bearer token")
-Rel(registry, idp, "Validates Bearer token")
-
-Rel(publishApi, registry, "Fetch schema + ParentValidationMode + RequiredPublishClaim for validation")
-Rel(publishApi, db, "Append event; validate/insert EventParents rows + ChainHash (ADR-019)", "EF Core")
-Rel(followApi, db, "Query events (filter pushed to SQL)", "EF Core")
-Rel(lineageApi, db, "Direct joins (parents/children); recursive CTE (ancestors/descendants), stopping at restricted/unresolved nodes", "EF Core / raw SQL")
-Rel(registry, db, "Persist schema metadata", "EF Core")
+Rel(inbox, eventLog, "Append \"received\" (Idempotent Receiver + Inbox pattern)")
+Rel(inbox, router, "Notify new item")
+Rel(router, registry, "Schema + claims + upcast/downcast maps lookup (advisory)")
+Rel(router, eventLog, "Append routed event; append UpcastMaterialization (ADR-027) or EventUpcastFailed (ADR-020) as needed")
+Rel(fold, eventLog, "Replay in OccurredAt order")
+Rel(fold, entityStore, "Write materialized version; ConflictFlag/LateArrivalFlag")
+Rel(graphql, entityStore, "Read current state (sharded, ADR-034)")
+Rel(graphql, eventLog, "Read change history (ADR-024 §8.4)")
+Rel(registry, eventLog, "n/a -- registry has its own table, shown for scope only")
 Rel(specGen, registry, "Read schema/event-type metadata")
 Rel(publisher, specGen, "GET /openapi.json (anonymous)")
-Rel(follower, specGen, "GET /asyncapi.json (anonymous)")
+Rel(follower, specGen, "GraphQL SDL introspection (anonymous)")
+Rel(streaming, streamStore, "Batch append; tail/replay (ADR-010's shape, reused)")
+Rel(attachments, attachmentStore, "Content-addressed put/get; WebDAV PROPFIND/GET/PUT")
+Rel(eventLog, peerSync, "Feeds outbound peer sync")
+Rel(peerSync, eventLog, "Delivers events from peers -- same path as Inbox, no special-casing")
+Rel(peerSync, peerSite, "Gossip exchange", "HTTPS/JSON")
 
-Rel(projectionHost, followApi, "QUERY /follow/{event-type}\nmode=replay&fromSequenceNumber=<checkpoint> (ADR-015)", "HTTPS/JSON, Bearer")
-Rel(projectionHost, idp, "Validates Bearer token (its own client, e.g. projections-client)")
+Rel(inbox, idp, "Validates Bearer + DPoP; may trigger Token Exchange (ADR-036)")
+Rel(graphql, idp, "Validates Bearer + DPoP")
+Rel(registry, idp, "Validates Bearer + DPoP")
+
+Rel(projectionHost, graphql, "Subscribes (its own client identity)", "HTTPS, Bearer")
 Rel(projectionHost, readDb, "Upsert snapshot + read-model rows", "EF Core")
 
 @enduml
 ```
 
-## Component diagram — Publish API
+## Component diagram — Inbox & Router (Publish path)
 
 ```plantuml
 @startuml C4_Component_Publish
 !include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Component.puml
 
-Container_Boundary(publishApi, "Publish API") {
-    Component(endpoint, "PublishEndpoint", "Minimal API / Controller", "Routes POST /publish/{event-type}")
-    Component(scopeCheck, "events:publish scope check", "ScopeRequirement", "ADR-006 -- static policy, runs first")
-    Component(claimCheck, "RequiredPublishClaim check", "HasRequiredClaim(...)", "ADR-008 -- data-driven, after EventTypeDefinition resolves")
-    Component(idempotency, "Idempotency check", "eventId + PayloadHash lookup", "ADR-011 -- short-circuits before validation if eventId supplied")
-    Component(validator, "SchemaValidationService", "JsonSchema.Net wrapper", "Validates payload against registered schema version")
-    Component(parentLink, "ParentLinkService", "EF Core repository", "Validates parentEventIds per ParentValidationMode (ADR-005)")
-    Component(appender, "EventAppender", "EF Core repository", "Writes StoredEvent + EventParents rows, assigns SequenceNumber")
-    Component(registryClient, "SchemaRegistryClient", "In-process or HTTP client", "Resolves current schema + claims for event-type")
+Container_Boundary(inbox, "Inbox / Publish Endpoint") {
+    Component(endpoint, "PublishEndpoint", "Minimal API", "Routes POST /publish/{event-type}; the ONLY thing that can still return a real error (unparseable envelope) -- ADR-023")
+    Component(scopeCheck, "events:publish scope check", "ScopeRequirement", "ADR-006 -- static, blocking")
+    Component(idempotency, "Idempotent Receiver", "eventId + PayloadHash lookup", "ADR-011 -- short-circuits before append if eventId supplied")
+    Component(appender, "EventAppender", "EF Core repository", "Writes StoredEvent, assigns SequenceNumber, computes ChainHash (ADR-019) -- always succeeds if parseable")
 }
 
-ContainerDb(db, "Event & Schema Store")
+Container_Boundary(router, "Router (background, advisory-only)") {
+    Component(entityResolver, "Entity Resolver", "EF Core", "Resolves/creates EntityId via EntityIdField (ADR-021)")
+    Component(claimCheck, "RequiredPublishClaim / AuthorityStatus check", "HasRequiredClaim(...)", "ADR-008 (blocking, own-scope) + ADR-035 (advisory, never blocks)")
+    Component(validator, "SchemaValidationService", "JsonSchema.Net wrapper", "Validates against declared schemaVersion (ADR-020) -- result is advisory (SchemaStatus), never blocking (ADR-023)")
+    Component(parentLink, "ParentLinkService", "EF Core repository", "Validates parentEventIds per ParentValidationMode (ADR-005)")
+    Component(upcastValidate, "UpcastChain (live validation)", "OData compute() executor", "ADR-020 -- lagging schemaVersion? validate + materialize (ADR-027) or dead-letter (EventUpcastFailed)")
+}
 
-Rel(endpoint, scopeCheck, "1. validate scope")
-Rel(endpoint, registryClient, "2. get schema + claims")
-Rel(endpoint, claimCheck, "3. validate RequiredPublishClaim")
-Rel(endpoint, idempotency, "4. if eventId supplied")
-Rel(endpoint, validator, "5. validate payload")
-Rel(endpoint, parentLink, "6. validate parentEventIds")
-Rel(endpoint, appender, "7. append on success")
-Rel(registryClient, db, "Read EventTypes/Schemas")
-Rel(idempotency, db, "Read StoredEvent by EventId")
-Rel(appender, db, "Insert StoredEvent + EventParents")
+ContainerDb(eventLog, "Event Log")
+ContainerDb(registry, "Schema Registry")
+
+Rel(endpoint, scopeCheck, "1. validate scope (blocking)")
+Rel(endpoint, idempotency, "2. if eventId supplied")
+Rel(endpoint, appender, "3. append \"received\" regardless of shape (ADR-023)")
+Rel(appender, eventLog, "INSERT StoredEvent")
+Rel(endpoint, router, "4. notify (async, non-blocking)")
+Rel(router, entityResolver, "resolve EntityId")
+Rel(router, registry, "fetch schema + claims + maps")
+Rel(router, claimCheck, "advisory claim/authority checks")
+Rel(router, validator, "advisory schema check -> SchemaStatus")
+Rel(router, parentLink, "validate parentEventIds")
+Rel(router, upcastValidate, "if schemaVersion behind active")
+Rel(router, eventLog, "append routed event, materialization, or EventUpcastFailed")
 
 @enduml
 ```
 
-## Component diagram — Follow API
+## Component diagram — GraphQL Gateway
 
 ```plantuml
-@startuml C4_Component_Follow
+@startuml C4_Component_GraphQL
 !include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Component.puml
 
-Container_Boundary(followApi, "Follow API") {
-    Component(sseEndpoint, "FollowEndpoint", "ASP.NET Core, QUERY method", "QUERY /follow/{event-type} (ADR-012); reads $filter/mode/fromSequenceNumber from the request body")
-    Component(scopeCheck, "events:follow scope check", "ScopeRequirement", "ADR-006")
-    Component(claimCheck, "RequiredReadClaim check", "HasRequiredClaim(...)", "ADR-008 -- once, at connect time")
-    Component(odataParser, "ODataFilterParser", "Microsoft.OData.UriParser", "Parses $filter into an OData AST")
-    Component(predicateBuilder, "PredicateTranslator", "Custom", "Walks OData AST -> LINQ Expression using JsonPath functions")
-    Component(jsonPathTranslator, "IJsonPathTranslator (impl per provider)", "SQLite/Postgres/SqlServer", "Maps JsonValue() calls to native SQL JSON functions")
-    Component(tailReader, "EventTailReader", "EF Core repository", "Polls Events where SequenceNumber > lastSeen (cursor set by mode, ADR-010), applies pushed-down predicate")
-    Component(parentFilter, "parentEventIds visibility filter", "restrictedTypes set", "ADR-008 -- omits any parent whose type the caller can't see")
-    Component(masker, "IPayloadMasker", "schema+data transform", "ADR-009 -- Phase 8, not yet built; wraps maskable fields per caller's claims")
-    Component(upcaster, "UpcastChain", "Generic executor over registered OData compute() expressions", "ADR-018 -- reshapes an old-version payload to current shape (many-to-one/one-to-one only) before masking runs")
+Container_Boundary(graphql, "GraphQL Gateway") {
+    Component(handler, "GraphQL Handler", "QUERY method (queries/subscriptions), POST (mutations, unused here)", "ADR-037 -- one schema per AppId (ADR-030)")
+    Component(scopeCheck, "events:follow / events:lineage:read scope check", "ScopeRequirement", "ADR-006")
+    Component(claimCheck, "RequiredReadClaim / per-node visibility check", "HasRequiredClaim(...)", "ADR-008 -- per-node for history/lineage traversal, once at connect time for a live subscription")
+    Component(entityResolver, "Entity Resolver", "Reads Entity Store (shard-aware, ADR-034)", "Current-state queries")
+    Component(historyResolver, "History Resolver", "Reads Event Log by EntityId", "ADR-024 §8.4 -- entityHistory(entityId, property)")
+    Component(subResolver, "Subscription Resolver", "Bridges the same tail/replay poll loop ADR-010 established", "Live changes -- GraphQL's transport, not a new polling mechanism")
+    Component(depthLimiter, "Depth/Cost Limiter", "Guards against unbounded hierarchical fan-out", "Mandatory, not optional (ADR-037)")
+    Component(dataLoader, "Batching (DataLoader pattern)", "Per-resolver batching", "Avoids N+1 across shards/replicas")
+    Component(upcaster, "UpcastChain", "Same executor as the Router uses", "ADR-018/027 -- reshapes a stored/materialized event to current shape on read")
+    Component(masker, "IPayloadMasker", "schema+data transform", "ADR-009 -- Phase 8, not yet built")
 }
 
-ContainerDb(db, "Event & Schema Store")
+ContainerDb(entityStore, "Entity Store")
+ContainerDb(eventLog, "Event Log")
 
-Rel(sseEndpoint, scopeCheck, "validate scope")
-Rel(sseEndpoint, claimCheck, "validate RequiredReadClaim")
-Rel(sseEndpoint, odataParser, "parse $filter")
-Rel(odataParser, predicateBuilder, "AST")
-Rel(predicateBuilder, jsonPathTranslator, "uses registered translation")
-Rel(sseEndpoint, tailReader, "poll for new matching events")
-Rel(tailReader, db, "SELECT ... WHERE json_extract/JSON_VALUE/->> (pushed down)")
-Rel(sseEndpoint, upcaster, "reshape to current schema version")
-Rel(sseEndpoint, parentFilter, "filter each event's parentEventIds")
-Rel(upcaster, masker, "mask payload before sending (Phase 8)")
+Rel(handler, scopeCheck, "validate scope")
+Rel(handler, depthLimiter, "validate before execution")
+Rel(handler, claimCheck, "validate RequiredReadClaim")
+Rel(handler, entityResolver, "Query: current state")
+Rel(handler, historyResolver, "Query: entityHistory")
+Rel(handler, subResolver, "Subscription: live changes")
+Rel(entityResolver, dataLoader, "batch reads")
+Rel(dataLoader, entityStore, "SELECT ... (sharded)")
+Rel(historyResolver, eventLog, "SELECT ... WHERE EntityId = ... ORDER BY SequenceNumber")
+Rel(entityResolver, upcaster, "reshape if needed")
+Rel(upcaster, masker, "mask before returning")
 
 @enduml
 ```
 
-## Component diagram — Lineage API
+## Component diagram — Lineage traversal (now inside the GraphQL Gateway)
 
 ```plantuml
 @startuml C4_Component_Lineage
 !include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Component.puml
 
-Container_Boundary(lineageApi, "Lineage API") {
-    Component(lineageEndpoint, "LineageEndpoint", "ASP.NET Core, QUERY method", "Routes QUERY /events/{id}/parents|children|ancestors|descendants (ADR-012); reads optional $top/$skip from the request body")
-    Component(scopeCheck, "events:lineage:read scope check", "ScopeRequirement", "ADR-006")
-    Component(rootClaimCheck, "Root visibility check", "HasRequiredClaim(...)", "ADR-008 -- pass/fail 403 for {eventId} itself only")
+note as N
+  This traversal logic is unchanged from the OData era --
+  only its transport moved (QUERY-body $filter -> GraphQL
+  query, ADR-037). It lives inside the GraphQL Gateway now,
+  not a standalone "Lineage API" container.
+end note
+
+Container_Boundary(lineageResolver, "Lineage Resolver (part of GraphQL Gateway)") {
     Component(directReader, "EventParentReader", "EF Core (LINQ)", "Immediate parents/children via a plain join on EventParents")
     Component(recursiveReader, "IEventLineageQueryProvider (impl per provider)", "SQLite/Postgres/SqlServer raw SQL", "Ancestors/descendants via provider-specific WITH RECURSIVE CTE")
-    Component(cycleGuard, "CycleGuard", "In-process", "Bounds traversal depth / rejects a revisited node -- required because Permissive-mode event types can form cycles (ADR-005)")
-    Component(nodeVisibility, "Per-node visibility check", "restrictedTypes set", "ADR-008 -- 'you can only see what you can see': stubs a discovered node as restricted:true rather than failing the request; recursion stops there, not just output redaction")
+    Component(cycleGuard, "CycleGuard", "In-process", "Bounds traversal depth / rejects a revisited node (ADR-005)")
+    Component(nodeVisibility, "Per-node visibility check", "restrictedTypes set", "ADR-008 -- stubs a discovered node as restricted:true rather than failing the request")
 }
 
-ContainerDb(db, "Event & Schema Store")
+ContainerDb(eventLog, "Event Log")
 
-Rel(lineageEndpoint, scopeCheck, "validate scope")
-Rel(lineageEndpoint, rootClaimCheck, "validate root's own visibility (403 if restricted)")
-Rel(lineageEndpoint, directReader, "parents / children")
-Rel(lineageEndpoint, recursiveReader, "ancestors / descendants")
+Rel(directReader, nodeVisibility, "stubs a restricted direct node")
 Rel(recursiveReader, cycleGuard, "guards recursion")
 Rel(recursiveReader, nodeVisibility, "stops expansion past a restricted node")
-Rel(directReader, nodeVisibility, "stubs a restricted direct node")
-Rel(directReader, db, "SELECT ... FROM EventParents JOIN Events")
-Rel(recursiveReader, db, "WITH RECURSIVE ... (native per provider)")
+Rel(directReader, eventLog, "SELECT ... FROM EventParents JOIN Events")
+Rel(recursiveReader, eventLog, "WITH RECURSIVE ... (native per provider)")
 
 @enduml
 ```
@@ -199,18 +234,18 @@ Rel(recursiveReader, db, "WITH RECURSIVE ... (native per provider)")
 !include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Component.puml
 
 Container_Boundary(projectionHost, "Projection Host") {
-    Component(runner, "ProjectionRunner", "Background service, one loop per registered IProjection<T>", "Reads checkpoint; QUERY /follow/{event-type} mode=replay&fromSequenceNumber=<checkpoint> (ADR-015); never mode=tail")
-    Component(merger, "SnapshotMerger", "Pure function", "Full: replace snapshot. Partial: merge-patch, absent fields untouched (ADR-016; same overlay rule as ADR-009's masking guidance)")
+    Component(runner, "ProjectionRunner", "Background service, one loop per registered IProjection<T>", "Reads checkpoint; Subscription/replay via the GraphQL Gateway (ADR-037), reusing ADR-010's tail/replay shape -- never mode=tail equivalent")
+    Component(merger, "SnapshotMerger", "Optional<T>-aware fold", "Full: replace. Partial: merge-patch, absent -> untouched, explicit null -> clears (ADR-022, refines ADR-016)")
     Component(checkpointStore, "CheckpointStore", "EF Core repository", "ProjectionCheckpoint: LastSequenceNumber per projection")
     Component(snapshotStore, "SnapshotStore", "EF Core repository", "ProjectionSnapshot: current merged JSON per (ProjectionName, Key)")
-    Component(orderProjection, "OrderSummaryProjection", "IProjection<OrderSummary> (worked example)", "GetKey(OrderId); Project(mergedSnapshot) -> OrderSummary row -- never sees raw events, ChangeKind, or merge logic")
+    Component(orderProjection, "OrderSummaryProjection", "IProjection<OrderSummary> (worked example)", "GetKey(OrderId); Project(mergedSnapshot) -> OrderSummary row")
 }
 
-Container(followApi, "Follow API", "write side")
+Container(graphql, "GraphQL Gateway", "write-side read path")
 ContainerDb(readDb, "Read Model Store")
 
 Rel(runner, checkpointStore, "read/advance checkpoint")
-Rel(runner, followApi, "QUERY /follow/{event-type}", "HTTPS/JSON, Bearer")
+Rel(runner, graphql, "Subscribe / replay from checkpoint", "HTTPS, Bearer")
 Rel(runner, snapshotStore, "load existing snapshot for key")
 Rel(runner, merger, "apply(ChangeKind, existing, incoming)")
 Rel(merger, snapshotStore, "upsert merged snapshot")
@@ -225,6 +260,14 @@ Rel(snapshotStore, readDb, "persist snapshot")
 A **full rebuild** is not a separate component or code path here — it's
 `checkpointStore` reset to `0` plus `readDb`'s tables truncated, then the
 exact same `runner` loop shown above runs again from scratch (`ADR-015`).
+
+## Not yet diagrammed at component level
+
+The Streaming Channel Service (`ADR-031`) and Attachment Service
+(`ADR-032`) exist at the Container level above but don't have their own
+component diagrams yet — flagged as remaining propagation work, not
+omitted on purpose. `docs/data/streaming-and-attachments.md` has the
+entity shapes in the meantime.
 
 ## Suggested References
 

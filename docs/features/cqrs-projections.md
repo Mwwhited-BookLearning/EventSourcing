@@ -1,5 +1,15 @@
 # Feature: CQRS read-model projections (worked example — Orders)
 
+> **Scenarios below predate `ADR-022`/`ADR-023`/`ADR-037`.** Partial
+> merges are now `Optional<T>`-wrapped per-property (`ADR-022`, including
+> explicit-null-clears-a-field, which the original `Partial` merge
+> deliberately didn't support); a registration missing `changeKind` now
+> persists with `SchemaStatus: invalid` rather than a `400` (`ADR-023`);
+> `ProjectionHost` subscribes through the GraphQL Gateway now, not `QUERY
+> /follow` directly (`ADR-037` — same tail/replay semantics, different
+> transport). Tracked as outstanding propagation work (`CLAUDE.md`), not
+> done in this pass.
+
 Context: design in `../09-cqrs-read-models.md`; decision records `ADR-015`
 (projections as Follow consumers) and `ADR-016` (`ChangeKind`, centralized
 merge) in `../07-adrs.md`. Builds on

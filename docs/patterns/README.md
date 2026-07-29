@@ -24,6 +24,11 @@ of document in this design package:
 | [Tolerant Reader & Schema Evolution](tolerant-reader-and-schema-evolution.md) | Ignore what you don't recognize; reconcile old-shaped data on read, never by rewriting history | `ADR-018`, `ADR-020`, `ADR-022` |
 | [Optimistic Concurrency](optimistic-concurrency.md) | Check for conflict at commit time instead of locking; flag genuine conflicts rather than silently resolving them | `ADR-024` |
 | [Hash Chain (Tamper-Evident Log)](hash-chain-integrity.md) | Each record's hash incorporates the previous one's, so undetected history tampering becomes detectable | `ADR-019` |
+| [Ticket Exchange for Header-Incapable Clients](ticket-exchange-headerless-clients.md) | A short-lived, single-use, opaque ticket + client-signed URL, for callers that can't set an `Authorization` header at all | `ADR-040` |
+| [MVVM (Model-View-ViewModel)](mvvm-client-architecture.md) | Structure/style/state/transport kept in separate layers; a ViewModel dispatches commands rather than mutating state directly | `ADR-039` |
+| [Installable, Offline-Capable Web App with a Persistent Outbox](pwa-offline-outbox.md) | Service Worker + Web App Manifest + Background Sync — a web client that installs, runs with no network, and queues commands durably until connectivity returns | `ADR-039` |
+| [GraphQL Query Language](graphql-query-language.md) | Client-driven hierarchical query/mutation/subscription document, one round trip, partial-success execution | `ADR-037` |
+| [OData Query Protocol](odata-query-protocol.md) | Standardized URL query-string conventions for filter/sort/page/expand over a resource collection | `ADR-003`, `ADR-012` (superseded by `ADR-037`) |
 
 ## Interactions — where two patterns compose
 
@@ -59,7 +64,6 @@ queued.**
 | Merkle tree catch-up | Exchange hash-tree summaries to find and transfer only the differing ranges after a disconnection, instead of a full resync | `ADR-033` |
 | Non-authoritative capture (Reservation/Provisional + non-repudiation logging) | Accept data whose submitter's authority can't be verified yet; capture now, adjudicate later, via an explicit trust status that never gates ingestion; see [the rejection-behavior comparison](../comparisons/authority-rejection-behavior.md) for annotate-only vs. compensating-patch | `ADR-035` |
 | Self-attested, offline-verifiable delegation (DID/UCAN) | Prove a chain of delegated capability without needing to reach a central authority at verification time | `ADR-036` |
-| MVVM (Model-View-ViewModel) | Structure/style/state/transport kept in separate layers; a ViewModel dispatches commands rather than mutating state directly | `ADR-039` |
 | Streaming ingestion (telemetry, audio/video) as a separate fast path | Bypass schema validation/hash-chaining/fold entirely for high-frequency chunked data; link back to the event-sourced world only through a detector publishing an ordinary event | `ADR-031` |
 | Deep-linking via temporal fragment URIs | A stable, shareable reference to a point/interval within a media/signal stream, using a real W3C syntax instead of a bespoke query parameter | `ADR-031` |
 | Seekable playback via byte-range requests | The standard mechanism behind a scrub bar — request a byte range, get `206 Partial Content` back, instead of downloading a whole file to seek within it | `ADR-031`, `ADR-032` |
@@ -69,11 +73,9 @@ queued.**
 ## A note on diagrams
 
 Each written pattern doc includes a PlantUML diagram (sequence, C4
-component, or object, whichever actually clarifies that pattern) — none
-of the six original written docs have a UI surface, so Salt wireframes
-aren't used in this folder yet; `ADR-039`'s MVVM/entity-view pattern will
-be the first one that genuinely calls for one, once it gets a standalone
-write-up.
+component, or object, whichever actually clarifies that pattern).
+[MVVM](mvvm-client-architecture.md) is the first pattern doc with a
+Salt wireframe, since it's the first one with a real UI surface.
 
 ## A note on superseded patterns
 

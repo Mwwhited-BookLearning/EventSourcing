@@ -3,6 +3,18 @@
 Both documents are generated from the Schema Registry; neither hand-authors
 JSON Schema. The registry is the single source of truth.
 
+> **Partially superseded, per `ADR-037`.** The **Publish** contract below
+> (`schemaVersion` required, `202` + status envelope, `EventUpcastFailed`)
+> is current — `ADR-023`/`ADR-020` are already reflected here. The
+> **Follow** (AsyncAPI/SSE, `$filter` in a `QUERY` body) and **Lineage**
+> (`QUERY /events/{id}/...`) sections below describe the OData-era
+> surface `ADR-037` replaced entirely with a GraphQL Gateway (Query for
+> current state/history, Subscription for live changes — still over the
+> HTTP `QUERY` method, for the same PII/PHI-in-URLs reason, just carrying
+> a GraphQL document instead of an OData expression). Rewriting those
+> sections for the actual GraphQL contract is flagged as outstanding
+> propagation work, not yet done — see `CLAUDE.md`.
+
 ## Error responses
 
 Every non-`2xx` response, from every endpoint in this document, is **RFC

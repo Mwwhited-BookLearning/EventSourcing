@@ -59,3 +59,5 @@ Consequences: <trade-offs accepted>
 | [037](adrs/adr-037-graphql-only-query-layer.md) | GraphQL as the sole query layer — supersedes `ADR-003`/`04-odata-filter-pushdown.md` | Accepted |
 | [038](adrs/adr-038-compatibility-and-deployment.md) | Compatibility & deployment discipline — Tolerant Reader, Expand/Contract, N-1/N+1 window | Accepted |
 | [039](adrs/adr-039-mvvm-client.md) | MVVM client architecture + HTML/JS entity view definitions | Accepted |
+| [040](adrs/adr-040-ticket-exchange-headerless-clients.md) | URL-embeddable ticket exchange for header-incapable clients (streaming/WebDAV playback) | Accepted |
+| [041](adrs/adr-041-explicit-composition-first-party-libraries.md) | Explicit composition and first-party libraries over convention-magic (constructor injection, Pure DI, no AutoMapper/third-party logging, `System.Text.Json`) | Accepted |

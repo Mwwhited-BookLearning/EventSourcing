@@ -1,5 +1,14 @@
 # Feature: OData filter pushdown to the database
 
+> **Surface superseded, per `ADR-037`.** `$filter` (OData syntax) is gone
+> — GraphQL query/subscription arguments are the only filtering surface
+> now. **The pushdown mechanism this doc actually tests survives
+> unchanged**: `IJsonPathTranslator`'s per-provider native SQL JSON
+> generation still runs, now driven by GraphQL resolver arguments instead
+> of an OData AST. See `../04-odata-filter-pushdown.md`'s banner for the
+> same distinction. Scenario rewriting for the GraphQL surface is tracked
+> as outstanding propagation work (`CLAUDE.md`), not done in this pass.
+
 Context: full design in `../04-odata-filter-pushdown.md`; this is the query-
 translation mechanics underlying [`follow-subscribe.md`](follow-subscribe.md)
 — that doc covers the SSE connection lifecycle, this one covers what happens

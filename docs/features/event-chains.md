@@ -1,5 +1,14 @@
 # Feature: Event chains (parent/child lineage across events)
 
+> **Scenarios below predate `ADR-023`/`ADR-037`.** A Strict-mode publish
+> referencing an unknown parent now persists with `SchemaStatus: invalid`
+> rather than a `400` (`ADR-023`); the Lineage traversal itself moved from
+> `QUERY /events/{id}/...` to a GraphQL query inside the GraphQL Gateway
+> (`ADR-037`) — the traversal *logic* (direct joins, recursive CTEs,
+> cycle safety, per-node visibility) is unchanged, only its transport.
+> Tracked as outstanding propagation work (`CLAUDE.md`), not done in this
+> pass.
+
 Context: data model in `../02-data-model.md` ("Event lineage"); API contract
 in `../03-api-contracts.md` ("Lineage API"); decision record `ADR-005` in
 `../07-adrs.md`. Builds on [`publish-event.md`](publish-event.md) — this doc

@@ -1,5 +1,14 @@
 # Feature: Follow an event type via SSE
 
+> **Surface superseded, per `ADR-037`.** `QUERY /follow/{event-type}`
+> (bare SSE) is replaced by a GraphQL Subscription served through the
+> GraphQL Gateway — same `mode`/`fromSequenceNumber` tail-vs-replay
+> semantics (`ADR-010`), same HTTP `QUERY` method for the same PII-in-URL
+> reason, just a GraphQL subscription document instead of a bare `$filter`
+> string, and a GraphQL-transport response instead of a standalone SSE
+> stream. Scenario rewriting is tracked as outstanding propagation work
+> (`CLAUDE.md`), not done in this pass.
+
 Context: full contract in `../03-api-contracts.md`; the `$filter` pushdown
 mechanics (per-provider SQL translation) are covered in depth in
 [`filter-pushdown.md`](filter-pushdown.md), not repeated here; auth
