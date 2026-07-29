@@ -2,10 +2,10 @@
 
 # Authority Rejection Behavior: Annotate-Only vs. Compensating-Patch
 
-**Gates:** the queued non-authoritative-capture ADR. **Raised by:**
-`docs/design-docs/12 §12.4`, explicitly left open there and in
-`14-open-questions.md` ("needs input from domains with legal/evidentiary
-requirements").
+**Decided in:** `ADR-035` (annotate-only default). **Raised by:** the
+second design (`docs/design-docs/`, now absorbed and removed — see
+`CLAUDE.md`), which left this explicitly open ("needs input from domains
+with legal/evidentiary requirements").
 
 ## The fork
 

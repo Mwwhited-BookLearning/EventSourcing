@@ -105,29 +105,33 @@ An event-sourcing store with:
   `09-cqrs-read-models.md`, `features/cqrs-projections.md`, and
   `ADR-015`/`ADR-016`.
 
-## Integration in progress: a second design (`docs/design-docs/`)
+## Integration complete: a second design, fully absorbed
 
 A larger, independently-developed design — a distributed, entity-centric
 event-sourced platform (multi-origin replication, sharding, GraphQL,
-non-authoritative capture, an MVVM client) — is being merged into this
-package. `ADR-021`–`ADR-024` are the foundational pieces already landed:
-entities are now a first-class concept (`ADR-021`), partial patches are
-property-level `Optional<T>` rather than whole-payload merge (`ADR-022`,
-refining `ADR-016`), publish is switching to a persist-everything,
-advisory-status posture rather than reject-on-invalid (`ADR-023`,
-superseding parts of `ADR-011`/`ADR-013`/`ADR-020`), and optimistic
-concurrency + conflict flagging exists for the first time (`ADR-024`).
-Replication, sharding, non-authoritative capture, GraphQL (replacing
-OData entirely — see below), and the client architecture are queued as
-`ADR-025`–`ADR-031`, not yet written. The "deliberately is not" list
-below is being revised as each lands — the single-store non-goal is
-**already superseded in direction**, not yet in a built ADR.
+non-authoritative capture, an MVVM client) — was merged into this
+package via `ADR-021` through `ADR-039` (see `CLAUDE.md`'s "Integration
+status"). Every decision it raised now has a real, Accepted ADR here:
+entities are a first-class concept (`ADR-021`), partial patches are
+property-level `Optional<T>` (`ADR-022`), publish is persist-everything
+(`ADR-023`), optimistic concurrency + conflict flagging (`ADR-024`),
+multi-tenancy (`ADR-030`), streaming channels and binary attachments
+(`ADR-031`/`ADR-032`), gossip-topology replication and entity-type
+sharding (`ADR-033`/`ADR-034`), non-authoritative capture (`ADR-035`),
+DID/UCAN self-attestation (`ADR-036`), GraphQL replacing OData entirely
+(`ADR-037`), and the MVVM client (`ADR-039`). The source design package
+this merge drew from (`docs/design-docs/`) has been removed now that
+every decision it raised is fully captured in its own ADR — it was an
+imported reference for this integration, not a permanent part of this
+design package. A `docs/design-docs/NN §X.Y`-style citation surviving
+elsewhere in these docs is a provenance pointer to that now-absorbed
+source, not a link to a file that still exists.
 
 ## What this system deliberately is not (v1 scope)
 
 - ~~Not a distributed/clustered event broker (single logical store to
-  start).~~ **Superseded in direction, pending `ADR-025`/`ADR-026`**: the
-  second design's replication/sharding model is being adopted, not
+  start).~~ **Superseded in direction, per `ADR-033`/`ADR-034`**: the
+  second design's replication/sharding model was adopted, not
   rejected — see above.
 - Not attempting arbitrary filtering on unindexed JSON fields — filtering is
   restricted to fields explicitly marked filterable/indexed at schema

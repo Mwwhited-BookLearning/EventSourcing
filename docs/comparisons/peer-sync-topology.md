@@ -2,8 +2,9 @@
 
 # Peer-Sync Topology: Gossip/Full-Mesh vs. Hub-and-Spoke vs. Leaderless Pull
 
-**Gates:** the queued replication ADR. **Raised by:** `docs/design-docs/09
-§9.4.1`, left open in `14-open-questions.md`.
+**Decided in:** `ADR-033` (gossip/full-mesh). **Raised by:** the second
+design (`docs/design-docs/`, now absorbed and removed — see `CLAUDE.md`),
+which left this open.
 
 **Stated requirement driving this comparison:** at least two independent,
 full copies of the data, on physically separate servers — and specifically

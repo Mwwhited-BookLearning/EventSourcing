@@ -2,9 +2,9 @@
 
 # Sharding Strategy: Entity-Type-Based vs. Hash-Based Consistent Hashing
 
-**Gates:** the queued sharding ADR. **Raised by:** `docs/design-docs/09
-§9.2`, which recommends consistent hashing but leaves the choice open
-(`14-open-questions.md`).
+**Decided in:** `ADR-034` (entity-type-based). **Raised by:** the second
+design (`docs/design-docs/`, now absorbed and removed — see `CLAUDE.md`),
+which recommended consistent hashing but left the choice open.
 
 ## The fork
 
