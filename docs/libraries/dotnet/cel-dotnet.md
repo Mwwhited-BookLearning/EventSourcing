@@ -26,6 +26,13 @@ var expr = celEnvironment.Compile("event.FirstName + ' ' + event.LastName");
 var result = expr.Evaluate(new { FirstName = "A.", LastName = "Smith" });
 ```
 
+**See [the CEL vs. JSONata comparison](../../comparisons/upcast-transform-language.md)**
+for the full head-to-head, including the honest tension it surfaces:
+CEL fits this problem's shape better, but `Jsonata.Net.Native` is
+currently the more mature, consolidated .NET package of the two —
+tracked as a live, unresolved question in `10-open-questions.md`, not
+assumed away.
+
 ## Where this project uses it
 
 `ADR-018`/`ADR-037` — the declarative half of upcast mapping, alongside

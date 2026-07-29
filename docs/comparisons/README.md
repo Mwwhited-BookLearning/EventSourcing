@@ -26,6 +26,7 @@ is the actual teaching value of this document type.
 | [UI architecture](ui-architecture-patterns.md) — MVVM vs. MVP vs. MVC vs. code-behind | `ADR-039` (MVVM) | Written as an explicit fallback priority (MVVM → MVP → MVC → code-behind) for UI technologies/screens `ADR-039` doesn't fully dictate, per direct request |
 | [UI framework](ui-framework.md) — Vue vs. Blazor vs. React vs. Angular | `mvvm-client-architecture.md`'s concrete mapping (Vue) | Checks that choice against a genuine first-party alternative (Blazor) under `ADR-041`'s own preference — Blazor loses specifically on `ADR-039`'s runtime-data view-definition mechanism, not by default |
 | [Service-to-service identity](service-identity.md) — SPIFFE/SPIRE vs. static OAuth2 client credentials vs. hand-rolled mTLS | `ADR-048` (SPIFFE/SPIRE) | Un-rejects `references.md`'s prior SPIFFE/SPIRE rejection once this design's own growth (many services, `ADR-033`'s cross-site peers) created the multi-workload-mesh scenario the rejection named as the reason to revisit |
+| [Upcast transform language](upcast-transform-language.md) — CEL vs. JSONata vs. JMESPath vs. JOLT vs. OData `compute()` | `ADR-037` (CEL, for design-fit reasons) | CEL wins on safety/performance/problem-fit; JSONata's .NET port is currently the more mature concrete implementation — a real, stated tension, not glossed over, tracked in `docs/10-open-questions.md` |
 
 ## Not yet written up as their own standalone comparison doc
 
@@ -34,6 +35,3 @@ conversation that produced the deciding ADR, but not pulled into their
 own file here yet — listed so the catalog stays honest about what's
 covered vs. what's just recorded inline in an ADR.
 
-| Comparison | Decided in | Note |
-|---|---|---|
-| Upcast/downcast transform language: OData `compute()` vs. JSONata vs. JMESPath vs. JOLT vs. this design's JS+CEL | `ADR-018` | `references.md` records the shortlist and why each lost; not yet pulled into a dedicated side-by-side here |
