@@ -94,9 +94,30 @@ An event-sourcing store with:
   `09-cqrs-read-models.md`, `features/cqrs-projections.md`, and
   `ADR-015`/`ADR-016`.
 
+## Integration in progress: a second design (`docs/design-docs/`)
+
+A larger, independently-developed design — a distributed, entity-centric
+event-sourced platform (multi-origin replication, sharding, GraphQL,
+non-authoritative capture, an MVVM client) — is being merged into this
+package. `ADR-021`–`ADR-024` are the foundational pieces already landed:
+entities are now a first-class concept (`ADR-021`), partial patches are
+property-level `Optional<T>` rather than whole-payload merge (`ADR-022`,
+refining `ADR-016`), publish is switching to a persist-everything,
+advisory-status posture rather than reject-on-invalid (`ADR-023`,
+superseding parts of `ADR-011`/`ADR-013`/`ADR-020`), and optimistic
+concurrency + conflict flagging exists for the first time (`ADR-024`).
+Replication, sharding, non-authoritative capture, GraphQL (replacing
+OData entirely — see below), and the client architecture are queued as
+`ADR-025`–`ADR-031`, not yet written. The "deliberately is not" list
+below is being revised as each lands — the single-store non-goal is
+**already superseded in direction**, not yet in a built ADR.
+
 ## What this system deliberately is not (v1 scope)
 
-- Not a distributed/clustered event broker (single logical store to start).
+- ~~Not a distributed/clustered event broker (single logical store to
+  start).~~ **Superseded in direction, pending `ADR-025`/`ADR-026`**: the
+  second design's replication/sharding model is being adopted, not
+  rejected — see above.
 - Not attempting arbitrary filtering on unindexed JSON fields — filtering is
   restricted to fields explicitly marked filterable/indexed at schema
   registration time (see `04-odata-filter-pushdown.md`).

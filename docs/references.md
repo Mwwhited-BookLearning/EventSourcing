@@ -39,6 +39,10 @@ comprehensive index, organized by whether the concept was actually
 | .NET Aspire | [Microsoft Learn — .NET Aspire overview](https://learn.microsoft.com/en-us/dotnet/aspire/get-started/aspire-overview) | `ADR-006`, `EventStore.AppHost` |
 | Testcontainers | [testcontainers.com](https://testcontainers.com/) | `06-solution-structure.md`, integration test strategy |
 | Event Sourcing / CQRS (the general pattern) | [Martin Fowler — Event Sourcing](https://martinfowler.com/eaaDev/EventSourcing.html) / [CQRS](https://martinfowler.com/bliki/CQRS.html) | `09-cqrs-read-models.md`, `ADR-015`/`ADR-016` |
+| Scalar | [scalar/scalar](https://github.com/scalar/scalar), `Scalar.AspNetCore` NuGet package | `ADR-025` — OpenAPI docs UI |
+| AsyncAPI React component | [asyncapi/asyncapi-react](https://github.com/asyncapi/asyncapi-react) | `ADR-025` — AsyncAPI docs UI |
+| OpenTelemetry | [opentelemetry.io](https://opentelemetry.io/), via .NET Aspire's `ServiceDefaults` | `ADR-026` — logging, tracing, and metrics for every service |
+| Docker Compose | [docs.docker.com/compose](https://docs.docker.com/compose/) | `ADR-026` — production deployment path |
 
 ## Reference-only — considered, not adopted
 

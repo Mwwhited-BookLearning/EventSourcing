@@ -611,10 +611,12 @@ ordinary app images — `eventstore` (built from whichever
 service, per `ADR-001` — not a generic image with a provider env var) and
 `devidp` — plus that one database; `devidp` is built from the same
 `EventStore.DevIdp` project, not pulled from a third-party registry, so
-there's no external image or volume-mounted realm config to manage. CI or
-anyone without the Aspire CLI gets an identical dev environment either way.
-Aspire is preferred day-to-day because it also wires telemetry/health
-checks automatically; compose stays as the lowest-common-denominator path.
+there's no external image or volume-mounted realm config to manage.
+**`ADR-026` supersedes the framing below**: Aspire is for local
+development only (it also wires all three OpenTelemetry signals —
+logging, tracing, metrics — automatically via `ServiceDefaults`);
+`docker-compose.yml` is the actual **production** deployment path, not a
+CI/no-Aspire-CLI fallback.
 
 Because `EventStore.DevIdp` uses an EF Core **InMemory** store, there is
 nothing to import or persist — every fresh start re-seeds the three clients
