@@ -1,8 +1,19 @@
 # Feature: Non-authoritative capture (`AuthorityStatus` as a trust axis)
 
-Context: decision record `ADR-035` in `../07-adrs.md`; the annotate-only vs.
+> **Partially superseded, per `ADR-042`.** An `unattested`/
+> `pending_review` event no longer folds into the authoritative Entity
+> Store identically to an `accepted` one — it only folds once
+> `AuthorityStatus` reaches `accepted`. A separate `LiveEntityStoreRow`
+> (`../data/entity-store.md`) reflects it immediately instead, explicitly
+> labeled `isAuthoritative: false`. The scenarios below are updated to
+> reflect this; the `authorityDecision`/`RejectionBehavior` mechanics
+> themselves are unchanged.
+
+Context: decision record `ADR-035` in `../07-adrs.md`, revised by
+`ADR-042` for the gated-fold/Live-View split; the annotate-only vs.
 compensating-patch fork is worked out in full in
-[`../comparisons/authority-rejection-behavior.md`](../comparisons/authority-rejection-behavior.md);
+[`../comparisons/authority-rejection-behavior.md`](../comparisons/authority-rejection-behavior.md)
+(narrower in scope post-`ADR-042` — see that doc's own note);
 the new `StoredEvent` fields (`AttestedActorId`, `AttestedClaims`,
 `AuthorityStatus`, `AuthorityDecisionRef`) are documented in
 [`../data/event-log.md`](../data/event-log.md); `RejectionBehavior` on
@@ -56,15 +67,42 @@ note right of publisher
 end note
 ... asynchronously ...
 router -> db: pick up "received" event
-router -> db: validate schema, resolve EntityId, fold into Entity Store
+router -> db: validate schema, resolve EntityId
+router -> db: fold into LiveEntityStoreRow (ungated -- ADR-042)
 router -> db: UPDATE StoredEvent SET Status = "applied"
 note right of router
   AuthorityStatus stays "unattested" here -- the
   router's job is schema/entity resolution
-  (ADR-023), never authority review. Folded into
-  the Entity Store identically to an "accepted"
-  event (ADR-035): replicated (ADR-033), queryable,
-  only a label differs.
+  (ADR-023), never authority review. The
+  AUTHORITATIVE Entity Store is NOT updated yet
+  (ADR-042) -- only the Live View is, explicitly
+  labeled isAuthoritative: false when read.
+end note
+@enduml
+```
+
+## Sequence diagram — authoritative catch-up once accepted
+
+```plantuml
+@startuml AuthorityAccept_Fold_Sequence
+autonumber
+actor "Reviewing Authority" as reviewer
+participant "Router" as router
+participant "AuthorityDecisionResolver" as resolver
+database "Event & Schema Store" as db
+participant "Entity Store fold\n(authoritative, ADR-042)" as fold
+
+reviewer -> router: POST /publish/authorityDecision { decision: "accepted", targetEventId }
+router -> resolver: process authorityDecision event
+resolver -> db: UPDATE target StoredEvent SET AuthorityStatus = "accepted"
+resolver -> fold: apply target event to the authoritative Entity Store now
+fold -> db: UPDATE EntityStoreRow.Data, Version++
+note right of fold
+  Same "apply once, on the triggering condition"
+  shape ADR-027's materialization catch-up already
+  uses -- not a new mechanism. LiveEntityStoreRow
+  already reflected this data; the authoritative
+  Entity Store only now catches up to it.
 end note
 @enduml
 ```
@@ -235,7 +273,20 @@ Feature: Non-authoritative capture (AuthorityStatus as a trust axis)
     Then the response status should be 202
     And the response body should include "authorityStatus": "unattested"
     And the stored event's AttestedActorId should be "field-agent-7"
-    And the event should be folded into the Entity Store exactly as an "accepted" event would be
+
+  Scenario: An unattested event reaches the Live View immediately but not the authoritative Entity Store
+    When a "SensorReading" event is published for "sensor-42" with body { "SensorId": "sensor-42", "Reading": 21.5 } and AttestedClaims present
+    Then querying the Live View for "sensor-42" should return Reading 21.5, wrapped with "isAuthoritative": false
+    And querying the authoritative Entity Store for "sensor-42" should NOT yet reflect Reading 21.5
+
+  Scenario: Once accepted, the authoritative Entity Store catches up to what the Live View already showed
+    Given a "SensorReading" event "reading-5" was published for "sensor-42" with body { "SensorId": "sensor-42", "Reading": 45.0 } and AttestedClaims present
+    And the Live View for "sensor-42" already shows Reading 45.0
+    When I POST to "/publish/authorityDecision" with body:
+      """
+      { "payload": { "targetEventId": "reading-5", "decision": "accepted", "decidingActorId": "reviewer-1" } }
+      """
+    Then eventually the authoritative Entity Store for "sensor-42" should show Reading 45.0
 
   Scenario: AuthorityStatus is independent of SchemaStatus
     When I POST to "/publish/SensorReading" with body:
@@ -269,9 +320,9 @@ Feature: Non-authoritative capture (AuthorityStatus as a trust axis)
     And the Entity Store row for "sensor-42" should still show Reading 99.9
     And no compensating patch event should be appended
 
-  Scenario: An authorityDecision:rejected event on a Compensate-type event triggers a compensating patch
-    Given a "ClaimSubmission" event "claim-1" was published with body { "ClaimId": "claim-9", "Amount": 5000 }
-    And the Entity Store row for "claim-9" shows Amount 5000
+  Scenario: An authorityDecision:rejected event on a Compensate-type event triggers a compensating patch (reversal after prior acceptance)
+    Given a "ClaimSubmission" event "claim-1" was published with body { "ClaimId": "claim-9", "Amount": 5000 } and AttestedClaims present
+    And an "authorityDecision" event previously accepted "claim-1", so the Entity Store row for "claim-9" shows Amount 5000
     When I POST to "/publish/authorityDecision" with body:
       """
       { "payload": { "targetEventId": "claim-1", "decision": "rejected", "decidingActorId": "reviewer-1", "reason": "unverifiable claimant" } }

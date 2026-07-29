@@ -47,6 +47,7 @@ the whole story on its own:
 |---|---|
 | [Fold-time ordering + conflict detection](interactions/fold-ordering-and-conflict.md) | Why [Optimistic Concurrency](optimistic-concurrency.md) and [Watermarks/event-time ordering](tolerant-reader-and-schema-evolution.md) are two different checks, run together, catching two different failure modes — and why only one of the two actually blocks a write from applying |
 | [The publish pipeline](interactions/publish-pipeline.md) | How [Idempotent Receiver, Inbox](idempotent-receiver-and-inbox.md), [Tolerant Reader](tolerant-reader-and-schema-evolution.md), and Dead Letter Channel compose into one `POST /publish` request, in a specific, load-bearing order |
+| [Gated authoritative publish](interactions/gated-authoritative-publish.md) | How Write-Audit-Publish, the Quarantine pattern (deliberately inverted), and a second [CQRS materialized view](cqrs-and-materialized-views.md) compose so unconfirmed data stays visible-but-labeled instead of blocked |
 
 ## Decided, not yet written up as standalone docs
 
@@ -69,6 +70,8 @@ queued.**
 | Merkle tree catch-up | Exchange hash-tree summaries to find and transfer only the differing ranges after a disconnection, instead of a full resync | `ADR-033` |
 | Non-authoritative capture (Reservation/Provisional + non-repudiation logging) | Accept data whose submitter's authority can't be verified yet; capture now, adjudicate later, via an explicit trust status that never gates ingestion; see [the rejection-behavior comparison](../comparisons/authority-rejection-behavior.md) for annotate-only vs. compensating-patch | `ADR-035` |
 | Self-attested, offline-verifiable delegation (DID/UCAN) | Prove a chain of delegated capability without needing to reach a central authority at verification time | `ADR-036` |
+| Delegated, capped, time-boxed access grants ("secondary opinion" access) | One authorized user grants another temporary, entity-scoped access, capped at the granter's own level, via UCAN delegation's attenuation invariant — not the classical Four Eyes/two-person rule, disambiguated explicitly | `ADR-043` |
+| Application-defined permission namespaces via per-tenant trust roots | Resolves the one thing the UCAN spec itself leaves out-of-band (which DID is a root of trust for a capability namespace) using the existing `AppId` scoping key | `ADR-044` |
 | Streaming ingestion (telemetry, audio/video) as a separate fast path | Bypass schema validation/hash-chaining/fold entirely for high-frequency chunked data; link back to the event-sourced world only through a detector publishing an ordinary event | `ADR-031` |
 | Deep-linking via temporal fragment URIs | A stable, shareable reference to a point/interval within a media/signal stream, using a real W3C syntax instead of a bespoke query parameter | `ADR-031` |
 | Seekable playback via byte-range requests | The standard mechanism behind a scrub bar — request a byte range, get `206 Partial Content` back, instead of downloading a whole file to seek within it | `ADR-031`, `ADR-032` |

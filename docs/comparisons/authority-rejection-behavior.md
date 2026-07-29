@@ -13,6 +13,16 @@ mutate or delete a stored event, ever, not even for regulated/rejected
 data. Whichever option wins has to be checked against that bar
 specifically, not just against which is more convenient to implement.
 
+**Narrowed in scope by `ADR-042`**: since an event now only folds into
+the authoritative Entity Store once `AuthorityStatus` reaches `accepted`,
+a rejection of an event that was never accepted has nothing to
+compensate for — it simply never applied. This fork's Annotate-vs-
+Compensate choice now matters specifically for the narrower, real
+residual case: an event already `accepted` and folded, later
+*re-reviewed* and reversed to `rejected`. The conclusion below (annotate-
+only default, per-type override to compensate) is unchanged; only the
+set of cases it actually governs got smaller.
+
 ## The fork
 
 Once a self-attested event is reviewed and rejected (`AuthorityStatus:
