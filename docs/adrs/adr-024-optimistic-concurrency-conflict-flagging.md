@@ -58,7 +58,7 @@ Consequences:
 - A correction after the fact is a new patch, not a rewrite — consistent
   with every other "never mutate, only append" decision already made in
   this design (`ADR-009`'s closing note, `ADR-019`'s hash chain).
-- `ConflictFlag` is the **same mechanism** `ADR-025`'s cross-server
+- `ConflictFlag` is the **same mechanism** `ADR-033`'s cross-server
   divergence resolution reuses without modification — a sync-delivered
   event that conflicts with a local one is detected identically to a
   same-server concurrent write; the only thing that differs is which

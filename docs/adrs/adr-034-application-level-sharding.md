@@ -22,7 +22,7 @@ Decision:
   is global and total; sharding the *read* side doesn't need to
   preserve that) and this design doesn't conflate them.
 - **Cross-shard queries need a coordinator that fans out and merges** —
-  a GraphQL resolver (the queued GraphQL-only ADR) spanning entity types
+  a GraphQL resolver (`ADR-037`) spanning entity types
   that live on different shards issues one query per shard and merges
   results, rather than assuming a single-shard query plan always
   suffices.

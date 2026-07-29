@@ -73,10 +73,12 @@ Consequences:
   `ADR-018`'s upcast chain into an actual *deployment* safety net, not
   just a data-correctness one — the same mechanisms, a different, real
   payoff stated explicitly.
-- `08-build-plan.md` needs an explicit exit criterion tied to this: a
-  rollback drill (deploy a schema version, roll back, confirm no data
-  loss and the event becomes routable again once re-forward-deployed) —
-  not yet added, flagged as propagation debt.
+- `08-build-plan.md` already ties an explicit exit criterion to this
+  (Phase 19): a rollback drill — deploy a schema version, publish an
+  event tagged with it, roll back to a deployment that doesn't know that
+  version, confirm the event sits `received` (not lost), confirm
+  re-forward-deploying makes it routable again with no data loss and no
+  database restore.
 - No new mechanism is introduced here that this design didn't already
   have a piece of — this ADR is primarily about **naming the discipline
   explicitly** (Tolerant Reader, Postel's Law, Expand/Contract, N-1/N+1)

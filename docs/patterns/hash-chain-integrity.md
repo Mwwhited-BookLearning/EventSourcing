@@ -53,12 +53,23 @@ end note
 @enduml
 ```
 
-**What it gives you:** tamper-*evidence*, not tamper-*prevention*. Someone
-with sufficient write access can still rewrite history and recompute
-every downstream hash to match — what the chain actually defeats is
-*undetected* tampering, since recomputing an entire chain from the seed is
-a far more conspicuous act (checkable against any independently-held
-earlier checkpoint) than editing one row and hoping nobody checks.
+## When you'd reach for it
+
+Any append-only log where a reader needs to trust that history hasn't
+been silently altered, without needing to trust the store operator's word
+for it, and without a federation of independently-operated logs that
+would justify a full Merkle tree's extra machinery.
+
+## Cost
+
+Tamper-*evidence*, not tamper-*prevention* — someone with sufficient
+write access can still rewrite history and recompute every downstream
+hash to match. What the chain actually defeats is *undetected* tampering,
+since recomputing an entire chain from the seed is a far more
+conspicuous act (checkable against any independently-held earlier
+checkpoint) than editing one row and hoping nobody checks. Verifying the
+chain means a full replay from the seed — there's no per-entry shortcut
+the way a Merkle tree's inclusion proof gives you.
 
 ## Also known as
 

@@ -51,6 +51,22 @@ manual reconciliation) is a **policy choice**, not a fact being
 discovered — worth stating explicitly rather than pretending there's a
 correct answer hiding somewhere.
 
+## When you'd reach for it
+
+Any record with concurrent readers/writers where conflicts are rare
+relative to read/write volume — the common case for most business data —
+and where never blocking a reader or another writer while an edit is in
+progress matters more than preventing every conflict from ever
+happening.
+
+## Cost
+
+A conflict is only caught at commit time, not prevented — a losing writer
+finds out after doing the work, not before. Someone (a policy, or a
+human) still has to decide what happens to a detected conflict; the
+pattern tells you a conflict happened, not what the "right" resolution
+is.
+
 ## Also known as
 
 **Optimistic Offline Lock** is Fowler's specific name (used above);
@@ -87,8 +103,8 @@ stream-order LWW is the default precisely because most fields don't need
 anything more sophisticated.
 
 **Same mechanism, reused for a different trigger**: `ADR-024` notes that
-this is the *identical* conflict-detection mechanism `ADR-027`
-(replication, queued) will reuse for cross-server divergence — a
+this is the *identical* conflict-detection mechanism `ADR-033`
+(multi-origin replication) reuses for cross-server divergence — a
 sync-delivered event that conflicts with a local one is detected exactly
 the same way a same-server concurrent write is. No second resolution
 system needed for the distributed case.

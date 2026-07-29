@@ -53,6 +53,28 @@ end
 @enduml
 ```
 
+## When you'd reach for it
+
+Any receiver a sender might retry against — which is any receiver behind
+an unreliable network, i.e. nearly all of them. Idempotent Receiver
+matters the moment a retry is possible at all; Inbox specifically matters
+when "durably received" and "fully processed" need to be different,
+independently-observable facts (a slow, fallible, or asynchronous
+downstream step); Dead Letter Channel matters wherever "couldn't process
+this" must stay inspectable rather than becoming a silent drop or an
+infinite retry loop.
+
+## Cost
+
+Idempotent Receiver needs somewhere to keep dedup state (here, the
+`EventId` unique index) that must outlive the processing itself — get its
+retention window wrong and old duplicates become invisible again. An
+Inbox/Router split adds a real processing hop and a period where a
+receipt exists with no outcome yet, which every downstream consumer must
+be able to tolerate. A Dead Letter Channel is only useful if something
+actually looks at it — an unmonitored dead-letter queue is equivalent to
+silently dropping messages, just with better hindsight.
+
 ## Also known as
 
 **Idempotent Receiver** is the mechanism behind what's often called

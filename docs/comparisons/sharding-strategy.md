@@ -6,6 +6,13 @@
 design (`docs/design-docs/`, now absorbed and removed — see `CLAUDE.md`),
 which recommended consistent hashing but left the choice open.
 
+**Stated requirement driving this comparison:** this project's own
+stated purpose as a worked *teaching* example (`README.md`) — a
+sharding rule someone can explain and predict by hand (which entity
+lands where, and why) is worth more here than one that scales more
+smoothly but requires a hashing-scheme explanation to reason about at
+all.
+
 ## The fork
 
 `EntityStoreRow.ShardKey` (`docs/data/entity-store.md`) needs a rule for

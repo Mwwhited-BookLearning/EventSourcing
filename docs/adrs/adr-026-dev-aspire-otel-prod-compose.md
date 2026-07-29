@@ -2,6 +2,9 @@
 
 # ADR-026: Development via .NET Aspire + OpenTelemetry (logging, tracing, metrics); production via Docker Compose
 
+See [docs/libraries/dotnet/aspire.md](../libraries/dotnet/aspire.md) for
+Aspire usage examples.
+
 Status: Accepted — refines `ADR-006`'s orchestration story; does not
 change its auth/client decisions.
 

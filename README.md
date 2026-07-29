@@ -31,6 +31,16 @@ reasoning — never a silent default.
 
 ## What this system is
 
+> **The two bullets below describing OData `$filter` pushdown and the
+> `QUERY /events/{id}/...` Lineage API are the pre-`ADR-037` surface.**
+> GraphQL Query/Mutation/Subscription has since replaced both entirely —
+> see "Integration complete" below and `ADR-037`. Left as-is here rather
+> than rewritten, consistent with `03-api-contracts.md`/`04-odata-filter-
+> pushdown.md`'s own superseded-surface banners — the underlying
+> mechanisms this section describes (schema-declared filterable fields,
+> per-node lineage visibility) are unchanged, only the query syntax and
+> transport are not.
+
 An event-sourcing store with:
 
 - A **JSON Schema registry** for registering named, versioned event types.
@@ -174,14 +184,27 @@ source, not a link to a file that still exists.
 | `07-adrs.md` | ADR template + index — the ADRs themselves live one per file under `adrs/` |
 | `08-build-plan.md` | Implementation phases, dependencies between them, and exit criteria (tied to `features/*.md` scenarios) |
 | `09-cqrs-read-models.md` | CQRS read side: `IProjection<TReadModel>`/`ProjectionHost`, checkpointing, `ChangeKind`-driven snapshot merge, rebuild — the write/read seam this project exists to demonstrate |
+| `10-open-questions.md` | Live tracker of genuinely unresolved forks/decisions — distinct from an ADR (already decided) or a comparison (weighed, awaiting a decision already in progress) |
 | `references.md` | Bibliography: every real-world RFC/standard/pattern/library this design adopts, plus ones considered and deliberately not adopted, with why |
 | `features/*.md` | One standalone doc per feature: context, PlantUML sequence diagrams, an ER diagram for features touching persistent data, a Salt UI mockup where a real UI surface exists, and the embedded Gherkin scenarios for that feature (`features/cqrs-projections.md` is the worked Orders example tying `09` together end-to-end) |
+| `docs/data/*.md` | Entity classes, grouped one file per classification group — schema registry, event log, entity store, DbContext/conventions; `02-data-model.md` is the classification overview + index only |
+| `docs/adrs/*.md` | Architecture Decision Records, one per file; `07-adrs.md` is the template + index only |
+| `docs/patterns/*.md` | General pattern reference — what a pattern is, who named it, then how this design applies it; `patterns/README.md` is the catalog |
+| `docs/comparisons/*.md` | Full pros/cons for a genuine multi-option fork, written before the deciding ADR; `comparisons/README.md` is the catalog |
+| `docs/libraries/{platform}/*.md` | One file per adopted off-the-shelf library/framework — what it's for, general usage; `libraries/README.md` is the catalog |
 
 ## Open decisions flagged for the implementer
 
-**None outstanding.** Every question surfaced during design has been
-resolved and recorded as an ADR (`07-adrs.md`'s index, ADRs live one per
-file under `adrs/`) — including unindexed-field filtering (reject
+**See `docs/10-open-questions.md` for the current, live list** — a
+handful of genuinely unresolved forks (scope-to-`AppId` granularity,
+the MVVM client's template engine, streaming-channel redaction
+mechanics, which CEL library to adopt) surfaced during the `ADR-021`–
+`041` integration and are tracked there rather than here, so they don't
+get lost as buried sentences in an ADR's Consequences section. Below is
+this project's original v1-scope framing, kept for history: every
+question surfaced during that first design pass was resolved and
+recorded as an ADR (`07-adrs.md`'s index, ADRs live one per file under
+`adrs/`) — including unindexed-field filtering (reject
 outright, `ADR-003`), dev-mode auth/orchestration (an in-process
 OpenIddict host + .NET Aspire, `ADR-006`; the production IdP remains a
 separate, later decision, out of scope for this POC), and

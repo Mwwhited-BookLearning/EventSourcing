@@ -22,7 +22,12 @@ persisted `Orders`-related fact is a sequence of `OrderPlaced`,
 `OrderShipped`, `OrderCancelled` events, with no other authoritative
 `Orders` table at all, is.
 
-**What it buys you:**
+## When you'd reach for it
+
+Any system where *why* something reached its current state matters as
+much as the state itself, or where new read shapes will predictably be
+needed later that no one can fully anticipate at write time.
+
 - A complete, faithful history of *why* something is in its current
   state, not just *that* it is — genuinely valuable for audit, debugging
   ("why does this look like this"), and analytics no one anticipated
@@ -50,7 +55,8 @@ Reader -> Reader: fold events left-to-right\n=> current state, derived, never st
 @enduml
 ```
 
-**What it costs:**
+## Cost
+
 - Reading "current state" is never free — it requires either replaying
   from scratch (expensive at scale) or maintaining a materialized
   projection (see [CQRS & Materialized Views](cqrs-and-materialized-views.md)),

@@ -1,5 +1,15 @@
 # CQRS Read-Model Projections
 
+> **Transport superseded, per `ADR-037`.** `ProjectionHost` subscribes
+> through the GraphQL Gateway now, not `QUERY /follow` directly — same
+> tail/replay semantics (`ADR-010`), different transport (see
+> `features/cqrs-projections.md`'s banner, which already reflects this).
+> Every mechanism this document actually describes — `ChangeKind`-driven
+> merge, snapshotting, checkpointing, rebuild — is unchanged; only how a
+> projection connects to the write side is different. References to
+> `QUERY /follow/{event-type}` below should be read as "subscribes via
+> the GraphQL Gateway."
+
 Documents `01`–`08` are the **write side**: an event-sourced store of
 record, append-only, queryable only through the general-purpose Publish/
 Follow/Lineage/Registry APIs. This document is the **read side**: purpose-

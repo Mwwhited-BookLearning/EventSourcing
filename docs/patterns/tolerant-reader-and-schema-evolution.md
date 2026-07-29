@@ -42,6 +42,25 @@ R -> R: unrecognized property?\n=> route to Extensions bag,\nnot rejected (Toler
 @enduml
 ```
 
+## When you'd reach for it
+
+Any integration where the provider and consumer deploy independently —
+Tolerant Reader specifically whenever a consumer can't guarantee it will
+be redeployed in lockstep with every upstream shape change; schema
+evolution/upcasting specifically once a system keeps history around long
+enough that "the schema changed since this record was written" becomes
+a certainty rather than an edge case.
+
+## Cost
+
+Tolerant Reader means a consumer can silently keep working against a
+provider that's already changed in ways the consumer doesn't know about
+— robustness can mask a real integration break instead of surfacing it.
+Upcasting means every read pays a transform cost proportional to how many
+versions behind a given record is, and the transform chain itself
+becomes something that must be kept correct and tested at every version
+boundary, forever, not just at the moment a new version ships.
+
 ## Also known as
 
 **Postel's Law** is also called the **Robustness Principle** — the same
@@ -72,15 +91,14 @@ read. `ADR-020` layers a live compatibility check onto the same
 mechanism at publish time, using each real lagging-version publish as its
 own test case rather than needing synthetic test data.
 
-**Not yet built, tracked as a queued ADR (`ADR-032`)**: the wider
-compatibility/deployment discipline the second design package
-(`docs/design-docs/11`) names explicitly — **Expand/Contract (Parallel
-Change)** migrations (only ever add columns/tables, never alter or drop,
-so rolling back a deployment is just running the old binary against a
-database shape it still fully understands) and an **N-1/N+1 compatibility
-window** (any server version must correctly process events tagged with
-the immediately-prior and immediately-next schema version, not just its
-own). These generalize Tolerant Reader from "don't break on unknown
-fields" to "don't break on unknown *deployments*," and are worth reading
-about even before `ADR-032` lands, since `ADR-018`'s upcast chain is
-already most of the mechanism they'd need.
+**`ADR-038`** is the wider compatibility/deployment discipline, adopted
+directly from the second design package's own naming of it — **Expand/
+Contract (Parallel Change)** migrations (only ever add columns/tables,
+never alter or drop, so rolling back a deployment is just running the
+old binary against a database shape it still fully understands) and an
+**N-1/N+1 compatibility window** (any server version must correctly
+process events tagged with the immediately-prior and immediately-next
+schema version, not just its own). These generalize Tolerant Reader from
+"don't break on unknown fields" to "don't break on unknown
+*deployments*," building directly on `ADR-018`'s upcast chain as most of
+the mechanism they need.

@@ -13,19 +13,19 @@ table is an instance of.
 public class EntityStoreRow
 {
     public string EntityId { get; set; } = default!;    // {appId}:{entityType}:{uniqueId}, PK
-    public string EntityType { get; set; } = default!;  // denormalized for query/shard routing (queued sharding ADR)
-    public string? ShardKey { get; set; }                // computed from EntityId/EntityType (queued sharding ADR)
+    public string EntityType { get; set; } = default!;  // denormalized for query/shard routing (ADR-034)
+    public string? ShardKey { get; set; }                // computed from EntityId/EntityType (ADR-034)
     public long Version { get; set; }                    // DATA-CHANGE counter — only bumps when Data actually changes (ADR-029); distinct from LastAppliedSequenceNumber below
     public string Data { get; set; } = default!;         // current materialized snapshot (typed properties)
     public string Extensions { get; set; } = default!;   // overflow bag for properties not in the current known schema (ADR-022)
     public string Hash { get; set; } = default!;         // SHA-256 of canonicalized Data — per-entity integrity/diff, a different
                                                            // application of ADR-019's hash primitive than the event ChainHash
     public int SchemaVersion { get; set; }                // current shape, post-upcast (best effort — ADR-018)
-    public string AuthorityStatus { get; set; } = default!; // rolled up from contributing events — advisory (queued non-authoritative-capture ADR)
+    public string AuthorityStatus { get; set; } = default!; // rolled up from contributing events — advisory (ADR-035)
     public long LastAppliedSequenceNumber { get; set; }   // REPLAY CHECKPOINT — always advances past every event processed, including a rejected late arrival (ADR-029); distinct from Version above
     public DateTimeOffset LastAppliedLogicalTime { get; set; } // high-water mark for fold ordering — compared against OccurredAt, not SequenceNumber (ADR-029)
     public bool LateArrivalFlag { get; set; }             // rolled up from contributing events (ADR-029)
-    public string? LastAppliedOriginId { get; set; }      // origin of the most recent fold (queued replication ADR)
+    public string? LastAppliedOriginId { get; set; }      // origin of the most recent fold (ADR-033)
     public DateTimeOffset UpdatedAt { get; set; }
 }
 ```

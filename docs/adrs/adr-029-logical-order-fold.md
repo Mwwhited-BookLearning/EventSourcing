@@ -75,12 +75,12 @@ Decision:
   the same trade `ADR-024` already makes.
 
 Consequences:
-- Directly complements the queued replication ADR: `OccurredAt` alone is
-  a single-origin logical clock; once multiple independent origins write
-  concurrently, wall-clock timestamps alone become insufficient for
-  correct cross-origin ordering (`docs/design-docs/09 §9.3`'s own stated
-  reason for `LogicalClock`/HLC) — that ADR extends this one's ordering
-  key, it doesn't replace it.
+- Directly complements `ADR-033` (multi-origin replication): `OccurredAt`
+  alone is a single-origin logical clock; once multiple independent
+  origins write concurrently, wall-clock timestamps alone become
+  insufficient for correct cross-origin ordering (`docs/design-docs/09
+  §9.3`'s own stated reason for `LogicalClock`/HLC) — `ADR-033` extends
+  this one's ordering key, it doesn't replace it.
 - `LateArrivalFlag` needs the same surfacing `ConflictFlag` already gets
   — entity change history, a query-layer filterable field, a view
   indicator — reusing the existing "flag, don't hide" rendering

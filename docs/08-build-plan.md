@@ -28,9 +28,14 @@ Phase 18 (the GraphQL-only swap) depends on 11 specifically, not on 12–17
 it's disruptive enough (it supersedes Phases 3/4's entire query surface)
 that sequencing it deliberately, once, is likely easier than interleaving
 it with five other phases touching the same codebase. Phase 20 (the MVVM
-client) is sequenced last for the same reason `ADR-039` itself gives:
-least load-bearing, composes what already exists rather than adding new
-server-side mechanism.
+client) is sequenced near the end for the same reason `ADR-039` itself
+gives: least load-bearing, composes what already exists rather than
+adding new server-side mechanism. **Phase 21 (`ADR-040`'s ticket
+exchange) depends on Phase 14/15 specifically** — it closes a gap those
+two phases' own header-incapable callers (`<video src>` playback, WebDAV
+retrieval) reopen, so it can't meaningfully start until they exist,
+though it doesn't depend on Phase 18/19/20 at all and could run
+alongside them.
 
 ## Dependency overview
 
@@ -57,6 +62,7 @@ state "Phase 17\nNon-Authoritative Capture" as p17
 state "Phase 18\nGraphQL-Only Query Layer" as p18
 state "Phase 19\nCompatibility & Deployment Discipline" as p19
 state "Phase 20\nMVVM Client" as p20
+state "Phase 21\nTicket Exchange" as p21
 
 p0 --> p1
 p1 --> p2
@@ -89,6 +95,8 @@ p9 --> p20
 p12 --> p20
 p14 --> p20
 p15 --> p20
+p14 --> p21
+p15 --> p21
 @enduml
 ```
 
@@ -494,13 +502,18 @@ for how the two checks compose in one fold step).
 **Depends on**: Phase 6 (the primary system needs to be stable and fully
 auth'd before this rebuild touches every endpoint's response shape).
 
-**Exit criteria**: every existing feature-doc Gherkin scenario that
-asserted `400` for a schema-invalid/unknown-version publish now asserts
-`202` + the right `SchemaStatus` instead (a real rewrite of existing
-scenarios, not just new ones — flagged, not yet done); a same-property
-concurrent-write scenario shows `ConflictFlag`; a deliberately-reordered-
-delivery test (publish B, then publish A with an earlier `OccurredAt`)
-shows `LateArrivalFlag` and confirms A's change did not overwrite B's.
+**Exit criteria**: [`features/entity-concept.md`](features/entity-concept.md)
+passes on all its scenarios — a new `EntityId` creates an Entity Store row,
+a second event for the same `EntityId` bumps `Version`, a stale
+`ExpectedVersion` sets `ConflictFlag` without ever rejecting, and a
+schema-invalid publish persists as `202` + `SchemaStatus: invalid`; every
+existing feature-doc Gherkin scenario that asserted `400` for a schema-
+invalid/unknown-version publish now asserts `202` + the right
+`SchemaStatus` instead (a real rewrite of existing scenarios, not just new
+ones — flagged, not yet done); a same-property concurrent-write scenario
+shows `ConflictFlag`; a deliberately-reordered-delivery test (publish B,
+then publish A with an earlier `OccurredAt`) shows `LateArrivalFlag` and
+confirms A's change did not overwrite B's.
 
 ## Phase 12 — Multi-tenancy
 
@@ -596,11 +609,16 @@ sharded cross-`EntityType` query fans out and merges correctly.
 Phase 11 already extended for other reasons), Phase 5 (auth/token
 issuance infrastructure to extend for token exchange).
 
-**Exit criteria**: an event submitted with a self-attested UCAN persists
-with `AuthorityStatus: unattested` even when the identity provider is
-unreachable at submission time; a later `authorityDecision: rejected`
-event leaves the original event untouched and the Entity Store reflects
-whatever `RejectionBehavior` that type declared.
+**Exit criteria**: [`features/non-authoritative-capture.md`](features/non-authoritative-capture.md)
+passes on all seven scenarios — an event submitted with a self-attested
+UCAN persists with `AuthorityStatus: unattested` even when the identity
+provider is unreachable at submission time, never blocking ingestion and
+independent of `SchemaStatus`; a later `authorityDecision: rejected` event
+leaves the original event's `Payload` untouched on an `Annotate`-type,
+triggers a compensating patch on a `Compensate`-type, and either way
+denormalizes `AuthorityDecisionRef` back onto the original event; two
+servers disagreeing about review status resolves via `ConflictFlag`
+(`ADR-024`, reused), not a new mechanism.
 
 ## Phase 18 — GraphQL-only query layer
 
@@ -658,11 +676,38 @@ property-list fallback); `ConflictFlag`/`LateArrivalFlag`/`AuthorityStatus`
 all render via one shared generic "flag" convention, not three bespoke
 ones.
 
+## Phase 21 — Ticket exchange for header-incapable clients
+
+**Scope**: `ADR-040` — ticket issuance via OAuth Token Exchange (RFC
+8693, reusing Phase 17's exchange infrastructure with a new
+`requested_token_type`), client-side HMAC signing, resolution via an
+RFC 7662-shaped introspection call extended with the signature
+parameter, single-use/short-lived ticket consumption.
+
+**Depends on**: Phase 5 (auth/token issuance infrastructure — this
+extends it, doesn't replace it), Phase 14 (streaming channel playback,
+the first real header-incapable caller this phase serves), Phase 15
+(WebDAV/attachment retrieval, the second).
+
+**Exit criteria**: a `<video src>`-style URL carrying only a ticket +
+signature (never a raw bearer token) successfully streams content; the
+same ticket presented a second time is rejected; a ticket presented with
+a signature computed from the wrong shared secret is rejected before any
+content is served.
+
 ## Cross-cutting, every phase
 
 - **Integration tests against all three providers** run from Phase 0
   onward — they are not a Phase 7-style afterthought. A phase that only
   passes on one provider isn't done.
+- **`ADR-041`'s composition discipline applies from Phase 0 onward, not
+  as its own phase**: constructor injection, an explicit composition
+  root (no assembly-scanning auto-registration), `Microsoft.Extensions.
+  Logging`/no third-party structured-logging framework, `System.Text.
+  Json` over `Newtonsoft.Json`, no AutoMapper. A phase that introduces a
+  new project or service registration is not done if it violates this —
+  the same way provider-coverage is a standing bar, not a phase-specific
+  one.
 - **Keep ADR status current** as phases land: `ADR-001` through `ADR-006`
   and `ADR-010` are already Accepted (confirmed design decisions) — Phase 5
   is where `ADR-006` gets verified end-to-end, not where it gets decided.
@@ -683,6 +728,9 @@ ones.
   11–20 are where each gets built and verified, not decided (see
   `CLAUDE.md`'s "Integration status" for the full list and which propagation
   into other docs is still outstanding independent of the build plan).
+  `ADR-040` is Accepted — Phase 21 is where it gets built and verified.
+  `ADR-041` is Accepted and cross-cutting, not tied to any one phase — see
+  above.
 
 ## Suggested References
 

@@ -7,6 +7,12 @@ second design (`docs/design-docs/`, now absorbed and removed — see
 `CLAUDE.md`), which left this explicitly open ("needs input from domains
 with legal/evidentiary requirements").
 
+**Stated requirement driving this comparison:** this design's strongest
+recurring principle, stated in `README.md`'s opening section — never
+mutate or delete a stored event, ever, not even for regulated/rejected
+data. Whichever option wins has to be checked against that bar
+specifically, not just against which is more convenient to implement.
+
 ## The fork
 
 Once a self-attested event is reviewed and rejected (`AuthorityStatus:

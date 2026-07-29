@@ -55,17 +55,25 @@ end note
 @enduml
 ```
 
-**What it buys you:** the read side can be shaped however a given query
-actually needs (denormalized, pre-joined, pre-aggregated), independent of
-what the write side needs (append-only, minimal, normalized-by-event-type).
-Multiple, differently-shaped read models can coexist over the same events.
+## When you'd reach for it
 
-**What it costs:** the read side is **eventually consistent** with the
-write side, not transactionally consistent — there is always some lag
-between an event landing and a materialized view reflecting it. Every
-materialized view is also a second thing that must handle replay,
-checkpointing, and rebuild correctly, or it silently drifts from the
-truth.
+Any system where the write shape (append-only, minimal, normalized-by-
+event-type) and the shapes queries actually need (denormalized,
+pre-joined, pre-aggregated) have genuinely diverged — especially once
+more than one differently-shaped read model needs to coexist over the
+same underlying facts.
+
+The read side can be shaped however a given query actually needs,
+independent of what the write side needs. Multiple, differently-shaped
+read models can coexist over the same events.
+
+## Cost
+
+The read side is **eventually consistent** with the write side, not
+transactionally consistent — there is always some lag between an event
+landing and a materialized view reflecting it. Every materialized view
+is also a second thing that must handle replay, checkpointing, and
+rebuild correctly, or it silently drifts from the truth.
 
 ## Also known as
 

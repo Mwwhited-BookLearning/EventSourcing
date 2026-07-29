@@ -1,5 +1,15 @@
 # Schema Registry — Lifecycle and Validation
 
+> **Partially superseded, per `ADR-037`.** `QUERY /registry` (OData
+> `$top`/`$skip` listing) is replaced by a GraphQL query — same
+> pagination semantics, different transport/syntax (see
+> `features/schema-registry.md`'s banner). Registration itself (`PUT
+> /registry/{event-type}`) and the validation rules described below are
+> unaffected — `ADR-037` only replaces query-side surfaces, and
+> registration is a write, not a query. Not yet rewritten for the actual
+> GraphQL listing shape — tracked as outstanding propagation work
+> (`CLAUDE.md`).
+
 All endpoints in this document require the `registry:admin` scope (see
 `03-api-contracts.md`, "Authentication & Authorization", and `ADR-006`) —
 schema registration controls validation rules and filterable-field indexes

@@ -22,13 +22,13 @@ Anything beyond that is carried in Problem Details' standard
 
 | Situation | `status` | `type` slug | Extensions |
 |---|---|---|---|
-| Payload fails schema validation | `400` | `validation-failed` | Uses `ValidationProblemDetails`'s `errors: { "<path>": ["<message>"] }`, not a custom shape — this is the one case with an existing framework type built for exactly this |
+| ~~Payload fails schema validation~~ | ~~`400`~~ | ~~`validation-failed`~~ | **Superseded by `ADR-023`**: a schema-invalid payload is now persisted with `202 Accepted` and `SchemaStatus: invalid`, never rejected — this row no longer occurs. |
 | Strict-mode parent event(s) not found | `400` | `parent-not-found` | `missingParentEventIds: [...]` |
 | `$filter` references an undeclared field | `400` | `filter-field-not-filterable` | `field: "InternalNotes"` |
 | `fromSequenceNumber` supplied with `mode=tail` | `400` | `invalid-replay-parameters` | — |
 | Missing/invalid Bearer token | `401` | `unauthenticated` | — |
 | Missing/invalid DPoP proof, or proof doesn't match the token's `cnf.jkt` (`ADR-017`) | `401` | `dpop-proof-invalid` | `reason: "..."` |
-| `schemaVersion` on publish names a version that doesn't exist (`ADR-020`) | `400` | `unknown-schema-version` | — |
+| ~~`schemaVersion` on publish names a version that doesn't exist (`ADR-020`)~~ | ~~`400`~~ | ~~`unknown-schema-version`~~ | **Superseded by `ADR-023`**: same as above — this now persists as `202 Accepted` with `SchemaStatus: invalid` rather than being rejected. |
 | Missing scope, or missing `RequiredPublishClaim`/`RequiredReadClaim` | `403` | `forbidden` | `reason: "missing_scope"` \| `"missing_required_claim"` — this is exactly the "response detail, not the status code" distinction `ADR-008` already promised |
 | Unknown event-type / unknown `eventId` | `404` | `not-found` | — |
 | `eventId` reused with different content | `409` | `event-id-conflict` | `eventId: "..."` |
@@ -66,3 +66,9 @@ Consequences:
 - This doesn't apply to Lineage's `restricted: true` stubs (`ADR-008`) —
   those are `200` responses with a marked node, not an error at all; there
   is no HTTP error status for "some of what you asked for is hidden."
+- **Two publish-time `400` rows above are struck through, superseded by
+  `ADR-023`'s persist-everything posture** — publish never rejects on
+  shape/version problems anymore, so those specific `400`s can no longer
+  occur; every other row here (auth, scope/claim, lineage/filter
+  parameter errors — none of them shape/version problems on the payload
+  itself) is unaffected by `ADR-023` and still applies as written.

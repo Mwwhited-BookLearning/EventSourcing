@@ -67,10 +67,11 @@ durable outbox/inbox (`docs/design-docs/09 §9.4`) is what makes "any
 single site can go dark and come back" actually safe, not just
 topologically plausible.
 
-**Concretely, for the queued replication ADR**: a minimum replication
-factor of 2 is not automatic just from picking gossip — it needs to be a
-stated deployment requirement (every entity's shard, `sharding-
+**`ADR-033` addressed this directly**: a minimum replication factor of 2
+is not automatic just from picking gossip — it's stated there as an
+explicit deployment requirement (every entity's shard, `sharding-
 strategy.md`, must have at least 2 sites configured to replicate it), not
-assumed to fall out of the topology choice alone. Flagging this now so
-the ADR doesn't silently treat "gossip topology chosen" as "replication
-factor guaranteed" — they're related but distinct decisions.
+assumed to fall out of the topology choice alone. This comparison's
+closing flag — that "gossip topology chosen" and "replication factor
+guaranteed" are related but distinct decisions — is exactly what
+`ADR-033` resolved, not something still open.
