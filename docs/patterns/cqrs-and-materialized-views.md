@@ -67,6 +67,20 @@ materialized view is also a second thing that must handle replay,
 checkpointing, and rebuild correctly, or it silently drifts from the
 truth.
 
+## Also known as
+
+A **Materialized View** is also called a **read model**, a **projection**
+(caution — this project's own `ADR-018` deliberately avoids that word for
+this exact reason: it means something specific and different, a CQRS
+read model, right next to a schema-mapping sense the same word has in
+`docs/design-docs/07`), or a **denormalized view**. **CQRS** is often
+confused with plain **Command-Query Separation** (Bertrand Meyer's older,
+narrower principle: a method should either change state or return a
+value, never both) — CQRS the architectural pattern is a *different,
+larger* idea (separate models, not just separate methods) that borrows
+the older term's name; Fowler's own CQRS write-up flags this distinction
+explicitly.
+
 ## How this application uses it
 
 - The **write side** (`01`–`09`, `ADR-001` through `ADR-020`) is

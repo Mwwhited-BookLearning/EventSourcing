@@ -1,0 +1,136 @@
+[← Data model index](../02-data-model.md)
+
+# Event Log
+
+```csharp
+public class StoredEvent
+{
+    public long SequenceNumber { get; set; }   // global monotonic order, identity column -- ARRIVAL order at this store, not logical order (ADR-029)
+    public Guid EventId { get; set; }          // unique — client-supplied for idempotent retries, or server-generated (ADR-011); plays the "CorrelationId" role too
+    public string EntityId { get; set; } = default!;   // {appId}:{entityType}:{uniqueId} — required (ADR-021); supersedes the old optional StreamId
+    public string EventType { get; set; } = default!;  // normalized lowercase
+    public int SchemaVersion { get; set; }
+    public EventKind EventKind { get; set; } = EventKind.Original; // Original | UpcastMaterialization (ADR-027)
+    public Guid? MaterializationOfEventId { get; set; } // set only when EventKind = UpcastMaterialization — the original's EventId (ADR-027)
+    public long? ExpectedVersion { get; set; }          // Entity Store Version this patch was based on — optional, enables conflict detection (ADR-024)
+    public string Payload { get; set; } = default!;    // JSON text; known properties typed, unknown routed to Extensions at fold time (ADR-022)
+    public string PayloadHash { get; set; } = default!; // hash of {EventType, Payload, sorted parentEventIds} -- ADR-011
+    public string ChainHash { get; set; } = default!;    // SHA-256(prior ChainHash || PayloadHash || SequenceNumber) -- ADR-019
+    public string Status { get; set; } = default!;      // received | processing | applied | rejected — transport-level only (ADR-023)
+    public string? SchemaStatus { get; set; }           // unknown | invalid | conformant — advisory, never gates Status (ADR-023)
+    public bool ConflictFlag { get; set; }              // set by the fold step if a concurrent conflicting patch was detected (ADR-024)
+    public bool LateArrivalFlag { get; set; }           // set by the fold step if OccurredAt was behind the entity/property's high-water mark (ADR-029)
+    public DateTimeOffset OccurredAt { get; set; }      // CLIENT-DECLARED logical occurrence time, not server receipt time (ADR-029) — load-bearing for fold order
+}
+
+public enum EventKind
+{
+    Original,             // every event published today — subject to normal fold
+    UpcastMaterialization  // a persisted upcast result (ADR-027) — never folded; a parallel, optional-to-consume record
+}
+
+public class EventParent
+{
+    public Guid ChildEventId { get; set; }   // always resolves to a StoredEvent — the child is being inserted in the same publish
+    public Guid ParentEventId { get; set; }  // may NOT resolve to a StoredEvent if the child's event type is Permissive
+}
+```
+
+## Event lineage (parent/child DAG)
+
+An event may declare one or more **parent events** — of any event type — that
+it is causally derived from. This is envelope metadata, recorded in
+`EventParents`, and is deliberately kept out of `Payload`: it is never part of
+the registered JSON Schema, so it can't collide with schema validation or
+`additionalProperties` rules.
+
+- `parentEventIds` is optional on publish. Omitted or empty means an **origin
+  event** with no parents.
+- Whether a referenced parent must already exist is controlled per event type
+  by `EventTypeDefinition.ParentValidationMode`, set at schema registration
+  (default `Strict`).
+- Under `Strict`, combined with the append-only, monotonically increasing
+  `SequenceNumber`, the parent graph is **acyclic by construction**: a parent
+  must already have a lower `SequenceNumber` than any child referencing it.
+- Under `Permissive`, that guarantee does not hold: event A can be published
+  referencing a not-yet-existing event X as a parent, and X can later be
+  published referencing A as *its* parent (A already exists by then, so this
+  passes validation even under Strict). The result is a 2-cycle. Any code that
+  walks the DAG (see `../03-api-contracts.md`, Lineage API) must be cycle-safe
+  unconditionally — it cannot assume acyclicity just because most event types
+  use `Strict`. See `ADR-005`.
+- `EventParents` is also the mechanism a future derived/materialized event
+  type (deferred — see `ADR-007`) would use to record which source events it
+  was computed from: no schema change would be needed here to support that
+  later. It is deliberately **not** reused for the original→materialization
+  link `ADR-027` introduces (`MaterializationOfEventId` is its own field) —
+  lineage answers "what is this causally derived from," a different question
+  from "what is this a re-shaped copy of."
+
+## Publish idempotency (`ADR-011`)
+
+`PayloadHash` (a hash of `{EventType, Payload, sorted parentEventIds}`) is
+stored on every `StoredEvent`, whether or not the publisher supplied their
+own `eventId`. It's only ever consulted after the existing unique index on
+`EventId` finds a match — a publisher who supplies the same `eventId`
+again with an identical hash gets the original response replayed with no
+new write; a matching `eventId` with a *different* hash is `409 Conflict`.
+A publisher who never supplies `eventId` gets no idempotency guarantee, by
+design — this is opt-in, not automatic dedup by content alone (two
+genuinely different events that happen to share identical content would
+otherwise be wrongly merged).
+
+## Tamper evidence (`ADR-019`)
+
+`ChainHash` is a *different* guarantee from `PayloadHash` above, computed
+from it: every `StoredEvent` chains its `PayloadHash` and `SequenceNumber`
+onto the immediately preceding event's `ChainHash`, so altering any past
+row breaks every `ChainHash` after it — detectable by replaying the chain
+from `SequenceNumber = 1`, not just comparing one row to itself. See
+`ADR-019` for why this is a linear chain, not a full Merkle tree.
+
+## Event upcasting (`ADR-018`) and materialization (`ADR-027`)
+
+`StoredEvent.SchemaVersion` (above) is what makes a version-spanning
+`mode=replay` (`ADR-010`) possible to reconcile at read time: an optional
+`upcastFromPrevious` OData `compute()` expression list, set per version
+(`>= 2`), reshapes an old-shaped payload forward, version by version, so
+every consumer sees the current shape regardless of which version
+originally validated a given row. Deliberately not a general transform
+language — an upcast mapping is always many-source-fields-to-one-
+destination-field or one-to-one, never one-to-many or many-to-many, so
+`compute()`'s expression-list shape is already sufficient. `Payload`
+itself is never rewritten — see `ADR-018` and `../06-solution-structure.md`
+for the transform mechanics.
+
+`EventKind`/`MaterializationOfEventId` (above) exist because that upcast
+result no longer has to be recomputed on every read: once a lagging
+publish's live validation succeeds (`ADR-020`) or a background
+reconciler catches up an older backlog, the upcasted result is persisted
+as its own `UpcastMaterialization` event — but it is **never folded**;
+the fold step (`../02-data-model.md`'s Entity Store) continues to consume
+only `Original` events, applying `UpcastChain` live exactly as `ADR-018`
+already specifies. See `ADR-027` for why this split is what keeps the
+design safe from double-applying the same logical change.
+
+## Downcast on retrieval (`ADR-028`)
+
+The reverse direction — current data, served in an older shape a
+specific consumer still expects — is deliberately **not** stored here at
+all. `downcastToPrevious` (on `EventTypeDefinition`, see
+`schema-registry.md`) is applied read-time only, walked backward hop by
+hop from an entity's actual current shape, only when a consumer
+explicitly asks for an older version. Unlike upcasting, there is no
+bounded "the" target to materialize — see `ADR-028` for why persisting it
+would be unbounded, wasted work.
+
+## Publish-time upcast validation and the reserved `EventUpcastFailed` type (`ADR-020`)
+
+Publish now declares a required `SchemaVersion` up front (not implicitly
+"whichever is active") and, if that version is behind the active one, is
+upcast-validated live against the caller's real payload before responding.
+On failure, `EventUpcastFailed` — the first event type in this design an
+operator never registers, reserved at the platform level rather than via
+`PUT /registry/{event-type}` — is stored in the original event's place,
+carrying the original `EventType`/`SchemaVersion`/`Payload` verbatim plus
+which upcast hop failed and why. See `ADR-020` for the full mechanics.

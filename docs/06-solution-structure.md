@@ -204,6 +204,11 @@ app.MapGet("/openapi.json", async (OpenApiDocumentBuilder b) =>
     Results.Text(await b.GetOrBuildJsonAsync(), "application/json")).AllowAnonymous();
 app.MapGet("/asyncapi.json", async (AsyncApiDocumentBuilder b) =>
     Results.Text(await b.GetOrBuildJsonAsync(), "application/json")).AllowAnonymous();
+
+// ADR-025 -- pure presentation over the two endpoints above, both anonymous, no second generation path
+app.MapScalarApiReference(); // Scalar.AspNetCore -- serves the OpenAPI docs UI at /scalar
+app.MapGet("/asyncapi-ui", () => Results.Content(AsyncApiUiPage.Html, "text/html")).AllowAnonymous();
+// AsyncApiUiPage.Html: a small static page loading @asyncapi/react-component via CDN, pointed at /asyncapi.json
 ```
 
 Each builder's `GetOrBuildJsonAsync()` checks `IMemoryCache` first
@@ -601,9 +606,15 @@ builder.Build().Run();
 ```
 
 `EventStore.ServiceDefaults` wires the standard Aspire cross-cutting
-concerns (OpenTelemetry, health checks, service discovery) into whichever
-`EventStore.Host.<Provider>` is running (and `EventStore.DevIdp`) via
-`builder.AddServiceDefaults()` — no lineage/auth logic lives there.
+concerns into whichever `EventStore.Host.<Provider>` is running (and
+`EventStore.DevIdp`, `EventStore.Projections.Host`) via a single
+`builder.AddServiceDefaults()` call — no lineage/auth logic lives there.
+Per `ADR-026`, this is where all three OpenTelemetry signals — logging,
+tracing, metrics — get configured, identically for every service in the
+solution; see `ADR-026` for the full `ConfigureOpenTelemetry` code and
+why health-check requests are filtered out of traces. Health checks and
+Aspire service discovery are the other two things this project wires
+here, not detailed further in this doc.
 
 **`docker-compose.yml` (repo root, non-Aspire-tooling fallback):** two
 ordinary app images — `eventstore` (built from whichever

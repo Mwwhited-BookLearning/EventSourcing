@@ -1,271 +1,58 @@
 # Data Model
 
-## Entities
+This model outgrew a single file — it's now organized by **entity
+group**, one file per group under [`data/`](data/), following the same
+split this design package already applied to ADRs
+(`07-adrs.md`/`adrs/`) and patterns (`patterns/`). This file is the
+**classification overview**: how the groups relate, and a table of
+contents into the detail files. No entity class lives in this file
+anymore — go to the linked file for the actual C# shapes.
 
-```csharp
-public class EventTypeDefinition
-{
-    public string Name { get; set; } = default!;      // e.g. "OrderPlaced" — canonical casing, stored lowercase for lookup
-    public int Version { get; set; }
-    public string JsonSchema { get; set; } = default!; // raw JSON Schema document, stored as text
-    public DateTimeOffset RegisteredAt { get; set; }
-    public bool IsActive { get; set; }                 // latest version flag
-    public ParentValidationMode ParentValidationMode { get; set; } = ParentValidationMode.Strict;
-    public string? RequiredPublishClaim { get; set; }  // "type:value", e.g. "clearance:secret" — null = no extra restriction
-    public string? RequiredReadClaim { get; set; }     // gates Follow + Lineage; null = no extra restriction
-    public ChangeKind ChangeKind { get; set; }          // Full | Partial — required, no default (ADR-016); Partial payloads are Optional<T>-wrapped per-property (ADR-022)
-    public string EntityIdField { get; set; } = default!; // JSON path into Payload that yields this type's uniqueId (ADR-021) — required, no default
+## The three entity groups, and how they relate
 
-    public List<FilterableField> FilterableFields { get; set; } = new();
+```plantuml
+@startuml DataModel_Classification
+package "Schema Registry\n(data/schema-registry.md)" {
+  class EventTypeDefinition
+  class FilterableField
 }
 
-public enum ChangeKind
-{
-    Full,    // this event type's payload replaces everything known about its key
-    Partial  // this event type's payload merges onto (never overlays a missing/masked field over) existing state
+package "Event Log\n(data/event-log.md)" {
+  class StoredEvent
+  class EventParent
 }
 
-public enum ParentValidationMode
-{
-    Strict,     // publish is rejected (400) if any parentEventId does not resolve to a stored event
-    Permissive  // dangling/forward parentEventId references are accepted and stored as unresolved
+package "Entity Store\n(data/entity-store.md)" {
+  class EntityStoreRow
 }
 
-public class FilterableField
-{
-    public int Id { get; set; }
-    public string EventTypeName { get; set; } = default!;
-    public int EventTypeVersion { get; set; }
-    public string JsonPath { get; set; } = default!;    // e.g. "$.Amount"
-    public FilterableFieldType DataType { get; set; }   // String, Number, Boolean, DateTimeOffset
-    public bool IsIndexed { get; set; }                 // whether a DB index/computed column exists
-}
+EventTypeDefinition "1" --> "*" StoredEvent : validates/governs shape of\n(AppId, Name, Version) -- ADR-030
+StoredEvent "1" --> "*" EventParent : causal lineage (ADR-005)
+StoredEvent "*" --> "1" EntityStoreRow : folds into, in OccurredAt\norder, not arrival order (ADR-021, ADR-029)
+StoredEvent "1" --> "0..1" StoredEvent : UpcastMaterialization\nof (ADR-027, dashed --\nnever folded)
 
-public enum FilterableFieldType { String, Number, Boolean, DateTimeOffset }
-
-public class StoredEvent
-{
-    public long SequenceNumber { get; set; }   // global monotonic order, identity column
-    public Guid EventId { get; set; }          // unique — client-supplied for idempotent retries, or server-generated (ADR-011); plays the "CorrelationId" role too
-    public string EntityId { get; set; } = default!;   // {appId}:{entityType}:{uniqueId} — required (ADR-021); supersedes the old optional StreamId
-    public string EventType { get; set; } = default!;  // normalized lowercase
-    public int SchemaVersion { get; set; }
-    public long? ExpectedVersion { get; set; }          // Entity Store Version this patch was based on — optional, enables conflict detection (ADR-024)
-    public string Payload { get; set; } = default!;    // JSON text; known properties typed, unknown routed to Extensions at fold time (ADR-022)
-    public string PayloadHash { get; set; } = default!; // hash of {EventType, Payload, sorted parentEventIds} -- ADR-011
-    public string ChainHash { get; set; } = default!;    // SHA-256(prior ChainHash || PayloadHash || SequenceNumber) -- ADR-019
-    public string Status { get; set; } = default!;      // received | processing | applied | rejected — transport-level only (ADR-023)
-    public string? SchemaStatus { get; set; }           // unknown | invalid | conformant — advisory, never gates Status (ADR-023)
-    public bool ConflictFlag { get; set; }              // set by the fold step if a concurrent conflicting patch was detected (ADR-024)
-    public DateTimeOffset OccurredAt { get; set; }
-}
-
-public class EventParent
-{
-    public Guid ChildEventId { get; set; }   // always resolves to a StoredEvent — the child is being inserted in the same publish
-    public Guid ParentEventId { get; set; }  // may NOT resolve to a StoredEvent if the child's event type is Permissive
-}
-
-// Mutable, versioned, hashed — folded from StoredEvent by the same always-on projection
-// mechanism ADR-015 built for opt-in CQRS projections, except this one runs for every
-// entity automatically (ADR-021). Read path for "current state of X" (ADR-029's GraphQL layer).
-public class EntityStoreRow
-{
-    public string EntityId { get; set; } = default!;    // {appId}:{entityType}:{uniqueId}, PK
-    public string EntityType { get; set; } = default!;  // denormalized for query/shard routing (ADR-026)
-    public string? ShardKey { get; set; }                // computed from EntityId/EntityType (ADR-026)
-    public long Version { get; set; }                    // monotonic, bumped on every fold
-    public string Data { get; set; } = default!;         // current materialized snapshot (typed properties)
-    public string Extensions { get; set; } = default!;   // overflow bag for properties not in the current known schema (ADR-022)
-    public string Hash { get; set; } = default!;         // SHA-256 of canonicalized Data — per-entity integrity/diff, a different
-                                                           // application of ADR-019's hash primitive than the event ChainHash
-    public int SchemaVersion { get; set; }                // current shape, post-upcast (best effort — ADR-018)
-    public string AuthorityStatus { get; set; } = default!; // rolled up from contributing events — advisory (ADR-027)
-    public long LastAppliedSequenceNumber { get; set; }   // replay checkpoint
-    public string? LastAppliedOriginId { get; set; }      // origin of the most recent fold (ADR-025)
-    public DateTimeOffset UpdatedAt { get; set; }
-}
+note bottom of EntityStoreRow
+  The only thing ever read for
+  "current state of X" -- never
+  the Event Log directly.
+end note
+@enduml
 ```
 
-## DbContext
+| Group | File | Covers |
+|---|---|---|
+| **Schema Registry** | [`data/schema-registry.md`](data/schema-registry.md) | `EventTypeDefinition`, `ChangeKind`, `ParentValidationMode`, `FilterableField` — plus event-type security (required claims) and property-level masking, since both live *inside* a registered schema, not as separate tables |
+| **Event Log** | [`data/event-log.md`](data/event-log.md) | `StoredEvent`, `EventKind`, `EventParent` — plus lineage, publish idempotency, tamper evidence (hash chain), upcasting/materialization, downcast, and the `EventUpcastFailed` dead-letter type |
+| **Entity Store** | [`data/entity-store.md`](data/entity-store.md) | `EntityStoreRow` — the always-on, automatically-folded "current state" read path (`ADR-021`), including why `Version` and `LastAppliedSequenceNumber` are deliberately two different counters (`ADR-029`) |
+| **DbContext & conventions** | [`data/dbcontext-and-conventions.md`](data/dbcontext-and-conventions.md) | The full `EventStoreContext`/`OnModelCreating` wiring and the portability rules that apply across all three groups above — kept separate so a cross-cutting rule isn't duplicated three times |
 
-```csharp
-public class EventStoreContext : DbContext
-{
-    public EventStoreContext(DbContextOptions<EventStoreContext> options) : base(options) { }
-
-    public DbSet<EventTypeDefinition> EventTypes => Set<EventTypeDefinition>();
-    public DbSet<FilterableField> FilterableFields => Set<FilterableField>();
-    public DbSet<StoredEvent> Events => Set<StoredEvent>();
-    public DbSet<EventParent> EventParents => Set<EventParent>();
-    public DbSet<EntityStoreRow> EntityStore => Set<EntityStoreRow>(); // ADR-021
-
-    protected override void OnModelCreating(ModelBuilder modelBuilder)
-    {
-        modelBuilder.Entity<EventTypeDefinition>(e =>
-        {
-            e.HasKey(x => new { x.Name, x.Version });
-            e.Property(x => x.Name).HasMaxLength(200);
-            e.HasMany(x => x.FilterableFields)
-             .WithOne()
-             .HasForeignKey(f => new { f.EventTypeName, f.EventTypeVersion });
-        });
-
-        modelBuilder.Entity<FilterableField>(e =>
-        {
-            e.HasKey(x => x.Id);
-            e.Property(x => x.JsonPath).HasMaxLength(500);
-        });
-
-        modelBuilder.Entity<StoredEvent>(e =>
-        {
-            e.HasKey(x => x.SequenceNumber);
-            e.Property(x => x.SequenceNumber).ValueGeneratedOnAdd();
-            e.HasIndex(x => x.EventType);
-            e.HasIndex(x => x.OccurredAt);
-            e.HasIndex(x => x.EntityId); // ADR-021 — supports entity change-history queries (ADR-024)
-            e.HasIndex(x => x.EventId).IsUnique(); // FK target for EventParents; also blocks duplicate EventId publishes
-            e.Property(x => x.Payload).HasColumnType("TEXT"); // portable; see provider notes below
-        });
-
-        modelBuilder.Entity<EntityStoreRow>(e =>
-        {
-            e.HasKey(x => x.EntityId);
-            e.HasIndex(x => x.EntityType);
-            e.HasIndex(x => x.ShardKey); // ADR-026
-            e.Property(x => x.Data).HasColumnType("TEXT");
-            e.Property(x => x.Extensions).HasColumnType("TEXT");
-        });
-
-        modelBuilder.Entity<EventParent>(e =>
-        {
-            e.HasKey(x => new { x.ChildEventId, x.ParentEventId });
-            e.HasIndex(x => x.ParentEventId); // supports descendant traversal (find children of X)
-            // No database-level FK on ParentEventId -> Events.EventId: Permissive event types must be able
-            // to insert a dangling reference, which a real FK constraint would reject outright. Strict-mode
-            // existence checking is therefore enforced in the application layer at publish time, not the schema.
-        });
-    }
-}
-```
-
-## Portability rules (apply to all providers)
-
-1. **No native JSON column types in the shared model.** `Payload` and
-   `JsonSchema` are plain text columns (`TEXT` / `nvarchar(max)` /
-   `text`), never SQL Server's `json` type or Postgres's `jsonb` column
-   type at the EF model level. Native JSON *functions* are still used for
-   querying (see `04-odata-filter-pushdown.md`) — that's a query-time
-   concern, not a column-type concern, and keeps `dotnet ef migrations`
-   generating a consistent model across providers.
-2. **Auto-increment key** (`SequenceNumber`) uses `ValueGeneratedOnAdd()` —
-   this maps to `INTEGER PRIMARY KEY` (SQLite rowid), a Postgres identity
-   sequence, and SQL Server `IDENTITY` without extra configuration.
-3. **No `rowversion`/native optimistic concurrency tokens.** If optimistic
-   concurrency is needed later, use a manual `int RowVersion` column
-   incremented in application code — `rowversion` (SQL Server) has no
-   equivalent in SQLite/Postgres.
-4. **Casing**: SQL Server's default collation is case-insensitive; SQLite
-   and Postgres are case-sensitive by default. `EventType` and
-   `EventTypeDefinition.Name` are always normalized to lowercase before
-   storage and before querying, so string equality behaves identically
-   across all three providers regardless of collation.
-5. **Per-provider migrations**: EF Core migrations are not portable across
-   providers even with an identical model (different SQL emitted). Keep
-   one migrations assembly/folder per provider — see
-   `06-solution-structure.md`. Each provider's migrations assembly is
-   referenced directly by exactly one deployable (`EventStore.Host.<Provider>`,
-   `ADR-001`) — there is no runtime selection between them.
-
-## Per-provider index strategy for filterable fields
-
-When a `FilterableField` is marked `IsIndexed = true`, the registry service
-issues a provider-specific migration to add a computed/expression index:
-
-| Provider | Mechanism |
-|---|---|
-| SQLite | Expression index: `CREATE INDEX ... ON Events(json_extract(Payload, '$.Amount'))` (SQLite 3.9+) |
-| PostgreSQL | Expression index: `CREATE INDEX ... ON "Events" ((("Payload"::jsonb) ->> 'Amount'))` |
-| SQL Server | Computed column + index: `ALTER TABLE Events ADD Amount AS JSON_VALUE(Payload, '$.Amount'); CREATE INDEX ... ON Events(Amount)` |
-
-This is generated/applied by the Schema Registry Service at field-registration
-time, not part of the baseline EF model — see
-`05-schema-registry-and-spec-generation.md`.
-
-## Event lineage (parent/child DAG)
-
-An event may declare one or more **parent events** — of any event type — that
-it is causally derived from. This is envelope metadata, recorded in
-`EventParents`, and is deliberately kept out of `Payload`: it is never part of
-the registered JSON Schema, so it can't collide with schema validation or
-`additionalProperties` rules.
-
-- `parentEventIds` is optional on publish. Omitted or empty means an **origin
-  event** with no parents.
-- Whether a referenced parent must already exist is controlled per event type
-  by `EventTypeDefinition.ParentValidationMode`, set at schema registration
-  (default `Strict`).
-- Under `Strict`, combined with the append-only, monotonically increasing
-  `SequenceNumber`, the parent graph is **acyclic by construction**: a parent
-  must already have a lower `SequenceNumber` than any child referencing it.
-- Under `Permissive`, that guarantee does not hold: event A can be published
-  referencing a not-yet-existing event X as a parent, and X can later be
-  published referencing A as *its* parent (A already exists by then, so this
-  passes validation even under Strict). The result is a 2-cycle. Any code that
-  walks the DAG (see `03-api-contracts.md`, Lineage API) must be cycle-safe
-  unconditionally — it cannot assume acyclicity just because most event types
-  use `Strict`. See `ADR-005`.
-- `EventParents` is also the mechanism a future derived/materialized event
-  type (deferred — see `ADR-007`) would use to record which source events it
-  was computed from: no schema change would be needed here to support that
-  later.
-
-## Publish idempotency (`ADR-011`)
-
-`PayloadHash` (a hash of `{EventType, Payload, sorted parentEventIds}`) is
-stored on every `StoredEvent`, whether or not the publisher supplied their
-own `eventId`. It's only ever consulted after the existing unique index on
-`EventId` finds a match — a publisher who supplies the same `eventId`
-again with an identical hash gets the original response replayed with no
-new write; a matching `eventId` with a *different* hash is `409 Conflict`.
-A publisher who never supplies `eventId` gets no idempotency guarantee, by
-design — this is opt-in, not automatic dedup by content alone (two
-genuinely different events that happen to share identical content would
-otherwise be wrongly merged).
-
-## Tamper evidence (`ADR-019`)
-
-`ChainHash` is a *different* guarantee from `PayloadHash` above, computed
-from it: every `StoredEvent` chains its `PayloadHash` and `SequenceNumber`
-onto the immediately preceding event's `ChainHash`, so altering any past
-row breaks every `ChainHash` after it — detectable by replaying the chain
-from `SequenceNumber = 1`, not just comparing one row to itself. See
-`ADR-019` for why this is a linear chain, not a full Merkle tree.
-
-## Event upcasting (`ADR-018`)
-
-`StoredEvent.SchemaVersion` (above) is what makes a version-spanning
-`mode=replay` (`ADR-010`) possible to reconcile at read time: an
-an optional `upcastFromPrevious` OData `compute()` expression list, set
-per version (`>= 2`), reshapes an old-shaped payload forward, version by
-version, so every consumer sees the current shape regardless of which
-version originally validated a given row. Deliberately not a general
-transform language — an upcast mapping is always many-source-fields-to-
-one-destination-field or one-to-one, never one-to-many or many-to-many,
-so `compute()`'s expression-list shape is already sufficient. `Payload`
-itself is never rewritten — see `ADR-018` and `06-solution-structure.md`
-for the transform mechanics.
-
-## Publish-time upcast validation and the reserved `EventUpcastFailed` type (`ADR-020`)
-
-Publish now declares a required `SchemaVersion` up front (not implicitly
-"whichever is active") and, if that version is behind the active one, is
-upcast-validated live against the caller's real payload before responding.
-On failure, `EventUpcastFailed` — the first event type in this design an
-operator never registers, reserved at the platform level rather than via
-`PUT /registry/{event-type}` — is stored in the original event's place,
-carrying the original `EventType`/`SchemaVersion`/`Payload` verbatim plus
-which upcast hop failed and why. See `ADR-020` for the full mechanics.
+The **read side** (custom CQRS projections — `ProjectionCheckpoint`,
+`ProjectionSnapshot`, `OrderSummary`, etc.) is deliberately **not** a
+fourth group here — it lives in its own `ProjectionsDbContext`, in its
+own database, documented in `09-cqrs-read-models.md`. Keeping it out of
+this file entirely is itself part of demonstrating the write/read (CQRS)
+split this project exists to show — see
+`patterns/cqrs-and-materialized-views.md`.
 
 ## Suggested References
 
@@ -275,68 +62,6 @@ which upcast hop failed and why. See `ADR-020` for the full mechanics.
 - [FIPS 180-4](https://csrc.nist.gov/pubs/fips/180-4/final) — SHA-256, used for both `PayloadHash` (`ADR-011`) and `ChainHash` (`ADR-019`).
 - [RFC 4122](https://datatracker.ietf.org/doc/html/rfc4122) — UUID, the format of `EventId`.
 
-See `references.md` for the full bibliography.
-
-## Event-type security (required claims)
-
-`RequiredPublishClaim` and `RequiredReadClaim` are a second, orthogonal
-authorization dimension from the operation-level scopes in `ADR-006`:
-scopes (`events:publish`, `events:follow`, `events:lineage:read`,
-`registry:admin`) gate *whether you can call the operation at all*;
-these two fields gate *whether you may touch a specific event type*, per
-`ADR-008`. Both are optional, single `"type:value"` claim strings (e.g.
-`"clearance:secret"`), checked with `ClaimsPrincipal.HasClaim(type, value)`
-— v1 supports exactly one required claim per direction, not an AND/OR set.
-
-- `RequiredPublishClaim` gates `POST /publish/{event-type}` for this type.
-- `RequiredReadClaim` gates `QUERY /follow/{event-type}` (`ADR-012`; checked at connect
-  time) **and** the Lineage API — see `03-api-contracts.md`, "Lineage API",
-  for why a restricted node anywhere in an ancestors/descendants traversal
-  fails the whole request rather than being stubbed out.
-- Both are `null` by default — registering an event type with neither set
-  behaves exactly as before this feature existed.
-- Enforcement needs the caller's claims to already be populated by JWT
-  bearer auth (`ADR-006`), so this can only be enforced once that auth
-  middleware exists — see `08-build-plan.md`, Phase 6.
-
-Property-level **masking** — wrapping individual field *values* in a
-`{"value": ...}` / `{"masked": "***"}` envelope for callers who lack a
-field-specific claim — is a related, finer-grained feature (`ADR-009`, v1
-scope). No new column on `EventTypeDefinition` for it: masking rules live
-inside the registered `JsonSchema` text itself, as an `x-masking` extension
-on a property (`{ "requiredClaim": "type:value", "strategy": "FixedValue",
-"maskedValue": "***" }`), an array's `items` (when scalar — wraps each
-element), or a property nested inside a complex-object `items` schema
-(wraps just that property per element). Unlike an earlier, since-replaced
-`null`-out design, this works on **any** scalar-typed field — including
-required, non-nullable ones — because the wrapper is a new type at that
-position, not a mutation of the original type's slot. It applies only to
-query/stream responses, never to the stored or published `Payload`; see
-`ADR-009` and `06-solution-structure.md` for the schema-plus-data
-transform that computes it.
-
-`x-masking` also carries three **optional, schema-only** descriptive
-fields — `regulatoryClassification`, `governanceBody`,
-`regulationReference` (e.g. `"PHI"` / `"HHS/OCR"` /
-`"HIPAA 45 CFR §164.514(b)"`). These are documentation, not behavior: the
-masking transform never reads them, and they never appear in the runtime
-wrapper — they exist so a schema self-documents *why* a field is masked,
-discoverable via the registry and generated specs, per `ADR-009`.
-
-**There is no deletion/erasure mechanism for regulated data, by design.**
-`Payload` is never mutated or removed once stored, for a masked field the
-same as any other — masking is a read-time presentation transform, not a
-storage-layer redaction. `ADR-009` records this as explicitly settled, not
-merely unaddressed.
-
-## Read-side data model (CQRS projections)
-
-`ChangeKind` above is the one write-side model addition for the read side
-— everything else a projection needs (`ProjectionCheckpoint`,
-`ProjectionSnapshot`, and each projection's own read-model tables, e.g.
-`OrderSummary`) lives in a **separate** `ProjectionsDbContext`, in a
-separate database, owned by `EventStore.Projections.Host`, not this
-`EventStoreContext`. See `09-cqrs-read-models.md` and `ADR-015`/`ADR-016`
-for the full design — deliberately not duplicated here, since keeping the
-write-side model doc from growing read-side entities is itself part of
-demonstrating the CQRS split this project exists to show.
+Kept consolidated here rather than repeated per group file, the same
+choice `07-adrs.md` makes for its own split — see `references.md` for
+the full bibliography.

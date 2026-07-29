@@ -46,3 +46,9 @@ Consequences: <trade-offs accepted>
 | [024](adrs/adr-024-optimistic-concurrency-conflict-flagging.md) | Optimistic concurrency + conflict flagging | Accepted |
 | [025](adrs/adr-025-api-documentation-ui.md) | API documentation UI — Scalar for OpenAPI, `@asyncapi/react-component` for AsyncAPI | Accepted |
 | [026](adrs/adr-026-dev-aspire-otel-prod-compose.md) | Development via .NET Aspire + OpenTelemetry (logging, tracing, metrics); production via Docker Compose | Accepted |
+| [027](adrs/adr-027-materialized-upcasts.md) | Materialized upcasts persisted to the event log, folded exactly once | Accepted |
+| [028](adrs/adr-028-downcast-on-retrieval.md) | Downcast on retrieval for an explicitly requested older schema version | Accepted |
+| [029](adrs/adr-029-logical-order-fold.md) | Logical-order fold for out-of-order/lagged event arrival | Accepted |
+| [030](adrs/adr-030-multi-tenant-framework.md) | Multi-tenant framework — `appId`-scoped schemas, domain-agnostic core | Accepted |
+| [031](adrs/adr-031-telemetry-channels.md) | Streaming channels (telemetry, audio/video) — a separate fast path, linked to events via `TelemetryPointer` | Accepted |
+| [032](adrs/adr-032-binary-attachments.md) | Binary attachments — content-addressed, linked to an entity or event | Accepted |

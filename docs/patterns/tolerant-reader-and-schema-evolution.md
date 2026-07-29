@@ -42,6 +42,17 @@ R -> R: unrecognized property?\n=> route to Extensions bag,\nnot rejected (Toler
 @enduml
 ```
 
+## Also known as
+
+**Postel's Law** is also called the **Robustness Principle** — the same
+"be conservative in what you send, liberal in what you accept" rule,
+under its more common name in networking-protocol contexts (its origin)
+versus Fowler's application of it to service integration specifically.
+Related but distinct: **Consumer-Driven Contracts** — a *testing* practice
+(consumers publish the shape they actually depend on, providers test
+against it) that complements Tolerant Reader rather than being another
+name for it.
+
 ## How this application uses it
 
 **Tolerant Reader** shows up as this design's `Extensions`-bag routing

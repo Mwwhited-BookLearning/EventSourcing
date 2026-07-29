@@ -25,25 +25,51 @@ of document in this design package:
 | [Optimistic Concurrency](optimistic-concurrency.md) | Check for conflict at commit time instead of locking; flag genuine conflicts rather than silently resolving them | `ADR-024` |
 | [Hash Chain (Tamper-Evident Log)](hash-chain-integrity.md) | Each record's hash incorporates the previous one's, so undetected history tampering becomes detectable | `ADR-019` |
 
-## Catalogued, not yet written up as standalone docs
+## Interactions — where two patterns compose
 
-Real patterns already decided (or queued) in this design, listed here so
-the catalog is complete even before each gets its own full write-up —
-same "state it, don't lose it" discipline this project already applies to
-ADRs and `references.md`.
+A pattern rarely runs alone. When two (or more) genuinely combine at one
+point in this design — not just "both used somewhere in the same ADR" —
+the interaction gets its own page under
+[`interactions/`](interactions/), since neither pattern's own doc tells
+the whole story on its own:
+
+| Interaction | What it explains |
+|---|---|
+| [Fold-time ordering + conflict detection](interactions/fold-ordering-and-conflict.md) | Why [Optimistic Concurrency](optimistic-concurrency.md) and [Watermarks/event-time ordering](tolerant-reader-and-schema-evolution.md) are two different checks, run together, catching two different failure modes — and why only one of the two actually blocks a write from applying |
+| [The publish pipeline](interactions/publish-pipeline.md) | How [Idempotent Receiver, Inbox](idempotent-receiver-and-inbox.md), [Tolerant Reader](tolerant-reader-and-schema-evolution.md), and Dead Letter Channel compose into one `POST /publish` request, in a specific, load-bearing order |
+
+## Decided, not yet written up as standalone docs
+
+Real patterns with a real, landed ADR, listed here so the catalog stays
+current even before each gets its own full write-up:
 
 | Pattern | Summary | Applied in |
 |---|---|---|
-| Claims-based authorization + property-level masking | A second, finer-grained authorization axis on top of coarse operation scopes; redact individual fields via a value/masked wrapper rather than an all-or-nothing response | `ADR-008`, `ADR-009` |
-| Proof of Possession (vs. bearer tokens) | Cryptographically bind a token to the holder's key, so a leaked token alone isn't usable | `ADR-017` |
-| Safe method with a request body | A `GET`-like, cacheable, side-effect-free method that still carries a body — avoids pushing sensitive query content into a URL, access log, or proxy cache | `ADR-012`, `ADR-031` (queued — GraphQL queries specifically travel over `QUERY`, not `GET`, to keep PII/PHI-bearing filter arguments out of URLs/logs) |
-| Problem Details (canonical error shape) | One consistent error response shape across every endpoint, with typed extension fields for situation-specific detail | `ADR-013` |
-| Sharding (application-level partitioning) | Partition an entity store by key so no single store need hold everything | `ADR-028` (queued) |
-| Multi-origin replication + anti-entropy/gossip | Independent writable replicas, each making local progress with no guarantee of agreement at any instant, converging via background reconciliation | `ADR-027` (queued) |
-| Merkle tree catch-up | Exchange hash-tree summaries to find and transfer only the differing ranges after a disconnection, instead of a full resync | `ADR-027` (queued) |
-| Non-authoritative capture (Reservation/Provisional + non-repudiation logging) | Accept data whose submitter's authority can't be verified yet; capture now, adjudicate later, via an explicit trust status that never gates ingestion | `ADR-029` (queued) |
-| Self-attested, offline-verifiable delegation (DID/UCAN) | Prove a chain of delegated capability without needing to reach a central authority at verification time | `ADR-030` (queued) |
-| MVVM (Model-View-ViewModel) | Structure/style/state/transport kept in separate layers; a ViewModel dispatches commands rather than mutating state directly | `ADR-033` (queued) |
+| Upcast/downcast schema mapping (Avro-schema-resolution-adjacent) | Forward map (old→current) for replay, persisted once as a materialized event so it's never recomputed; backward map (current→old) for serving legacy consumers, computed fresh per request since its target isn't fixed | `ADR-018`, `ADR-027`, `ADR-028` |
+| Watermarks / event-time vs. processing-time ordering | Fold by logical occurrence time, not arrival order, so a late-arriving event can't silently revert already-applied newer data; flag it instead of blocking or corrupting | `ADR-029` |
+| Multi-tenancy via a namespacing key | One engine, many independent applications, each schema/entity scoped by an `appId` key so unrelated applications can't collide or see each other's registrations | `ADR-030` |
+
+## Catalogued, still genuinely queued (no ADR yet)
+
+Real patterns this design intends to adopt, named here so the catalog is
+complete even before the deciding ADR exists — same "state it, don't lose
+it" discipline this project already applies to `references.md`. Numbers
+are deliberately omitted: these get assigned when each ADR is actually
+written, and a hardcoded "queued as `ADR-0XX`" note here would just go
+stale the next time something jumps the queue (it already has, twice).
+
+| Pattern | Summary |
+|---|---|
+| Claims-based authorization + property-level masking | Already decided (`ADR-008`, `ADR-009`) — listed here too since it's a genuine pattern in its own right, not only a project-specific decision |
+| Proof of Possession (vs. bearer tokens) | Already decided (`ADR-017`) — same note as above |
+| Safe method with a request body | Already decided (`ADR-012`); the GraphQL-only query layer will extend it — GraphQL queries specifically over `QUERY`, not `GET`, to keep PII/PHI-bearing filter arguments out of URLs/logs |
+| Problem Details (canonical error shape) | Already decided (`ADR-013`) |
+| Sharding (application-level partitioning) | Partition an entity store by key so no single store need hold everything |
+| Multi-origin replication + anti-entropy/gossip | Independent writable replicas, each making local progress with no guarantee of agreement at any instant, converging via background reconciliation |
+| Merkle tree catch-up | Exchange hash-tree summaries to find and transfer only the differing ranges after a disconnection, instead of a full resync |
+| Non-authoritative capture (Reservation/Provisional + non-repudiation logging) | Accept data whose submitter's authority can't be verified yet; capture now, adjudicate later, via an explicit trust status that never gates ingestion |
+| Self-attested, offline-verifiable delegation (DID/UCAN) | Prove a chain of delegated capability without needing to reach a central authority at verification time |
+| MVVM (Model-View-ViewModel) | Structure/style/state/transport kept in separate layers; a ViewModel dispatches commands rather than mutating state directly |
 
 ## A note on diagrams
 
