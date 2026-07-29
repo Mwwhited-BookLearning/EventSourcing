@@ -75,6 +75,47 @@ UCAN's delegation chain roots in a DID registered here for the `AppId`
 the request is scoped to. Who may register/deregister a trust root is
 not designed further here — see `10-open-questions.md`.
 
+## Roles (`ADR-046`)
+
+```csharp
+public class Role
+{
+    public string AppId { get; set; } = default!;         // part of the composite key (ADR-030)
+    public string RoleName { get; set; } = default!;
+    public List<string> Permissions { get; set; } = new(); // opaque claim/scope strings -- the framework never validates what one means
+}
+```
+
+A named, `AppId`-scoped bundle of the same opaque permission strings
+used everywhere else in this design (`RequiredPublishClaim`/
+`RequiredReadClaim` values, `ADR-008`; `ADR-044`'s application-defined
+permission types). **Role assignment (which user has which role) and
+direct per-user permission grants (`UserPermission`, additive-only —
+`ADR-046`) are both identity-provider state, not core-engine data** —
+the same scoping `ADR-006` already drew around dev-mode seeded clients.
+The IdP expands a user's roles plus any direct grants into one
+flattened claim set at token issuance; every claim check in this design
+(`ADR-008`, `ADR-043`, `ADR-044`) is unchanged and unaware whether a
+claim arrived via a role, a direct grant, or neither.
+
+## Trusted federation issuers (`ADR-047`)
+
+```csharp
+public class TrustedFederationIssuer
+{
+    public string AppId { get; set; } = default!;   // part of the composite key (ADR-030)
+    public string Issuer { get; set; } = default!;   // the external IdP's `iss` value
+    public string JwksUri { get; set; } = default!;  // where to fetch that issuer's signing keys
+    public string? Description { get; set; }
+}
+```
+
+Names which external, already-authoritative OIDC IdP(s) this framework
+will accept a Token Exchange `subject_token` from, for a given `AppId`
+— a different question from `ADR-044`'s `AppTrustRoot` (which DID is a
+root of trust for UCAN capability delegation), so its own entity rather
+than a reused shape.
+
 ## Per-provider index strategy for filterable fields
 
 When a `FilterableField` is marked `IsIndexed = true`, the registry service

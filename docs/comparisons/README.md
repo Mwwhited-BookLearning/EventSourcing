@@ -25,6 +25,7 @@ is the actual teaching value of this document type.
 | [API query layer](api-query-layer.md) — GraphQL vs. OData vs. JSON:API vs. gRPC vs. REST-ad-hoc/PostgREST-style | `ADR-037` (GraphQL) | Expanded beyond the two options this project actually chose between (GraphQL, OData), per direct request, to check that choice against every other commonly-named API query surface |
 | [UI architecture](ui-architecture-patterns.md) — MVVM vs. MVP vs. MVC vs. code-behind | `ADR-039` (MVVM) | Written as an explicit fallback priority (MVVM → MVP → MVC → code-behind) for UI technologies/screens `ADR-039` doesn't fully dictate, per direct request |
 | [UI framework](ui-framework.md) — Vue vs. Blazor vs. React vs. Angular | `mvvm-client-architecture.md`'s concrete mapping (Vue) | Checks that choice against a genuine first-party alternative (Blazor) under `ADR-041`'s own preference — Blazor loses specifically on `ADR-039`'s runtime-data view-definition mechanism, not by default |
+| [Service-to-service identity](service-identity.md) — SPIFFE/SPIRE vs. static OAuth2 client credentials vs. hand-rolled mTLS | `ADR-048` (SPIFFE/SPIRE) | Un-rejects `references.md`'s prior SPIFFE/SPIRE rejection once this design's own growth (many services, `ADR-033`'s cross-site peers) created the multi-workload-mesh scenario the rejection named as the reason to revisit |
 
 ## Not yet written up as their own standalone comparison doc
 

@@ -40,6 +40,7 @@ server) and [NWebDav](dotnet/nwebdav.md) (`ADR-032`'s WebDAV surface).
 | [CEL for .NET](dotnet/cel-dotnet.md) | dotnet | Declarative expression evaluation for common upcast mappings | `ADR-018`, `ADR-037` (candidates only — ecosystem immature, not locked in) |
 | [Testcontainers](dotnet/testcontainers.md) | dotnet | Disposable real-database integration tests | `06-solution-structure.md` |
 | [Scalar](dotnet/scalar.md) | dotnet | OpenAPI documentation UI | `ADR-025` |
+| [YARP](dotnet/yarp.md) | dotnet | Reverse proxy / API Gateway — single external entry point | `ADR-049` |
 | [Vue 3](web/vue.md) | web | Client application shell (MVVM presentation layer) | `ADR-039`, `mvvm-client-architecture.md` |
 | [Pinia](web/pinia.md) | web | Client-side state store (MVVM data layer) | `mvvm-client-architecture.md` |
 | [Naive UI](web/naive-ui.md) | web | Vue component library + theming | `mvvm-client-architecture.md` |

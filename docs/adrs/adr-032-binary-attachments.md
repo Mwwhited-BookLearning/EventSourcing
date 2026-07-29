@@ -100,7 +100,28 @@ explicitly **out of the core engine's scope**, consistent with `ADR-030`:
 it would live in a client project (`ADR-039`'s MVVM client is the
 natural home), built *on top of* the WebDAV surface above rather than
 replacing it — noted here as a real, desirable extension point, not
-designed further until `ADR-033` exists to hang it on.
+designed further here.
+
+## Standalone attachments and direct permissions
+
+An attachment doesn't have to be linked to an event or entity at all —
+`AttachmentRef.EntityId`/`EventId` are both optional. A work guide, a
+form template, an instruction manual: real, common cases where a
+document is a first-class thing in its own right, not supporting
+material for some other business fact. For these, "inherit the linked
+event's `RequiredReadClaim`" (above) has nothing to inherit *from* —
+**an attachment (or a registered attachment *type*, the same way an
+event type declares its own claims) can carry a direct
+`RequiredReadClaim`/`RequiredPublishClaim` of its own**, reusing
+`ADR-008`'s exact claim-string shape rather than inventing a second
+claims model. Precedence, stated explicitly rather than left implicit:
+a direct claim on the attachment always governs if set (even when a
+link exists — a public instruction manual attached to a sensitive
+event, or the reverse, are both real cases); absent a direct claim, an
+attachment linked to an event/entity inherits that link's claim; absent
+both, no additional restriction beyond normal auth — the same
+"`null` = unrestricted" default `ADR-008`'s claims already use
+everywhere else.
 
 Consequences:
 - Deduplication by `ContentHash` means an attachment is many-to-many with
