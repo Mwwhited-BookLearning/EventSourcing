@@ -13,7 +13,8 @@ public class EventTypeDefinition
     public ParentValidationMode ParentValidationMode { get; set; } = ParentValidationMode.Strict;
     public string? RequiredPublishClaim { get; set; }  // "type:value", e.g. "clearance:secret" — null = no extra restriction
     public string? RequiredReadClaim { get; set; }     // gates Follow + Lineage; null = no extra restriction
-    public ChangeKind ChangeKind { get; set; }          // Full | Partial — required, no default (ADR-016)
+    public ChangeKind ChangeKind { get; set; }          // Full | Partial — required, no default (ADR-016); Partial payloads are Optional<T>-wrapped per-property (ADR-022)
+    public string EntityIdField { get; set; } = default!; // JSON path into Payload that yields this type's uniqueId (ADR-021) — required, no default
 
     public List<FilterableField> FilterableFields { get; set; } = new();
 }
@@ -45,13 +46,17 @@ public enum FilterableFieldType { String, Number, Boolean, DateTimeOffset }
 public class StoredEvent
 {
     public long SequenceNumber { get; set; }   // global monotonic order, identity column
-    public Guid EventId { get; set; }          // unique — client-supplied for idempotent retries, or server-generated (ADR-011)
+    public Guid EventId { get; set; }          // unique — client-supplied for idempotent retries, or server-generated (ADR-011); plays the "CorrelationId" role too
+    public string EntityId { get; set; } = default!;   // {appId}:{entityType}:{uniqueId} — required (ADR-021); supersedes the old optional StreamId
     public string EventType { get; set; } = default!;  // normalized lowercase
     public int SchemaVersion { get; set; }
-    public string? StreamId { get; set; }              // optional aggregate/stream key
-    public string Payload { get; set; } = default!;    // JSON text, validated at publish time
+    public long? ExpectedVersion { get; set; }          // Entity Store Version this patch was based on — optional, enables conflict detection (ADR-024)
+    public string Payload { get; set; } = default!;    // JSON text; known properties typed, unknown routed to Extensions at fold time (ADR-022)
     public string PayloadHash { get; set; } = default!; // hash of {EventType, Payload, sorted parentEventIds} -- ADR-011
     public string ChainHash { get; set; } = default!;    // SHA-256(prior ChainHash || PayloadHash || SequenceNumber) -- ADR-019
+    public string Status { get; set; } = default!;      // received | processing | applied | rejected — transport-level only (ADR-023)
+    public string? SchemaStatus { get; set; }           // unknown | invalid | conformant — advisory, never gates Status (ADR-023)
+    public bool ConflictFlag { get; set; }              // set by the fold step if a concurrent conflicting patch was detected (ADR-024)
     public DateTimeOffset OccurredAt { get; set; }
 }
 
@@ -59,6 +64,26 @@ public class EventParent
 {
     public Guid ChildEventId { get; set; }   // always resolves to a StoredEvent — the child is being inserted in the same publish
     public Guid ParentEventId { get; set; }  // may NOT resolve to a StoredEvent if the child's event type is Permissive
+}
+
+// Mutable, versioned, hashed — folded from StoredEvent by the same always-on projection
+// mechanism ADR-015 built for opt-in CQRS projections, except this one runs for every
+// entity automatically (ADR-021). Read path for "current state of X" (ADR-029's GraphQL layer).
+public class EntityStoreRow
+{
+    public string EntityId { get; set; } = default!;    // {appId}:{entityType}:{uniqueId}, PK
+    public string EntityType { get; set; } = default!;  // denormalized for query/shard routing (ADR-026)
+    public string? ShardKey { get; set; }                // computed from EntityId/EntityType (ADR-026)
+    public long Version { get; set; }                    // monotonic, bumped on every fold
+    public string Data { get; set; } = default!;         // current materialized snapshot (typed properties)
+    public string Extensions { get; set; } = default!;   // overflow bag for properties not in the current known schema (ADR-022)
+    public string Hash { get; set; } = default!;         // SHA-256 of canonicalized Data — per-entity integrity/diff, a different
+                                                           // application of ADR-019's hash primitive than the event ChainHash
+    public int SchemaVersion { get; set; }                // current shape, post-upcast (best effort — ADR-018)
+    public string AuthorityStatus { get; set; } = default!; // rolled up from contributing events — advisory (ADR-027)
+    public long LastAppliedSequenceNumber { get; set; }   // replay checkpoint
+    public string? LastAppliedOriginId { get; set; }      // origin of the most recent fold (ADR-025)
+    public DateTimeOffset UpdatedAt { get; set; }
 }
 ```
 
@@ -73,6 +98,7 @@ public class EventStoreContext : DbContext
     public DbSet<FilterableField> FilterableFields => Set<FilterableField>();
     public DbSet<StoredEvent> Events => Set<StoredEvent>();
     public DbSet<EventParent> EventParents => Set<EventParent>();
+    public DbSet<EntityStoreRow> EntityStore => Set<EntityStoreRow>(); // ADR-021
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -97,9 +123,18 @@ public class EventStoreContext : DbContext
             e.Property(x => x.SequenceNumber).ValueGeneratedOnAdd();
             e.HasIndex(x => x.EventType);
             e.HasIndex(x => x.OccurredAt);
-            e.HasIndex(x => x.StreamId);
+            e.HasIndex(x => x.EntityId); // ADR-021 — supports entity change-history queries (ADR-024)
             e.HasIndex(x => x.EventId).IsUnique(); // FK target for EventParents; also blocks duplicate EventId publishes
             e.Property(x => x.Payload).HasColumnType("TEXT"); // portable; see provider notes below
+        });
+
+        modelBuilder.Entity<EntityStoreRow>(e =>
+        {
+            e.HasKey(x => x.EntityId);
+            e.HasIndex(x => x.EntityType);
+            e.HasIndex(x => x.ShardKey); // ADR-026
+            e.Property(x => x.Data).HasColumnType("TEXT");
+            e.Property(x => x.Extensions).HasColumnType("TEXT");
         });
 
         modelBuilder.Entity<EventParent>(e =>

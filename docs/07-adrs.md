@@ -40,3 +40,9 @@ Consequences: <trade-offs accepted>
 | [018](adrs/adr-018-event-upcasting.md) | Event upcasting for schema evolution | Accepted |
 | [019](adrs/adr-019-hash-chained-tamper-evidence.md) | Hash-chained events for tamper evidence | Accepted |
 | [020](adrs/adr-020-schemaversion-on-publish.md) | Explicit `schemaVersion` on publish, with publish-time upcast validation and a reserved dead-letter event type | Accepted |
+| [021](adrs/adr-021-entity-concept.md) | Entity as a first-class concept (`EntityId`, Entity Store, `ExpectedVersion`) | Accepted |
+| [022](adrs/adr-022-optional-t-property-patches.md) | `Optional<T>` property-level patches (refines `ADR-016`) | Accepted |
+| [023](adrs/adr-023-persist-everything-ingestion.md) | Persist-everything ingestion posture (supersedes reject-on-invalid framing in `ADR-011`/`ADR-013`/`ADR-020`) | Accepted |
+| [024](adrs/adr-024-optimistic-concurrency-conflict-flagging.md) | Optimistic concurrency + conflict flagging | Accepted |
+| [025](adrs/adr-025-api-documentation-ui.md) | API documentation UI — Scalar for OpenAPI, `@asyncapi/react-component` for AsyncAPI | Accepted |
+| [026](adrs/adr-026-dev-aspire-otel-prod-compose.md) | Development via .NET Aspire + OpenTelemetry (logging, tracing, metrics); production via Docker Compose | Accepted |

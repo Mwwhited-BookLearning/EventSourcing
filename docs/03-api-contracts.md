@@ -158,17 +158,22 @@ masking's runtime enforcement (`IPayloadMasker`); see `ADR-002` and
 - Request body is an **envelope**: `schemaVersion` (**required** — which
   registered version of `{event-type}`'s schema `payload` is shaped for,
   `ADR-020`), `payload` (validated against *that* version specifically,
-  not automatically "whichever is active"), plus optional `parentEventIds`
-  (lineage metadata — see `02-data-model.md`, "Event lineage") and
-  optional `eventId` (idempotency key — see "Publish idempotency",
-  `ADR-011`). If `schemaVersion` is behind the active version, the
-  payload is also run through `UpcastChain` (`ADR-018`) as a live
-  compatibility check before the response is returned — see `ADR-020`
-  for the `EventUpcastFailed` outcome when that fails. None of
-  `schemaVersion`/`parentEventIds`/`eventId` is ever part of the
-  registered JSON Schema itself; each is validated against its own rule
-  (an existing version, `ParentValidationMode`, an existing `StoredEvent`
-  with the same id, respectively) — never against `payload`'s schema.
+  not automatically "whichever is active"), plus optional
+  `parentEventIds` (lineage metadata — see `02-data-model.md`, "Event
+  lineage"), optional `eventId` (idempotency key — see "Publish
+  idempotency", `ADR-011`), optional `expectedVersion` (the Entity Store
+  `Version` this patch was based on — enables conflict detection,
+  `ADR-024`), and optional `uniqueId` (resolves `EntityId` — omit only
+  for an event type whose `EntityIdField`, `ADR-021`, is itself derivable
+  from a field already inside `payload`). If `schemaVersion` is behind
+  the active version, the payload is also run through `UpcastChain`
+  (`ADR-018`) as a live compatibility check. **Per `ADR-023`, none of
+  this blocks persistence** — an unknown `schemaVersion`, a
+  schema-invalid `payload`, or a failed upcast no longer produce a `400`;
+  they persist with an advisory `SchemaStatus` instead (see the response
+  shape below). None of these fields is ever part of the registered JSON
+  Schema itself; each is validated against its own rule, advisory or
+  blocking as stated — never against `payload`'s schema.
 - `payload`'s schema per event type is a `$ref` into a `components/schemas`
   section built directly from each `EventTypeDefinition.JsonSchema`.
 
@@ -226,19 +231,52 @@ paths:
                     payload/parentEventIds replays the original response
                     with no new write; retrying with the same eventId but
                     different content is a 409.
+                uniqueId:
+                  type: string
+                  description: >
+                    Resolves this event's EntityId (ADR-021), together with
+                    {event-type} and the deployment's appId. Omit only if
+                    EntityIdField (registered per event type) is itself
+                    derivable from a field already inside payload.
+                expectedVersion:
+                  type: integer
+                  format: int64
+                  nullable: true
+                  description: >
+                    The Entity Store Version (ADR-021) this patch was based
+                    on. Omit for no conflict detection; supply to enable
+                    ConflictFlag detection (ADR-024) if another patch to the
+                    same property was applied first.
       responses:
-        '201':
+        '202':
           description: >
-            Event accepted and appended, OR (eventId supplied, matching an
-            existing event's content) an idempotent replay of the original
-            response, OR (schemaVersion behind active, upcast validation
-            failed) an EventUpcastFailed event stored in its place
-            (ADR-020) — the response body's eventType names which one.
+            Persisted (ADR-023) — status envelope below. Covers what used
+            to be a 201, an idempotent eventId replay, AND a
+            schema-invalid/unknown-version/failed-upcast submission: all
+            of those now persist and return 202 with an advisory
+            SchemaStatus, never a 400. status="applied" once folded into
+            the Entity Store (ADR-021); status="received" if still
+            in flight.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  correlationId: { type: string, format: uuid, description: "== eventId (ADR-011)" }
+                  status: { type: string, enum: [received, processing, applied, rejected] }
+                  entityId: { type: string, nullable: true }
+                  schemaStatus: { type: string, nullable: true, enum: [unknown, invalid, conformant] }
+                  authorityStatus: { type: string, enum: [unattested, pending_review, accepted, rejected] }
+                  conflictFlag: { type: boolean }
+                  reason: { type: string, nullable: true }
         '400':
           description: >
-            payload failed schema validation, OR schemaVersion doesn't
-            exist, OR (Strict ParentValidationMode) one or more
-            parentEventIds do not resolve to a stored event
+            The envelope itself couldn't be parsed as a valid publish
+            request (not valid JSON, or missing a structurally required
+            transport field) — the one case ADR-023 still rejects
+            outright, because there is no event to persist at all. Never
+            used for a schema-invalid payload, an unknown schemaVersion,
+            or a failed upcast (ADR-023) — those are 202 + SchemaStatus.
         '401':
           description: Missing or invalid Bearer token
         '403':
