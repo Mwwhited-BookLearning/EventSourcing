@@ -2,28 +2,35 @@
 
 # Masking Content Strategies: Partial Reveal vs. Format-Preserving vs. Generalization/Bucketing vs. Tokenization
 
-**Not decided.** Raised by `ADR-009`'s own "Future: definable masking
-strategies" section and `docs/10-open-questions.md`'s masking-strategies
-row. This narrows that open question — it does not close it: there is no
-single "winner" among these options without a specific application need
-to drive the choice, and this comparison says so plainly rather than
-picking one to look decisive.
+**Partially decided.** Raised by `ADR-009`'s own "Future: definable
+masking strategies" section and `docs/10-open-questions.md`'s
+masking-strategies row. `FixedValue`, `PartialReveal`, and keyed `Hash`
+are now all decided and built (`ADR-009`, shared by `ADR-052`); this
+comparison narrows what's left rather than closing it entirely — there is
+still no single "winner" among generalization/bucketing and tokenization
+without a specific application need to drive the choice, and this
+comparison says so plainly rather than picking one to look decisive.
 
-**Stated requirement driving this comparison:** `ADR-009` ships exactly
-one masking-content strategy, `"FixedValue"` (a configured literal string,
-default `"***"`), inside a claims-gated `{"value": ...}` / `{"masked":
-...}` wrapper that is a **read-time presentation transform, never a
-storage-layer change** — `Payload` is persisted and published exactly as
-received, forever; masking only affects what a query/stream response
-serializes back. `ADR-009` explicitly names two follow-on strategies as a
-future proposal, not yet built: `"PartialReveal"` (keep the last *N*
-characters of the real value) and `"Hash"` (a deterministic hash, letting
-a caller correlate masked values without seeing the real one). Both were
-sketched as fitting the existing wrapper unchanged — "only the content of
-`masked` changes, never the shape." Any option considered here has to be
-checked against that same bar: does it still fit inside a plain-string
-`masked` slot computed as a pure function of `(schema, one payload)` with
-no I/O, or does it need something genuinely new?
+**Stated requirement driving this comparison:** `ADR-009` originally
+shipped exactly one masking-content strategy, `"FixedValue"` (a
+configured literal string, default `"***"`), inside a claims-gated
+`{"value": ...}` / `{"masked": ...}` wrapper that is a **read-time
+presentation transform, never a storage-layer change** — `Payload` is
+persisted and published exactly as received, forever; masking only
+affects what a query/stream response serializes back. Two follow-on
+strategies, originally named as a future proposal, have since been
+promoted into the Decision: `"PartialReveal"` (named, human-readable
+prefix/suffix reveal — `showFirst`/`showLast`/`maskChar`/
+`preserveSeparators`) and `"Hash"` (a *keyed* HMAC via
+`Microsoft.Extensions.Compliance.Redaction`'s `HmacRedactor`, letting a
+caller correlate masked values across events without ever seeing the
+real one — keyed specifically so a small value space, like a 9-digit
+SSN, can't be reversed by brute-forcing every possibility against a bare
+hash). Both fit the existing wrapper unchanged — "only the content of
+`masked` changes, never the shape." Any option still considered here has
+to be checked against that same bar: does it still fit inside a
+plain-string `masked` slot computed as a pure function of `(schema, one
+payload)` with no I/O, or does it need something genuinely new?
 
 ## Prior art
 
@@ -141,18 +148,24 @@ tokenization, masking, and redaction](https://www.pkware.com/blog/encryption-tok
 
 ## Recommendation
 
-**No single winner — the honest answer is that the right next strategy
-depends on which application need shows up first, and none has yet.**
-What this comparison *does* resolve is which options are cheap,
-architecture-compatible increments versus which are a different mechanism
-wearing a masking-shaped costume:
+**Partial reveal and keyed hashing are both now decided and built; no
+single winner for the rest of the menu — the honest answer is that the
+right next strategy beyond those two depends on which application need
+shows up first, and none has yet.** What this comparison *does* resolve
+is which remaining options are cheap, architecture-compatible increments
+versus which are a different mechanism wearing a masking-shaped costume:
 
-- **Partial reveal (Option A)** is the safest, cheapest real increment
-  beyond `FixedValue` — it's what `ADR-009` already sketched, just
-  generalized to a prefix-*and*-suffix rule matching the real-world
-  precedent (SQL Server's `Partial()`). If/when masking strategies beyond
-  `FixedValue` get prioritized, this is the one with no open design
-  question standing in the way.
+- **Partial reveal (Option A)** is decided and built as `ADR-009`'s
+  `"PartialReveal"` strategy — the safest, cheapest real increment beyond
+  `FixedValue`, generalized to a prefix-*and*-suffix rule matching the
+  real-world precedent (SQL Server's `Partial()`), specified with named,
+  human-readable fields rather than a mask-template string.
+- **Keyed hashing**, closely related to but distinct from Option B below
+  (it doesn't preserve the value's format/length — a hash output is fixed
+  size), is decided and built as `ADR-009`'s `"Hash"` strategy, reusing
+  `Microsoft.Extensions.Compliance.Redaction`'s `HmacRedactor` rather than
+  a bare/unsalted hash, specifically to avoid the small-value-space
+  reversal risk a bare hash would carry.
 - **Format-preserving masking (Option B)** fits the wrapper just as
   cleanly, but *only* if scoped honestly: a non-cryptographic
   shape-preserving substitution needs nothing new; real FPE (FF1/FF3-1)

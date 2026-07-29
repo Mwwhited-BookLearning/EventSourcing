@@ -18,7 +18,7 @@ build are both fully designed, just sequenced later in
 
 | Question | Raised by | Why it's still open |
 |---|---|---|
-| Which richer masking-content strategy to build **beyond `PartialReveal`** (now decided, `ADR-009`/`ADR-052`) — is `Hash` worth building, and does tokenization belong in `x-masking` at all? Generalization/bucketing fits only as a single-value transform, never as a k-anonymity guarantee; tokenization's separate-party/separate-mechanism reversal model doesn't fit the wrapper at all and would need its own mechanism if ever needed. See `docs/comparisons/masking-strategies.md`. | `ADR-009`, `docs/comparisons/masking-strategies.md` | Narrowed further: `PartialReveal` is decided and built; `Hash`/tokenization/generalization remain undecided, with no application need driving a pick yet. |
+| Does tokenization belong in `x-masking` at all, and is generalization/bucketing worth building as a fourth strategy? `PartialReveal` and keyed `Hash` (`ADR-009`/`ADR-052`) are both now decided and built. Generalization/bucketing fits only as a single-value transform, never as a k-anonymity guarantee; tokenization's separate-party/separate-mechanism reversal model doesn't fit the wrapper at all and would need its own mechanism if ever needed. See `docs/comparisons/masking-strategies.md`. | `ADR-009`, `docs/comparisons/masking-strategies.md` | Narrowed further: `FixedValue`, `PartialReveal`, and `Hash` are all decided and built; only tokenization and generalization/bucketing remain undecided, with no application need driving a pick yet. |
 
 ## How to add an entry
 

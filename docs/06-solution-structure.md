@@ -387,6 +387,50 @@ actually appears. `x-masking.regulatoryClassification`/`governanceBody`/
 schema-only documentation (`02-data-model.md`), so `IPayloadMasker` simply
 never looks at them.
 
+**Which strategy computes `masked`'s content is a Strategy-pattern seam
+(`ADR-009`), not a `switch` inside the recursion above:**
+
+```csharp
+public interface IMaskingStrategy
+{
+    // Pure per call: the "masked" branch's content, from the real value
+    // and this leaf's x-masking config. No I/O, no ambient state.
+    JsonNode Mask(JsonNode realValue, JsonObject maskingConfig);
+}
+
+public sealed class FixedValueMaskingStrategy : IMaskingStrategy { /* maskedValue, default "***" */ }
+public sealed class PartialRevealMaskingStrategy : IMaskingStrategy { /* showFirst/showLast/maskChar/preserveSeparators */ }
+
+public sealed class HashMaskingStrategy(IRedactorProvider redactorProvider) : IMaskingStrategy
+{
+    // Delegates to Microsoft.Extensions.Compliance.Redaction's HmacRedactor
+    // (ADR-050) -- keyed by maskingConfig["keyId"] -- not a bare hash.
+}
+```
+
+Registered in the explicit composition root, one keyed line per strategy
+(`ADR-041` — no reflection-based auto-discovery):
+
+```csharp
+services.AddKeyedSingleton<IMaskingStrategy, FixedValueMaskingStrategy>("FixedValue");
+services.AddKeyedSingleton<IMaskingStrategy, PartialRevealMaskingStrategy>("PartialReveal");
+services.AddKeyedSingleton<IMaskingStrategy, HashMaskingStrategy>("Hash");
+```
+
+`PayloadMasker` (the `IPayloadMasker` implementation) takes an
+`IServiceProvider` in its constructor, used *only* to resolve
+`IServiceProvider.GetRequiredKeyedService<IMaskingStrategy>(leaf.Strategy)`
+per masked leaf as the recursion walks the schema — the one deliberate,
+narrow exception to `ADR-041`'s "no service-locator lookups reached for
+from inside arbitrary code" rule, since *which* implementation applies is
+a runtime fact (the `strategy` string sitting in registered schema data),
+not something a compile-time constructor parameter could express. This is
+exactly the scenario .NET's keyed-service resolution API exists for, not
+a workaround. Adding a fourth strategy (e.g. a future generalization/
+bucketing option, `docs/comparisons/masking-strategies.md`) is a new
+`IMaskingStrategy` class plus one registration line — `PayloadMasker`
+itself never changes.
+
 Because it's a pure `(schema, data) -> data` step with claim-checking
 injected, it composes as a link in a small command chain rather than logic
 embedded in `FollowEndpoint` specifically:
