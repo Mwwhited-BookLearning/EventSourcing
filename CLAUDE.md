@@ -64,11 +64,15 @@ larger batch of unrelated changes.
   apply somewhere, but genuinely *compose* at one specific point (e.g.
   two different checks running in the same fold step) — gets its own page
   explaining the combination, linked from both patterns' own docs.
-- `docs/design-docs/` — a **second, independently-developed design**
-  (a distributed, entity-centric event-sourced platform) that has now been
-  fully absorbed into ADRs `021`–`039` (see "Integration status" below).
-  Kept for provenance/narrative context, not because anything still only
-  exists there — every decision it raised has a real ADR now.
+- `docs/design-docs/` — **removed.** Was a second, independently-developed
+  design (a distributed, entity-centric event-sourced platform), imported
+  purely as a reference for this integration; fully absorbed into ADRs
+  `021`–`039` (see "Integration status" below), then deleted once that
+  absorption was confirmed complete — nothing depends on the folder still
+  existing. A `docs/design-docs/NN §X.Y`-style citation surviving in an
+  ADR/pattern/comparison doc is a provenance pointer to that now-deleted
+  source, not a live link — leave those as historical attribution rather
+  than scrubbing them, but don't add new ones.
 
 ## Conventions established so far
 
@@ -146,7 +150,7 @@ larger batch of unrelated changes.
   bar for the one accepted, narrow exception, stated as such rather than
   a silent default) rather than defaulting toward convenience.
 
-## Integration status (`docs/design-docs/` → primary design)
+## Integration status (`docs/design-docs/`, now removed, → primary design)
 
 **Every ADR the design-docs merge implied now exists and is Accepted —
 `ADR-021` through `ADR-039`.** Nothing from that merge remains only a

@@ -29,6 +29,11 @@ of document in this design package:
 | [Installable, Offline-Capable Web App with a Persistent Outbox](pwa-offline-outbox.md) | Service Worker + Web App Manifest + Background Sync — a web client that installs, runs with no network, and queues commands durably until connectivity returns | `ADR-039` |
 | [GraphQL Query Language](graphql-query-language.md) | Client-driven hierarchical query/mutation/subscription document, one round trip, partial-success execution | `ADR-037` |
 | [OData Query Protocol](odata-query-protocol.md) | Standardized URL query-string conventions for filter/sort/page/expand over a resource collection | `ADR-003`, `ADR-012` (superseded by `ADR-037`) |
+| [MVP (Model-View-Presenter)](mvp-pattern.md) | Explicit View/Presenter interface calls instead of a data-binding engine — same strict mediation as MVVM, no reactive substrate required | Compared in `docs/comparisons/ui-architecture-patterns.md` — first fallback below MVVM |
+| [MVC (Model-View-Controller)](mvc-pattern.md) | Controller mediates input → Model update → View selection; View may read Model directly to render | Compared in `docs/comparisons/ui-architecture-patterns.md` — second fallback below MVVM |
+| [JSON:API](jsonapi-specification.md) | Standardized REST conventions: sparse fieldsets, compound documents, reserved-but-undefined filter parameter | Compared, not adopted — `docs/comparisons/api-query-layer.md` |
+| [gRPC + Protobuf Services](grpc-protobuf-services.md) | Contract-first binary RPC with `FieldMask` partial responses and native streaming | Compared, not adopted — `docs/comparisons/api-query-layer.md` |
+| [Declarative REST Filter Operators](declarative-rest-filtering.md) | PostgREST/Hasura-style direct comparison-operator vocabulary over relational columns | Compared, not adopted — `docs/comparisons/api-query-layer.md` |
 
 ## Interactions — where two patterns compose
 
