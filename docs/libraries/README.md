@@ -36,7 +36,8 @@ server) and [NWebDav](dotnet/nwebdav.md) (`ADR-032`'s WebDAV surface).
 | [EF Core](dotnet/efcore.md) | dotnet | ORM / data access | `02-data-model.md`, `06-solution-structure.md` |
 | [HotChocolate](dotnet/hotchocolate.md) | dotnet | GraphQL server (schema, resolvers, Subscriptions, DataLoader) | `ADR-037` |
 | [Jint](dotnet/jint.md) | dotnet | Sandboxed JS execution for complex upcast mappings | `ADR-018`, `ADR-037` |
-| [CEL for .NET](dotnet/cel-dotnet.md) | dotnet | Declarative expression evaluation for common upcast mappings | `ADR-018`, `ADR-037` (candidates only — ecosystem immature, not locked in) |
+| [CEL for .NET](dotnet/cel-dotnet.md) | dotnet | Declarative expression evaluation for common upcast mappings — the default `IUpcastExpressionEvaluator` | `ADR-018`, `ADR-037`, `ADR-053` |
+| [Jsonata.Net.Native](dotnet/jsonata-dotnet.md) | dotnet | Alternative `IUpcastExpressionEvaluator` — array-aggregation upcasts CEL can't express natively | `ADR-053` |
 | [Testcontainers](dotnet/testcontainers.md) | dotnet | Disposable real-database integration tests | `06-solution-structure.md` |
 | [Scalar](dotnet/scalar.md) | dotnet | OpenAPI documentation UI | `ADR-025` |
 | [YARP](dotnet/yarp.md) | dotnet | Reverse proxy / API Gateway — single external entry point | `ADR-049` |

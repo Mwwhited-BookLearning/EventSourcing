@@ -81,17 +81,70 @@ A second case — coercing a legacy, inconsistently-typed `Amount` field
 | **CEL** | `double(event.Amount)` |
 | **JSONata** | `$number(Amount)` |
 
+## Three more, moving from simple to genuinely revealing
+
+**Tiered/conditional derivation** — `v2` needs a `PriorityTier` computed
+from `Amount`:
+
+| | Expression |
+|---|---|
+| **CEL** | `event.Amount > 10000 ? "Platinum" : event.Amount > 1000 ? "Gold" : "Standard"` |
+| **JSONata** | `Amount > 10000 ? "Platinum" : Amount > 1000 ? "Gold" : "Standard"` |
+
+Nearly identical — both support chained ternaries.
+
+**Optional field, null-coalescing** — `v1`'s `Address2` may be absent;
+`v2` wants it folded into `FullAddress` only if present:
+
+| | Expression |
+|---|---|
+| **CEL** | `event.Address1 + (has(event.Address2) ? " " + event.Address2 : "") + " " + event.City` |
+| **JSONata** | `Address1 & ($exists(Address2) ? " " & Address2 : "") & " " & City` |
+
+`has()` (CEL) and `$exists()` (JSONata) are each language's field-presence
+macro — same idea, different name.
+
+**Array aggregation — the one that actually reveals a real capability
+gap.** `v1` has `LineItems: [{Amount: number}, ...]`; `v2` collapses the
+whole array into a single `TotalAmount` (many-to-one, from array elements
+rather than sibling fields — still within `ADR-018`'s allowed shape):
+
+| | Expression |
+|---|---|
+| **JSONata** | `$sum(LineItems.Amount)` |
+| **CEL** | *No standard equivalent* — verified against the [CEL language spec](https://github.com/google/cel-spec/blob/master/doc/langdef.md): the only standard macros are `has()`, `all()`, `exists()`, `exists_one()`, `map()`, `filter()` — no built-in reduce/sum. Summing would need a custom function registered in the hosting C# environment, not "just CEL" anymore. |
+
+JSONata's path evaluation naturally flattens `LineItems.Amount` into a
+sequence across the array, and `$sum()` is a built-in reducer over it.
+CEL's minimal, deliberately-safety-first macro set has no equivalent —
+a real cost to weigh if this project ever needs an array-aggregation
+upcast, not just field-level ones, alongside the .NET-maturity tension
+already recorded above.
+
 ## Recommendation
 
-**CEL remains the better fit on every design axis that matters most —
-safety, performance, and narrowness matched to the actual problem
-shape** — and stays this design's pick (`ADR-037`), unchanged by this
-comparison. But the honest complication this comparison surfaces,
-worth stating plainly rather than glossing over: **on the one axis that
-determines whether this is easy to actually build in .NET today,
-JSONata is currently ahead** — one consolidated, spec-conformant,
-actively-maintained package vs. CEL's four fragmented ones. This is a
-real tension, not a settled question — recorded as its own row in
-`docs/10-open-questions.md` rather than quietly resolved here: the
-right call may come down to how the CEL-for-.NET ecosystem looks at
-actual build time, not how it looks today.
+**CEL remains the better fit on the axes that matter most for the
+common case — safety, performance, and narrowness matched to the
+typical field-level upcast shape** — and stays this design's pick
+(`ADR-037`) for that case, unchanged by this comparison. Two honest
+complications this comparison surfaces, neither glossed over:
+
+- **On .NET implementation maturity, JSONata is currently ahead** — one
+  consolidated, spec-conformant, actively-maintained package vs. CEL's
+  four fragmented ones.
+- **On array-aggregation mappings specifically (worked example
+  above), CEL has no native answer at all** — this isn't a performance
+  or maturity gap, it's a real expressiveness gap: base CEL's macro set
+  has no reduce/sum, full stop, where JSONata's does natively. If this
+  project's real upcast needs turn out to be overwhelmingly field-level
+  (rename/concatenate/coerce/conditional), CEL's gap here never gets
+  exercised; if a real array-aggregation upcast shows up, CEL would need
+  a custom host-registered function to cover it — a real added cost
+  JSONata wouldn't have.
+
+Neither complication flips the recommendation outright, but together
+they mean "CEL, obviously" understates the real trade-off. Recorded as
+its own row in `docs/10-open-questions.md` rather than quietly
+resolved here: the right call may come down to which upcast shapes
+this project actually ends up needing, not which language looks better
+in the abstract.

@@ -22,9 +22,15 @@ Decision:
   attribute-like shape requested (multiple markers attachable to one
   entity type, the way multiple C# attributes decorate one class),
   superseding `ADR-008`'s "v1 supports exactly one required claim per
-  direction, not an AND/OR set" limitation. Evaluation semantics for
-  multiple claims in the same direction (AND vs. OR) are not resolved
-  further here — flagged to `docs/10-open-questions.md`.
+  direction, not an AND/OR set" limitation. **Resolved: `OR` by
+  default** — a caller needs *any one* of the claims declared for a
+  given direction, not all of them. Deliberately the simpler default,
+  not a permanent ceiling: richer combinations (`AND`, or a real
+  boolean expression over claims) are a plausible future extension,
+  particularly if `docs/patterns/multi-axis-authority-assurance.md`'s
+  multi-axis split is ever adopted (independent axes would be exactly
+  the case where "hold this AND that" genuinely differs from "hold this
+  OR that") — not built now, since nothing requires it yet.
 - **Both this entity-level metadata and `ADR-009`'s existing
   property-level `x-masking` are guaranteed to survive into the
   generated OpenAPI 3.1 / AsyncAPI 3.0 documents as real Specification
@@ -77,13 +83,14 @@ Consequences:
   show `x-required-claims`/`x-masking` explicitly in generated output —
   not done this pass, added to the already-tracked GraphQL-contract
   rewrite debt (`CLAUDE.md`).
-- **A real, unresolved risk this decision itself raises**: does
-  exposing `x-required-claims`/`x-masking` in a document generated
-  documents may make **publicly** readable (`ADR-002`'s OpenAPI/
-  AsyncAPI docs are anonymous, per `features/auth.md`) itself leak
-  information — "this field requires `clearance:phi`" tells any reader
-  *where* the sensitive data lives, even without granting access to the
-  value itself? Not assumed away — flagged to `docs/10-open-questions.md`.
+- **Resolved**: exposing `x-required-claims`/`x-masking` in the
+  publicly-readable generated OpenAPI/AsyncAPI documents (`ADR-002`'s
+  docs are anonymous, per `features/auth.md`) is judged **not** a
+  meaningful leak by default — revealing that a claim is required
+  isn't the same as revealing the value, and undiscoverability of the
+  API's own shape is weak protection to begin with. For deployments
+  wanting a stricter posture regardless, `ADR-002` adds a config toggle
+  to disable the spec endpoints entirely.
 - **Log redaction only helps where a log call site actually routes
   through it.** An ad hoc `logger.LogInformation($"...{payload}...")`
   that bypasses the structured `[LoggerMessage]`/`Redactor` path entirely

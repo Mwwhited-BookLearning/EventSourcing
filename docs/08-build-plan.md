@@ -552,9 +552,12 @@ scoped to one `AppId` cannot resolve or read another's schema.
 **Scope**: `ADR-027` (persist a successful lagging-publish upcast as an
 `UpcastMaterialization` event; a background `UpcastMaterializer`
 reconciles the existing backlog once a new version+mapping is
-registered; fold skips materializations entirely) and `ADR-028`
+registered; fold skips materializations entirely), `ADR-028`
 (`downcastToPrevious`, read-time only, walked backward hop by hop for an
-explicitly requested older version).
+explicitly requested older version), and `ADR-053` (`IUpcastExpressionEvaluator`
+as the seam between `UpcastChain` and the declarative engine — CEL
+registered by default in the composition root, `Jsonata.Net.Native`
+swappable via configuration with no core-engine change).
 
 **Depends on**: Phase 10 (upcasting itself), Phase 11 (the fold-skip
 invariant needs the Entity Store to exist).
@@ -563,16 +566,21 @@ invariant needs the Entity Store to exist).
 Entity Store (a targeted regression test: fold an original, materialize
 its upcast, confirm `Version` doesn't bump twice); a downcast request for
 a genuinely older version returns the old shape; a version with no
-`downcastToPrevious` registered fails the request rather than guessing.
+`downcastToPrevious` registered fails the request rather than guessing;
+the same registered `UpcastFromPrevious` expression evaluates
+identically whether CEL or `Jsonata.Net.Native` is the configured
+engine, for a mapping both can express.
 
 ## Phase 14 — Streaming channels
 
 **Scope**: `ADR-031` — `TelemetryChannel`/`TelemetrySample` (raw signal
 and media), batch ingestion, tail/replay reusing `ADR-010`'s shape,
 `Derived` channels via `ChannelDerivationWorker`, playback (HTTP Range
-Requests), deep-linking (Media Fragments URI), redaction, out-of-order/
-slow-upload detection, and the detector→`TelemetryPointer` bridge back
-into ordinary domain events.
+Requests), deep-linking (Media Fragments URI), redaction (`RedactedRange`,
+concretely per `ADR-052`: read-time, zero-fill/tone/blank-frame default,
+configurable `PartialReveal` for structured content, mandatory sideband
+existence signal), out-of-order/slow-upload detection, and the
+detector→`TelemetryPointer` bridge back into ordinary domain events.
 
 **Depends on**: Phase 5 (auth — new `telemetry:ingest`/`telemetry:read`
 scopes), Phase 11 (a detector's published event needs `EntityId`/fold to
@@ -582,7 +590,11 @@ exist meaningfully).
 validation/hash-chain/fold at all; a detector publishing an event with a
 `TelemetryPointer` round-trips through the normal publish pipeline
 unchanged; a deliberately-reordered sample sets `LateArrivalFlag`; a
-Range request against a `Media` channel returns `206 Partial Content`.
+Range request against a `Media` channel returns `206 Partial Content`;
+a caller lacking a `RedactedRange`'s `RequiredClaim` receives the
+configured substitution (zero-fill/tone/blank-frame, or `PartialReveal`
+where configured) plus the sideband existence flag, never the raw value
+and never a response indistinguishable from "no redaction happened here."
 
 ## Phase 15 — Binary attachments
 
@@ -600,12 +612,13 @@ attachment by mounting `/dav/{appId}/...`.
 
 ## Phase 16 — Sharding & replication
 
-**Scope**: `ADR-034` (shard by `EntityType`) and `ADR-033` (gossip
+**Scope**: `ADR-034` (shard by `EntityType`), `ADR-033` (gossip
 topology, minimum 2-replica/regional-fault-tolerance requirement,
 `OriginId`/`LogicalClock`, the fault/abend/restart-tolerant peer-sync
-outbox/inbox, Merkle-tree catch-up) — see
-`docs/comparisons/sharding-strategy.md`/`peer-sync-topology.md` for why
-each won.
+outbox/inbox, Merkle-tree catch-up), and `ADR-051` (peer discovery via
+explicit static `SeedPeers` configuration, not any form of automatic
+discovery) — see `docs/comparisons/sharding-strategy.md`/
+`peer-sync-topology.md`/`peer-discovery.md` for why each won.
 
 **Depends on**: Phase 11 (there must be an Entity Store to shard/
 replicate).
@@ -614,7 +627,10 @@ replicate).
 in that site's durable outbox, replayed once the site restarts); two
 sites disconnected and independently written to converge, with any
 genuine conflict flagged (`ADR-024`, reused) not silently dropped; a
-sharded cross-`EntityType` query fans out and merges correctly.
+sharded cross-`EntityType` query fans out and merges correctly; a
+newly-deployed peer with no prior configuration beyond its own
+`SeedPeers` list successfully gossips with the mesh via its first
+reachable seed.
 
 ## Phase 17 — Non-authoritative capture
 

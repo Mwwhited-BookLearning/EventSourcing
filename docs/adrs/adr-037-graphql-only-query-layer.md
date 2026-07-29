@@ -53,7 +53,9 @@ Decision:
   mechanism `docs/design-docs/07 §7.3.2`–`7.3.3` already designed in
   full — sandboxed [Jint](../libraries/dotnet/jint.md) for the rare
   complex case, [CEL](../libraries/dotnet/cel-dotnet.md) for the common
-  declarative one) plus **GraphQL SDL directives**
+  declarative one **by default — `ADR-053` makes the declarative engine
+  itself pluggable per deployment, CEL/JSONata interchangeable behind
+  one interface**) plus **GraphQL SDL directives**
   (`@renamedFrom`/`@derivedFrom`, `docs/design-docs/07 §7.4`) as
   self-describing mapping metadata, so the schema and its migration
   history can't silently drift apart. `ADR-018` itself needs revising to
