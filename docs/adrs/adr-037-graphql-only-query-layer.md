@@ -13,7 +13,10 @@ as a secondary option.
 
 Decision:
 - **GraphQL Query/Mutation/Subscription replace every OData-flavored
-  read surface** — `$filter` on Follow, Lineage's traversal, and the
+  read surface**, concretely served by
+  [HotChocolate](../libraries/dotnet/hotchocolate.md) rather than a
+  hand-rolled GraphQL execution engine — `$filter` on Follow, Lineage's
+  traversal, and the
   registry listing all become GraphQL queries against the Entity Store
   (`docs/data/entity-store.md`) and event/change-history
   (`ADR-024` §8.4), not OData query options on the event log directly.
@@ -48,7 +51,8 @@ Decision:
   `$filter` already needed; with OData gone, that reuse argument no
   longer holds. Upcast mapping moves onto **JS/CEL transforms** (the
   mechanism `docs/design-docs/07 §7.3.2`–`7.3.3` already designed in
-  full — sandboxed Jint for the rare complex case, CEL for the common
+  full — sandboxed [Jint](../libraries/dotnet/jint.md) for the rare
+  complex case, [CEL](../libraries/dotnet/cel-dotnet.md) for the common
   declarative one) plus **GraphQL SDL directives**
   (`@renamedFrom`/`@derivedFrom`, `docs/design-docs/07 §7.4`) as
   self-describing mapping metadata, so the schema and its migration

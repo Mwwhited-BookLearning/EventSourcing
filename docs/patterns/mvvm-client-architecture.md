@@ -72,6 +72,12 @@ beyond the classic shape:
   renders, one implementation across desktop/mobile/web via an embedded
   web engine, instead of N native View implementations per entity type.
 
+**Framework choice, checked against a real alternative**: Vue vs.
+Blazor (and React/Angular) is compared in full in
+[the UI framework shootout](../comparisons/ui-framework.md) — Blazor is
+a genuinely close call under `ADR-041`'s first-party preference, but
+loses on `ADR-039`'s runtime-data `ViewDefinition` mechanism specifically.
+
 ### Concrete implementation: Vue 3 (data / actions / structure / presentation / styling)
 
 Where this design's client is a **web** client (browser, or the web

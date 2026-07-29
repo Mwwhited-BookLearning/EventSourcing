@@ -62,7 +62,9 @@ Decision:
 
 Rather than inventing a bespoke "list/browse my attachments" API, expose
 the attachment store through **WebDAV** (RFC 4918 — `PROPFIND` for
-listing, `GET`/`PUT` for content, `MKCOL`/`COPY`/`MOVE` for organizing) —
+listing, `GET`/`PUT` for content, `MKCOL`/`COPY`/`MOVE` for organizing),
+concretely via [NWebDav](../libraries/dotnet/nwebdav.md) rather than a
+hand-rolled protocol implementation —
 a real, decades-old standard every major OS already speaks natively
 (Windows Explorer, macOS Finder, and most file managers can mount a
 WebDAV URL directly, no bespoke client needed). This is the same
