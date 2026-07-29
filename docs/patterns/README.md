@@ -34,6 +34,7 @@ of document in this design package:
 | [JSON:API](jsonapi-specification.md) | Standardized REST conventions: sparse fieldsets, compound documents, reserved-but-undefined filter parameter | Compared, not adopted — `docs/comparisons/api-query-layer.md` |
 | [gRPC + Protobuf Services](grpc-protobuf-services.md) | Contract-first binary RPC with `FieldMask` partial responses and native streaming | Compared, not adopted — `docs/comparisons/api-query-layer.md` |
 | [Declarative REST Filter Operators](declarative-rest-filtering.md) | PostgREST/Hasura-style direct comparison-operator vocabulary over relational columns | Compared, not adopted — `docs/comparisons/api-query-layer.md` |
+| [Strategy Pattern (Extensible Masking/Redaction Content)](strategy-pattern-extensible-masking.md) | A family of interchangeable algorithms behind one interface, selected at runtime by a data-carried key (here, `x-masking.strategy`) instead of a hardcoded `switch` — new algorithms register in, nothing existing changes | `ADR-009` (`IMaskingStrategy`, keyed DI), reused by `ADR-052` (`IStreamRedactionStrategy`) |
 
 ## Interactions — where two patterns compose
 

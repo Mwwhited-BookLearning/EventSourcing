@@ -83,11 +83,48 @@ Decision:
   `preserveSeparators: true` keeps literal non-alphanumeric characters
   (e.g. `-` in `123-45-6789`) showing through untouched, masking only
   the alphanumeric positions. Format-preserving, only meaningful for an
-  originally-string property. Both strategies still fit the existing
-  `oneOf` wrapper unchanged — only the *content* of `masked` differs,
-  never the shape. Registering any other `strategy` value is rejected
-  (`400`) — see "Future: definable masking strategies" below for what's
-  still just proposed.
+  originally-string property.
+- **A third strategy, `"Hash"`, also promoted out of the "Future"
+  proposal below**: `masked` carries a *keyed* HMAC of the real value
+  (`{ "strategy": "Hash", "keyId": "..." }`), not a bare unsalted hash —
+  a caller lacking the claim can tell two masked events share the same
+  underlying value (correlation), without ever learning the value
+  itself, and without the small-value-space brute-force weakness a
+  plain hash would have (a bare SHA-256 of a 9-digit SSN is trivially
+  reversible by precomputing all 10⁹ possibilities; a keyed HMAC is
+  not). **Reuses `ADR-050`'s already-adopted `Microsoft.Extensions.
+  Compliance.Redaction` `HmacRedactor`** for the actual computation —
+  the same primitive, not a second hashing mechanism invented here.
+  `keyId` identifies which configured HMAC key was used (supporting
+  key rotation without breaking correlation for values hashed under an
+  older key) — the key material itself lives in configuration/secrets,
+  the same way this design already keeps every other cryptographic key
+  out of the registry/schema itself.
+- All three strategies (`FixedValue`, `PartialReveal`, `Hash`) fit the
+  existing `oneOf` wrapper unchanged — only the *content* of `masked`
+  differs, never the shape. Registering any other `strategy` value is
+  rejected (`400`) — see "Future: definable masking strategies" below
+  for what's still just proposed.
+- **The strategies are an explicit Strategy-pattern seam
+  ([Gamma, Helm, Johnson, Vlissides — *Design Patterns: Elements of
+  Reusable Object-Oriented Software*, 1994](https://en.wikipedia.org/wiki/Design_Patterns),
+  the Strategy pattern), not a hardcoded `switch` inside `IPayloadMasker`**
+  — an `IMaskingStrategy` interface, one small class per strategy
+  (`FixedValueMaskingStrategy`, `PartialRevealMaskingStrategy`,
+  `HashMaskingStrategy`), each registered under its `strategy` string as
+  a **keyed DI service** (`services.AddKeyedSingleton<IMaskingStrategy,
+  FixedValueMaskingStrategy>("FixedValue")`, one line per strategy in the
+  explicit composition root — `ADR-041`; .NET's built-in keyed-service
+  support, not a bespoke registry). `IPayloadMasker` never branches on the
+  strategy name itself; it resolves the matching `IMaskingStrategy` for
+  each masked leaf and calls it. **This is the actual point of the
+  request this formalizes**: a future fourth strategy (generalization/
+  bucketing, or anything project-specific) is a new class plus one
+  registration line — no change to `IPayloadMasker`'s recursion or to any
+  existing strategy's code. See `06-solution-structure.md` for the
+  concrete interface and registration shape, and
+  [`docs/patterns/strategy-pattern-extensible-masking.md`](../patterns/strategy-pattern-extensible-masking.md)
+  for the pattern itself, portably.
 - `x-masking` also carries three **optional, schema-only descriptive
   fields**: `regulatoryClassification` (e.g. `"PHI"`, `"PCI"`),
   `governanceBody` (e.g. `"HHS/OCR"`, `"PCI SSC"`), and
@@ -211,15 +248,20 @@ every enforcement point this ADR already describes.
 
 ## Future: definable masking strategies (proposal, not decided)
 
-`"FixedValue"` is the only strategy built now. This section stays as a
-proposal for later, kept explicitly separate from the Decision above so
-it's unambiguous what's built versus sketched:
+`"FixedValue"`, `"PartialReveal"`, and `"Hash"` are all decided and
+built now (see the Decision above — both later strategies moved out of
+this proposal section once decided). This section stays as a proposal
+for later, kept explicitly separate from the Decision above so it's
+unambiguous what's built versus sketched:
 
-- `"PartialReveal"` is now decided and built (see the Decision above,
-  moved out of this proposal section). Still just proposed: `"Hash"` (a
-  deterministic hash of the real value inside `masked`, letting a caller
-  correlate masked values across events without ever seeing the
-  underlying value) — still fits the existing wrapper unchanged.
+- Tokenization (a separate-party, separate-mechanism reversal model —
+  see `docs/comparisons/masking-strategies.md`) explicitly does **not**
+  fit the `oneOf` wrapper the way the three strategies above do, and
+  would need its own mechanism entirely if ever built — not a fourth
+  `strategy` value. Generalization/bucketing, by contrast, *would* fit as
+  an ordinary fourth `IMaskingStrategy` implementation if it's ever
+  decided (see the Decision's Strategy-pattern seam above) — the open
+  question is whether it's worth building, not whether it fits.
 - Whole-object or whole-array masking (collapsing an entire nested object
   or array into one `{value:...}`/`{masked:...}` at that position, instead
   of recursing into it) is explicitly out of scope for v1 (see the

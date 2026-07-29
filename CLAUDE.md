@@ -330,7 +330,25 @@ foundational, locked-in decisions, for quick orientation:
   deliberately not a cryptic mask-template string, after a readability
   request — modeled on PCI-DSS's own plain-language PAN-masking framing
   over the more cryptic (but real) `MaskedTextProvider` code-table
-  convention.
+  convention. A third strategy, `"Hash"`, is now also decided and built
+  (`ADR-009`) — a keyed HMAC via `Microsoft.Extensions.Compliance.
+  Redaction`'s `HmacRedactor` (`ADR-050`), not a bare hash, specifically
+  to avoid small-value-space reversal (a bare SHA-256 of a 9-digit SSN is
+  brute-forceable). Only tokenization and generalization/bucketing remain
+  undecided in `docs/comparisons/masking-strategies.md`.
+- **Masking/redaction content strategies are an explicit Strategy-pattern
+  seam, per direct request** — `ADR-009`'s `IMaskingStrategy` (one class
+  per strategy, keyed-registered via .NET's built-in keyed DI services,
+  `ADR-041`'s composition root) means a future strategy is a new class
+  plus one registration line, never a change to `IPayloadMasker`'s own
+  code. `ADR-052`'s streaming redaction reuses the identical shape via a
+  sibling `IStreamRedactionStrategy` (byte/frame-shaped content, not
+  `JsonNode`) rather than a duplicated mechanism. Written up in
+  `docs/patterns/strategy-pattern-extensible-masking.md` and
+  `06-solution-structure.md`'s `IPayloadMasker` section; the one
+  deliberate, named exception to `ADR-041`'s "no service-locator lookups"
+  rule, since which strategy applies is a runtime fact carried in schema
+  data, not a compile-time constructor parameter.
 - **API Gateway (YARP)** (`ADR-049`) — also reverses a prior rejection,
   same trigger as `ADR-048`: this design's growth to multiple
   independently-addressable external surfaces (GraphQL, WebDAV,

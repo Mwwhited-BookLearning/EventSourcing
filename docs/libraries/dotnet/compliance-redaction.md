@@ -45,10 +45,18 @@ logger.LogInformation("Field value: {Value}", safeValue);
 
 ## Where this project uses it
 
-`ADR-050` — reusing `ADR-009`'s existing `x-masking` classification
-metadata (`regulatoryClassification`/`requiredClaim`) to prevent
-PII/PHI/PCI from reaching logs, a sink `ADR-009`'s original
-query/stream-response-only masking never covered.
+- `ADR-050` — reusing `ADR-009`'s existing `x-masking` classification
+  metadata (`regulatoryClassification`/`requiredClaim`) to prevent
+  PII/PHI/PCI from reaching logs, a sink `ADR-009`'s original
+  query/stream-response-only masking never covered.
+- `ADR-009`'s `"Hash"` masking strategy — `x-masking`'s `masked` value,
+  when `strategy` is `"Hash"`, is computed with this same library's
+  `HmacRedactor`, not a second hashing mechanism. A bare/unsalted hash of
+  a small value space (e.g. a 9-digit SSN) is trivially reversible by
+  precomputing every possibility; `HmacRedactor`'s key-based approach
+  isn't. `keyId` in the `x-masking` config identifies which configured
+  key was used, the same way `HmacRedactorOptions` already requires a
+  key for log redaction — one key-management surface, two consumers.
 
 ## Links
 

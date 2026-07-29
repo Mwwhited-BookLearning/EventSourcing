@@ -52,6 +52,20 @@ Decision:
   knowledge `ADR-030` keeps out of the core engine; an application that
   wants it supplies its own calibration, the same "detection is an
   application concern" carve-out `ADR-031` already uses.
+- **Resolved through the same Strategy-pattern seam `ADR-009` uses, not
+  a duplicate mechanism** — a sibling `IStreamRedactionStrategy`
+  interface (operating over raw sample/frame bytes rather than a
+  `JsonNode`, since that's a genuinely different value shape — the two
+  are parallel implementations of the same pattern, not literally one
+  shared interface), keyed-registered identically
+  (`AddKeyedSingleton<IStreamRedactionStrategy, ZeroFillStrategy>
+  ("Default")`, one per `ContentKind`'s default plus `"PartialReveal"`).
+  The `"PartialReveal"` key reuses `ADR-009`'s
+  `PartialRevealMaskingStrategy` reveal computation directly where a
+  channel's content is structured/string-shaped; `ZeroFillStrategy`/
+  `ToneStrategy`/`BlankFrameStrategy` are new implementations
+  `IPayloadMasker` never needs. Adding a channel-specific redaction
+  option later is, again, a new class plus one registration line.
 - **The existence-signal requirement is not optional**: every
   `RedactedRange` application also sets a sideband flag at the read/
   tail/replay boundary — structurally the same shape
