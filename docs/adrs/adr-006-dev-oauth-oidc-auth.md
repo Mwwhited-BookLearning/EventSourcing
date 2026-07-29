@@ -2,7 +2,10 @@
 
 # ADR-006: Dev-mode OAuth2/OIDC bearer-token auth via an in-process OpenIddict host, orchestrated with .NET Aspire
 
-Status: Accepted — OpenIddict confirmed as the dev/POC provider.
+Status: Accepted — OpenIddict confirmed as the dev/POC provider. See
+[docs/libraries/dotnet/openiddict.md](../libraries/dotnet/openiddict.md)
+and [docs/libraries/dotnet/aspire.md](../libraries/dotnet/aspire.md) for
+usage examples of both.
 
 Context: All four API surfaces (Publish, Follow, Lineage, Registry) are
 currently unauthenticated. The three system actors (Publishing System,

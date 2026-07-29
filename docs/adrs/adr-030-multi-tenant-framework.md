@@ -31,7 +31,7 @@ Decision:
   rule, not a loose aspiration.** No event type name, field name, or
   business rule is ever hardcoded in an `EventStore.*` project. Every
   domain-specific thing — schemas, claims, masking rules, upcast/downcast
-  maps, view definitions (`ADR-033`, queued) — is *data*, registered at
+  maps, view definitions (`ADR-039`) — is *data*, registered at
   runtime through the same registry mechanisms every other ADR in this
   design already treats that way (`ADR-002`'s "schemas registered live"
   reasoning generalizes directly to "applications registered live," not

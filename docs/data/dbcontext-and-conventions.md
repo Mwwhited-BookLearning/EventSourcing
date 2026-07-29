@@ -50,7 +50,7 @@ public class EventStoreContext : DbContext
         {
             e.HasKey(x => x.EntityId);
             e.HasIndex(x => x.EntityType);
-            e.HasIndex(x => x.ShardKey); // queued sharding ADR
+            e.HasIndex(x => x.ShardKey); // ADR-034
             e.Property(x => x.Data).HasColumnType("TEXT");
             e.Property(x => x.Extensions).HasColumnType("TEXT");
         });

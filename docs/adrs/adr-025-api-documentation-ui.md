@@ -12,7 +12,7 @@ own convention throughout (`references.md`) is to adopt the standard
 answer rather than hand-roll a viewer.
 
 Decision:
-- **OpenAPI (Publish side): [Scalar](https://github.com/scalar/scalar)**,
+- **OpenAPI (Publish side): [Scalar](../libraries/dotnet/scalar.md)**,
   via the `Scalar.AspNetCore` NuGet package — a modern Swagger-UI
   alternative with an integrated try-it-out client. Minimal wiring,
   reading directly off the existing `/openapi.json` endpoint:
@@ -22,7 +22,7 @@ Decision:
   No second OpenAPI generation path — Scalar renders whatever
   `OpenApiDocumentBuilder` (`ADR-002`) already produces; it's a pure
   presentation layer on top of `/openapi.json`, not an alternative to it.
-- **AsyncAPI (Follow side): [`@asyncapi/react-component`](https://github.com/asyncapi/asyncapi-react)**
+- **AsyncAPI (Follow side): [`@asyncapi/react-component`](../libraries/web/asyncapi-react.md)**
   — the foundational rendering library the AsyncAPI org's own
   `html-template` and Studio are themselves built on. There is no
   AsyncAPI-equivalent of a NuGet package (no .NET-native renderer exists);

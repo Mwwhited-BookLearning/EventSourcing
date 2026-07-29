@@ -46,11 +46,11 @@ Decision:
   design.
 
 Consequences:
-- This is what makes the queued DID/UCAN ADR meaningful — without a real
+- This is what makes `ADR-036` (DID/UCAN) meaningful — without a real
   trust axis to populate, self-attested credentials would have nowhere
   to attach. `AttestedClaims`/`AuthorityStatus` are the concrete fields
   that ADR's JWT claim shape maps onto.
-- View definitions (`ADR-036`, the MVVM client, once written) should
+- View definitions (`ADR-039`, the MVVM client) should
   render `unattested`/`pending_review` data with a visual indicator,
   reusing the same generic "flag" rendering convention `ADR-024`'s
   `ConflictFlag` already established — not a bespoke one per concern.

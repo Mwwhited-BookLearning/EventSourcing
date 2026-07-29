@@ -18,6 +18,7 @@ public class EventTypeDefinition
     public string EntityIdField { get; set; } = default!; // JSON path into Payload that yields this type's uniqueId (ADR-021) — required, no default
     public string? UpcastFromPrevious { get; set; }     // OData compute() expression list, this version <- previous (ADR-018); materialized on success (ADR-027)
     public string? DowncastToPrevious { get; set; }     // OData compute() expression list, previous <- this version (ADR-028); read-time only, never materialized
+    public RejectionBehavior RejectionBehavior { get; set; } = RejectionBehavior.Annotate; // Annotate | Compensate — how an authorityDecision:rejected is handled for this type (ADR-035, comparisons/authority-rejection-behavior.md)
 
     public List<FilterableField> FilterableFields { get; set; } = new();
 }
@@ -32,6 +33,12 @@ public enum ParentValidationMode
 {
     Strict,     // publish is rejected (400) if any parentEventId does not resolve to a stored event
     Permissive  // dangling/forward parentEventId references are accepted and stored as unresolved
+}
+
+public enum RejectionBehavior
+{
+    Annotate,   // default — a rejected event stays as originally published, flagged via AuthorityStatus only (ADR-035)
+    Compensate  // a rejected event triggers a compensating patch, per-type opt-in where the domain needs it
 }
 
 public class FilterableField

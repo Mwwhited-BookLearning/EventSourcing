@@ -61,3 +61,4 @@ Consequences: <trade-offs accepted>
 | [039](adrs/adr-039-mvvm-client.md) | MVVM client architecture + HTML/JS entity view definitions | Accepted |
 | [040](adrs/adr-040-ticket-exchange-headerless-clients.md) | URL-embeddable ticket exchange for header-incapable clients (streaming/WebDAV playback) | Accepted |
 | [041](adrs/adr-041-explicit-composition-first-party-libraries.md) | Explicit composition and first-party libraries over convention-magic (constructor injection, Pure DI, no AutoMapper/third-party logging, `System.Text.Json`) | Accepted |
+| [042](adrs/adr-042-gated-authoritative-publish.md) | Gated authoritative publish — Entity Store only reflects approved data; a separate Live View shows the rest (revises `ADR-035`) | Accepted |

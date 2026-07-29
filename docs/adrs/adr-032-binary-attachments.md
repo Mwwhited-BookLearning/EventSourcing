@@ -97,8 +97,8 @@ placeholder files, offline sync) is a genuinely different, heavier
 technology** (Windows Cloud Filter API, macOS File Provider extension) —
 platform-specific client shell integration, not a server API. This is
 explicitly **out of the core engine's scope**, consistent with `ADR-030`:
-it would live in a client project (`ADR-033`'s MVVM client, queued, is
-the natural home), built *on top of* the WebDAV surface above rather than
+it would live in a client project (`ADR-039`'s MVVM client is the
+natural home), built *on top of* the WebDAV surface above rather than
 replacing it — noted here as a real, desirable extension point, not
 designed further until `ADR-033` exists to hang it on.
 

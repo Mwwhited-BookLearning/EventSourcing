@@ -27,6 +27,15 @@ larger batch of unrelated changes.
   `entity-store.md`, `dbcontext-and-conventions.md`). Never write an entity
   class back into `02-data-model.md` — add it to the right group file and
   update the classification table/diagram if it's a new group.
+- `docs/10-open-questions.md` — a live tracker for genuinely unresolved
+  questions, distinct from every other document type: an ADR is a
+  decision already made, a comparison weighs a fork before deciding,
+  this file is for a fork not yet weighed at all or a decision left
+  deliberately partial. **Add a row here in the same pass you find one**
+  while writing any other doc — don't let it live only as a buried
+  sentence in an ADR's Consequences section. Move a row to a real ADR
+  (or delete it) once resolved; this file should only ever hold things
+  still actually open.
 - `docs/07-adrs.md` — **template + index only.** The ADRs themselves live
   one per file under `docs/adrs/adr-NNN-slug.md`. Never write ADR content
   back into `07-adrs.md` — add a row to its index table and create the file
@@ -300,6 +309,22 @@ superseded and pointing at the ADR that superseded it.
   stale in its own banner) predate `ADR-041` — when that file's sketches
   are eventually redone, they should reflect explicit composition-root
   registration, not just the new projects' names.
+
+**Feature-doc coverage gap closed** (found during a full-package review,
+this pass): `ADR-021`, `030`, `031`, `032`, `033`/`034` (combined, per
+`docs/comparisons/README.md`'s own grouping), `035`, `036`, and `039` had
+zero feature doc each — not stale, just absent — despite being
+foundational, Accepted ADRs. All eight now exist under `docs/features/`
+(`entity-concept.md`, `multi-tenancy.md`, `streaming-channels.md`,
+`binary-attachments.md`, `replication-and-sharding.md`,
+`non-authoritative-capture.md`, `did-ucan-attestation.md`,
+`mvvm-client.md`), each with real Gherkin scenarios (not banners over
+stale ones, since there was nothing stale to banner — these are new).
+`08-build-plan.md`'s Phase 11 and Phase 17 exit criteria now cite
+`entity-concept.md`/`non-authoritative-capture.md` directly, matching
+every other phase's citation pattern; Phases 12/14/15/16/18/20 still
+don't cite a feature doc by name and could be updated the same way if
+this gets revisited.
 
 Check this section before assuming any doc is fully consistent with
 `ADR-025` onward — the structural/architectural picture is current

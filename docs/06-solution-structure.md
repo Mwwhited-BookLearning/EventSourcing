@@ -22,15 +22,15 @@ EventStore.sln
     EventStore.Persistence.Migrations.Sqlite/
     EventStore.Persistence.Migrations.Postgres/
     EventStore.Persistence.Migrations.SqlServer/
-    EventStore.SchemaRegistry/      -- registration service, AppId-scoped lookups (ADR-030), ParentLinkService, upcast/downcast map validation (ADR-018/028)
+    EventStore.SchemaRegistry/      -- registration service, AppId-scoped lookups (ADR-030), ParentLinkService, upcast/downcast map validation (ADR-018/028); complex-case upcast mappings run sandboxed via Jint, common case via CEL (candidates only, see docs/libraries/dotnet/cel-dotnet.md)
     EventStore.Inbox/               -- POST /publish; Idempotent Receiver + always-202 append (ADR-011/023) -- the ONLY still-blocking-on-shape step is "can I parse the envelope at all"
     EventStore.Router/              -- background service: entity resolution (ADR-021), advisory schema/claim/authority checks (ADR-023/035), live upcast validation + materialization (ADR-020/027)
     EventStore.Fold/                -- background service: always-on Entity Store projector, logical-order fold (ADR-029), conflict flagging (ADR-024) -- distinct from opt-in custom projections below
-    EventStore.GraphQL/             -- GraphQL Gateway: Query/Subscription, per-AppId schema (ADR-030/037); supersedes EventStore.Follow.Api/EventStore.Lineage.Api entirely
+    EventStore.GraphQL/             -- GraphQL Gateway: Query/Subscription, per-AppId schema (ADR-030/037), served via HotChocolate (docs/libraries/dotnet/hotchocolate.md); supersedes EventStore.Follow.Api/EventStore.Lineage.Api entirely
     EventStore.Sharding/            -- Shard Resolver: EntityId -> ShardKey -> store, entity-type-based (ADR-034)
     EventStore.PeerSync/            -- gossip peer-sync outbox/inbox, fault/abend/restart-tolerant (ADR-033)
     EventStore.Streaming/           -- TelemetryChannel/TelemetrySample ingestion + tail/replay, separate from the event pipeline entirely (ADR-031)
-    EventStore.Attachments/         -- content-addressed binary storage + WebDAV endpoint (ADR-032)
+    EventStore.Attachments/         -- content-addressed binary storage + WebDAV endpoint via NWebDav (ADR-032, docs/libraries/dotnet/nwebdav.md)
     EventStore.SpecGeneration/      -- OpenAPI builder (publish) + GraphQL SDL builder (supersedes the AsyncAPI builder for Follow -- Follow itself is gone, replaced by GraphQL Subscription)
     EventStore.Host.Core/           -- shared, provider-agnostic composition root logic (see below)
     EventStore.Host.Sqlite/         -- the actual deployable: Host.Core + SQLite wiring (ADR-001)
@@ -50,7 +50,11 @@ EventStore.sln
 
     -- MVVM client (ADR-039) -- consumes the framework, doesn't extend it:
     EventStore.Client.Core/               -- ViewModel base types, ICommandDispatcher, client-local durable outbox/inbox (same fault-tolerance bar as EventStore.PeerSync)
-    EventStore.Client.WebViewBridge/      -- native<->HTML+JS bridge (WebView2/WKWebView/CEF)
+    EventStore.Client.WebViewBridge/      -- native<->HTML+JS bridge (WebView2/WKWebView/CEF), hosts the web app below
+    client-web/                           -- npm workspace, NOT a .NET project: Vue 3 + Pinia + Naive UI application shell
+                                           -- (docs/patterns/mvvm-client-architecture.md, docs/libraries/web/*.md); built to
+                                           -- static assets, loaded by WebViewBridge for the native shell and served directly
+                                           -- for the browser/PWA target -- one build artifact, two hosts
 
     -- Sample application, explicitly NOT part of the framework (ADR-030):
     Samples.Orders.Projections/           -- worked example: OrderSummaryProjection (features/cqrs-projections.md)
