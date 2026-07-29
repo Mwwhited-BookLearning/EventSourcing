@@ -78,10 +78,19 @@ Consequences:
 - **A malicious or misconfigured `AppTrustRoot` registration is a real
   risk surface** — registering the wrong DID as trusted for an `AppId`
   grants that DID's holder the ability to mint arbitrary permissions
-  within that application's namespace. Who may register/deregister a
+  within that application's namespace. ~~Who may register/deregister a
   trust root needs its own gate (a `registry:admin`-adjacent scope,
   presumably) — not designed further here, flagged to
-  `docs/10-open-questions.md`.
+  `docs/10-open-questions.md`.~~ **Resolved by
+  [`docs/comparisons/trust-root-registration-gate.md`](../comparisons/trust-root-registration-gate.md)**:
+  a new `registry:trust-admin` scope, deliberately *not* implied by
+  `registry:admin`, gates registration/de-registration — `ADR-043`'s
+  delegation model composes on top so a central operator can extend a
+  capped, `AppId`-scoped slice of it to an application's own team;
+  classical dual-control/Four Eyes approval is examined and explicitly
+  not adopted as a system-wide requirement, since `AppTrustRoot`'s blast
+  radius stays contained to one `AppId`'s own namespace rather than the
+  whole system's trust root.
 - `docs/data/schema-registry.md` gains the small `AppTrustRoot` entity.
   No change to `StoredEvent`/`EntityStoreRow` — this is a registry-side
   concept, not an event-envelope field.

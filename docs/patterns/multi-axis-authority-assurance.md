@@ -68,18 +68,28 @@ decide which axis (or combination) it actually means. More axes also
 means more places two axes can disagree in a way that needs a stated
 resolution rule, not an implicit one.
 
-## How this application uses it — not yet decided
+## How this application uses it — considered and declined, for now
 
-**Not adopted — tracked as an open question**
-(`docs/10-open-questions.md`), not a settled design. Today this design
-collapses trust into two related but singular axes: `AuthorityStatus`
-(`ADR-035`/`ADR-042` — one combined "is this claim/submitter trustworthy
-yet" status) and `ReaderTrustBasis` (`ADR-045` — one binary
-`Authoritative`/`Attested` per reader). Splitting either into genuinely
-independent axes — identity-assurance, authorization-validity, and
-content/detection-confidence were named as candidates when this was
-raised — is a real, live possibility, not yet designed: which axis
-would gate `ADR-042`'s Entity Store fold, whether all of them need to
-individually clear a bar or some computed combination does, and whether
-this applies to the write side (`AuthorityStatus`), the read side
-(`ReaderTrustBasis`), or both, are all genuinely open.
+**Not adopted, and no longer an open question** — formalized in
+[`docs/comparisons/authority-axis-granularity.md`](../comparisons/authority-axis-granularity.md),
+which checked splitting `AuthorityStatus` (`ADR-035`/`ADR-042`) and
+`ReaderTrustBasis` (`ADR-045`) into independent axes (identity-assurance,
+content/detection-confidence, and — for the read side — a
+NIST-IAL/AAL/FAL-shaped split) against this design's actual mechanisms,
+not just NIST's identity-proofing domain in the abstract. The concrete
+finding: a computed AND of split identity-assurance/content-confidence
+axes produces the exact same fold outcome as today's single collapsed
+`AuthorityStatus` in every scenario checked, including the detector's
+own identity-vs-detection-confidence tension named as the motivating
+case — so splitting adds surface area (every consumer now reasons about
+two fields instead of one) without changing the one thing that actually
+gates `ADR-042`'s Entity Store fold. `AuthorizationValidityStatus`, the
+third axis this open question originally named, doesn't hold up at all
+in this design specifically, since `ADR-006`/`ADR-008`/`ADR-036` all
+resolve permission synchronously before persistence — there's no
+persisted "authorization pending" state for it to describe. The
+comparison names concrete triggers for revisiting (a review UI that
+needs to route identity-verification work separately from
+detection-confirmation work; an async permission-approval mechanism that
+would create a real "authorization pending" state) rather than leaving
+this closed by default with no way back in.

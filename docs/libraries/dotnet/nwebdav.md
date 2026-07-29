@@ -1,6 +1,13 @@
 [← Libraries index](../README.md)
 
-# NWebDav (dotnet)
+# NWebDav (dotnet) — superseded, archived
+
+> **Archived, do not adopt.** The upstream repository was archived by
+> its owner on July 19, 2025 and is now read-only — no further fixes or
+> security patches will ever land. **`ADR-032` decided to skip WebDAV
+> entirely rather than replace this with another library** — see
+> [the WebDAV library comparison](../../comparisons/webdav-library.md).
+> Kept here, not deleted, as a record of why the original pick changed.
 
 **What it's for:** a WebDAV (RFC 4918) server library for ASP.NET Core —
 exposes a virtual folder/file hierarchy over arbitrary backing data via
@@ -37,8 +44,5 @@ second implementation of the protocol.
 
 ## Links
 
-- [github.com/ramondeklein/nwebdav](https://github.com/ramondeklein/nwebdav)
-- Alternative considered: [Dav.AspNetCore.Server](https://github.com/ThuCommix/Dav.AspNetCore.Server)
-  (newer, explicitly built on NWebDav's concepts) — not chosen over
-  NWebDav here for lack of a specific reason to prefer the newer,
-  less-established option; worth re-evaluating at build time.
+- [github.com/ramondeklein/nwebdav](https://github.com/ramondeklein/nwebdav) — archived July 19, 2025
+- Superseded by: [Dav.AspNetCore.Server](dav-aspnetcore-server.md)

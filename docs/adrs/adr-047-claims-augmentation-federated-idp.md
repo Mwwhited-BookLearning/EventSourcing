@@ -65,7 +65,21 @@ Consequences:
   way to associate an external `sub` with its own `Role`/`UserPermission`
   records; not designed further here (a simple `sub == ActorId`
   convention would work for the common case, but isn't mandated) —
-  flagged to `docs/10-open-questions.md`.
+  flagged to `docs/10-open-questions.md`. **Resolved**:
+  [`docs/comparisons/federated-identity-mapping.md`](../comparisons/federated-identity-mapping.md)
+  weighs bare `sub == ActorId` against the composite (`iss`, `sub`) and
+  full JIT provisioning, and recommends against the bare-`sub` convention
+  named above — per OpenID Connect's own guidance (`iss`+`sub` together,
+  never `sub` alone, is the only claim combination an RP may treat as a
+  stable identifier), a second `TrustedFederationIssuer` registered for
+  the same `AppId` can otherwise collide two different people's `sub`
+  values onto one `ActorId`. The mapping is realized as a new,
+  identity-provider-scoped `FederatedIdentityMapping { AppId, Issuer,
+  Sub, ActorId, CreatedAt }` record, populated via lightweight JIT
+  provisioning at this ADR's own token-exchange step (first-seen
+  (`Issuer`, `Sub`) mints a new `ActorId`; a repeat lookup reuses it) —
+  stopping short of full SCIM push-based deprovisioning, since nothing
+  has stated that requirement yet.
 - `docs/data/schema-registry.md` gains `TrustedFederationIssuer` — done
   this pass.
 - No change to any existing claim check (`ADR-008`, `ADR-043`,

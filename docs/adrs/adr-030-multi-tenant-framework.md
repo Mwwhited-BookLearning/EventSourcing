@@ -44,13 +44,20 @@ Decision:
   special access the framework doesn't also grant a genuinely separate
   application. If a project ever needs a second worked example, it's
   another `Samples.<Name>.*` tree, not a special case in `EventStore.*`.
-- **`registry:admin` and the other operation-level scopes (`ADR-006`)
-  remain global for now, deliberately not resolved further here** — a
-  caller with `registry:admin` can register a type for *any* `appId`
-  today. Whether scopes should themselves become `appId`-scoped (e.g.
-  `registry:admin:app1`, so App A's operator can't touch App B's schemas)
-  is a real, connected question this ADR raises but does not answer —
-  flagged for whichever ADR takes it on, not silently assumed either way.
+- **Resolved: `registry:admin` and the other operation-level scopes
+  (`ADR-006`) gain optional `AppId`-scoped variants — `registry:admin:
+  {appId}` alongside the existing unscoped `registry:admin`.** The
+  unscoped form remains valid and means what it always has —
+  framework-operator/super-admin, works across every `appId` — so
+  nothing already issued or seeded breaks. A caller holding only the
+  scoped form can register/administer schemas for that one `AppId`
+  only; App A's operator genuinely cannot touch App B's schemas with
+  it. This is the same "global admin vs. tenant admin" shape almost
+  every real multi-tenant SaaS admin model already uses (Azure AD's
+  Global Administrator vs. per-tenant roles, GitHub's site admin vs.
+  org admin) — not a bespoke scheme, a well-precedented default. Scope
+  checks (`ADR-006`'s policy-based authorization) check for *either* the
+  unscoped or the correctly-`AppId`-scoped form, never requiring both.
 
 Consequences:
 - `GraphQL` (the queued OData-replacing query layer) **must compose its

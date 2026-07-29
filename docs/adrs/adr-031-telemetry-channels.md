@@ -180,8 +180,17 @@ bytes" undersells what's actually needed once `Media` channels are real:
   redaction primitive: a declared `RedactedRange` (`ChannelId`,
   `FromTimestamp`, `ToTimestamp`, `RequiredClaim` — reusing `ADR-008`'s
   `"type:value"` claim string, not a new claim format) that a read-time
-  transform applies by substituting silence/blank frames/zeroed samples
-  over that span for a caller lacking the claim — the same
+  transform applies by substituting ~~silence~~/blank frames/zeroed
+  samples over that span for a caller lacking the claim.
+  **Substitution content refined by
+  [`docs/comparisons/streaming-redaction-mechanism.md`](../comparisons/streaming-redaction-mechanism.md)**:
+  a distinctive tone, not silence, for audio — per the real forensic
+  redaction guidance (SWGDE M-18-001) that a silent redacted span can be
+  confused with genuinely silent content, the opposite of what
+  redaction is supposed to signal. Zero-fill (not statistical noise)
+  for `RawScalar`/`RawBinary` at the core-engine level; a sideband
+  "redaction applied here" existence flag is also needed regardless of
+  substitution content. The same
   claims-gate-the-*value*-not-the-existence posture `ADR-009` already
   established, just with a redaction *result* appropriate to binary
   content instead of a JSON wrapper. Not designed further than this
