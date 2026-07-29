@@ -301,6 +301,18 @@ foundational, locked-in decisions, for quick orientation:
   with it, doesn't replace it. See `docs/comparisons/service-
   identity.md` for the full comparison against static OAuth2 client
   credentials and hand-rolled mTLS.
+- **Entity-level permission/masking metadata, surfaced via OpenAPI/
+  AsyncAPI extensions, reused for log redaction** (`ADR-050`) —
+  generalizes `ADR-008`'s one-claim-per-direction limit to a list
+  (`RequiredClaims`); guarantees `x-masking`/`x-required-claims` survive
+  into generated docs as real Specification Extensions (both specs
+  formally define `x-*`, not invented); adopts `Microsoft.Extensions.
+  Compliance.Redaction` (first-party, `ADR-041`-consistent) to keep
+  PII/PHI/PCI out of logs, reusing `ADR-009`'s existing classification
+  metadata rather than a second taxonomy. Two honest residual risks
+  raised, not resolved: AND/OR semantics for multiple same-direction
+  claims, and whether publicly-readable spec docs exposing *which*
+  fields are sensitive is itself a leak.
 - **API Gateway (YARP)** (`ADR-049`) — also reverses a prior rejection,
   same trigger as `ADR-048`: this design's growth to multiple
   independently-addressable external surfaces (GraphQL, WebDAV,

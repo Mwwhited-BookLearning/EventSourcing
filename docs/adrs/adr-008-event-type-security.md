@@ -102,3 +102,8 @@ Consequences:
   same idea, reusing the `"type:value"` claim string convention —
   intentionally, so the two features compose rather than inventing a second
   claim format later.
+- **`RequiredPublishClaim`/`RequiredReadClaim`'s "exactly one claim per
+  direction" limit is generalized to a list by `ADR-050`**, plus both
+  are now guaranteed to be surfaced as an `x-required-claims` OpenAPI/
+  AsyncAPI Specification Extension in generated docs, and reused to
+  drive log redaction — see that ADR for the full shape.

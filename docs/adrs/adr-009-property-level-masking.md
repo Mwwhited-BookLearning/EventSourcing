@@ -177,6 +177,18 @@ Consequences:
   exists to prevent, just one layer further downstream than the store
   itself can reach.
 
+## Surfaced in generated docs, and reused for log redaction (`ADR-050`)
+
+Two extensions on top of the Decision above, added by `ADR-050`, not a
+revision of it: `x-masking` (already declared here) is now guaranteed
+to survive into the generated OpenAPI/AsyncAPI documents as a real
+Specification Extension, not just tracked internally; and the same
+`regulatoryClassification`/`requiredClaim` metadata this ADR already
+carries is reused to drive `Microsoft.Extensions.Compliance.Redaction`-
+based log redaction — a second, additive enforcement surface (logs),
+never touching what `StoredEvent.Payload` actually persists, same as
+every enforcement point this ADR already describes.
+
 ## Future: definable masking strategies (proposal, not decided)
 
 `"FixedValue"` is the only strategy built now. This section stays as a

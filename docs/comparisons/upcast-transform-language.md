@@ -56,6 +56,31 @@ untrusted-ish, versioned mapping expressions.
 | **Pros** | Reused `Microsoft.OData.UriParser`, already a dependency for `$filter` at the time — "prefer reusing an existing primitive over adding a new dependency," a real, valid argument *then*. |
 | **Cons** | That reuse argument stopped holding the moment OData was swapped out for GraphQL (`ADR-037`) — the parser it reused no longer exists in this design at all. Superseded, not merely deprioritized. |
 
+## Worked example — the same mapping in both languages
+
+A `v1` `OrderPlaced` event carries separate `FirstName`/`LastName`
+fields; `v2` combines them into one `CustomerName` field — many-to-one,
+exactly the shape `ADR-018` restricts upcast mappings to.
+
+| | Expression |
+|---|---|
+| **CEL** | `event.FirstName + " " + event.LastName` |
+| **JSONata** | `FirstName & " " & LastName` |
+
+**A real, worth-knowing syntax trap**: JSONata reserves `+` for numeric
+addition only and uses `&` for string concatenation — writing
+`FirstName + LastName` by habit (coming from CEL, JS, or C#, where `+`
+overloads onto strings) throws a type error in JSONata instead of
+concatenating.
+
+A second case — coercing a legacy, inconsistently-typed `Amount` field
+(stored as a string in old data) to a number:
+
+| | Expression |
+|---|---|
+| **CEL** | `double(event.Amount)` |
+| **JSONata** | `$number(Amount)` |
+
 ## Recommendation
 
 **CEL remains the better fit on every design axis that matters most —

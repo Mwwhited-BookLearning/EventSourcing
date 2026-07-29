@@ -413,6 +413,16 @@ connect-time check already happening for `RequiredReadClaim`) and Phase 4
 (the shared node-finding helper). Independent of Phase 7 — neither depends
 on the other.
 
+**Extended by `ADR-050`** (same phase, not a new one): `x-masking` and
+the generalized `RequiredClaims` list both guaranteed to appear in
+generated OpenAPI/AsyncAPI docs as `x-*` Specification Extensions
+(Phase 2's `OpenApiDocumentBuilder`/`AsyncApiDocumentBuilder` gain this
+here, once masking metadata exists to emit); `Microsoft.Extensions.
+Compliance.Redaction` wired into logging so classified `Payload` values
+never reach log output — exit criterion: a log statement touching a
+`clearance:phi`-classified field is verified redacted, not just the
+API response path.
+
 **Exit criteria**: every scenario in
 [`features/masking.md`](features/masking.md) passes: registration rejecting
 `x-masking` on a non-scalar node (other than array items); a follower
