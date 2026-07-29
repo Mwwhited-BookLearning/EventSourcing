@@ -100,25 +100,41 @@ View layer, and that logic belongs in a composable instead.
 
 ```plantuml
 @startuml MVVM_Vue_Component
-!include <C4/C4_Component>
-
-Container_Boundary(app, "Vue Application") {
-  Component(view, "OrderTable.vue", "Vue SFC", "View: binds template to store + composable")
-  Component(config, "OrderTable.columns.js", "Plain JS", "ViewModel structure: column definitions")
-  Component(composable, "useOrderActions.js", "Composable", "ViewModel commands: fetch, submit, validate")
-  Component(store, "orders.js", "Pinia Store", "Model: state + getters, single source of truth")
-  Component(theme, "tokens.js", "Theme Config", "View styling: shared design tokens")
-  Component(outbox, "ClientOutbox", "Durable queue", "ADR-039's client-local outbox — commands enqueue here, never mutate the store directly")
+skinparam shadowing false
+skinparam defaultTextAlignment center
+skinparam wrapWidth 200
+skinparam rectangle<<Component>> {
+  BackgroundColor #85BBF0
+  FontColor black
 }
-System_Ext(server, "Entity Store API", "The round trip that makes a command's effect real (ADR-021)")
+skinparam rectangle<<System_Ext>> {
+  BackgroundColor #999999
+  FontColor white
+}
+skinparam rectangle<<Boundary>> {
+  BackgroundColor transparent
+  BorderColor #666666
+  BorderStyle dashed
+}
+skinparam ArrowColor #666666
 
-Rel(view, config, "imports")
-Rel(view, store, "reads state via storeToRefs")
-Rel(view, composable, "calls actions")
-Rel(composable, outbox, "enqueues command")
-Rel(outbox, server, "delivers, fault/restart-tolerant")
-Rel(server, store, "confirmed state flows back")
-Rel(view, theme, "themed via ConfigProvider (app root)")
+rectangle "Vue Application" <<Boundary>> as app {
+  rectangle "**OrderTable.vue**\n<<Component>>\n//Vue SFC//\n--\nView: binds template to store + composable" <<Component>> as view
+  rectangle "**OrderTable.columns.js**\n<<Component>>\n//Plain JS//\n--\nViewModel structure: column definitions" <<Component>> as config
+  rectangle "**useOrderActions.js**\n<<Component>>\n//Composable//\n--\nViewModel commands: fetch, submit, validate" <<Component>> as composable
+  rectangle "**orders.js**\n<<Component>>\n//Pinia Store//\n--\nModel: state + getters, single source of truth" <<Component>> as store
+  rectangle "**tokens.js**\n<<Component>>\n//Theme Config//\n--\nView styling: shared design tokens" <<Component>> as theme
+  rectangle "**ClientOutbox**\n<<Component>>\n//Durable queue//\n--\nADR-039's client-local outbox -- commands enqueue here, never mutate the store directly" <<Component>> as outbox
+}
+rectangle "**Entity Store API**\n<<System_Ext>>\n--\nThe round trip that makes a command's effect real (ADR-021)" <<System_Ext>> as server
+
+view --> config : imports
+view --> store : reads state via storeToRefs
+view --> composable : calls actions
+composable --> outbox : enqueues command
+outbox --> server : delivers, fault/restart-tolerant
+server --> store : confirmed state flows back
+view --> theme : themed via ConfigProvider (app root)
 @enduml
 ```
 

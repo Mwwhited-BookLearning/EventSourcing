@@ -1,9 +1,23 @@
 # C4 Architecture
 
-Diagrams use PlantUML with the C4-PlantUML macros
-(`https://github.com/plantuml-stdlib/C4-PlantUML`). These are the static
-structural views; for the runtime/dynamic view of a specific feature (plain
-PlantUML sequence diagrams, plus the Gherkin scenarios they illustrate), see
+Diagrams use **plain PlantUML, hand-styled in the C4 notation** (boxes for
+Person/System/Container/Component, dashed boundary groupings, a
+consistent color tier per level) — not the `C4-PlantUML` macro library.
+`C4-PlantUML` requires either a live fetch of its `.puml` files from
+GitHub (`!include https://raw.githubusercontent.com/...`) or a bundled
+copy of the PlantUML standard library (`!include <C4/C4_Container>`);
+both fail silently (a blank or broken diagram, no readable error) in any
+renderer without internet access or without that stdlib path configured
+— which is most local/offline PlantUML setups. Plain PlantUML has no
+such dependency: every diagram below is fully self-contained and renders
+anywhere PlantUML itself runs. See `references.md` for why `C4-PlantUML`
+moved from adopted to reference-only over this. **This is now a standing
+convention for every PlantUML diagram in this repo, not just this
+file** — never reach for `C4-PlantUML` (or any other external
+`!include`) again; style C4-shaped diagrams by hand instead, the same
+way the diagrams below do. These are the static structural views; for the
+runtime/dynamic view of a specific feature (plain PlantUML sequence
+diagrams, plus the Gherkin scenarios they illustrate), see
 `features/*.md`.
 
 **This diagram reflects the post-integration shape** (`ADR-021` onward —
@@ -27,27 +41,42 @@ topology decisions themselves.
 
 ```plantuml
 @startuml C4_Context
-!include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Context.puml
+skinparam shadowing false
+skinparam defaultTextAlignment center
+skinparam wrapWidth 220
+skinparam rectangle<<Person>> {
+  BackgroundColor #08427B
+  FontColor white
+}
+skinparam rectangle<<System>> {
+  BackgroundColor #1168BD
+  FontColor white
+}
+skinparam rectangle<<System_Ext>> {
+  BackgroundColor #999999
+  FontColor white
+}
+skinparam ArrowColor #666666
 
-Person(publisher, "Publishing System", "Emits domain patches/actions -- may be self-attested (ADR-035/036)")
-Person(follower, "Consuming System", "Queries current state, history, and subscribes to live changes")
-Person(operator, "Platform Operator", "Registers event types / schemas, per AppId (ADR-030)")
+rectangle "**Publishing System**\n<<Person>>\n--\nEmits domain patches/actions -- may be self-attested (ADR-035/036)" <<Person>> as publisher
+rectangle "**Consuming System**\n<<Person>>\n--\nQueries current state, history, and subscribes to live changes" <<Person>> as follower
+rectangle "**Platform Operator**\n<<Person>>\n--\nRegisters event types / schemas, per AppId (ADR-030)" <<Person>> as operator
 
-System(eventStore, "Open Event-Sourced Entity Platform", "Multi-tenant framework: persists everything, folds into an Entity Store, exposes GraphQL. One instance per site.")
-System_Ext(idp, "EventStore.DevIdp", "Dev-mode OIDC token issuer + OAuth Token Exchange (OpenIddict, in-process) -- ADR-006/036")
-System_Ext(peerSite, "Peer Site", "Another instance of the same platform, replicating shared shards -- ADR-033")
+rectangle "**Open Event-Sourced Entity Platform**\n<<System>>\n--\nMulti-tenant framework: persists everything, folds into an Entity Store, exposes GraphQL. One instance per site." <<System>> as eventStore
+rectangle "**EventStore.DevIdp**\n<<System_Ext>>\n--\nDev-mode OIDC token issuer + OAuth Token Exchange (OpenIddict, in-process) -- ADR-006/036" <<System_Ext>> as idp
+rectangle "**Peer Site**\n<<System_Ext>>\n--\nAnother instance of the same platform, replicating shared shards -- ADR-033" <<System_Ext>> as peerSite
 
-Rel(publisher, idp, "Obtains Bearer token (ordinary, or exchanged from a self-attested UCAN)", "OAuth2 client_credentials / RFC 8693")
-Rel(follower, idp, "Obtains Bearer token", "OAuth2 client_credentials")
-Rel(operator, idp, "Obtains Bearer token", "OAuth2 client_credentials")
+publisher --> idp : Obtains Bearer token (ordinary, or exchanged from a self-attested UCAN)\n//OAuth2 client_credentials / RFC 8693//
+follower --> idp : Obtains Bearer token\n//OAuth2 client_credentials//
+operator --> idp : Obtains Bearer token\n//OAuth2 client_credentials//
 
-Rel(publisher, eventStore, "POST /publish/{event-type}\nBearer <JWT> + DPoP proof -- always 202, never 400 for shape/authority problems (ADR-023)", "HTTPS/JSON")
-Rel(follower, eventStore, "GraphQL Query (current state, history) / Subscription (live changes)\nBearer <JWT>, over HTTP QUERY -- never GET, keeps PII/PHI out of URLs (ADR-037)", "HTTPS")
-Rel(operator, eventStore, "PUT /registry/{event-type}\nBearer <JWT>", "HTTPS/JSON")
-Rel(eventStore, idp, "Validates Bearer token + DPoP proof; exchanges self-attested UCANs (ADR-017/036)", "OIDC discovery + JWKS")
-Rel(eventStore, peerSite, "Gossip replication -- durable, fault/abend/restart-tolerant peer-sync outbox/inbox (ADR-033)", "HTTPS/JSON, bidirectional")
-Rel(eventStore, publisher, "OpenAPI contract (anonymous)", "HTTPS")
-Rel(eventStore, follower, "GraphQL SDL, per AppId (anonymous)", "HTTPS")
+publisher --> eventStore : POST /publish/{event-type}\nBearer <JWT> + DPoP proof -- always 202, never 400 for shape/authority problems (ADR-023)\n//HTTPS/JSON//
+follower --> eventStore : GraphQL Query (current state, history) / Subscription (live changes)\nBearer <JWT>, over HTTP QUERY -- never GET, keeps PII/PHI out of URLs (ADR-037)\n//HTTPS//
+operator --> eventStore : PUT /registry/{event-type}\nBearer <JWT>\n//HTTPS/JSON//
+eventStore --> idp : Validates Bearer token + DPoP proof; exchanges self-attested UCANs (ADR-017/036)\n//OIDC discovery + JWKS//
+eventStore --> peerSite : Gossip replication -- durable, fault/abend/restart-tolerant peer-sync outbox/inbox (ADR-033)\n//HTTPS/JSON, bidirectional//
+eventStore --> publisher : OpenAPI contract (anonymous)\n//HTTPS//
+eventStore --> follower : GraphQL SDL, per AppId (anonymous)\n//HTTPS//
 
 @enduml
 ```
@@ -56,65 +85,89 @@ Rel(eventStore, follower, "GraphQL SDL, per AppId (anonymous)", "HTTPS")
 
 ```plantuml
 @startuml C4_Container
-!include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Container.puml
+skinparam shadowing false
+skinparam defaultTextAlignment center
+skinparam wrapWidth 220
+skinparam rectangle<<Person>> {
+  BackgroundColor #08427B
+  FontColor white
+}
+skinparam rectangle<<System_Ext>> {
+  BackgroundColor #999999
+  FontColor white
+}
+skinparam rectangle<<Container>> {
+  BackgroundColor #438DD5
+  FontColor white
+}
+skinparam database<<Container>> {
+  BackgroundColor #438DD5
+  FontColor white
+}
+skinparam rectangle<<Boundary>> {
+  BackgroundColor transparent
+  BorderColor #666666
+  BorderStyle dashed
+}
+skinparam ArrowColor #666666
 
-Person(publisher, "Publishing System")
-Person(follower, "Consuming System")
-Person(operator, "Platform Operator")
-System_Ext(idp, "EventStore.DevIdp", "OIDC + Token Exchange -- ADR-006/036")
-System_Ext(peerSite, "Peer Site(s)", "ADR-033")
+rectangle "**Publishing System**\n<<Person>>" <<Person>> as publisher
+rectangle "**Consuming System**\n<<Person>>" <<Person>> as follower
+rectangle "**Platform Operator**\n<<Person>>" <<Person>> as operator
+rectangle "**EventStore.DevIdp**\n<<System_Ext>>\n--\nOIDC + Token Exchange -- ADR-006/036" <<System_Ext>> as idp
+rectangle "**Peer Site(s)**\n<<System_Ext>>\n--\nADR-033" <<System_Ext>> as peerSite
 
-System_Boundary(system, "Open Event-Sourced Entity Platform (one site)") {
-    Container(inbox, "Inbox / Publish Endpoint", ".NET (ASP.NET Core)", "POST /publish; persists first, always 202 unless the envelope itself is unparseable (ADR-023); Idempotent Receiver (ADR-011)")
-    Container(router, "Router", "Background service", "Schema validation, entity resolution (ADR-021), live upcast validation + materialization (ADR-020/027), non-authoritative claim capture (ADR-035) -- all advisory, none block Inbox's 202")
-    ContainerDb(eventLog, "Event Log", "EF Core over SQLite/Postgres/SqlServer (ADR-001)", "StoredEvent, EventParent -- insert-only, hash-chained (ADR-019)")
-    Container(fold, "Fold / Projector", "Background service", "Logical-order fold (OccurredAt, not arrival order -- ADR-029); optimistic-concurrency conflict flagging (ADR-024); always-on, not opt-in")
-    ContainerDb(entityStore, "Entity Store", "Mutable, versioned, hashed, sharded by EntityType (ADR-021/034)", "Current materialized state -- the only thing GraphQL reads read from")
-    Container(registry, "Schema Registry Service", ".NET", "CRUD for named/versioned JSON Schemas, AppId-scoped (ADR-030); FilterableFields, ChangeKind, EntityIdField, upcast/downcast maps (ADR-018/028)")
-    Container(graphql, "GraphQL Gateway", ".NET (Hot Chocolate-class), QUERY method", "Query (entity + change history), Subscription (live changes, replaces OData $filter/Follow) -- per-AppId schema (ADR-030/037); depth/cost limiting")
-    Container(specGen, "Spec Generator", ".NET", "Builds OpenAPI (publish) + GraphQL SDL from registry state; MaskingSchemaTransformer (ADR-002/009)")
-    Container(streaming, "Streaming Channel Service", ".NET", "Batch ingest + tail/replay for telemetry & media channels (ADR-031) -- bypasses schema validation/hash-chain/fold entirely")
-    ContainerDb(streamStore, "Streaming Channel Store", "Plain append-only table, v1 engine choice (ADR-031)", "TelemetryChannel, TelemetrySample")
-    Container(attachments, "Attachment Service", ".NET + WebDAV endpoint", "Content-addressed binary uploads, browsable via WebDAV (ADR-032)")
-    ContainerDb(attachmentStore, "Attachment Store", "Content-addressed", "Attachment, AttachmentRef")
-    Container(peerSync, "Peer Sync Outbox/Inbox", "Durable store + background service, gossip topology", "Fault/abend/restart-tolerant (ADR-033); reuses the same durable transport as Inbox above")
+rectangle "Open Event-Sourced Entity Platform (one site)" <<Boundary>> as system {
+    rectangle "**Inbox / Publish Endpoint**\n<<Container>>\n//.NET (ASP.NET Core)//\n--\nPOST /publish; persists first, always 202 unless the envelope itself is unparseable (ADR-023); Idempotent Receiver (ADR-011)" <<Container>> as inbox
+    rectangle "**Router**\n<<Container>>\n//Background service//\n--\nSchema validation, entity resolution (ADR-021), live upcast validation + materialization (ADR-020/027), non-authoritative claim capture (ADR-035) -- all advisory, none block Inbox's 202" <<Container>> as router
+    database "**Event Log**\n<<Container>>\n//EF Core over SQLite/Postgres/SqlServer (ADR-001)//\n--\nStoredEvent, EventParent -- insert-only, hash-chained (ADR-019)" <<Container>> as eventLog
+    rectangle "**Fold / Projector**\n<<Container>>\n//Background service//\n--\nLogical-order fold (OccurredAt, not arrival order -- ADR-029); optimistic-concurrency conflict flagging (ADR-024); always-on, not opt-in" <<Container>> as fold
+    database "**Entity Store**\n<<Container>>\n//Mutable, versioned, hashed, sharded by EntityType (ADR-021/034)//\n--\nCurrent materialized state -- the only thing GraphQL reads read from" <<Container>> as entityStore
+    rectangle "**Schema Registry Service**\n<<Container>>\n//.NET//\n--\nCRUD for named/versioned JSON Schemas, AppId-scoped (ADR-030); FilterableFields, ChangeKind, EntityIdField, upcast/downcast maps (ADR-018/028)" <<Container>> as registry
+    rectangle "**GraphQL Gateway**\n<<Container>>\n//.NET (Hot Chocolate-class), QUERY method//\n--\nQuery (entity + change history), Subscription (live changes, replaces OData $filter/Follow) -- per-AppId schema (ADR-030/037); depth/cost limiting" <<Container>> as graphql
+    rectangle "**Spec Generator**\n<<Container>>\n//.NET//\n--\nBuilds OpenAPI (publish) + GraphQL SDL from registry state; MaskingSchemaTransformer (ADR-002/009)" <<Container>> as specGen
+    rectangle "**Streaming Channel Service**\n<<Container>>\n//.NET//\n--\nBatch ingest + tail/replay for telemetry & media channels (ADR-031) -- bypasses schema validation/hash-chain/fold entirely" <<Container>> as streaming
+    database "**Streaming Channel Store**\n<<Container>>\n//Plain append-only table, v1 engine choice (ADR-031)//\n--\nTelemetryChannel, TelemetrySample" <<Container>> as streamStore
+    rectangle "**Attachment Service**\n<<Container>>\n//.NET + WebDAV endpoint//\n--\nContent-addressed binary uploads, browsable via WebDAV (ADR-032)" <<Container>> as attachments
+    database "**Attachment Store**\n<<Container>>\n//Content-addressed//\n--\nAttachment, AttachmentRef" <<Container>> as attachmentStore
+    rectangle "**Peer Sync Outbox/Inbox**\n<<Container>>\n//Durable store + background service, gossip topology//\n--\nFault/abend/restart-tolerant (ADR-033); reuses the same durable transport as Inbox above" <<Container>> as peerSync
 }
 
-System_Boundary(readSide, "CQRS Read Side (example) -- separate deployable and database, ADR-015") {
-    Container(projectionHost, "Projection Host", ".NET (background service)", "Opt-in custom projections, on top of the always-on Entity Store above (ADR-015/016)")
-    ContainerDb(readDb, "Read Model Store", "EF Core, its own database", "ProjectionCheckpoint, ProjectionSnapshot, OrderSummary (example)")
+rectangle "CQRS Read Side (example) -- separate deployable and database, ADR-015" <<Boundary>> as readSide {
+    rectangle "**Projection Host**\n<<Container>>\n//.NET (background service)//\n--\nOpt-in custom projections, on top of the always-on Entity Store above (ADR-015/016)" <<Container>> as projectionHost
+    database "**Read Model Store**\n<<Container>>\n//EF Core, its own database//\n--\nProjectionCheckpoint, ProjectionSnapshot, OrderSummary (example)" <<Container>> as readDb
 }
 
-Rel(publisher, inbox, "Publishes patches/actions", "HTTPS/JSON, Bearer + DPoP")
-Rel(follower, graphql, "Query / Subscription", "HTTPS (QUERY method), Bearer + DPoP")
-Rel(operator, registry, "Registers schemas", "HTTPS/JSON, Bearer")
-Rel(publisher, streaming, "Batch-ingests channel samples", "HTTPS, Bearer")
-Rel(publisher, attachments, "Uploads binary content", "HTTPS/WebDAV, Bearer")
+publisher --> inbox : Publishes patches/actions\n//HTTPS/JSON, Bearer + DPoP//
+follower --> graphql : Query / Subscription\n//HTTPS (QUERY method), Bearer + DPoP//
+operator --> registry : Registers schemas\n//HTTPS/JSON, Bearer//
+publisher --> streaming : Batch-ingests channel samples\n//HTTPS, Bearer//
+publisher --> attachments : Uploads binary content\n//HTTPS/WebDAV, Bearer//
 
-Rel(inbox, eventLog, "Append \"received\" (Idempotent Receiver + Inbox pattern)")
-Rel(inbox, router, "Notify new item")
-Rel(router, registry, "Schema + claims + upcast/downcast maps lookup (advisory)")
-Rel(router, eventLog, "Append routed event; append UpcastMaterialization (ADR-027) or EventUpcastFailed (ADR-020) as needed")
-Rel(fold, eventLog, "Replay in OccurredAt order")
-Rel(fold, entityStore, "Write materialized version; ConflictFlag/LateArrivalFlag")
-Rel(graphql, entityStore, "Read current state (sharded, ADR-034)")
-Rel(graphql, eventLog, "Read change history (ADR-024 §8.4)")
-Rel(registry, eventLog, "n/a -- registry has its own table, shown for scope only")
-Rel(specGen, registry, "Read schema/event-type metadata")
-Rel(publisher, specGen, "GET /openapi.json (anonymous)")
-Rel(follower, specGen, "GraphQL SDL introspection (anonymous)")
-Rel(streaming, streamStore, "Batch append; tail/replay (ADR-010's shape, reused)")
-Rel(attachments, attachmentStore, "Content-addressed put/get; WebDAV PROPFIND/GET/PUT")
-Rel(eventLog, peerSync, "Feeds outbound peer sync")
-Rel(peerSync, eventLog, "Delivers events from peers -- same path as Inbox, no special-casing")
-Rel(peerSync, peerSite, "Gossip exchange", "HTTPS/JSON")
+inbox --> eventLog : Append "received" (Idempotent Receiver + Inbox pattern)
+inbox --> router : Notify new item
+router --> registry : Schema + claims + upcast/downcast maps lookup (advisory)
+router --> eventLog : Append routed event; append UpcastMaterialization (ADR-027) or EventUpcastFailed (ADR-020) as needed
+fold --> eventLog : Replay in OccurredAt order
+fold --> entityStore : Write materialized version; ConflictFlag/LateArrivalFlag
+graphql --> entityStore : Read current state (sharded, ADR-034)
+graphql --> eventLog : Read change history (ADR-024 §8.4)
+registry --> eventLog : n/a -- registry has its own table, shown for scope only
+specGen --> registry : Read schema/event-type metadata
+publisher --> specGen : GET /openapi.json (anonymous)
+follower --> specGen : GraphQL SDL introspection (anonymous)
+streaming --> streamStore : Batch append; tail/replay (ADR-010's shape, reused)
+attachments --> attachmentStore : Content-addressed put/get; WebDAV PROPFIND/GET/PUT
+eventLog --> peerSync : Feeds outbound peer sync
+peerSync --> eventLog : Delivers events from peers -- same path as Inbox, no special-casing
+peerSync --> peerSite : Gossip exchange\n//HTTPS/JSON//
 
-Rel(inbox, idp, "Validates Bearer + DPoP; may trigger Token Exchange (ADR-036)")
-Rel(graphql, idp, "Validates Bearer + DPoP")
-Rel(registry, idp, "Validates Bearer + DPoP")
+inbox --> idp : Validates Bearer + DPoP; may trigger Token Exchange (ADR-036)
+graphql --> idp : Validates Bearer + DPoP
+registry --> idp : Validates Bearer + DPoP
 
-Rel(projectionHost, graphql, "Subscribes (its own client identity)", "HTTPS, Bearer")
-Rel(projectionHost, readDb, "Upsert snapshot + read-model rows", "EF Core")
+projectionHost --> graphql : Subscribes (its own client identity)\n//HTTPS, Bearer//
+projectionHost --> readDb : Upsert snapshot + read-model rows\n//EF Core//
 
 @enduml
 ```
@@ -123,38 +176,54 @@ Rel(projectionHost, readDb, "Upsert snapshot + read-model rows", "EF Core")
 
 ```plantuml
 @startuml C4_Component_Publish
-!include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Component.puml
+skinparam shadowing false
+skinparam defaultTextAlignment center
+skinparam wrapWidth 220
+skinparam rectangle<<Component>> {
+  BackgroundColor #85BBF0
+  FontColor black
+}
+skinparam database<<Container>> {
+  BackgroundColor #438DD5
+  FontColor white
+}
+skinparam rectangle<<Boundary>> {
+  BackgroundColor transparent
+  BorderColor #666666
+  BorderStyle dashed
+}
+skinparam ArrowColor #666666
 
-Container_Boundary(inbox, "Inbox / Publish Endpoint") {
-    Component(endpoint, "PublishEndpoint", "Minimal API", "Routes POST /publish/{event-type}; the ONLY thing that can still return a real error (unparseable envelope) -- ADR-023")
-    Component(scopeCheck, "events:publish scope check", "ScopeRequirement", "ADR-006 -- static, blocking")
-    Component(idempotency, "Idempotent Receiver", "eventId + PayloadHash lookup", "ADR-011 -- short-circuits before append if eventId supplied")
-    Component(appender, "EventAppender", "EF Core repository", "Writes StoredEvent, assigns SequenceNumber, computes ChainHash (ADR-019) -- always succeeds if parseable")
+rectangle "Inbox / Publish Endpoint" <<Boundary>> as inbox {
+    rectangle "**PublishEndpoint**\n<<Component>>\n//Minimal API//\n--\nRoutes POST /publish/{event-type}; the ONLY thing that can still return a real error (unparseable envelope) -- ADR-023" <<Component>> as endpoint
+    rectangle "**events:publish scope check**\n<<Component>>\n//ScopeRequirement//\n--\nADR-006 -- static, blocking" <<Component>> as scopeCheck
+    rectangle "**Idempotent Receiver**\n<<Component>>\n//eventId + PayloadHash lookup//\n--\nADR-011 -- short-circuits before append if eventId supplied" <<Component>> as idempotency
+    rectangle "**EventAppender**\n<<Component>>\n//EF Core repository//\n--\nWrites StoredEvent, assigns SequenceNumber, computes ChainHash (ADR-019) -- always succeeds if parseable" <<Component>> as appender
 }
 
-Container_Boundary(router, "Router (background, advisory-only)") {
-    Component(entityResolver, "Entity Resolver", "EF Core", "Resolves/creates EntityId via EntityIdField (ADR-021)")
-    Component(claimCheck, "RequiredPublishClaim / AuthorityStatus check", "HasRequiredClaim(...)", "ADR-008 (blocking, own-scope) + ADR-035 (advisory, never blocks)")
-    Component(validator, "SchemaValidationService", "JsonSchema.Net wrapper", "Validates against declared schemaVersion (ADR-020) -- result is advisory (SchemaStatus), never blocking (ADR-023)")
-    Component(parentLink, "ParentLinkService", "EF Core repository", "Validates parentEventIds per ParentValidationMode (ADR-005)")
-    Component(upcastValidate, "UpcastChain (live validation)", "OData compute() executor", "ADR-020 -- lagging schemaVersion? validate + materialize (ADR-027) or dead-letter (EventUpcastFailed)")
+rectangle "Router (background, advisory-only)" <<Boundary>> as router {
+    rectangle "**Entity Resolver**\n<<Component>>\n//EF Core//\n--\nResolves/creates EntityId via EntityIdField (ADR-021)" <<Component>> as entityResolver
+    rectangle "**RequiredPublishClaim / AuthorityStatus check**\n<<Component>>\n//HasRequiredClaim(...)//\n--\nADR-008 (blocking, own-scope) + ADR-035 (advisory, never blocks)" <<Component>> as claimCheck
+    rectangle "**SchemaValidationService**\n<<Component>>\n//JsonSchema.Net wrapper//\n--\nValidates against declared schemaVersion (ADR-020) -- result is advisory (SchemaStatus), never blocking (ADR-023)" <<Component>> as validator
+    rectangle "**ParentLinkService**\n<<Component>>\n//EF Core repository//\n--\nValidates parentEventIds per ParentValidationMode (ADR-005)" <<Component>> as parentLink
+    rectangle "**UpcastChain (live validation)**\n<<Component>>\n//OData compute() executor//\n--\nADR-020 -- lagging schemaVersion? validate + materialize (ADR-027) or dead-letter (EventUpcastFailed)" <<Component>> as upcastValidate
 }
 
-ContainerDb(eventLog, "Event Log")
-ContainerDb(registry, "Schema Registry")
+database "Event Log" <<Container>> as eventLog
+database "Schema Registry" <<Container>> as registry
 
-Rel(endpoint, scopeCheck, "1. validate scope (blocking)")
-Rel(endpoint, idempotency, "2. if eventId supplied")
-Rel(endpoint, appender, "3. append \"received\" regardless of shape (ADR-023)")
-Rel(appender, eventLog, "INSERT StoredEvent")
-Rel(endpoint, router, "4. notify (async, non-blocking)")
-Rel(router, entityResolver, "resolve EntityId")
-Rel(router, registry, "fetch schema + claims + maps")
-Rel(router, claimCheck, "advisory claim/authority checks")
-Rel(router, validator, "advisory schema check -> SchemaStatus")
-Rel(router, parentLink, "validate parentEventIds")
-Rel(router, upcastValidate, "if schemaVersion behind active")
-Rel(router, eventLog, "append routed event, materialization, or EventUpcastFailed")
+endpoint --> scopeCheck : 1. validate scope (blocking)
+endpoint --> idempotency : 2. if eventId supplied
+endpoint --> appender : 3. append "received" regardless of shape (ADR-023)
+appender --> eventLog : INSERT StoredEvent
+endpoint --> router : 4. notify (async, non-blocking)
+router --> entityResolver : resolve EntityId
+router --> registry : fetch schema + claims + maps
+router --> claimCheck : advisory claim/authority checks
+router --> validator : advisory schema check -> SchemaStatus
+router --> parentLink : validate parentEventIds
+router --> upcastValidate : if schemaVersion behind active
+router --> eventLog : append routed event, materialization, or EventUpcastFailed
 
 @enduml
 ```
@@ -163,35 +232,51 @@ Rel(router, eventLog, "append routed event, materialization, or EventUpcastFaile
 
 ```plantuml
 @startuml C4_Component_GraphQL
-!include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Component.puml
+skinparam shadowing false
+skinparam defaultTextAlignment center
+skinparam wrapWidth 220
+skinparam rectangle<<Component>> {
+  BackgroundColor #85BBF0
+  FontColor black
+}
+skinparam database<<Container>> {
+  BackgroundColor #438DD5
+  FontColor white
+}
+skinparam rectangle<<Boundary>> {
+  BackgroundColor transparent
+  BorderColor #666666
+  BorderStyle dashed
+}
+skinparam ArrowColor #666666
 
-Container_Boundary(graphql, "GraphQL Gateway") {
-    Component(handler, "GraphQL Handler", "QUERY method (queries/subscriptions), POST (mutations, unused here)", "ADR-037 -- one schema per AppId (ADR-030)")
-    Component(scopeCheck, "events:follow / events:lineage:read scope check", "ScopeRequirement", "ADR-006")
-    Component(claimCheck, "RequiredReadClaim / per-node visibility check", "HasRequiredClaim(...)", "ADR-008 -- per-node for history/lineage traversal, once at connect time for a live subscription")
-    Component(entityResolver, "Entity Resolver", "Reads Entity Store (shard-aware, ADR-034)", "Current-state queries")
-    Component(historyResolver, "History Resolver", "Reads Event Log by EntityId", "ADR-024 §8.4 -- entityHistory(entityId, property)")
-    Component(subResolver, "Subscription Resolver", "Bridges the same tail/replay poll loop ADR-010 established", "Live changes -- GraphQL's transport, not a new polling mechanism")
-    Component(depthLimiter, "Depth/Cost Limiter", "Guards against unbounded hierarchical fan-out", "Mandatory, not optional (ADR-037)")
-    Component(dataLoader, "Batching (DataLoader pattern)", "Per-resolver batching", "Avoids N+1 across shards/replicas")
-    Component(upcaster, "UpcastChain", "Same executor as the Router uses", "ADR-018/027 -- reshapes a stored/materialized event to current shape on read")
-    Component(masker, "IPayloadMasker", "schema+data transform", "ADR-009 -- Phase 8, not yet built")
+rectangle "GraphQL Gateway" <<Boundary>> as graphql {
+    rectangle "**GraphQL Handler**\n<<Component>>\n//QUERY method (queries/subscriptions), POST (mutations, unused here)//\n--\nADR-037 -- one schema per AppId (ADR-030)" <<Component>> as handler
+    rectangle "**events:follow / events:lineage:read scope check**\n<<Component>>\n//ScopeRequirement//\n--\nADR-006" <<Component>> as scopeCheck
+    rectangle "**RequiredReadClaim / per-node visibility check**\n<<Component>>\n//HasRequiredClaim(...)//\n--\nADR-008 -- per-node for history/lineage traversal, once at connect time for a live subscription" <<Component>> as claimCheck
+    rectangle "**Entity Resolver**\n<<Component>>\n//Reads Entity Store (shard-aware, ADR-034)//\n--\nCurrent-state queries" <<Component>> as entityResolver
+    rectangle "**History Resolver**\n<<Component>>\n//Reads Event Log by EntityId//\n--\nADR-024 §8.4 -- entityHistory(entityId, property)" <<Component>> as historyResolver
+    rectangle "**Subscription Resolver**\n<<Component>>\n//Bridges the same tail/replay poll loop ADR-010 established//\n--\nLive changes -- GraphQL's transport, not a new polling mechanism" <<Component>> as subResolver
+    rectangle "**Depth/Cost Limiter**\n<<Component>>\n//Guards against unbounded hierarchical fan-out//\n--\nMandatory, not optional (ADR-037)" <<Component>> as depthLimiter
+    rectangle "**Batching (DataLoader pattern)**\n<<Component>>\n//Per-resolver batching//\n--\nAvoids N+1 across shards/replicas" <<Component>> as dataLoader
+    rectangle "**UpcastChain**\n<<Component>>\n//Same executor as the Router uses//\n--\nADR-018/027 -- reshapes a stored/materialized event to current shape on read" <<Component>> as upcaster
+    rectangle "**IPayloadMasker**\n<<Component>>\n//schema+data transform//\n--\nADR-009 -- Phase 8, not yet built" <<Component>> as masker
 }
 
-ContainerDb(entityStore, "Entity Store")
-ContainerDb(eventLog, "Event Log")
+database "Entity Store" <<Container>> as entityStore
+database "Event Log" <<Container>> as eventLog
 
-Rel(handler, scopeCheck, "validate scope")
-Rel(handler, depthLimiter, "validate before execution")
-Rel(handler, claimCheck, "validate RequiredReadClaim")
-Rel(handler, entityResolver, "Query: current state")
-Rel(handler, historyResolver, "Query: entityHistory")
-Rel(handler, subResolver, "Subscription: live changes")
-Rel(entityResolver, dataLoader, "batch reads")
-Rel(dataLoader, entityStore, "SELECT ... (sharded)")
-Rel(historyResolver, eventLog, "SELECT ... WHERE EntityId = ... ORDER BY SequenceNumber")
-Rel(entityResolver, upcaster, "reshape if needed")
-Rel(upcaster, masker, "mask before returning")
+handler --> scopeCheck : validate scope
+handler --> depthLimiter : validate before execution
+handler --> claimCheck : validate RequiredReadClaim
+handler --> entityResolver : Query: current state
+handler --> historyResolver : Query: entityHistory
+handler --> subResolver : Subscription: live changes
+entityResolver --> dataLoader : batch reads
+dataLoader --> entityStore : SELECT ... (sharded)
+historyResolver --> eventLog : SELECT ... WHERE EntityId = ... ORDER BY SequenceNumber
+entityResolver --> upcaster : reshape if needed
+upcaster --> masker : mask before returning
 
 @enduml
 ```
@@ -200,7 +285,23 @@ Rel(upcaster, masker, "mask before returning")
 
 ```plantuml
 @startuml C4_Component_Lineage
-!include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Component.puml
+skinparam shadowing false
+skinparam defaultTextAlignment center
+skinparam wrapWidth 220
+skinparam rectangle<<Component>> {
+  BackgroundColor #85BBF0
+  FontColor black
+}
+skinparam database<<Container>> {
+  BackgroundColor #438DD5
+  FontColor white
+}
+skinparam rectangle<<Boundary>> {
+  BackgroundColor transparent
+  BorderColor #666666
+  BorderStyle dashed
+}
+skinparam ArrowColor #666666
 
 note as N
   This traversal logic is unchanged from the OData era --
@@ -209,20 +310,20 @@ note as N
   not a standalone "Lineage API" container.
 end note
 
-Container_Boundary(lineageResolver, "Lineage Resolver (part of GraphQL Gateway)") {
-    Component(directReader, "EventParentReader", "EF Core (LINQ)", "Immediate parents/children via a plain join on EventParents")
-    Component(recursiveReader, "IEventLineageQueryProvider (impl per provider)", "SQLite/Postgres/SqlServer raw SQL", "Ancestors/descendants via provider-specific WITH RECURSIVE CTE")
-    Component(cycleGuard, "CycleGuard", "In-process", "Bounds traversal depth / rejects a revisited node (ADR-005)")
-    Component(nodeVisibility, "Per-node visibility check", "restrictedTypes set", "ADR-008 -- stubs a discovered node as restricted:true rather than failing the request")
+rectangle "Lineage Resolver (part of GraphQL Gateway)" <<Boundary>> as lineageResolver {
+    rectangle "**EventParentReader**\n<<Component>>\n//EF Core (LINQ)//\n--\nImmediate parents/children via a plain join on EventParents" <<Component>> as directReader
+    rectangle "**IEventLineageQueryProvider (impl per provider)**\n<<Component>>\n//SQLite/Postgres/SqlServer raw SQL//\n--\nAncestors/descendants via provider-specific WITH RECURSIVE CTE" <<Component>> as recursiveReader
+    rectangle "**CycleGuard**\n<<Component>>\n//In-process//\n--\nBounds traversal depth / rejects a revisited node (ADR-005)" <<Component>> as cycleGuard
+    rectangle "**Per-node visibility check**\n<<Component>>\n//restrictedTypes set//\n--\nADR-008 -- stubs a discovered node as restricted:true rather than failing the request" <<Component>> as nodeVisibility
 }
 
-ContainerDb(eventLog, "Event Log")
+database "Event Log" <<Container>> as eventLog
 
-Rel(directReader, nodeVisibility, "stubs a restricted direct node")
-Rel(recursiveReader, cycleGuard, "guards recursion")
-Rel(recursiveReader, nodeVisibility, "stops expansion past a restricted node")
-Rel(directReader, eventLog, "SELECT ... FROM EventParents JOIN Events")
-Rel(recursiveReader, eventLog, "WITH RECURSIVE ... (native per provider)")
+directReader --> nodeVisibility : stubs a restricted direct node
+recursiveReader --> cycleGuard : guards recursion
+recursiveReader --> nodeVisibility : stops expansion past a restricted node
+directReader --> eventLog : SELECT ... FROM EventParents JOIN Events
+recursiveReader --> eventLog : WITH RECURSIVE ... (native per provider)
 
 @enduml
 ```
@@ -231,28 +332,48 @@ Rel(recursiveReader, eventLog, "WITH RECURSIVE ... (native per provider)")
 
 ```plantuml
 @startuml C4_Component_ProjectionHost
-!include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Component.puml
+skinparam shadowing false
+skinparam defaultTextAlignment center
+skinparam wrapWidth 220
+skinparam rectangle<<Component>> {
+  BackgroundColor #85BBF0
+  FontColor black
+}
+skinparam rectangle<<Container>> {
+  BackgroundColor #438DD5
+  FontColor white
+}
+skinparam database<<Container>> {
+  BackgroundColor #438DD5
+  FontColor white
+}
+skinparam rectangle<<Boundary>> {
+  BackgroundColor transparent
+  BorderColor #666666
+  BorderStyle dashed
+}
+skinparam ArrowColor #666666
 
-Container_Boundary(projectionHost, "Projection Host") {
-    Component(runner, "ProjectionRunner", "Background service, one loop per registered IProjection<T>", "Reads checkpoint; Subscription/replay via the GraphQL Gateway (ADR-037), reusing ADR-010's tail/replay shape -- never mode=tail equivalent")
-    Component(merger, "SnapshotMerger", "Optional<T>-aware fold", "Full: replace. Partial: merge-patch, absent -> untouched, explicit null -> clears (ADR-022, refines ADR-016)")
-    Component(checkpointStore, "CheckpointStore", "EF Core repository", "ProjectionCheckpoint: LastSequenceNumber per projection")
-    Component(snapshotStore, "SnapshotStore", "EF Core repository", "ProjectionSnapshot: current merged JSON per (ProjectionName, Key)")
-    Component(orderProjection, "OrderSummaryProjection", "IProjection<OrderSummary> (worked example)", "GetKey(OrderId); Project(mergedSnapshot) -> OrderSummary row")
+rectangle "Projection Host" <<Boundary>> as projectionHost {
+    rectangle "**ProjectionRunner**\n<<Component>>\n//Background service, one loop per registered IProjection<T>//\n--\nReads checkpoint; Subscription/replay via the GraphQL Gateway (ADR-037), reusing ADR-010's tail/replay shape -- never mode=tail equivalent" <<Component>> as runner
+    rectangle "**SnapshotMerger**\n<<Component>>\n//Optional<T>-aware fold//\n--\nFull: replace. Partial: merge-patch, absent -> untouched, explicit null -> clears (ADR-022, refines ADR-016)" <<Component>> as merger
+    rectangle "**CheckpointStore**\n<<Component>>\n//EF Core repository//\n--\nProjectionCheckpoint: LastSequenceNumber per projection" <<Component>> as checkpointStore
+    rectangle "**SnapshotStore**\n<<Component>>\n//EF Core repository//\n--\nProjectionSnapshot: current merged JSON per (ProjectionName, Key)" <<Component>> as snapshotStore
+    rectangle "**OrderSummaryProjection**\n<<Component>>\n//IProjection<OrderSummary> (worked example)//\n--\nGetKey(OrderId); Project(mergedSnapshot) -> OrderSummary row" <<Component>> as orderProjection
 }
 
-Container(graphql, "GraphQL Gateway", "write-side read path")
-ContainerDb(readDb, "Read Model Store")
+rectangle "**GraphQL Gateway**\n<<Container>>\n--\nwrite-side read path" <<Container>> as graphql
+database "Read Model Store" <<Container>> as readDb
 
-Rel(runner, checkpointStore, "read/advance checkpoint")
-Rel(runner, graphql, "Subscribe / replay from checkpoint", "HTTPS, Bearer")
-Rel(runner, snapshotStore, "load existing snapshot for key")
-Rel(runner, merger, "apply(ChangeKind, existing, incoming)")
-Rel(merger, snapshotStore, "upsert merged snapshot")
-Rel(runner, orderProjection, "Project(key, mergedSnapshot)")
-Rel(orderProjection, readDb, "upsert OrderSummary row (via runner)")
-Rel(checkpointStore, readDb, "persist checkpoint")
-Rel(snapshotStore, readDb, "persist snapshot")
+runner --> checkpointStore : read/advance checkpoint
+runner --> graphql : Subscribe / replay from checkpoint\n//HTTPS, Bearer//
+runner --> snapshotStore : load existing snapshot for key
+runner --> merger : apply(ChangeKind, existing, incoming)
+merger --> snapshotStore : upsert merged snapshot
+runner --> orderProjection : Project(key, mergedSnapshot)
+orderProjection --> readDb : upsert OrderSummary row (via runner)
+checkpointStore --> readDb : persist checkpoint
+snapshotStore --> readDb : persist snapshot
 
 @enduml
 ```
@@ -271,9 +392,9 @@ entity shapes in the meantime.
 
 ## Suggested References
 
-- [C4 model](https://c4model.com/) — Simon Brown; the notation these diagrams follow (Context/Container/Component).
-- [C4-PlantUML](https://github.com/plantuml-stdlib/C4-PlantUML) — the macro library used to render them.
-- [PlantUML](https://plantuml.com/) — the underlying diagram engine.
+- [C4 model](https://c4model.com/) — Simon Brown; the notation these diagrams follow (Context/Container/Component), hand-styled in plain PlantUML rather than rendered through the macro library below.
+- [PlantUML](https://plantuml.com/) — the diagram engine these diagrams are written directly against, with no external `!include`.
+- [C4-PlantUML](https://github.com/plantuml-stdlib/C4-PlantUML) — considered, not used; see `references.md` for why (unreliable rendering without network/stdlib access).
 
 See `references.md` for the full bibliography, including the standards
 behind what each container/component actually does (cross-referenced from
