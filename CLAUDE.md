@@ -312,7 +312,25 @@ foundational, locked-in decisions, for quick orientation:
   metadata rather than a second taxonomy. Two honest residual risks
   raised, not resolved: AND/OR semantics for multiple same-direction
   claims, and whether publicly-readable spec docs exposing *which*
-  fields are sensitive is itself a leak.
+  fields are sensitive is itself a leak (**resolved**: not a meaningful
+  leak by default; `ADR-002` adds a config toggle to disable the spec
+  endpoints entirely for stricter deployments).
+- **Four more open questions resolved** (`ADR-051`–`053`, plus a
+  decision folded into `ADR-050`): peer discovery is explicit static
+  `SeedPeers` configuration only, no automatic discovery of any kind
+  (`ADR-051`); streaming-channel redaction is read-time with a
+  zero-fill/tone/blank-frame default per `ContentKind`, plus a
+  configurable `PartialReveal` strategy shared with `ADR-009`
+  (`ADR-052`); the CEL-vs-JSONata upcast-language tension resolves by
+  making the engine pluggable behind `IUpcastExpressionEvaluator`, CEL
+  the default (`ADR-053`); `RequiredClaims`' same-direction evaluation
+  defaults to `OR`, with `AND`/richer combinations named as a plausible
+  future extension, not built now. `ADR-009`'s `PartialReveal` uses
+  named fields (`showFirst`/`showLast`/`maskChar`/`preserveSeparators`),
+  deliberately not a cryptic mask-template string, after a readability
+  request — modeled on PCI-DSS's own plain-language PAN-masking framing
+  over the more cryptic (but real) `MaskedTextProvider` code-table
+  convention.
 - **API Gateway (YARP)** (`ADR-049`) — also reverses a prior rejection,
   same trigger as `ADR-048`: this design's growth to multiple
   independently-addressable external surfaces (GraphQL, WebDAV,

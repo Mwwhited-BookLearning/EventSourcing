@@ -70,3 +70,6 @@ Consequences: <trade-offs accepted>
 | [048](adrs/adr-048-spiffe-spire-service-identity.md) | SPIFFE/SPIRE for internal service-to-service and peer-sync identity (reverses prior SPIFFE/SPIRE rejection) | Accepted |
 | [049](adrs/adr-049-api-gateway-yarp.md) | API Gateway (YARP) as the single external entry point (reverses prior YARP rejection) | Accepted |
 | [050](adrs/adr-050-permission-masking-metadata-spec-extensions-log-redaction.md) | Entity-level permission/masking metadata as OpenAPI/AsyncAPI extensions, reused for log redaction (`Microsoft.Extensions.Compliance.Redaction`) | Accepted |
+| [051](adrs/adr-051-peer-discovery-static-seed-list.md) | Peer discovery via explicit static seed-peer configuration (formalizes `docs/comparisons/peer-discovery.md`) | Accepted |
+| [052](adrs/adr-052-streaming-redaction-mechanism.md) | Streaming-channel redaction mechanism — configurable strategy, read-time, zero-fill default (formalizes `docs/comparisons/streaming-redaction-mechanism.md`) | Accepted |
+| [053](adrs/adr-053-pluggable-upcast-expression-engine.md) | Pluggable declarative upcast expression engine, defaulting to CEL (CEL/JSONata interchangeable behind one interface) | Accepted |

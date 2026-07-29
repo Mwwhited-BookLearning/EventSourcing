@@ -64,10 +64,30 @@ Decision:
   is populated differs. This keeps the wire contract stable and
   independently documentable in AsyncAPI (`03-api-contracts.md`), rather
   than a shape that structurally differs per caller.
-- **v1 has exactly one content strategy, `"FixedValue"`** (a configured
-  literal string, `maskedValue`, defaulting to `"***"`). Registering any
-  other `strategy` value is rejected (`400`) — see "Future: definable
-  masking strategies" below for what else this is expected to grow into.
+- **Two content strategies now, `"FixedValue"` and `"PartialReveal"`**
+  (promoted out of the "Future" proposal below, per direct request with
+  a concrete driving example — an SSN-shaped field rendered
+  `XXX-XX-1234`, not just a placeholder). `"FixedValue"`: a configured
+  literal string, `maskedValue`, defaulting to `"***"`.
+  `"PartialReveal"`: **named, human-readable fields, deliberately not a
+  cryptic mask-template string** — `{ "showFirst": 0, "showLast": 4,
+  "maskChar": "X", "preserveSeparators": true }`, modeled directly on
+  [PCI-DSS Requirement 3.3](https://www.strac.io/blog/pci-masking-requirements-credit-card)'s
+  own plain-language framing for card PAN masking ("only the first six
+  and last four digits displayed") rather than a symbolic code table
+  like `System.ComponentModel.MaskedTextProvider`'s `0`/`9`/`#`/`L`/`?`
+  mask syntax (a real, official .NET convention — considered and
+  rejected here specifically for being less readable, not for lacking
+  precedent). `showFirst`/`showLast` count real characters to reveal
+  from each end; everything between is replaced with `maskChar`;
+  `preserveSeparators: true` keeps literal non-alphanumeric characters
+  (e.g. `-` in `123-45-6789`) showing through untouched, masking only
+  the alphanumeric positions. Format-preserving, only meaningful for an
+  originally-string property. Both strategies still fit the existing
+  `oneOf` wrapper unchanged — only the *content* of `masked` differs,
+  never the shape. Registering any other `strategy` value is rejected
+  (`400`) — see "Future: definable masking strategies" below for what's
+  still just proposed.
 - `x-masking` also carries three **optional, schema-only descriptive
   fields**: `regulatoryClassification` (e.g. `"PHI"`, `"PCI"`),
   `governanceBody` (e.g. `"HHS/OCR"`, `"PCI SSC"`), and
@@ -195,14 +215,11 @@ every enforcement point this ADR already describes.
 proposal for later, kept explicitly separate from the Decision above so
 it's unambiguous what's built versus sketched:
 
-- Widen `x-masking.strategy` beyond `"FixedValue"` to e.g. `"PartialReveal"`
-  (keep the last N characters of the real value inside `masked` — only
-  meaningful for an originally-string property) or `"Hash"` (a
+- `"PartialReveal"` is now decided and built (see the Decision above,
+  moved out of this proposal section). Still just proposed: `"Hash"` (a
   deterministic hash of the real value inside `masked`, letting a caller
   correlate masked values across events without ever seeing the
-  underlying value). Both still fit the existing wrapper — only the
-  content of `masked` changes, never the shape — so this is a smaller
-  extension than it would have been under the old null-out design.
+  underlying value) — still fits the existing wrapper unchanged.
 - Whole-object or whole-array masking (collapsing an entire nested object
   or array into one `{value:...}`/`{masked:...}` at that position, instead
   of recursing into it) is explicitly out of scope for v1 (see the

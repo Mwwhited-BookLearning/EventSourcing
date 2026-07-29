@@ -37,6 +37,19 @@ public class TelemetrySample
     public bool LateArrivalFlag { get; set; }               // ADR-029's mechanism, reused per-channel (ADR-031)
 }
 
+public class RedactedRange
+{
+    public string ChannelId { get; set; } = default!;
+    public DateTimeOffset FromTimestamp { get; set; }
+    public DateTimeOffset ToTimestamp { get; set; }
+    public string RequiredClaim { get; set; } = default!;   // reuses ADR-008's "type:value" format
+    public string Strategy { get; set; } = "Default";        // "Default" (zero-fill for RawScalar/RawBinary, tone for audio, blank frame for video -- ADR-052) | "PartialReveal" (ADR-009's strategy, reused -- only meaningful for structured/string-shaped content, never a raw waveform or video frame)
+    public int? ShowFirst { get; set; }                      // PartialReveal only -- named fields, not a mask-template string (ADR-009)
+    public int? ShowLast { get; set; }                       // PartialReveal only
+    public char? MaskChar { get; set; }                      // PartialReveal only, defaults to 'X'
+    public bool PreserveSeparators { get; set; }              // PartialReveal only -- literal non-alphanumeric characters show through untouched
+}
+
 // Content-addressed -- ContentHash is the real primary key in spirit,
 // EntityId/EventId here are just the most common lookup paths.
 public class Attachment

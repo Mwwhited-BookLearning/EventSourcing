@@ -72,6 +72,20 @@ grows large enough that generation cost becomes measurable.
   generated `asyncapi.json` back against the published AsyncAPI 3.0 JSON
   Schema, catching structural mistakes that a type system can't here.
 
+- **The spec endpoints (`/openapi.json`, `/asyncapi.json`, and their UIs
+  — `ADR-025`) can be disabled entirely via configuration.** Resolves
+  `ADR-050`'s question of whether `x-required-claims`/`x-masking`
+  appearing in a publicly-readable generated document itself leaks
+  which fields are sensitive: **by default, no** — the answer settled
+  on is that this doesn't meaningfully weaken security (revealing
+  *that* a claim is required is not the same as revealing the value,
+  and "security through undiscoverability" of the API's own shape is
+  weak protection to begin with). For deployments with a stricter
+  posture, a single config flag (e.g. `SpecEndpoints:Enabled`) turns
+  the routes off completely — not just hiding the UI while leaving the
+  raw JSON reachable, the actual `MapGet`/`MapScalarApiReference`
+  registrations are conditional on it.
+
 Consequences: No staleness bugs (within a single instance — see below),
 minimal cache-invalidation surface. Slight repeated generation cost under
 high spec-endpoint traffic — mitigate with the short-lived cache rather
