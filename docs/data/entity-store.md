@@ -95,6 +95,33 @@ folded can't silently overwrite newer data with stale values. See
 `ADR-029` and `patterns/README.md`'s watermarks/event-time entry for the
 general pattern this implements.
 
+## Erasure key store (`ADR-057`)
+
+Wrapped-key *metadata* only — the actual key material lives exclusively
+in whichever `IErasureKeyStore` backend a deployment configures (Azure
+Key Vault, AWS KMS, HashiCorp Vault, ...), never in this table:
+
+```csharp
+public class EntityErasureKey
+{
+    public string EntityId { get; set; } = default!;      // PK -- {appId}:{entityType}:{uniqueId}, same key as EntityStoreRow
+    public string KeyReference { get; set; } = default!;   // opaque handle into the configured IErasureKeyStore -- never the key itself
+    public DateTimeOffset CreatedAt { get; set; }           // first time a classified field was published for this entity
+    public DateTimeOffset? ErasedAt { get; set; }            // set once EntityErasureRequested is processed and the key is destroyed
+}
+```
+
+`ErasedAt` being set is a local convenience flag for "don't bother
+calling the key store, it's already gone" — the actual source of truth
+for whether the key is destroyed is the `IErasureKeyStore` backend
+itself (its own audit trail satisfies `ADR-057`'s "destruction is
+auditable" requirement), not this row. This table is, itself, a critical
+authoritative store per `ADR-056`'s data-lifecycle classification —
+losing it (independent of the external key store) loses the mapping
+needed to ever *request* an entity's erasure, though not the ability to
+erase, since `KeyReference` is recoverable from the external store's own
+listing if truly lost.
+
 ## Read-side data model (CQRS projections) is elsewhere, deliberately
 
 `ChangeKind` (`schema-registry.md`) is the one write-side model addition

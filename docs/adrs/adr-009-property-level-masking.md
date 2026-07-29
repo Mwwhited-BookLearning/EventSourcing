@@ -22,7 +22,7 @@ visible to everyone with `RequiredReadClaim` for the type, but a
 `CustomerTaxId` property on it might need its own `pii:view` claim, and be
 hidden from everyone else.
 
-**Explicitly settled alongside this: there is no erasure/deletion
+~~**Explicitly settled alongside this: there is no erasure/deletion
 mechanism, and none is wanted.** A regulated field (`regulatoryClassification`,
 `ADR-009` below) that some caller must never see is handled entirely by
 masking it at read time — the store persists it exactly as published,
@@ -31,7 +31,14 @@ design). If a real deletion requirement ever surfaces (e.g. a legal
 erasure order for specific data), that is a deliberately unsolved,
 separate problem — not something this design silently precludes, but not
 something it builds for either, since it was asked for and confirmed not
-needed here.
+needed here.~~ **Superseded by `ADR-057`**: erasure *is* now a real
+requirement, solved via crypto-shredding (per-entity data-encryption
+keys, destroyed on request) rather than ever deleting/mutating a stored
+event — `StoredEvent.Payload` is still never rewritten; `ADR-057`
+encrypts classified fields' *values* before they're first written, so
+"erasure" is destroying the key that makes existing ciphertext readable,
+not touching the row at all. The wrapper below gains a third branch
+(`erased`) for this — see `ADR-057`.
 
 An earlier version of this ADR tried to solve
 this by replacing the value with `null`, but that only works for
@@ -51,7 +58,11 @@ Decision:
   `oneOf: [{type:"object", properties:{value: <the property's own
   declared type>}, required:["value"], additionalProperties:false},
   {type:"object", properties:{masked:{type:"string"}},
-  required:["masked"], additionalProperties:false}]`. A caller who holds
+  required:["masked"], additionalProperties:false}]` — **now a three-way
+  `oneOf` per `ADR-057`**, which adds `{type:"object",
+  properties:{erased:{const:true}}, required:["erased"],
+  additionalProperties:false}` for a field whose crypto-shredding key has
+  been destroyed; not detailed further here, see `ADR-057`. A caller who holds
   `requiredClaim` sees `{"value": <the real value>}`; a caller who doesn't
   sees `{"masked": "***"}` (or whatever `maskedValue` was configured,
   defaulting to `"***"`). **This is what resolves "works on all fields":**

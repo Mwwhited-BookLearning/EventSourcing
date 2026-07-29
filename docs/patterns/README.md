@@ -86,6 +86,10 @@ queued.**
 | Seekable playback via byte-range requests | The standard mechanism behind a scrub bar — request a byte range, get `206 Partial Content` back, instead of downloading a whole file to seek within it | `ADR-031`, `ADR-032` |
 | Content-addressable storage | Address a binary object by the hash of its own bytes — naturally deduplicating, naturally cacheable, naturally tamper-evident | `ADR-032` |
 | Browsable access via a real filesystem protocol | Project a virtual folder/file hierarchy over data that isn't actually stored as files, using WebDAV instead of a bespoke browse API | `ADR-032` |
+| Crypto-shredding (cryptographic erasure) | Encrypt personal data with a key scoped to the data subject, held separately from the data; "erasure" destroys the key, never the row — satisfies GDPR/CCPA deletion without ever mutating an append-only log | `ADR-057` |
+| Envelope encryption | A per-subject data-encryption key (DEK) itself wrapped by a master key-encrypting-key (KEK) held in a KMS — the standard mechanism crypto-shredding is built on | `ADR-057` |
+| Webhook delivery with HMAC signing and retry | Push-based outbound notification to a registered URL, signed so the receiver can verify authenticity, retried with backoff, dead-lettered as an inspectable record rather than dropped silently | `ADR-060` |
+| Rate limiting (Token Bucket / Sliding Window / Concurrency Limiter) | Bound a caller's request volume or concurrent resource usage, partitioned per tenant so one caller can't starve another | `ADR-058` |
 
 ## A note on diagrams
 

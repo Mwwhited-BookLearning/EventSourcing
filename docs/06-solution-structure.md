@@ -59,10 +59,16 @@ EventStore.sln
     -- Sample application, explicitly NOT part of the framework (ADR-030):
     Samples.Orders.Projections/           -- worked example: OrderSummaryProjection (features/cqrs-projections.md)
   tests/
-    EventStore.UnitTests/
+    EventStore.UnitTests/            -- MSTest + Moq (ADR-055)
     EventStore.IntegrationTests/    -- runs against all three providers (see below)
+    EventStore.E2ETests/             -- Playwright, MSTest base classes -- drives the Vue client through a real browser (ADR-055)
     EventStore.Bdd/                 -- Reqnroll/SpecFlow-style step definitions for *.feature files
 ```
+
+Frontend unit tests (`Vitest` + `Vue Test Utils`, `ADR-055`) live inside
+`EventStore.Client.Vue/` itself, alongside the components they test, not
+under `tests/` — matching how that project is already its own top-level
+solution area, not a subfolder of the write-side services above.
 
 `EventStore.Follow.Api` and `EventStore.Lineage.Api` (the OData-era
 projects) no longer exist as separate projects — `ADR-037` folds both
@@ -716,6 +722,24 @@ from `DevIdpSeeder`. That is strictly less setup than Keycloak's
 realm-export approach, at the cost of having no admin console to eyeball
 the result (verify via a token request instead — see
 [`features/auth.md`](../docs/features/auth.md)).
+
+## Data lifecycle — what to back up (`ADR-056`)
+
+Quick-reference for whoever sizes a backup plan, so it isn't
+reconstructed from first principles across three separate data-model
+docs: **authoritative, must back up** — Event Log + `EventParent`
+(`event-log.md`), Schema Registry (`schema-registry.md`), Streaming
+Channel Store (`streaming-and-attachments.md`), Attachment Store (same),
+Read Access Audit Log (`ADR-045`), and `ADR-057`'s `EntityErasureKey`
+metadata (`entity-store.md` — losing it doesn't prevent *future*
+erasure, but does lose the mapping needed to *request* one for an
+already-existing entity without consulting the external key store's own
+listing). **Rebuildable, backup optional** — Entity Store, every CQRS
+read model/snapshot, materialized upcasts: all recoverable by re-running
+the existing fold/rebuild mechanism (`ADR-021`/`ADR-015`) against a
+restored authoritative store. Nothing about `ADR-004`'s portable-column
+choice blocks a provider's native backup/PITR tooling from working
+against any of the above.
 
 ## Integration test strategy
 
