@@ -1,5 +1,12 @@
 # Feature: Publish events against a registered schema
 
+> **Scenarios below predate `ADR-023`.** Every `Then the response status
+> should be 400` for a schema-invalid payload or unknown version is now
+> `202` + `SchemaStatus: invalid`/`unknown` instead (persist-everything,
+> never reject for shape reasons — only an unparseable envelope still
+> gets a real `400`). Rewriting these scenarios is tracked as outstanding
+> propagation work (`CLAUDE.md`), not done in this pass.
+
 Context: full contract in `../03-api-contracts.md`; schema/registration
 lifecycle in `../05-schema-registry-and-spec-generation.md`; the
 `parentEventIds` envelope field is covered in depth in

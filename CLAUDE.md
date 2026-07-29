@@ -92,13 +92,22 @@ larger batch of unrelated changes.
   every hardcoded forward reference written before that churn had to be
   found and fixed. Don't add more of them. Backfill the real number into
   cross-referencing docs only once an ADR is actually written.
+- **Always search for prior art before designing anything new** — RFCs,
+  standards, or just a commonly-named practice — even when the request
+  doesn't name one. Stated explicitly, twice, this session. Search
+  (WebFetch/WebSearch) *before* writing an ADR or pattern doc, not after;
+  cite the real thing if one fits, state honestly if nothing does.
+  `ADR-040`'s ticket-exchange mechanism is the clearest example: searching
+  turned up CAS service tickets, RFC 7662 introspection, and CDN
+  signed-URL conventions, none of which the request itself named.
 - **Verify a spec before citing it.** Every RFC/standard number cited in an
   ADR was confirmed against the real spec (WebFetch the datatracker/spec
   page) before being written down, not recalled from memory and assumed
   correct — this includes pattern names in `docs/patterns/` (Idempotent
   Receiver, Materialized View, Optimistic Offline Lock, Tolerant Reader,
-  Watermarks/event-time, Media Fragments URI, HTTP Range Requests were all
-  confirmed this way, not recalled).
+  Watermarks/event-time, Media Fragments URI, HTTP Range Requests, MVVM,
+  MVP, MVC, CAS, and RFC 7662/Background Sync were all confirmed this way,
+  not recalled).
 - **Never invent a bespoke mechanism when a real standard already fits.**
   Check whether an existing RFC/spec/library already solves it, adopt it if
   the fit is genuine, and explicitly record in `references.md` why *not* if
@@ -181,7 +190,28 @@ foundational, locked-in decisions, for quick orientation:
   OData `compute()` onto JS/CEL + GraphQL SDL directives.
 - **MVVM client + entity views** (`ADR-039`) — sequenced last on purpose,
   the least load-bearing piece; composes primitives every earlier ADR
-  already built rather than introducing new server-side mechanism.
+  already built rather than introducing new server-side mechanism. Now
+  extended with: a concrete Vue 3 implementation mapping (`docs/patterns/
+  mvvm-client-architecture.md`), an installable/offline PWA story with a
+  Background-Sync-flushed outbox (`docs/patterns/pwa-offline-outbox.md`),
+  multi-instance support (one window per entity stream, no shared outbox
+  state across instances), and an explicit MVVM→MVP→MVC→code-behind
+  fallback priority (`docs/comparisons/ui-architecture-patterns.md`) for
+  UI technologies this ADR doesn't fully dictate.
+- **Ticket exchange for header-incapable clients** (`ADR-040`) — closes
+  the gap `ADR-031` (streaming playback) and `ADR-032` (WebDAV/attachment
+  retrieval) reopened: a `<video src>`/WebDAV client can't set an
+  `Authorization` header, the same problem `ADR-006`'s original
+  `access_token`-in-URL workaround solved and `ADR-012` correctly removed.
+  Solved via a short-lived, single-use, opaque ticket (RFC 8693 issuance,
+  RFC 7662-shaped resolution) plus a client-side HMAC signature — not by
+  repeating the removed workaround.
+- **Explicit composition over convention-magic** (`ADR-041`) — constructor
+  injection and a manual composition root (Pure DI) over assembly-scanning
+  auto-registration; `Microsoft.Extensions.Logging`/`Configuration`/`DependencyInjection`
+  (first-party) kept, but no AutoMapper, no third-party structured-logging
+  framework, and `System.Text.Json` over `Newtonsoft.Json`. No rework
+  elsewhere — nothing previously accepted conflicted with this.
 
 Also landed, independent of the entity/persist-everything direction
 (tooling/infrastructure, decided alongside the merge but not part of it):
@@ -189,34 +219,62 @@ Also landed, independent of the entity/persist-everything direction
 AsyncAPI) · `ADR-026` (dev via .NET Aspire + full OpenTelemetry — logging,
 tracing, metrics; prod via Docker Compose).
 
-### What's actually still outstanding: propagation, not decisions
+Also written this pass, expanding the pattern/comparison catalogs beyond
+what any single ADR strictly required, per direct request: [`docs/
+comparisons/api-query-layer.md`](docs/comparisons/api-query-layer.md)
+(GraphQL vs. OData vs. JSON:API vs. gRPC vs. REST-ad-hoc/PostgREST-style,
+reaffirming `ADR-037`) and its two companion pattern docs
+(`docs/patterns/graphql-query-language.md`,
+`docs/patterns/odata-query-protocol.md`).
 
-- **Done and propagated:** `ADR-021`–`024` fully reflected in `docs/data/`
-  and `03-api-contracts.md`. `ADR-025`/`026` propagated into
-  `06-solution-structure.md` (`ServiceDefaults`' `ConfigureOpenTelemetry`
-  cross-reference, `/scalar` and `/asyncapi-ui` route mapping) and
-  `references.md`. `ADR-031`/`032`'s new entities are in
-  `docs/data/streaming-and-attachments.md`.
-- **Not yet propagated anywhere beyond `docs/data/`'s field-level
-  additions and the ADR index**: `ADR-027`–`030`, `ADR-033`–`039`. In
-  particular:
-  - `01-c4-architecture.md` doesn't yet show the Entity Store, streaming/
-    attachment containers, replication topology, sharding, or a GraphQL
-    Gateway (still shows the old OData-era Follow/Lineage containers).
-  - `06-solution-structure.md` doesn't yet reflect the multi-tenant
-    (`AppId`-keyed) registry lookups, the peer-sync outbox/inbox project,
-    the GraphQL resolver layer, or the MVVM client project structure.
-  - `08-build-plan.md` has no phases yet for replication, sharding,
-    non-authoritative capture, the GraphQL swap, streaming channels,
-    attachments, or the MVVM client — still ends at the original
-    CQRS-projections phase.
-  - `03-api-contracts.md` still documents the OData-era
-    `$filter`/`QUERY` contracts `ADR-037` supersedes.
-  - `04-odata-filter-pushdown.md` needs a superseded banner (or a rename)
-    per `ADR-037` — not yet touched.
-  - `features/*.md` Gherkin scenarios still assert the pre-`ADR-023`
-    reject-on-invalid behavior (`400` instead of `202`+`SchemaStatus`)
-    and don't cover any capability past `ADR-024`.
+### Propagation status
 
-Before assuming any of those five files are internally consistent with
-`ADR-025` onward, check this section first.
+**Structurally propagated everywhere** (all of `ADR-021`–`039`):
+`01-c4-architecture.md` was substantially rewritten — Entity Store,
+Inbox/Router split, GraphQL Gateway (superseding the OData-era Follow/
+Lineage containers), Peer Sync, Sharding, Streaming Channel Service,
+Attachment Service are all real containers now, with updated Publish and
+GraphQL component diagrams (streaming/attachment component diagrams still
+outstanding — flagged in that file itself). `06-solution-structure.md`'s
+project layout reflects every new project (`EventStore.Router`,
+`EventStore.Fold`, `EventStore.GraphQL`, `EventStore.Sharding`,
+`EventStore.PeerSync`, `EventStore.Streaming`, `EventStore.Attachments`,
+`EventStore.Client.*`) — its detailed DI-wiring code sketches further down
+that file are explicitly flagged stale in a banner, not silently wrong.
+`08-build-plan.md` has ten new phases (11–20) covering every ADR from
+`021` on, with real dependencies and exit criteria.
+`03-api-contracts.md`, `04-odata-filter-pushdown.md`, and eight
+`features/*.md` files carry clear banners naming exactly what's
+superseded and pointing at the ADR that superseded it.
+
+**Genuinely still outstanding** (named, not silently missing):
+- Streaming Channel and Attachment component diagrams (`01-c4-
+  architecture.md` says so itself).
+- `03-api-contracts.md`'s Follow/Lineage/Registry-listing sections still
+  describe the OData contract in full detail, not just a banner —
+  rewriting them for the actual GraphQL contract shape is real,
+  substantial work, not yet done. It also doesn't yet mention `ADR-040`'s
+  ticket-exchange endpoints (`/oauth/token` with a ticket
+  `requested_token_type`, `/oauth/introspect`) at all.
+- Every banner'd `features/*.md` file's Gherkin scenarios themselves are
+  unchanged — the banners say what's stale, they don't fix the
+  scenarios. Rewriting `400`→`202`+`SchemaStatus` and OData→GraphQL
+  syntax across ~8 files is the largest remaining chunk of this
+  integration. None of them have a scenario for `ADR-040`'s ticket
+  exchange yet either — it's new enough this pass that only the ADR and
+  pattern doc exist, no feature doc.
+- No dedicated GraphQL-pushdown doc exists yet to replace
+  `04-odata-filter-pushdown.md` outright (it currently just points back
+  at `ADR-037`, which doesn't have the same level of mechanism detail) —
+  `docs/comparisons/api-query-layer.md` and `docs/patterns/graphql-
+  query-language.md` help narrow this gap but are comparisons/pattern
+  docs, not the contract-level rewrite itself.
+- `06-solution-structure.md`'s DI-wiring code sketches (already flagged
+  stale in its own banner) predate `ADR-041` — when that file's sketches
+  are eventually redone, they should reflect explicit composition-root
+  registration, not just the new projects' names.
+
+Check this section before assuming any doc is fully consistent with
+`ADR-025` onward — the structural/architectural picture is current
+everywhere; the exhaustive detail (every contract example, every Gherkin
+scenario) is not, and each file says so where it applies.

@@ -65,6 +65,29 @@ Decision:
   entity data are cached client-side so opening an entity never requires
   a network round trip, rendering from last-known-good cache and applying
   queued updates once connectivity resumes.
+- **The web client is a real Progressive Web App, not just a page that
+  happens to run in a browser**: a Web App Manifest makes it installable
+  to a device's home screen/app list, and a Service Worker serves the
+  app shell plus cached `ViewDefinition`/entity data with no network
+  present at all — the same "offline is default" principle above,
+  concretely implemented for the web target. The outbox itself persists
+  in IndexedDB (survives a closed tab, a crashed browser, a restarted
+  device), with the Background Sync API used to flush it once
+  connectivity returns where the browser engine supports it, and
+  "flush on next open/focus" as the same-outcome fallback where it
+  doesn't (notably Safari/WebKit, as of this writing) — see
+  [the PWA offline-outbox pattern](../patterns/pwa-offline-outbox.md)
+  for the full mechanism and citations.
+- **Multiple independent client instances can run concurrently, each
+  scoped to a different entity stream.** Which `EntityType`/`AppId`/
+  subscription target an instance follows is per-instance launch
+  configuration, not a global singleton — a user (or an operator running
+  a monitoring wall) can open several windows of the same installed app,
+  each watching something different. Instances share the same origin's
+  Service Worker/cache but never share outbox state: each instance's
+  queued commands are namespaced to its own configuration, so no
+  instance's backlog or connectivity state can block or corrupt
+  another's.
 
 Consequences:
 - This is the natural home for `ADR-032`'s noted-but-deferred OS-level

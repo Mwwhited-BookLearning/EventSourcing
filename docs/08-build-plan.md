@@ -16,6 +16,22 @@ another Follow caller (`ADR-015`) — but it's sequenced last in this list
 because it's this project's demonstration of CQRS *on top of* the rest of
 the design, not a dependency any other phase needs.
 
+**Phases 11–20 are the design-docs integration** (`ADR-021`–`039`, see
+`CLAUDE.md`'s "Integration status"). Phase 11 is the load-bearing one —
+nothing in 12–20 makes sense without entities, `Optional<T>` patches, the
+persist-everything posture, and conflict/ordering detection existing
+first. Phases 12–17 are largely independent of each other once 11 lands
+(multi-tenancy, schema-evolution extensions, streaming, attachments,
+distribution, and non-authoritative capture don't depend on one another).
+Phase 18 (the GraphQL-only swap) depends on 11 specifically, not on 12–17
+— it could in principle run in parallel with them, though in practice
+it's disruptive enough (it supersedes Phases 3/4's entire query surface)
+that sequencing it deliberately, once, is likely easier than interleaving
+it with five other phases touching the same codebase. Phase 20 (the MVVM
+client) is sequenced last for the same reason `ADR-039` itself gives:
+least load-bearing, composes what already exists rather than adding new
+server-side mechanism.
+
 ## Dependency overview
 
 ```plantuml
@@ -31,6 +47,16 @@ state "Phase 7 (deferred)\nDerived Event Types" as p7
 state "Phase 8 (lower priority)\nMasking (data enforcement)" as p8
 state "Phase 9\nCQRS Projections" as p9
 state "Phase 10\nHardening & Evolution" as p10
+state "Phase 11\nEntity-Centric Core Rebuild" as p11
+state "Phase 12\nMulti-Tenancy" as p12
+state "Phase 13\nUpcast Materialization + Downcast" as p13
+state "Phase 14\nStreaming Channels" as p14
+state "Phase 15\nBinary Attachments" as p15
+state "Phase 16\nSharding & Replication" as p16
+state "Phase 17\nNon-Authoritative Capture" as p17
+state "Phase 18\nGraphQL-Only Query Layer" as p18
+state "Phase 19\nCompatibility & Deployment Discipline" as p19
+state "Phase 20\nMVVM Client" as p20
 
 p0 --> p1
 p1 --> p2
@@ -46,6 +72,23 @@ p5 --> p9
 p5 --> p10
 p2 --> p10
 p4 --> p10
+p6 --> p11
+p1 --> p12
+p11 --> p12
+p10 --> p13
+p11 --> p13
+p5 --> p14
+p11 --> p14
+p5 --> p15
+p11 --> p16
+p11 --> p17
+p5 --> p17
+p11 --> p18
+p18 --> p19
+p9 --> p20
+p12 --> p20
+p14 --> p20
+p15 --> p20
 @enduml
 ```
 
@@ -437,6 +480,184 @@ corrupting one historical `Payload` (test-only, direct database edit) is
 detected by the verification endpoint at exactly that `SequenceNumber`,
 with every event before it verifying clean.
 
+## Phase 11 — Entity-centric core rebuild
+
+**Scope**: `ADR-021` (`EntityId`, the always-on Entity Store, folded by
+`EventStore.Fold`), `ADR-022` (`Optional<T>` property-level patches,
+refining `ADR-016`'s merge), `ADR-023` (the Inbox/Router split — publish
+returns `202` + a status envelope; `SchemaStatus`/`AuthorityStatus`
+become advisory, never `400`), `ADR-024` (`ExpectedVersion` optimistic
+concurrency + `ConflictFlag`, and `ADR-029`'s `LateArrivalFlag`/logical-
+order fold — see `docs/patterns/interactions/fold-ordering-and-conflict.md`
+for how the two checks compose in one fold step).
+
+**Depends on**: Phase 6 (the primary system needs to be stable and fully
+auth'd before this rebuild touches every endpoint's response shape).
+
+**Exit criteria**: every existing feature-doc Gherkin scenario that
+asserted `400` for a schema-invalid/unknown-version publish now asserts
+`202` + the right `SchemaStatus` instead (a real rewrite of existing
+scenarios, not just new ones — flagged, not yet done); a same-property
+concurrent-write scenario shows `ConflictFlag`; a deliberately-reordered-
+delivery test (publish B, then publish A with an earlier `OccurredAt`)
+shows `LateArrivalFlag` and confirms A's change did not overwrite B's.
+
+## Phase 12 — Multi-tenancy
+
+**Scope**: `ADR-030` — `AppId` joins the schema registry's key; every
+registry/upcast/downcast lookup across Phases 1/10/13 gets `AppId`
+added.
+
+**Depends on**: Phase 1 (schema registry must exist), Phase 11 (`AppId`
+is part of `EntityId`, already there from Phase 11 — this phase makes the
+*registry* side consistent with it).
+
+**Exit criteria**: two applications registering a same-named event type
+with different shapes/claims/`ChangeKind` don't collide; a caller
+scoped to one `AppId` cannot resolve or read another's schema.
+
+## Phase 13 — Upcast materialization + downcast
+
+**Scope**: `ADR-027` (persist a successful lagging-publish upcast as an
+`UpcastMaterialization` event; a background `UpcastMaterializer`
+reconciles the existing backlog once a new version+mapping is
+registered; fold skips materializations entirely) and `ADR-028`
+(`downcastToPrevious`, read-time only, walked backward hop by hop for an
+explicitly requested older version).
+
+**Depends on**: Phase 10 (upcasting itself), Phase 11 (the fold-skip
+invariant needs the Entity Store to exist).
+
+**Exit criteria**: a materialized upcast never double-applies to the
+Entity Store (a targeted regression test: fold an original, materialize
+its upcast, confirm `Version` doesn't bump twice); a downcast request for
+a genuinely older version returns the old shape; a version with no
+`downcastToPrevious` registered fails the request rather than guessing.
+
+## Phase 14 — Streaming channels
+
+**Scope**: `ADR-031` — `TelemetryChannel`/`TelemetrySample` (raw signal
+and media), batch ingestion, tail/replay reusing `ADR-010`'s shape,
+`Derived` channels via `ChannelDerivationWorker`, playback (HTTP Range
+Requests), deep-linking (Media Fragments URI), redaction, out-of-order/
+slow-upload detection, and the detector→`TelemetryPointer` bridge back
+into ordinary domain events.
+
+**Depends on**: Phase 5 (auth — new `telemetry:ingest`/`telemetry:read`
+scopes), Phase 11 (a detector's published event needs `EntityId`/fold to
+exist meaningfully).
+
+**Exit criteria**: a batch of samples ingests without touching schema
+validation/hash-chain/fold at all; a detector publishing an event with a
+`TelemetryPointer` round-trips through the normal publish pipeline
+unchanged; a deliberately-reordered sample sets `LateArrivalFlag`; a
+Range request against a `Media` channel returns `206 Partial Content`.
+
+## Phase 15 — Binary attachments
+
+**Scope**: `ADR-032` — content-addressed `Attachment`/`AttachmentRef`,
+the two-step upload (`POST /attachments` then a publish carrying the
+hash), WebDAV browsing.
+
+**Depends on**: Phase 5 (auth — new `attachments:read`/`attachments:ingest`
+scopes).
+
+**Exit criteria**: uploading identical bytes twice deduplicates (one
+stored object, two `AttachmentRef` rows); a WebDAV client (a real OS file
+manager, not a bespoke test client) can browse and download an
+attachment by mounting `/dav/{appId}/...`.
+
+## Phase 16 — Sharding & replication
+
+**Scope**: `ADR-034` (shard by `EntityType`) and `ADR-033` (gossip
+topology, minimum 2-replica/regional-fault-tolerance requirement,
+`OriginId`/`LogicalClock`, the fault/abend/restart-tolerant peer-sync
+outbox/inbox, Merkle-tree catch-up) — see
+`docs/comparisons/sharding-strategy.md`/`peer-sync-topology.md` for why
+each won.
+
+**Depends on**: Phase 11 (there must be an Entity Store to shard/
+replicate).
+
+**Exit criteria**: killing one site mid-write doesn't lose the write (it's
+in that site's durable outbox, replayed once the site restarts); two
+sites disconnected and independently written to converge, with any
+genuine conflict flagged (`ADR-024`, reused) not silently dropped; a
+sharded cross-`EntityType` query fans out and merges correctly.
+
+## Phase 17 — Non-authoritative capture
+
+**Scope**: `ADR-035` (`AuthorityStatus`, `authorityDecision` events,
+`RejectionBehavior` — annotate-only default per
+`docs/comparisons/authority-rejection-behavior.md`) and `ADR-036`
+(DID/UCAN self-attestation, server-side OAuth Token Exchange, RFC 8693).
+
+**Depends on**: Phase 11 (the trust axis rides on `StoredEvent`, which
+Phase 11 already extended for other reasons), Phase 5 (auth/token
+issuance infrastructure to extend for token exchange).
+
+**Exit criteria**: an event submitted with a self-attested UCAN persists
+with `AuthorityStatus: unattested` even when the identity provider is
+unreachable at submission time; a later `authorityDecision: rejected`
+event leaves the original event untouched and the Entity Store reflects
+whatever `RejectionBehavior` that type declared.
+
+## Phase 18 — GraphQL-only query layer
+
+**Scope**: `ADR-037` — the full OData-to-GraphQL swap. Retargets
+`ADR-012`'s `QUERY` method to carry GraphQL query/subscription documents;
+supersedes `ADR-003`/`04-odata-filter-pushdown.md`'s surface (the
+per-provider pushdown mechanism survives, now driven by GraphQL resolver
+arguments); moves `ADR-018`'s upcast mechanism onto JS/CEL + GraphQL SDL
+directives; per-`AppId` schema composition (`ADR-030`); mandatory depth/
+cost limiting and DataLoader batching.
+
+**Depends on**: Phase 11 (GraphQL reads from the Entity Store, which this
+phase assumes already exists).
+
+**Exit criteria**: every scenario Phases 3/4 wrote for OData `$filter`/
+Lineage traversal/registry listing now passes against the GraphQL
+Gateway instead (a real rewrite of existing scenarios — flagged, not yet
+done); a query containing PII-like content in its arguments never
+appears in access logs (confirms the `QUERY`-not-`GET` requirement
+actually holds); a deliberately deep/expensive query is rejected by the
+depth/cost limiter rather than executing.
+
+## Phase 19 — Compatibility & deployment discipline
+
+**Scope**: `ADR-038` — enum unknown-value fallback contracts, version-
+discovery capability negotiation, Expand/Contract migration discipline,
+the N-1/N+1 compatibility window, feature flags as a faster lever than
+rollback.
+
+**Depends on**: Phase 18 (needs the final GraphQL schema shape to state
+compatibility rules against).
+
+**Exit criteria**: a rollback drill — deploy a schema version, publish an
+event tagged with it, roll back to a deployment that doesn't know that
+version, confirm the event sits `received` (not lost), confirm re-
+forward-deploying makes it routable again with no data loss and no
+database restore.
+
+## Phase 20 — MVVM client
+
+**Scope**: `ADR-039` — View/ViewModel/command-dispatch-to-outbox
+layering, the client-local durable outbox (same fault-tolerance bar as
+Phase 16's peer-sync outbox), HTML+JS entity view definitions, the
+native/JS bridge, offline-first caching.
+
+**Depends on**: Phase 9 (custom projections — a client is exactly the
+kind of consumer `ADR-015` already designed for), Phase 12 (multi-
+tenancy — a client is scoped to one `AppId`), Phase 14/15 (streaming/
+attachment rendering in entity views).
+
+**Exit criteria**: a command dispatched while offline queues durably and
+applies once connectivity resumes with no duplicate application; an
+entity with no registered view definition still renders (generic
+property-list fallback); `ConflictFlag`/`LateArrivalFlag`/`AuthorityStatus`
+all render via one shared generic "flag" convention, not three bespoke
+ones.
+
 ## Cross-cutting, every phase
 
 - **Integration tests against all three providers** run from Phase 0
@@ -458,6 +679,10 @@ with every event before it verifying clean.
   questions of its own (pending-join TTL, derivation-cycle detection,
   n-ary sources, and backfill-through-a-derived-source are all resolved in
   the ADR) — it stays Deferred purely on scheduling, same as `ADR-009`.
+  `ADR-021` through `ADR-039` are likewise all already Accepted — Phases
+  11–20 are where each gets built and verified, not decided (see
+  `CLAUDE.md`'s "Integration status" for the full list and which propagation
+  into other docs is still outstanding independent of the build plan).
 
 ## Suggested References
 

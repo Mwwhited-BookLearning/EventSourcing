@@ -1,6 +1,19 @@
 # OData `$filter` Pushdown Design
 
-Goal: an incoming `$filter` string on `QUERY /follow/{event-type}` (the
+> **Superseded surface, per `ADR-037`.** OData `$filter` (and the
+> `Microsoft.OData.UriParser`-based parsing it describes) has been
+> replaced entirely by GraphQL query/subscription arguments — GraphQL is
+> now the *only* query layer (`ADR-037`), not a secondary option. **What
+> survives unchanged**: the per-provider `IJsonPathTranslator` pushdown
+> *mechanism* this document describes (native `json_extract`/`->>`/
+> `JSON_VALUE` generation) — a GraphQL resolver drives the exact same
+> translation layer, just from resolver field arguments instead of an
+> OData AST. Read this document for that mechanism; read `ADR-037` (and
+> its eventual dedicated GraphQL-pushdown doc, not yet written) for the
+> surface syntax actually exposed to callers today.
+
+Goal (historical — see banner above for the current query surface): an
+incoming `$filter` string on `QUERY /follow/{event-type}` (the
 HTTP `QUERY` method, `ADR-012` — the string itself travels in the request
 body, not a URL) is translated into a LINQ predicate that EF Core compiles
 into native SQL JSON extraction for whichever provider is active — never

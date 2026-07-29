@@ -27,5 +27,11 @@ honest about what's covered vs. what's just recorded inline in an ADR.
 
 | Comparison | Decided in | Note |
 |---|---|---|
-| GraphQL vs. OData (as the query layer) | the queued GraphQL-only ADR | Decided as a full swap, not "primary/secondary" — the fuller side-by-side (hierarchical queries, subscriptions, tooling maturity, PII-in-URL risk) is currently only in `docs/design-docs/10` and conversation history, not its own file here yet |
 | Upcast/downcast transform language: OData `compute()` vs. JSONata vs. JMESPath vs. JOLT vs. design-docs' JS+CEL | `ADR-018` | `references.md` records the shortlist and why each lost; not yet pulled into a dedicated side-by-side here |
+
+## Written, decision already made — kept for teaching value beyond the two options actually compared
+
+| Comparison | Decided in | Note |
+|---|---|---|
+| [API query layer](api-query-layer.md) — GraphQL vs. OData vs. JSON:API vs. gRPC vs. REST-ad-hoc/PostgREST-style | `ADR-037` (GraphQL) | Expanded beyond the two options this project actually chose between (GraphQL, OData), per direct request, to check that choice against every other commonly-named API query surface |
+| [UI architecture](ui-architecture-patterns.md) — MVVM vs. MVP vs. MVC vs. code-behind | `ADR-039` (MVVM) | Written as an explicit fallback priority (MVVM → MVP → MVC → code-behind) for UI technologies/screens `ADR-039` doesn't fully dictate, per direct request |

@@ -1,39 +1,72 @@
 # Solution Structure
 
+**Propagation note**: the project layout immediately below reflects the
+post-integration shape (`ADR-021`–`039`). Most of the detailed DI-wiring
+code sketches further down this file (`PublishEndpoint`, `FollowEndpoint`,
+`LineageEndpoint`, the OData-era `MapMethods(..., ["QUERY"], ...)`
+routing) still describe the pre-`ADR-023`/`037` mechanics in detail and
+haven't been rewritten yet — the *concepts* they illustrate (how
+idempotency is checked, how masking composes with upcasting, how a
+recursive CTE stays cycle-safe) remain accurate; the specific class names,
+REST-endpoint shapes, and OData-vs-GraphQL specifics do not. Treat this
+file as accurate for project structure, stale in its code-sketch detail,
+until this note is removed.
+
 ## Project layout
 
 ```
 EventStore.sln
   src/
-    EventStore.Domain/              -- entities, no EF dependency
+    EventStore.Domain/              -- entities, no EF dependency; AppId is now part of every key (ADR-030)
     EventStore.Persistence/         -- DbContext, repositories, IJsonPathTranslator interface + all 3 impls
     EventStore.Persistence.Migrations.Sqlite/
     EventStore.Persistence.Migrations.Postgres/
     EventStore.Persistence.Migrations.SqlServer/
-    EventStore.SchemaRegistry/      -- registration service, validation, ParentLinkService
-    EventStore.Publish.Api/         -- POST /publish/{event-type}
-    EventStore.Follow.Api/          -- QUERY /follow/{event-type} (SSE), OData parsing (ADR-012)
-    EventStore.Lineage.Api/         -- QUERY /events/{id}/parents|children|ancestors|descendants (ADR-012)
-    EventStore.SpecGeneration/      -- OpenAPI + AsyncAPI builders
+    EventStore.SchemaRegistry/      -- registration service, AppId-scoped lookups (ADR-030), ParentLinkService, upcast/downcast map validation (ADR-018/028)
+    EventStore.Inbox/               -- POST /publish; Idempotent Receiver + always-202 append (ADR-011/023) -- the ONLY still-blocking-on-shape step is "can I parse the envelope at all"
+    EventStore.Router/              -- background service: entity resolution (ADR-021), advisory schema/claim/authority checks (ADR-023/035), live upcast validation + materialization (ADR-020/027)
+    EventStore.Fold/                -- background service: always-on Entity Store projector, logical-order fold (ADR-029), conflict flagging (ADR-024) -- distinct from opt-in custom projections below
+    EventStore.GraphQL/             -- GraphQL Gateway: Query/Subscription, per-AppId schema (ADR-030/037); supersedes EventStore.Follow.Api/EventStore.Lineage.Api entirely
+    EventStore.Sharding/            -- Shard Resolver: EntityId -> ShardKey -> store, entity-type-based (ADR-034)
+    EventStore.PeerSync/            -- gossip peer-sync outbox/inbox, fault/abend/restart-tolerant (ADR-033)
+    EventStore.Streaming/           -- TelemetryChannel/TelemetrySample ingestion + tail/replay, separate from the event pipeline entirely (ADR-031)
+    EventStore.Attachments/         -- content-addressed binary storage + WebDAV endpoint (ADR-032)
+    EventStore.SpecGeneration/      -- OpenAPI builder (publish) + GraphQL SDL builder (supersedes the AsyncAPI builder for Follow -- Follow itself is gone, replaced by GraphQL Subscription)
     EventStore.Host.Core/           -- shared, provider-agnostic composition root logic (see below)
     EventStore.Host.Sqlite/         -- the actual deployable: Host.Core + SQLite wiring (ADR-001)
     EventStore.Host.Postgres/       -- the actual deployable: Host.Core + PostgreSQL wiring
     EventStore.Host.SqlServer/      -- the actual deployable: Host.Core + SQL Server wiring
-    EventStore.DevIdp/              -- dev-only OpenIddict token issuer, in-process (see below)
-    EventStore.ServiceDefaults/     -- Aspire scaffolding: OpenTelemetry, health checks, service discovery defaults
-    EventStore.AppHost/             -- Aspire orchestration for local dev/POC (see below)
+    EventStore.DevIdp/              -- dev-only OpenIddict token issuer + OAuth Token Exchange for UCAN (ADR-006/036)
+    EventStore.ServiceDefaults/     -- Aspire scaffolding: full OpenTelemetry (logging/tracing/metrics), health checks, service discovery (ADR-026)
+    EventStore.AppHost/             -- Aspire orchestration for LOCAL DEV ONLY (ADR-026) -- production is docker-compose.yml, not this
 
-    -- CQRS read side (09-cqrs-read-models.md, ADR-015/016) -- a separate
-    -- deployable, a separate database, talking to the write side only via
-    -- QUERY /follow like any other consumer:
+    -- CQRS read side (09-cqrs-read-models.md, ADR-015/016) -- opt-in,
+    -- custom projections built ON TOP of the always-on Entity Store
+    -- (EventStore.Fold, above), a separate deployable, a separate
+    -- database, talking to the write side only via the GraphQL Gateway
+    -- like any other consumer:
     EventStore.Projections.Abstractions/  -- IProjection<T>, ChangeKind-agnostic; projection authors depend on only this
-    EventStore.Projections.Host/          -- ProjectionHost, SnapshotMerger, ProjectionsDbContext (ProjectionCheckpoint, ProjectionSnapshot)
+    EventStore.Projections.Host/          -- ProjectionHost, SnapshotMerger (Optional<T>-aware, ADR-022), ProjectionsDbContext
+
+    -- MVVM client (ADR-039) -- consumes the framework, doesn't extend it:
+    EventStore.Client.Core/               -- ViewModel base types, ICommandDispatcher, client-local durable outbox/inbox (same fault-tolerance bar as EventStore.PeerSync)
+    EventStore.Client.WebViewBridge/      -- native<->HTML+JS bridge (WebView2/WKWebView/CEF)
+
+    -- Sample application, explicitly NOT part of the framework (ADR-030):
     Samples.Orders.Projections/           -- worked example: OrderSummaryProjection (features/cqrs-projections.md)
   tests/
     EventStore.UnitTests/
     EventStore.IntegrationTests/    -- runs against all three providers (see below)
     EventStore.Bdd/                 -- Reqnroll/SpecFlow-style step definitions for *.feature files
 ```
+
+`EventStore.Follow.Api` and `EventStore.Lineage.Api` (the OData-era
+projects) no longer exist as separate projects — `ADR-037` folds both
+into `EventStore.GraphQL`; the underlying traversal/tailing logic they
+contained is unchanged, only its transport and query-argument syntax
+moved. `EventStore.Publish.Api` is renamed `EventStore.Inbox` and split
+from a new `EventStore.Router`, reflecting `ADR-023`'s inbox/router
+separation — persistence and understanding are no longer the same step.
 
 There is no single `EventStore.Host` project. Per `ADR-001`, provider
 selection is a build-time choice — `EventStore.Host.Sqlite`,

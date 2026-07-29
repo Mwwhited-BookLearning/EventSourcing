@@ -1,5 +1,12 @@
 # Feature: Property-level masking (value/masked wrapper)
 
+> **Registration-rejection scenarios below predate `ADR-023`.** A
+> malformed `x-masking` annotation now persists with `SchemaStatus:
+> invalid` rather than a `400` at registration — same posture shift as
+> everywhere else. The masking mechanism itself (the `{value}`/`{masked}`
+> wrapper) is unaffected. Tracked as outstanding propagation work
+> (`CLAUDE.md`), not done in this pass.
+
 Context: data model note in `../02-data-model.md` ("Event-type security",
 masking paragraph); contract in `../03-api-contracts.md` ("Masking" note
 under "AsyncAPI (follow side)"); registration validation in

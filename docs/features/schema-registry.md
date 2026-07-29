@@ -1,5 +1,14 @@
 # Feature: Schema registry
 
+> **Scenarios below predate `ADR-030`/`ADR-037`.** Registrations are now
+> `AppId`-scoped (two applications can register the same type name
+> independently, `ADR-030`) and the paginated listing endpoint is a
+> GraphQL query, not `QUERY /registry` with OData `$top`/`$skip`
+> (`ADR-037`). `changeKind`, `upcastFromPrevious`, `downcastToPrevious`,
+> and `entityIdField` (`ADR-016`/`ADR-018`/`ADR-021`/`ADR-028`) also
+> aren't reflected in the scenarios below yet. Tracked as outstanding
+> propagation work (`CLAUDE.md`), not done in this pass.
+
 Context: full lifecycle in `../05-schema-registry-and-spec-generation.md`;
 entities in `../02-data-model.md`; per-field indexing in
 `../04-odata-filter-pushdown.md`; auth requirements in
