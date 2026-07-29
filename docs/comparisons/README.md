@@ -24,6 +24,7 @@ is the actual teaching value of this document type.
 | [Authority rejection behavior](authority-rejection-behavior.md) — annotate-only vs. compensating-patch | `ADR-035` (annotate-only default) | |
 | [API query layer](api-query-layer.md) — GraphQL vs. OData vs. JSON:API vs. gRPC vs. REST-ad-hoc/PostgREST-style | `ADR-037` (GraphQL) | Expanded beyond the two options this project actually chose between (GraphQL, OData), per direct request, to check that choice against every other commonly-named API query surface |
 | [UI architecture](ui-architecture-patterns.md) — MVVM vs. MVP vs. MVC vs. code-behind | `ADR-039` (MVVM) | Written as an explicit fallback priority (MVVM → MVP → MVC → code-behind) for UI technologies/screens `ADR-039` doesn't fully dictate, per direct request |
+| [UI framework](ui-framework.md) — Vue vs. Blazor vs. React vs. Angular | `mvvm-client-architecture.md`'s concrete mapping (Vue) | Checks that choice against a genuine first-party alternative (Blazor) under `ADR-041`'s own preference — Blazor loses specifically on `ADR-039`'s runtime-data view-definition mechanism, not by default |
 
 ## Not yet written up as their own standalone comparison doc
 

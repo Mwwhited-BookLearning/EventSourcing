@@ -64,6 +64,15 @@ larger batch of unrelated changes.
   apply somewhere, but genuinely *compose* at one specific point (e.g.
   two different checks running in the same fold step) — gets its own page
   explaining the combination, linked from both patterns' own docs.
+- `docs/libraries/{platform}/{library}.md` — a **fifth kind of document**:
+  one file per adopted (or seriously considered) off-the-shelf
+  framework/library, grouped by platform folder (`dotnet/`, `web/`, ...).
+  What it's for, plus general usage examples — not a copy of that
+  library's own docs, just enough to orient a reader and show the shape
+  of how this design calls it. Referenced from whichever ADR/pattern doc
+  actually adopts it, rather than repeating usage examples inline there.
+  See `docs/libraries/README.md` for the catalog and the buy-over-build
+  principle this folder exists to support.
 - `docs/design-docs/` — **removed.** Was a second, independently-developed
   design (a distributed, entity-centric event-sourced platform), imported
   purely as a reference for this integration; fully absorbed into ADRs
@@ -129,6 +138,20 @@ larger batch of unrelated changes.
   `AttachmentRef` (supporting binary content, `ADR-032`). If a fifth comes
   up, ask what question it specifically answers before reusing one of these
   four.
+- **Prefer buy over build.** For a complex pattern or task, check for an
+  existing, well-adopted framework/library before designing a bespoke
+  mechanism — the same instinct as "never invent a bespoke mechanism when
+  a real standard already fits," extended from specs/RFCs to concrete
+  libraries. When one fits, adopt it and give it a
+  `docs/libraries/{platform}/{library}.md` writeup. When none fits (or
+  the gap is genuinely this project's own business logic), build a small,
+  generalized library isolated from business logic — not scattered
+  through it — and it earns the same writeup once it exists. `ADR-037`'s
+  GraphQL Gateway and `ADR-032`'s WebDAV surface had both gone unnamed at
+  the concrete-library level until this pass — `docs/libraries/dotnet/
+  hotchocolate.md` and `docs/libraries/dotnet/nwebdav.md` closed exactly
+  that gap, found while doing this buy-over-build pass, not requested by
+  name.
 - **A new capability gets a Phase in `08-build-plan.md`**, with real
   dependencies and concrete exit criteria tied to a feature doc's Gherkin
   scenarios — not just an ADR with no build-plan entry. (Build-plan
