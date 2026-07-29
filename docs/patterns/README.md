@@ -41,43 +41,39 @@ the whole story on its own:
 ## Decided, not yet written up as standalone docs
 
 Real patterns with a real, landed ADR, listed here so the catalog stays
-current even before each gets its own full write-up:
+current even before each gets its own full write-up — **every pattern
+this project intends to adopt now has a real ADR; none remain genuinely
+queued.**
 
 | Pattern | Summary | Applied in |
 |---|---|---|
 | Upcast/downcast schema mapping (Avro-schema-resolution-adjacent) | Forward map (old→current) for replay, persisted once as a materialized event so it's never recomputed; backward map (current→old) for serving legacy consumers, computed fresh per request since its target isn't fixed | `ADR-018`, `ADR-027`, `ADR-028` |
 | Watermarks / event-time vs. processing-time ordering | Fold by logical occurrence time, not arrival order, so a late-arriving event can't silently revert already-applied newer data; flag it instead of blocking or corrupting | `ADR-029` |
 | Multi-tenancy via a namespacing key | One engine, many independent applications, each schema/entity scoped by an `appId` key so unrelated applications can't collide or see each other's registrations | `ADR-030` |
-
-## Catalogued, still genuinely queued (no ADR yet)
-
-Real patterns this design intends to adopt, named here so the catalog is
-complete even before the deciding ADR exists — same "state it, don't lose
-it" discipline this project already applies to `references.md`. Numbers
-are deliberately omitted: these get assigned when each ADR is actually
-written, and a hardcoded "queued as `ADR-0XX`" note here would just go
-stale the next time something jumps the queue (it already has, twice).
-
-| Pattern | Summary |
-|---|---|
-| Claims-based authorization + property-level masking | Already decided (`ADR-008`, `ADR-009`) — listed here too since it's a genuine pattern in its own right, not only a project-specific decision |
-| Proof of Possession (vs. bearer tokens) | Already decided (`ADR-017`) — same note as above |
-| Safe method with a request body | Already decided (`ADR-012`); the GraphQL-only query layer will extend it — GraphQL queries specifically over `QUERY`, not `GET`, to keep PII/PHI-bearing filter arguments out of URLs/logs |
-| Problem Details (canonical error shape) | Already decided (`ADR-013`) |
-| Sharding (application-level partitioning) | Partition an entity store by key so no single store need hold everything |
-| Multi-origin replication + anti-entropy/gossip | Independent writable replicas, each making local progress with no guarantee of agreement at any instant, converging via background reconciliation |
-| Merkle tree catch-up | Exchange hash-tree summaries to find and transfer only the differing ranges after a disconnection, instead of a full resync |
-| Non-authoritative capture (Reservation/Provisional + non-repudiation logging) | Accept data whose submitter's authority can't be verified yet; capture now, adjudicate later, via an explicit trust status that never gates ingestion |
-| Self-attested, offline-verifiable delegation (DID/UCAN) | Prove a chain of delegated capability without needing to reach a central authority at verification time |
-| MVVM (Model-View-ViewModel) | Structure/style/state/transport kept in separate layers; a ViewModel dispatches commands rather than mutating state directly |
+| Claims-based authorization + property-level masking | A second, finer-grained authorization axis on top of coarse operation scopes; redact individual fields via a value/masked wrapper rather than an all-or-nothing response | `ADR-008`, `ADR-009` |
+| Proof of Possession (vs. bearer tokens) | Cryptographically bind a token to the holder's key, so a leaked token alone isn't usable | `ADR-017` |
+| Safe method with a request body | A `GET`-like, cacheable, side-effect-free method that still carries a body — keeps sensitive query content out of a URL, access log, or proxy cache | `ADR-012`, `ADR-037` (GraphQL queries specifically over `QUERY`, never `GET`) |
+| Problem Details (canonical error shape) | One consistent error response shape across every endpoint | `ADR-013` |
+| Sharding (application-level partitioning) | Partition an entity store by key so no single store need hold everything; see [the sharding-strategy comparison](../comparisons/sharding-strategy.md) for why entity-type-based won over hash-based | `ADR-034` |
+| Multi-origin replication + anti-entropy/gossip | Independent writable replicas, each making local progress with no guarantee of agreement at any instant, converging via background reconciliation; see [the peer-sync-topology comparison](../comparisons/peer-sync-topology.md) for why gossip won for regional fault tolerance specifically | `ADR-033` |
+| Merkle tree catch-up | Exchange hash-tree summaries to find and transfer only the differing ranges after a disconnection, instead of a full resync | `ADR-033` |
+| Non-authoritative capture (Reservation/Provisional + non-repudiation logging) | Accept data whose submitter's authority can't be verified yet; capture now, adjudicate later, via an explicit trust status that never gates ingestion; see [the rejection-behavior comparison](../comparisons/authority-rejection-behavior.md) for annotate-only vs. compensating-patch | `ADR-035` |
+| Self-attested, offline-verifiable delegation (DID/UCAN) | Prove a chain of delegated capability without needing to reach a central authority at verification time | `ADR-036` |
+| MVVM (Model-View-ViewModel) | Structure/style/state/transport kept in separate layers; a ViewModel dispatches commands rather than mutating state directly | `ADR-039` |
+| Streaming ingestion (telemetry, audio/video) as a separate fast path | Bypass schema validation/hash-chaining/fold entirely for high-frequency chunked data; link back to the event-sourced world only through a detector publishing an ordinary event | `ADR-031` |
+| Deep-linking via temporal fragment URIs | A stable, shareable reference to a point/interval within a media/signal stream, using a real W3C syntax instead of a bespoke query parameter | `ADR-031` |
+| Seekable playback via byte-range requests | The standard mechanism behind a scrub bar — request a byte range, get `206 Partial Content` back, instead of downloading a whole file to seek within it | `ADR-031`, `ADR-032` |
+| Content-addressable storage | Address a binary object by the hash of its own bytes — naturally deduplicating, naturally cacheable, naturally tamper-evident | `ADR-032` |
+| Browsable access via a real filesystem protocol | Project a virtual folder/file hierarchy over data that isn't actually stored as files, using WebDAV instead of a bespoke browse API | `ADR-032` |
 
 ## A note on diagrams
 
 Each written pattern doc includes a PlantUML diagram (sequence, C4
 component, or object, whichever actually clarifies that pattern) — none
-of the six written so far have a UI surface, so Salt wireframes aren't
-used in this folder yet; `ADR-033`'s MVVM/entity-view pattern (queued)
-will be the first one that genuinely calls for one.
+of the six original written docs have a UI surface, so Salt wireframes
+aren't used in this folder yet; `ADR-039`'s MVVM/entity-view pattern will
+be the first one that genuinely calls for one, once it gets a standalone
+write-up.
 
 ## A note on superseded patterns
 
@@ -87,5 +83,5 @@ pushdown — a real instance of "prefer reusing an existing primitive over
 adding a new dependency" (see how [Hash Chain](hash-chain-integrity.md)
 reuses `ADR-011`'s SHA-256 for the same reason). That specific reuse
 argument stopped holding once OData was swapped out entirely for GraphQL
-(`ADR-031`, queued) — recorded in `references.md` and `CLAUDE.md`'s
-integration status, not silently dropped.
+(`ADR-037`) — recorded in `references.md` and `CLAUDE.md`'s integration
+status, not silently dropped.

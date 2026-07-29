@@ -52,3 +52,10 @@ Consequences: <trade-offs accepted>
 | [030](adrs/adr-030-multi-tenant-framework.md) | Multi-tenant framework — `appId`-scoped schemas, domain-agnostic core | Accepted |
 | [031](adrs/adr-031-telemetry-channels.md) | Streaming channels (telemetry, audio/video) — a separate fast path, linked to events via `TelemetryPointer` | Accepted |
 | [032](adrs/adr-032-binary-attachments.md) | Binary attachments — content-addressed, linked to an entity or event | Accepted |
+| [033](adrs/adr-033-multi-origin-replication.md) | Multi-origin replication — gossip topology, fault-tolerant peer-sync outbox/inbox | Accepted |
+| [034](adrs/adr-034-application-level-sharding.md) | Application-level sharding by `EntityType` | Accepted |
+| [035](adrs/adr-035-non-authoritative-capture.md) | Non-authoritative capture — `AuthorityStatus` as a trust axis independent of `SchemaStatus` | Accepted |
+| [036](adrs/adr-036-did-ucan-token-exchange.md) | DID + UCAN for offline self-attestation, exchanged via OAuth Token Exchange (RFC 8693) | Accepted |
+| [037](adrs/adr-037-graphql-only-query-layer.md) | GraphQL as the sole query layer — supersedes `ADR-003`/`04-odata-filter-pushdown.md` | Accepted |
+| [038](adrs/adr-038-compatibility-and-deployment.md) | Compatibility & deployment discipline — Tolerant Reader, Expand/Contract, N-1/N+1 window | Accepted |
+| [039](adrs/adr-039-mvvm-client.md) | MVVM client architecture + HTML/JS entity view definitions | Accepted |

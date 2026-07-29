@@ -55,12 +55,20 @@ larger batch of unrelated changes.
   a large-object use case, re-adopted once `ADR-032`'s binary attachments
   created one). Check `references.md` for a stale rejection before assuming
   something is still out of scope.
+- `docs/comparisons/` — a **fourth kind of document**: when a real fork
+  has genuine options on more than one side, write both (or all) sides
+  out in full — pros, cons — *before* the deciding ADR, not after. Write
+  one of these whenever a multi-option decision comes up, then have the
+  ADR reference it rather than re-deriving the comparison inline.
+- `docs/patterns/interactions/` — for when two patterns don't just both
+  apply somewhere, but genuinely *compose* at one specific point (e.g.
+  two different checks running in the same fold step) — gets its own page
+  explaining the combination, linked from both patterns' own docs.
 - `docs/design-docs/` — a **second, independently-developed design**
-  (a distributed, entity-centric event-sourced platform) that is currently
-  being merged into the primary design above. See "Integration status"
-  below before assuming anything in `01`–`09`/`adrs/`/`data/` reflects the
-  final state — several foundational pieces have already changed, more
-  than once.
+  (a distributed, entity-centric event-sourced platform) that has now been
+  fully absorbed into ADRs `021`–`039` (see "Integration status" below).
+  Kept for provenance/narrative context, not because anything still only
+  exists there — every decision it raised has a real ADR now.
 
 ## Conventions established so far
 
@@ -114,92 +122,101 @@ larger batch of unrelated changes.
   propagation for everything past `ADR-024` is currently behind — see
   Integration status.)
 
-## Standing requirements not yet attached to a written ADR
+## Standing requirements, now attached to a written ADR
 
-Real constraints already stated by direction, to be honored by whichever
-ADR eventually covers the mechanism they apply to — don't lose these while
-that ADR is still queued:
-
-- **Any outbox this design introduces (peer-sync replication, or the MVVM
-  client's local outbox) must be fault/abend/restart-tolerant** — durable
-  and resumable across an unclean process termination, not merely safe
-  under a graceful shutdown. Applies to the queued replication ADR and to
-  `ADR-033` (MVVM client) once either is written.
+- **Fault/abend/restart-tolerant outbox** — durable and resumable across
+  an unclean process termination, not merely safe under a graceful
+  shutdown. Addressed in `ADR-033` (peer-sync outbox/inbox) and referenced
+  by `ADR-039` (the MVVM client's local outbox reuses the same durable
+  primitive). If a *third* outbox-shaped mechanism ever gets introduced,
+  re-check that it actually inherits this, don't assume it does by family
+  resemblance alone.
+- **Never lose or corrupt data** — the governing principle stated in
+  `README.md`'s opening section. Weigh any future durability trade-off
+  against this explicitly (see `ADR-031`'s streaming-channel durability
+  bar for the one accepted, narrow exception, stated as such rather than
+  a silent default) rather than defaulting toward convenience.
 
 ## Integration status (`docs/design-docs/` → primary design)
 
-In progress, sequenced as ADRs `021` onward. Big, foundational, locked-in
-decisions (don't re-litigate without a strong reason — these came from
-explicit direction):
+**Every ADR the design-docs merge implied now exists and is Accepted —
+`ADR-021` through `ADR-039`.** Nothing from that merge remains only a
+plan; what remains is propagating those decisions into the surrounding
+docs that still describe the pre-integration shape (see below). Big,
+foundational, locked-in decisions, for quick orientation:
 
 - **Full entity-centric rebuild** — `EntityId`, an always-on Entity Store,
-  `ExpectedVersion` (`ADR-021`).
-- **Persist-everything ingestion** — publish returns `202` + a status
-  envelope; schema/authority problems become advisory flags, not `400`s
-  (`ADR-023`, superseding parts of `ADR-011`/`013`/`020`).
-- **Distribution is in scope** — sharding + multi-origin replication will be
-  built out (queued, not yet written — see below), not deferred the way
-  `ADR-007` is.
-- **GraphQL replaces OData entirely** — not "primary/secondary," a full
-  swap (queued — see below). GraphQL queries travel over HTTP `QUERY`, not
-  `GET`, specifically to keep PII/PHI-bearing filter arguments out of
-  URLs/logs/proxy caches. Supersedes `ADR-003`/`04-odata-filter-
-  pushdown.md`'s OData surface (the per-provider JSON pushdown mechanism
-  survives; only the OData syntax goes away) and will move `ADR-018`'s
-  upcast mechanism off OData `compute()` onto JS/CEL + GraphQL SDL
-  directives once written.
-- **This is a multi-tenant framework, not a single application** —
-  `appId` is a real scoping key on the schema registry, not just a prefix
-  convention (`ADR-030`). The `Orders` walkthrough is a sample application
-  consuming the framework, not part of it.
+  `ExpectedVersion` (`ADR-021`), refined by `Optional<T>` property-level
+  patches (`ADR-022`), a persist-everything ingestion posture (`ADR-023`,
+  superseding parts of `ADR-011`/`013`/`020`), and optimistic concurrency
+  + logical-order fold (`ADR-024`, `ADR-029` — see
+  `docs/patterns/interactions/fold-ordering-and-conflict.md` for how the
+  two compose).
+- **Multi-tenant framework** — `appId` is a real schema-registry scoping
+  key (`ADR-030`); the `Orders` walkthrough is a sample application, not
+  part of the core engine.
+- **Schema evolution went further than design-docs asked for** —
+  upcasting is materialized to the log, not just computed live
+  (`ADR-018`, `ADR-027`), downcasting exists for legacy consumers
+  (`ADR-028`), and compatibility/deployment discipline is explicit
+  (`ADR-038`).
+- **Two new data planes, deliberately separate from the event log** —
+  streaming channels for telemetry/audio/video (`ADR-031`, with
+  standard-protocol playback/deep-linking/redaction) and content-addressed
+  binary attachments, browsable via WebDAV (`ADR-032`).
+- **Distribution is real** — gossip-topology replication with a minimum
+  2-replica, regional-fault-tolerant requirement (`ADR-033`,
+  `docs/comparisons/peer-sync-topology.md`) and entity-type-based sharding
+  (`ADR-034`, `docs/comparisons/sharding-strategy.md`).
+- **Non-authoritative capture** — `AuthorityStatus` as its own trust axis
+  (`ADR-035`, `docs/comparisons/authority-rejection-behavior.md`), DID/UCAN
+  self-attestation via OAuth Token Exchange (`ADR-036`, un-rejecting what
+  `references.md` had marked reference-only).
+- **GraphQL replaces OData entirely** (`ADR-037`) — not "primary/
+  secondary." GraphQL queries travel over HTTP `QUERY`, never `GET`,
+  specifically to keep PII/PHI-bearing filter arguments out of URLs/
+  logs/proxy caches. Supersedes `ADR-003`/`04-odata-filter-pushdown.md`'s
+  OData surface (the per-provider JSON pushdown mechanism survives; only
+  the OData syntax goes away) and moves `ADR-018`'s upcast mechanism off
+  OData `compute()` onto JS/CEL + GraphQL SDL directives.
+- **MVVM client + entity views** (`ADR-039`) — sequenced last on purpose,
+  the least load-bearing piece; composes primitives every earlier ADR
+  already built rather than introducing new server-side mechanism.
 
-**Landed, independent of the entity/persist-everything direction**
+Also landed, independent of the entity/persist-everything direction
 (tooling/infrastructure, decided alongside the merge but not part of it):
 `ADR-025` (Scalar for OpenAPI docs UI, `@asyncapi/react-component` for
 AsyncAPI) · `ADR-026` (dev via .NET Aspire + full OpenTelemetry — logging,
-tracing, metrics; prod via Docker Compose, elevated from `ADR-006`'s
-original "fallback" framing).
+tracing, metrics; prod via Docker Compose).
 
-**Landed, extending the schema-evolution/data story further than the
-original design-docs merge asked for** (organic growth mid-session, not
-originally scoped): `ADR-027` (materialized upcasts, persisted to the log,
-folded exactly once — never both) · `ADR-028` (downcast on retrieval for
-an explicitly older requested version, read-time only, never
-materialized) · `ADR-029` (logical-order fold using `OccurredAt`, not
-arrival order, so late-arriving events don't corrupt newer data —
-`LateArrivalFlag`, `Version` vs. `LastAppliedSequenceNumber` now two
-different counters) · `ADR-031` (streaming channels — telemetry *and*
-audio/video, a separate fast path bypassing schema validation/hash-chain/
-Entity-Store-fold entirely, linked back to ordinary domain events via
-`TelemetryPointer`; playback via HTTP Range Requests, deep-linking via
-W3C Media Fragments URI, redaction as a new range-based primitive distinct
-from `ADR-009`'s masking) · `ADR-032` (binary attachments, content-
-addressed, linked via `AttachmentRef`).
+### What's actually still outstanding: propagation, not decisions
 
-**Done and propagated:** `ADR-021`–`024` fully reflected in `docs/data/`
-and `03-api-contracts.md`. `ADR-025`/`026` still need their propagation
-pass into `06-solution-structure.md` (`ServiceDefaults`' OTel wiring, the
-`Scalar`/`asyncapi-ui` routes — `06-solution-structure.md` has the compose
-vs. Aspire framing fix but not the OTel code sketch yet) and `references.md`
-(Scalar/asyncapi-react/OpenTelemetry citations are in, Docker Compose's
-is in). `ADR-027`–`032` are written but **not yet propagated anywhere**
-beyond `docs/data/`'s field-level additions and the ADR index — no C4,
-solution-structure, build-plan, or feature-doc updates yet for any of them.
+- **Done and propagated:** `ADR-021`–`024` fully reflected in `docs/data/`
+  and `03-api-contracts.md`. `ADR-025`/`026` propagated into
+  `06-solution-structure.md` (`ServiceDefaults`' `ConfigureOpenTelemetry`
+  cross-reference, `/scalar` and `/asyncapi-ui` route mapping) and
+  `references.md`. `ADR-031`/`032`'s new entities are in
+  `docs/data/streaming-and-attachments.md`.
+- **Not yet propagated anywhere beyond `docs/data/`'s field-level
+  additions and the ADR index**: `ADR-027`–`030`, `ADR-033`–`039`. In
+  particular:
+  - `01-c4-architecture.md` doesn't yet show the Entity Store, streaming/
+    attachment containers, replication topology, sharding, or a GraphQL
+    Gateway (still shows the old OData-era Follow/Lineage containers).
+  - `06-solution-structure.md` doesn't yet reflect the multi-tenant
+    (`AppId`-keyed) registry lookups, the peer-sync outbox/inbox project,
+    the GraphQL resolver layer, or the MVVM client project structure.
+  - `08-build-plan.md` has no phases yet for replication, sharding,
+    non-authoritative capture, the GraphQL swap, streaming channels,
+    attachments, or the MVVM client — still ends at the original
+    CQRS-projections phase.
+  - `03-api-contracts.md` still documents the OData-era
+    `$filter`/`QUERY` contracts `ADR-037` supersedes.
+  - `04-odata-filter-pushdown.md` needs a superseded banner (or a rename)
+    per `ADR-037` — not yet touched.
+  - `features/*.md` Gherkin scenarios still assert the pre-`ADR-023`
+    reject-on-invalid behavior (`400` instead of `202`+`SchemaStatus`)
+    and don't cover any capability past `ADR-024`.
 
-**Queued, not yet written — deliberately no numbers assigned** (see the
-"never hardcode a future number" convention above): replication
-(`OriginId`/`LogicalClock`, peer sync outbox/inbox — must be fault/abend/
-restart-tolerant per the standing requirement above) · sharding ·
-non-authoritative capture/`AuthorityStatus` · DID/UCAN + OAuth Token
-Exchange RFC 8693 (un-rejecting what `references.md` marks reference-only,
-once the non-authoritative-capture ADR creates the need) · GraphQL-only
-query layer (retargets `ADR-012`'s `QUERY` method, supersedes
-`ADR-003`/`04-odata-filter-pushdown.md`, moves `ADR-018` onto JS/CEL) ·
-compatibility/deployment discipline (Tolerant Reader, Expand/Contract,
-N-1/N+1 window) · MVVM client + entity view definitions (the least
-load-bearing piece for everything else — fine to sequence last).
-
-Before assuming `01-c4-architecture.md`, `06-solution-structure.md`,
-`08-build-plan.md`, or `04-odata-filter-pushdown.md` are internally
-consistent with anything landed above, check this file first — as of this
-writing, all four still substantially describe the pre-integration shape.
+Before assuming any of those five files are internally consistent with
+`ADR-025` onward, check this section first.

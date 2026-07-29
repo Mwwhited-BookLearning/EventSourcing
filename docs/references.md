@@ -43,6 +43,12 @@ comprehensive index, organized by whether the concept was actually
 | AsyncAPI React component | [asyncapi/asyncapi-react](https://github.com/asyncapi/asyncapi-react) | `ADR-025` — AsyncAPI docs UI |
 | OpenTelemetry | [opentelemetry.io](https://opentelemetry.io/), via .NET Aspire's `ServiceDefaults` | `ADR-026` — logging, tracing, and metrics for every service |
 | Docker Compose | [docs.docker.com/compose](https://docs.docker.com/compose/) | `ADR-026` — production deployment path |
+| OAuth 2.0 Token Exchange | [RFC 8693](https://datatracker.ietf.org/doc/html/rfc8693) | `ADR-036` — exchanging a self-attested UCAN for an ordinary bearer JWT. **Previously reference-only** (rejected for lack of an "act on behalf of" need) — un-rejected once `ADR-035`'s non-authoritative capture created a real one. |
+| UCAN | [ucan.xyz](https://ucan.xyz/specification/) | `ADR-036` — offline-verifiable delegated capability for self-attested capture. **Previously reference-only** — see above; the exact same reversal. |
+| W3C DIDs | [DIDs v1.1](https://www.w3.org/TR/did-1.1/) | `ADR-036` — proves cryptographic control of an identifier for a self-attested actor, deliberately not more than that. **Previously reference-only** — same reversal; Verifiable Credentials specifically (the sibling W3C spec) remain not adopted, since UCAN's delegation-chain model covers this design's actual need without them. |
+| WebDAV | [RFC 4918](https://datatracker.ietf.org/doc/html/rfc4918) | `ADR-032` — browsable access to binary attachments via a real, OS-native protocol instead of a bespoke file API |
+| HTTP Range Requests | [RFC 7233](https://datatracker.ietf.org/doc/html/rfc7233) | `ADR-031`/`ADR-032` — seekable playback/retrieval for streaming channels and large attachments |
+| Media Fragments URI | [W3C Media Fragments URI 1.0](https://www.w3.org/TR/media-frags/) | `ADR-031` — deep-linking to a temporal point/interval in a streaming channel |
 
 ## Reference-only — considered, not adopted
 
