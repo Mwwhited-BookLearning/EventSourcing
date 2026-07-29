@@ -8,7 +8,13 @@ split this design package already applied to ADRs
 contents into the detail files. No entity class lives in this file
 anymore — go to the linked file for the actual C# shapes.
 
-## The three entity groups, and how they relate
+## The core entity groups, and how they relate
+
+The diagram below shows the original three groups' core relationships
+(schema → event → entity-store fold) — `streaming-and-attachments.md`
+and `access-log.md` are real, independent groups too (see the table
+below), each deliberately living outside this diagram's fold-centric
+relationships since neither one folds into the Entity Store at all.
 
 ```plantuml
 @startuml DataModel_Classification
@@ -45,6 +51,8 @@ end note
 | **Event Log** | [`data/event-log.md`](data/event-log.md) | `StoredEvent`, `EventKind`, `EventParent` — plus lineage, publish idempotency, tamper evidence (hash chain), upcasting/materialization, downcast, and the `EventUpcastFailed` dead-letter type |
 | **Entity Store** | [`data/entity-store.md`](data/entity-store.md) | `EntityStoreRow` — the always-on, automatically-folded "current state" read path (`ADR-021`), including why `Version` and `LastAppliedSequenceNumber` are deliberately two different counters (`ADR-029`) |
 | **DbContext & conventions** | [`data/dbcontext-and-conventions.md`](data/dbcontext-and-conventions.md) | The full `EventStoreContext`/`OnModelCreating` wiring and the portability rules that apply across all three groups above — kept separate so a cross-cutting rule isn't duplicated three times |
+| **Streaming & Attachments** | [`data/streaming-and-attachments.md`](data/streaming-and-attachments.md) | `TelemetryChannel`/`TelemetrySample` (`ADR-031`), `Attachment`/`AttachmentRef` (`ADR-032`) — two data planes deliberately separate from the Event Log, each with its own storage |
+| **Access Log** | [`data/access-log.md`](data/access-log.md) | `AccessLogEntry` (`ADR-045`) — a sixth, independent append-only store recording every *read*, not derived from or folded into anything above |
 
 The **read side** (custom CQRS projections — `ProjectionCheckpoint`,
 `ProjectionSnapshot`, `OrderSummary`, etc.) is deliberately **not** a

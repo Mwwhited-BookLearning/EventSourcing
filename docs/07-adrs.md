@@ -64,3 +64,8 @@ Consequences: <trade-offs accepted>
 | [042](adrs/adr-042-gated-authoritative-publish.md) | Gated authoritative publish — Entity Store only reflects approved data; a separate Live View shows the rest (revises `ADR-035`) | Accepted |
 | [043](adrs/adr-043-delegated-temporary-access-grants.md) | Delegated, capped, time-boxed read-access grants ("secondary opinion" access) — reuses UCAN delegation (`ADR-036`) | Accepted |
 | [044](adrs/adr-044-application-defined-permissions.md) | Application-defined permission/grant types via per-`AppId` trust roots (resolves what UCAN itself leaves out-of-band) | Accepted |
+| [045](adrs/adr-045-read-access-audit-log.md) | Read access audit log — every read logged against the reader's identity and trust basis (resolves the open question `ADR-043` raised) | Accepted |
+| [046](adrs/adr-046-role-based-access-control.md) | Role-Based Access Control (ANSI/INCITS 359) — permissions granted to roles, roles assigned to users, resolved at token issuance | Accepted |
+| [047](adrs/adr-047-claims-augmentation-federated-idp.md) | Claims augmentation for federated/external identity providers — reuses OAuth Token Exchange (RFC 8693) a third time | Accepted |
+| [048](adrs/adr-048-spiffe-spire-service-identity.md) | SPIFFE/SPIRE for internal service-to-service and peer-sync identity (reverses prior SPIFFE/SPIRE rejection) | Accepted |
+| [049](adrs/adr-049-api-gateway-yarp.md) | API Gateway (YARP) as the single external entry point (reverses prior YARP rejection) | Accepted |

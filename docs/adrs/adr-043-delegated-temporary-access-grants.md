@@ -46,12 +46,23 @@ Decision:
   restriction as an additional claim — downstream code sees an ordinary
   bearer JWT, same as `ADR-036`'s consequence already promises ("no
   downstream service needs to understand what a UCAN or DID even is").
-- **`ADR-008`'s `RequiredReadClaim` check gains an optional entity-scope
-  dimension.** Where a caller's claim carries an `entityScope`
-  restriction, the check becomes "does the caller have this claim, *and*
-  does it apply to this specific `EntityId`" — not a bare `HasClaim`
-  boolean. An ordinary, unscoped claim (the default, unaffected case)
-  behaves exactly as `ADR-008` already specifies.
+- **`ADR-008`'s claim model gains a general, standing entity-scope
+  dimension — row-level access, not just type/endpoint-level.** This
+  isn't specific to delegated grants: *any* claim — direct (`ADR-046`),
+  role-granted (`ADR-046`), or delegated (this ADR) — may optionally
+  carry an `entityScope` restricting it to one specific `EntityId`
+  rather than every entity of a type. The check becomes "does the
+  caller have this claim, *and* does it apply to this `EntityId`" — not
+  a bare `HasClaim` boolean. An ordinary, unscoped claim (the default,
+  unaffected case) behaves exactly as `ADR-008` already specifies. This
+  is the same problem **Row-Level Security (RLS)** solves at the
+  database layer (native `CREATE POLICY` support in PostgreSQL and SQL
+  Server) — cited as the named real-world pattern this generalizes, not
+  adopted verbatim: this design checks entity scope at the **application/
+  claims layer**, not via provider-native RLS policies, specifically
+  because SQLite (`ADR-001`'s third supported provider) has no native
+  RLS feature at all — the same "portable, not provider-native" instinct
+  `ADR-004` already applies to JSON storage.
 - **Grant issuance and revocation are ordinary events**, not a new
   persistence mechanism — an `accessGrant`/`accessGrantRevoked` event
   type, registered and folded like any other, giving delegation the
@@ -82,6 +93,11 @@ Decision:
   deliberate.
 - **UCAN delegation** (`ADR-036`, already adopted) — the actual
   mechanism, reused rather than reinvented.
+- **Row-Level Security (RLS)** — the named database-layer pattern for
+  "access control finer than table/type-level," implemented here at the
+  application/claims layer instead of via provider-native `CREATE
+  POLICY` support, for portability across `ADR-001`'s three providers
+  (SQLite has none).
 
 Consequences:
 - No new cryptographic or delegation mechanism — this is UCAN applied to

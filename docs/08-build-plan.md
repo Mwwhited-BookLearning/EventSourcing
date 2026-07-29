@@ -64,6 +64,7 @@ state "Phase 19\nCompatibility & Deployment Discipline" as p19
 state "Phase 20\nMVVM Client" as p20
 state "Phase 21\nTicket Exchange" as p21
 state "Phase 22\nDelegated Grants & App Permissions" as p22
+state "Phase 23\nSPIFFE/SPIRE Service Identity" as p23
 
 p0 --> p1
 p1 --> p2
@@ -101,6 +102,9 @@ p15 --> p21
 p17 --> p22
 p6 --> p22
 p12 --> p22
+p10 --> p22
+p5 --> p23
+p16 --> p23
 @enduml
 ```
 
@@ -706,17 +710,25 @@ same ticket presented a second time is rejected; a ticket presented with
 a signature computed from the wrong shared secret is rejected before any
 content is served.
 
-## Phase 22 — Delegated access grants & application-defined permissions
+## Phase 22 — Delegated access grants, RBAC, federated claims & read audit logging
 
 **Scope**: `ADR-043` (delegated, capped, time-boxed read-access grants
-via UCAN delegation — "secondary opinion" access) and `ADR-044`
-(application-defined permission types via per-`AppId` `AppTrustRoot`
-registration, resolving what the UCAN spec itself leaves out-of-band).
+via UCAN delegation — "secondary opinion" access, generalized to
+row-level/entity-scoped claims), `ADR-044` (application-defined
+permission types via per-`AppId` `AppTrustRoot` registration, resolving
+what the UCAN spec itself leaves out-of-band), `ADR-045` (`AccessLog` —
+every read logged against the reader's identity and trust basis,
+hash-chained independently of the Event Log), `ADR-046` (RBAC —
+permissions granted to roles, roles assigned to users, plus
+additive-only direct user permissions), and `ADR-047` (claims
+augmentation for federated/external IdPs, reusing Token Exchange a
+third time).
 
-**Depends on**: Phase 17 (both build directly on `ADR-036`'s UCAN
+**Depends on**: Phase 17 (all three build directly on `ADR-036`'s UCAN
 exchange infrastructure), Phase 6 (`ADR-008`'s claim-check model, which
 gains the entity-scope extension here), Phase 12 (`AppTrustRoot` is
-`AppId`-scoped).
+`AppId`-scoped), Phase 10 (`AccessLog`'s hash chain reuses `ADR-019`'s
+primitive, built there).
 
 **Exit criteria**: a user holding a claim can delegate a subset of it,
 scoped to one specific `EntityId` and an expiration, to a named grantee;
@@ -726,7 +738,35 @@ granter's own claim) fails UCAN validation, not a bespoke check; a UCAN
 rooted in a DID that isn't a registered `AppTrustRoot` for the target
 `AppId` is rejected; a UCAN rooted in a registered `AppTrustRoot` is
 accepted for that `AppId`'s own custom permission strings with no
-central-IdP-side pre-registration of those strings.
+central-IdP-side pre-registration of those strings; every read through
+any surface (GraphQL, WebDAV, streaming playback, ticket-authenticated
+access) writes an `AccessLogEntry` recording `ReaderActorId` and
+whether `ReaderTrustBasis` is `Authoritative` or `Attested`; tampering
+with a past `AccessLog` entry is detectable by replaying its
+independent hash chain.
+
+## Phase 23 — SPIFFE/SPIRE service identity & API Gateway
+
+**Scope**: `ADR-048` — SPIFFE IDs and X.509-SVIDs for this framework's
+own internal services, and `ADR-033` peer-sync mutual authentication
+moved onto SPIFFE trust-bundle federation instead of a shared central
+IdP; `ADR-049` — a YARP-based API Gateway as the single external entry
+point, terminating external TLS/auth and routing to the right internal
+service via SPIFFE-authenticated internal calls.
+
+**Depends on**: Phase 5 (this composes with, not replaces, `ADR-006`'s
+external-facing OAuth2), Phase 16 (sharding & replication — this is
+specifically `ADR-033`'s peer-sync auth mechanism).
+
+**Exit criteria**: an internal service call between two of this
+framework's own components is mTLS-authenticated via SPIFFE workload
+identity; two independent peer servers under different trust domains
+mutually authenticate by exchanging trust bundles, with no shared
+central IdP; a request bearing no valid SVID is rejected at the mTLS
+handshake, before it reaches application code; an external caller
+reaches every surface (GraphQL, WebDAV, streaming, ticket/OAuth
+endpoints) through one gateway address, never a direct connection to an
+internal service.
 
 ## Cross-cutting, every phase
 
@@ -764,8 +804,9 @@ central-IdP-side pre-registration of those strings.
   `ADR-040` is Accepted — Phase 21 is where it gets built and verified.
   `ADR-041` is Accepted and cross-cutting, not tied to any one phase — see
   above. `ADR-042` (Accepted, revises `ADR-035`) is verified in Phase 17
-  alongside it, not a separate phase. `ADR-043`/`ADR-044` (both Accepted)
-  are Phase 22.
+  alongside it, not a separate phase. `ADR-043` through `ADR-047` (all
+  Accepted) are Phase 22. `ADR-048`/`ADR-049` (both Accepted, both
+  reverse a prior reference-only rejection) are Phase 23.
 
 ## Suggested References
 

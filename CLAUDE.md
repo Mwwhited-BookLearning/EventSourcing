@@ -269,6 +269,45 @@ foundational, locked-in decisions, for quick orientation:
   thing the UCAN spec itself leaves out-of-band — which DID is a root of
   trust for a capability namespace — via a new per-`AppId` `AppTrustRoot`
   registry. No new cryptographic mechanism either time.
+- **Read access audit log** (`ADR-045`) — resolves the open question
+  `ADR-043` raised: every read, through every surface, now writes an
+  `AccessLogEntry` (`docs/data/access-log.md`, a sixth, independent
+  append-only store) recording the reader's identity and whether their
+  credential is `Authoritative` or `Attested`, hash-chained via
+  `ADR-019`'s primitive applied to a second, independent chain.
+- **RBAC + row-level access + federated claims augmentation**
+  (`ADR-046`, `ADR-047`, plus a generalization inside `ADR-043`) —
+  `Role`/`UserPermission` (`docs/data/schema-registry.md`) resolve to a
+  flattened claim set at token issuance (ANSI/INCITS 359's base tier;
+  hierarchy and separation-of-duty explicitly not adopted); direct
+  user-level permissions are additive-only, never restrictive, by
+  design (no explicit-deny concept anywhere in this model); `ADR-043`'s
+  entity-scope claim generalized from "a delegated-grant feature" to a
+  standing Row-Level-Security-shaped primitive usable by any claim
+  source; `ADR-047` lets an external, already-authoritative IdP's token
+  be augmented (never replaced) with this framework's own
+  application-specific claims, via `ADR-036`'s Token Exchange machinery
+  a third time. `ADR-032` also amended in place (not built/shipped, a
+  natural extension) to support standalone attachments with a direct
+  `RequiredReadClaim`/`RequiredPublishClaim`, independent of any linked
+  event.
+- **SPIFFE/SPIRE for internal service/peer identity** (`ADR-048`) —
+  reverses `references.md`'s prior rejection of SPIFFE/SPIRE, once this
+  design's own growth (many internal services in `06-solution-
+  structure.md`, `ADR-033`'s cross-site peer servers) created the
+  multi-workload-mesh scenario that rejection itself named as the
+  reason to revisit. Answers a different question from `ADR-006`
+  (workload identity, not user/external-client identity) — composes
+  with it, doesn't replace it. See `docs/comparisons/service-
+  identity.md` for the full comparison against static OAuth2 client
+  credentials and hand-rolled mTLS.
+- **API Gateway (YARP)** (`ADR-049`) — also reverses a prior rejection,
+  same trigger as `ADR-048`: this design's growth to multiple
+  independently-addressable external surfaces (GraphQL, WebDAV,
+  streaming, ticket/OAuth) is exactly the scenario the original "each
+  host is a single deployable" rejection named as the reason to
+  revisit. External auth/TLS terminates at the gateway; internal
+  gateway-to-service calls hand off to `ADR-048`'s SPIFFE identity.
 
 Also landed, independent of the entity/persist-everything direction
 (tooling/infrastructure, decided alongside the merge but not part of it):
