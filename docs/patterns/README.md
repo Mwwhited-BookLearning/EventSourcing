@@ -79,6 +79,7 @@ queued.**
 | [Multi-Axis Authority/Assurance](multi-axis-authority-assurance.md) | Keep independent trust questions (identity proofing, authentication strength, federation trust) as separate axes instead of one collapsed score | Raised in conversation — not yet adopted, see `docs/10-open-questions.md` |
 | SPIFFE/SPIRE workload identity | Attestation-based, short-lived cryptographic identity for services/workloads, with cross-trust-domain federation — no bootstrap secret to rotate manually | `ADR-048` |
 | API Gateway | A single external entry point in front of multiple backend services — auth/TLS termination, routing, hiding backend topology from callers | `ADR-049` |
+| Data classification + redaction | Tag sensitive data once with a classification; every sink (logs, API responses) that respects it redacts automatically, without re-deriving the rule per sink | `ADR-050` |
 | Streaming ingestion (telemetry, audio/video) as a separate fast path | Bypass schema validation/hash-chaining/fold entirely for high-frequency chunked data; link back to the event-sourced world only through a detector publishing an ordinary event | `ADR-031` |
 | Deep-linking via temporal fragment URIs | A stable, shareable reference to a point/interval within a media/signal stream, using a real W3C syntax instead of a bespoke query parameter | `ADR-031` |
 | Seekable playback via byte-range requests | The standard mechanism behind a scrub bar — request a byte range, get `206 Partial Content` back, instead of downloading a whole file to seek within it | `ADR-031`, `ADR-032` |

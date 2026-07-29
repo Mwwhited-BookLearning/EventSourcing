@@ -69,3 +69,4 @@ Consequences: <trade-offs accepted>
 | [047](adrs/adr-047-claims-augmentation-federated-idp.md) | Claims augmentation for federated/external identity providers — reuses OAuth Token Exchange (RFC 8693) a third time | Accepted |
 | [048](adrs/adr-048-spiffe-spire-service-identity.md) | SPIFFE/SPIRE for internal service-to-service and peer-sync identity (reverses prior SPIFFE/SPIRE rejection) | Accepted |
 | [049](adrs/adr-049-api-gateway-yarp.md) | API Gateway (YARP) as the single external entry point (reverses prior YARP rejection) | Accepted |
+| [050](adrs/adr-050-permission-masking-metadata-spec-extensions-log-redaction.md) | Entity-level permission/masking metadata as OpenAPI/AsyncAPI extensions, reused for log redaction (`Microsoft.Extensions.Compliance.Redaction`) | Accepted |
