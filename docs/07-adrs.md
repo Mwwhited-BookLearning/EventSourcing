@@ -73,3 +73,10 @@ Consequences: <trade-offs accepted>
 | [051](adrs/adr-051-peer-discovery-static-seed-list.md) | Peer discovery via explicit static seed-peer configuration (formalizes `docs/comparisons/peer-discovery.md`) | Accepted |
 | [052](adrs/adr-052-streaming-redaction-mechanism.md) | Streaming-channel redaction mechanism — configurable strategy, read-time, zero-fill default (formalizes `docs/comparisons/streaming-redaction-mechanism.md`) | Accepted |
 | [053](adrs/adr-053-pluggable-upcast-expression-engine.md) | Pluggable declarative upcast expression engine, defaulting to CEL (CEL/JSONata interchangeable behind one interface) | Accepted |
+| [054](adrs/adr-054-client-sdk-generation.md) | Client SDK generation — Kiota (OpenAPI, C#+TypeScript), GraphQL Code Generator (TypeScript) + Strawberry Shake (.NET) for GraphQL | Accepted |
+| [055](adrs/adr-055-testing-strategy.md) | Testing strategy — MSTest+Moq (unit), Vitest+Vue Test Utils (frontend unit), Testcontainers (integration), Playwright (E2E/UI) | Accepted |
+| [056](adrs/adr-056-data-lifecycle-backup-restore.md) | Data lifecycle designed for easy backup/restore — authoritative vs. rebuildable stores, native provider PITR | Accepted |
+| [057](adrs/adr-057-gdpr-erasure-crypto-shredding.md) | GDPR/CCPA erasure via crypto-shredding — per-entity data-encryption keys, destroyed on request (revises `ADR-009`) | Accepted |
+| [058](adrs/adr-058-rate-limiting-quota.md) | Per-tenant rate limiting via ASP.NET Core's built-in `RateLimiting` middleware | Accepted |
+| [059](adrs/adr-059-composition-root-extensibility-model.md) | Extensibility is composition-root registration only — no dynamic/runtime plugin discovery, ever | Accepted |
+| [060](adrs/adr-060-outbound-webhooks.md) | Outbound webhook/notification support — reuses the durable outbox primitive, Standard Webhooks-shaped signing | Accepted |

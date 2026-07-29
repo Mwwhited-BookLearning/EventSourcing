@@ -165,11 +165,15 @@ source, not a link to a file that still exists.
   design question like derived event types above. Richer masking-content
   strategies than the fixed placeholder (`PartialReveal`/`Hash`) are a
   further, undecided proposal on top of that.
-- **No deletion/erasure of stored data, ever — not even for regulated
-  fields.** This was raised and explicitly settled, not overlooked:
-  masking is the only redaction mechanism this system has, and it's a
-  read-time presentation transform, never a storage-layer change. See
-  `ADR-009`.
+- ~~No deletion/erasure of stored data, ever — not even for regulated
+  fields. This was raised and explicitly settled, not overlooked: masking
+  is the only redaction mechanism this system has, and it's a read-time
+  presentation transform, never a storage-layer change. See `ADR-009`.~~
+  **Superseded by `ADR-057`**: erasure is a real requirement, solved via
+  crypto-shredding — a regulated field's *value* is encrypted before it's
+  first stored, keyed per entity; "erasing" an entity destroys that key
+  rather than ever deleting or rewriting a stored event. `StoredEvent`
+  itself is still never mutated — see `ADR-057`.
 
 ## Document index
 
@@ -192,6 +196,7 @@ source, not a link to a file that still exists.
 | `docs/patterns/*.md` | General pattern reference — what a pattern is, who named it, then how this design applies it; `patterns/README.md` is the catalog |
 | `docs/comparisons/*.md` | Full pros/cons for a genuine multi-option fork, written before the deciding ADR; `comparisons/README.md` is the catalog |
 | `docs/libraries/{platform}/*.md` | One file per adopted off-the-shelf library/framework — what it's for, general usage; `libraries/README.md` is the catalog |
+| `docs/extensibility-points.md` | Consolidated catalog of every plugin/extension seam a hosting team can customize without forking core code, and the shared registration model (`ADR-059`) they all follow |
 
 ## Open decisions flagged for the implementer
 

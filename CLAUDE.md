@@ -392,6 +392,73 @@ reaffirming `ADR-037`) and its two companion pattern docs
 (`docs/patterns/graphql-query-language.md`,
 `docs/patterns/odata-query-protocol.md`).
 
+- **Client SDK generation** (`ADR-054`) — resolves a "generalized
+  framework review" finding (this session) that nothing recommended a
+  codegen story for consumers despite both exposed contracts supporting
+  it. `Kiota` (Microsoft, first-party) generates the OpenAPI-side client
+  for both .NET and TypeScript from one spec; `Strawberry Shake`
+  (ChilliCream, same vendor as server-side `HotChocolate`) and `GraphQL
+  Code Generator` (the TypeScript-ecosystem standard) split the
+  GraphQL-side client by language, since that ecosystem doesn't have one
+  tool covering both the way Kiota does. Same review surfaced five more
+  genuine gaps — per-tenant rate limiting/quota, data retention/backup/
+  DR, GDPR-style erasure, a consolidated extensibility-points reference,
+  and a chaos/property-based testing strategy — tracked as real open
+  questions in `docs/10-open-questions.md`, not yet resolved.
+
+Those five remaining findings are now all resolved too (`ADR-055`
+through `ADR-060`), per direct follow-up direction:
+- **Testing strategy** (`ADR-055`) — `MSTest`+`Moq` (backend unit,
+  `Moq`'s 2023 `SponsorLink` trust-damage caveat recorded honestly, not
+  silently dropped), `Vitest`+`Vue Test Utils` (frontend unit),
+  `Testcontainers` (service-level integration, already adopted,
+  reaffirmed not replaced), `Playwright` for .NET with MSTest base
+  classes (UI action/E2E). Confirmed this design has no stored-procedure
+  layer at all (`ADR-004` + EF Core LINQ, one read-only raw-SQL
+  exception for recursive CTEs) — nothing to test there. Chaos/property-
+  based testing for hash-chain/replication/conflict invariants
+  specifically remains its own, narrower open question — a different
+  kind of testing than ordinary coverage.
+- **Data lifecycle** (`ADR-056`) — classifies every store as
+  authoritative-must-back-up (Event Log, Registry, Streaming Channel
+  Store, Attachment Store, Access Audit Log) vs. rebuildable-optional
+  (Entity Store, read models, materialized upcasts, recoverable by
+  replay). No new mechanism — `ADR-004`'s portable-column choice already
+  means nothing blocks native provider backup/PITR tooling.
+- **GDPR/CCPA erasure** (`ADR-057`) — **reverses `ADR-009`'s "no
+  deletion mechanism, and none is wanted" stance** (struck through
+  there and in `README.md`, per this project's additive-history
+  convention) — erasure is now a real requirement, solved via
+  crypto-shredding: every `x-masking`-classified field is encrypted at
+  rest with a per-`(AppId,EntityId)` key (envelope-encrypted, pluggable
+  `IErasureKeyStore` backend — Key Vault/KMS/Vault/local-dev, not one
+  vendor); erasing an entity destroys its key, never touches
+  `StoredEvent.Payload` or `ADR-019`'s hash chain. The `value`/`masked`
+  wrapper grows a third branch, `erased`, deliberately distinct from
+  `masked` ("no one can ever see this again" vs. "you lack a claim").
+  One new `x-masking` field, `erasureScope`, handles PII that belongs to
+  a *different* entity than the event's own — a fifth repeated-
+  relationship-shaped envelope field alongside `parentEventIds`/
+  `MaterializationOfEventId`/`TelemetryPointer`/`AttachmentRef`. Honest
+  caveats recorded, not dropped: some GDPR readings hold encrypted PII is
+  still PII; an already-delivered webhook payload (`ADR-060`) sent
+  before erasure isn't reachable after the fact.
+- **Per-tenant rate limiting** (`ADR-058`) — ASP.NET Core's built-in
+  `RateLimiting` middleware (no third-party library), partitioned per
+  `AppId`, Token Bucket for publish, Concurrency Limiter for long-lived
+  connections, enforced at the Gateway (`ADR-049`) since YARP is itself
+  an ASP.NET Core app.
+- **Extensibility, both halves** (`ADR-059`, `ADR-060`) — local
+  extensions confirmed as composition-root registration only, formalized
+  explicitly (no dynamic plugin loader, ever), cataloged in the new
+  `docs/extensibility-points.md`; outbound extensibility is a new
+  webhook/notification mechanism (`ADR-060`) that reuses the exact same
+  durable outbox primitive `ADR-033`/`ADR-039` already share — the third
+  reuse `CLAUDE.md` said to re-check, not assume, and it does inherit it
+  (a `WebhookDeliveryCursor` structurally identical to `PeerSyncCursor`).
+  Signing/retry follows the Standard Webhooks specification directly
+  rather than a fourth bespoke convention.
+
 ### Propagation status
 
 **Structurally propagated everywhere** (all of `ADR-021`–`039`):
@@ -439,6 +506,12 @@ superseded and pointing at the ADR that superseded it.
   stale in its own banner) predate `ADR-041` — when that file's sketches
   are eventually redone, they should reflect explicit composition-root
   registration, not just the new projects' names.
+- **`08-build-plan.md` has no phases yet for `ADR-054`–`060`** (client
+  SDK generation, testing strategy, data lifecycle, GDPR erasure, rate
+  limiting, extensibility model, webhooks) — six real capabilities added
+  this pass with no build-plan entry, same gap this section already
+  tracks for everything past `ADR-024`. `ADR-057` (erasure) in particular
+  needs real exit criteria before it's built, given it revises `ADR-009`.
 
 **Feature-doc coverage gap closed** (found during a full-package review,
 this pass): `ADR-021`, `030`, `031`, `032`, `033`/`034` (combined, per

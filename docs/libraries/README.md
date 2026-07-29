@@ -42,10 +42,19 @@ server) and [NWebDav](dotnet/nwebdav.md) (`ADR-032`'s WebDAV surface).
 | [Scalar](dotnet/scalar.md) | dotnet | OpenAPI documentation UI | `ADR-025` |
 | [YARP](dotnet/yarp.md) | dotnet | Reverse proxy / API Gateway — single external entry point | `ADR-049` |
 | [Microsoft.Extensions.Compliance.Redaction](dotnet/compliance-redaction.md) | dotnet | Data classification + automatic log redaction (PII/PHI/PCI) | `ADR-050` |
+| [Kiota](dotnet/kiota.md) | dotnet (generates C#+TypeScript) | OpenAPI-based client SDK generation — publish-side, one tool for both target languages | `ADR-054` |
+| [Strawberry Shake](dotnet/strawberry-shake.md) | dotnet | GraphQL client SDK generation for .NET consumers, same vendor as server-side `HotChocolate` | `ADR-054` |
+| [MSTest](dotnet/mstest.md) | dotnet | Unit-test framework (backend), also the base classes `Playwright` E2E tests use | `ADR-055` |
+| [Moq](dotnet/moq.md) | dotnet | Mocking library for unit tests | `ADR-055` |
+| [Playwright for .NET](dotnet/playwright-dotnet.md) | dotnet | Cross-browser end-to-end UI action tests | `ADR-055` |
+| [ASP.NET Core Rate Limiting middleware](dotnet/aspnetcore-ratelimiting.md) | dotnet | Per-tenant rate limiting/quota, first-party, composes with YARP | `ADR-058` |
 | [Vue 3](web/vue.md) | web | Client application shell (MVVM presentation layer) | `ADR-039`, `mvvm-client-architecture.md` |
 | [Pinia](web/pinia.md) | web | Client-side state store (MVVM data layer) | `mvvm-client-architecture.md` |
 | [Naive UI](web/naive-ui.md) | web | Vue component library + theming | `mvvm-client-architecture.md` |
 | [AsyncAPI React component](web/asyncapi-react.md) | web | AsyncAPI documentation UI | `ADR-025` |
+| [GraphQL Code Generator](web/graphql-code-generator.md) | web | GraphQL client SDK generation for TypeScript consumers | `ADR-054` |
+| [Vitest](web/vitest.md) | web | Unit-test runner (frontend), Vite-native | `ADR-055` |
+| [Vue Test Utils](web/vue-test-utils.md) | web | Vue's own component-mounting/testing library | `ADR-055` |
 
 ## Compared, not adopted
 
