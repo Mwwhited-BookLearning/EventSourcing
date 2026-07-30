@@ -71,4 +71,4 @@ specifically as reference application-identity infrastructure; it's
 also the concrete mechanism an ITAR/CMMC-scoped deployment (NIST SP
 800-171) would point to for verifying every internal workload's
 identity rather than trusting network location, relevant given
-`docs/domains/itar-export-controlled-defense-data.md`'s coverage.
+`docs/domains/itar-export-controlled-defense-data/README.md`'s coverage.
