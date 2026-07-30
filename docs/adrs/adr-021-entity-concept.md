@@ -41,16 +41,38 @@ Decision:
   (matches today's behavior for any event type that doesn't care about
   entity versioning). Supplied: used by `ADR-024`'s conflict detection.
 - Entity Store row shape (see `02-data-model.md` for the full column list):
-  `EntityId` (PK), `EntityType`, `Version` (monotonic, bumped on every
-  fold), `Data` (current materialized snapshot), `Hash` (SHA-256 of
-  canonicalized `Data` — reuses `ADR-019`'s hash primitive, a different
-  application of it: per-entity integrity/diffing, not a chain),
-  `SchemaVersion` (current shape, post-upcast), `LastAppliedSequenceNumber`
-  (replay checkpoint, same idea as `ProjectionCheckpoint` in `09-cqrs-
-  read-models.md` but for this one default projection specifically).
+  `EntityId` (PK), `EntityType`, `Version` (monotonic — ~~bumped on
+  every fold~~ **precise definition per `ADR-029`, not restated
+  identically here until a design review caught the mismatch this
+  session: increments only when `Data` actually changes, not on every
+  fold attempt** — a fold that's a genuine no-op, e.g. a late-arriving
+  duplicate, must not bump `Version`, or an idempotent re-fold would
+  never converge), `Data` (current materialized snapshot), `Hash`
+  (SHA-256 of canonicalized `Data` — reuses `ADR-019`'s hash primitive, a
+  different application of it: per-entity integrity/diffing, not a
+  chain), `SchemaVersion` (current shape, post-upcast),
+  `LastAppliedSequenceNumber` (replay checkpoint, same idea as
+  `ProjectionCheckpoint` in `09-cqrs-read-models.md` but for this one
+  default projection specifically).
 - **Rebuild is the same "replay from `0`" mechanism `ADR-015` already
   established** for custom projections — the Entity Store is not special
-  in this respect, it's just always running.
+  in this respect, it's just always running. This is a whole-store,
+  per-event-type replay (`ADR-015`'s Follow channel is one per event
+  type) — rebuilding one specific `EntityId` in isolation is a
+  *different* query shape, not automatically implied by the above.
+- **A direct, `EntityId`-scoped query path exists alongside the
+  per-event-type Follow API, added this session after a buildability
+  review found no way to answer "every event touching one entity,
+  across all its event types, in order" at all.** `EntityId` is already
+  a required, indexed column on every `StoredEvent` (above) — the gap
+  wasn't the data, it was the missing query surface. `QUERY
+  /entities/{entityId}/events` returns exactly that: every `StoredEvent`
+  with the given `EntityId`, ordered by `SequenceNumber`, regardless of
+  `EventType`. This is what makes a **targeted, single-entity rebuild**
+  possible (`docs/comparisons/authority-rejection-behavior.md`'s
+  post-hoc-rejection refinement) without a whole-store replay — fold
+  just this query's results, the same fold logic the whole-store
+  rebuild already uses, just against a narrower input set.
 
 Consequences:
 - `parentEventIds`/`EventParents` (`ADR-005`) and `EntityId` are
@@ -68,7 +90,7 @@ Consequences:
   for the same reason: guessing wrong here silently scrambles every
   entity's identity.
 - The Entity Store becomes the **read path for "current state of X"**
-  queries (`ADR-029`'s GraphQL layer reads from here, not from replaying
+  queries (`ADR-037`'s GraphQL layer reads from here, not from replaying
   raw events per request) — this is the same split design-docs draws
   between the event store (history, source of truth) and entity store
   (current state, a rebuildable cache of it), now adopted here.

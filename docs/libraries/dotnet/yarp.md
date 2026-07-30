@@ -27,7 +27,7 @@ app.MapReverseProxy();
   "ReverseProxy": {
     "Routes": {
       "graphql": { "ClusterId": "graphql-cluster", "Match": { "Path": "/graphql/{**catch-all}" } },
-      "attachments": { "ClusterId": "attachments-cluster", "Match": { "Path": "/dav/{**catch-all}" } }
+      "attachments": { "ClusterId": "attachments-cluster", "Match": { "Path": "/attachments/{**catch-all}" } }
     },
     "Clusters": {
       "graphql-cluster": { "Destinations": { "d1": { "Address": "https://eventstore-graphql/" } } },
@@ -41,7 +41,7 @@ app.MapReverseProxy();
 
 `ADR-049` — the single external entry point in front of this design's
 now-multiple independently-addressable services (GraphQL Gateway,
-WebDAV attachments, streaming playback, ticket/OAuth endpoints).
+attachment retrieval, streaming playback, ticket/OAuth endpoints).
 External TLS termination and `ADR-006`/`ADR-017`/`ADR-040`
 authentication happen here; internal gateway-to-service calls use
 [`ADR-048`'s SPIFFE/SPIRE](../../adrs/adr-048-spiffe-spire-service-identity.md)

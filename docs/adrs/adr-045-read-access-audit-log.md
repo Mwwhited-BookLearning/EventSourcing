@@ -33,7 +33,7 @@ Decision:
   domain consumer) earn their own store, not a shared one.
 - **Every read through any surface** — GraphQL queries against the
   authoritative Entity Store or the Live View (`ADR-037`/`ADR-042`),
-  WebDAV/attachment retrieval (`ADR-032`), streaming channel playback
+  attachment retrieval (`ADR-032`), streaming channel playback
   (`ADR-031`), ticket-authenticated headerless access (`ADR-040`) —
   writes one `AccessLogEntry`:
   ```csharp

@@ -82,6 +82,14 @@ named as a build target.
 - `ADR-065`/`ADR-069` — local active-scope caching and pluggable
   outbox-flush triggers, for a site coordinator's device operating with
   intermittent connectivity.
+- `ADR-043` (amended this session) — true-offline break-glass access
+  composes directly from `ADR-036`'s device DID key: a monitoring
+  device at a site with a genuine network outage can self-issue a
+  capped, time-boxed emergency capability to a local operator with zero
+  upstream contact, reviewed retroactively once connectivity resumes.
+  This upgrades `ADR-036` from this domain's previously-listed weakest
+  fit toward a real, load-bearing offline-continuity mechanism, not
+  just a device-self-attestation nicety.
 
 ## Special concerns
 

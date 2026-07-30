@@ -6,8 +6,8 @@
 
 Some HTTP callers cannot attach a custom header to their request at
 all — an HTML `<video src>`/`<audio src>`/`<img src>` element, a browser
-`EventSource`, a WebSocket handshake, an OS-native WebDAV client with
-limited header support. Yet the *application* embedding that URL usually
+`EventSource`, a WebSocket handshake, an `<a href>` pointing directly at
+a content-addressed download URL. Yet the *application* embedding that URL usually
 **can** authenticate normally moments earlier. The pattern: the
 header-capable party exchanges its normal credential for a short-lived,
 single-use, opaque **ticket** ahead of time, signs that ticket with a
@@ -22,7 +22,7 @@ which resolves the ticket back into the original credential's claims.
 autonumber
 participant "Header-capable caller\n(SPA/backend service)" as caller
 participant "Identity Provider\n(ticket issuance + introspection)" as idp
-participant "Header-incapable component\n(<video src>, WebDAV client)" as component
+participant "Header-incapable component\n(<video src>, <img src>)" as component
 participant "Receiving service\n(streams the actual content)" as service
 
 caller -> idp: POST /oauth/token (RFC 8693 token exchange)\nAuthorization: Bearer <JWT>, requested_token_type=ticket
@@ -86,8 +86,9 @@ RFC 7662-shaped introspection call, extended with the signature
 parameter; the client-side signing step borrows the same HMAC-over-a-URL
 convention CDNs use for signed content URLs, with no single spec behind
 it. Applied specifically to `ADR-031` (streaming channel playback via
-`<video>`/`<audio>` elements) and `ADR-032` (WebDAV/attachment retrieval
-by clients without full custom-header support) — the two places in this
+`<video>`/`<audio>` elements) and `ADR-032` (attachment retrieval via
+`<img>`/`<a>` elements pointing directly at a content-addressed URL,
+without full custom-header support) — the two places in this
 design where a URL, not a request, is genuinely the only transport.
 
 **Not a Bearer/DPoP replacement**: every other endpoint in this design

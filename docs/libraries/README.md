@@ -22,10 +22,12 @@ project's own business logic — build a small, generalized library
 isolated from business logic rather than scattering the logic through
 it; that library earns a writeup here too, once it exists.
 
-Two real gaps this pass found and closed, rather than left as an
-abstract "GraphQL Gateway"/"WebDAV surface" with no concrete library
-named: [HotChocolate](dotnet/hotchocolate.md) (`ADR-037`'s GraphQL
-server) and [NWebDav](dotnet/nwebdav.md) (`ADR-032`'s WebDAV surface).
+Two real gaps this pass found and closed at the time, rather than left
+as an abstract "GraphQL Gateway"/"WebDAV surface" with no concrete
+library named: [HotChocolate](dotnet/hotchocolate.md) (`ADR-037`'s
+GraphQL server — still adopted) and [NWebDav](dotnet/nwebdav.md)
+(`ADR-032`'s then-proposed WebDAV surface — since declined outright, see
+"Compared, not adopted" below).
 
 ## This catalog doubles as a SOUP list (`ADR-074`)
 

@@ -32,8 +32,9 @@ client) is sequenced near the end for the same reason `ADR-039` itself
 gives: least load-bearing, composes what already exists rather than
 adding new server-side mechanism. **Phase 21 (`ADR-040`'s ticket
 exchange) depends on Phase 14/15 specifically** — it closes a gap those
-two phases' own header-incapable callers (`<video src>` playback, WebDAV
-retrieval) reopen, so it can't meaningfully start until they exist,
+two phases' own header-incapable callers (`<video src>` playback, inline
+`<img src>`/`<a href>` attachment retrieval) reopen, so it can't
+meaningfully start until they exist,
 though it doesn't depend on Phase 18/19/20 at all and could run
 alongside them.
 
@@ -537,7 +538,12 @@ confirms A's change did not overwrite B's.
 
 **Scope**: `ADR-030` — `AppId` joins the schema registry's key; every
 registry/upcast/downcast lookup across Phases 1/10/13 gets `AppId`
-added.
+added. **Boundary note, added this session (`ADR-075`)**: this phase's
+`AppId` isolation now protects different *applications within one
+tenant's own dedicated deployment*, not different *customers* sharing
+one deployment — the deployment boundary itself is the customer
+isolation now, decided after this phase's original exit criteria were
+written.
 
 **Depends on**: Phase 1 (schema registry must exist), Phase 11 (`AppId`
 is part of `EntityId`, already there from Phase 11 — this phase makes the
@@ -600,15 +606,18 @@ and never a response indistinguishable from "no redaction happened here."
 
 **Scope**: `ADR-032` — content-addressed `Attachment`/`AttachmentRef`,
 the two-step upload (`POST /attachments` then a publish carrying the
-hash), WebDAV browsing.
+hash), GraphQL browsing of an entity's linked attachments, and `GET`
+retrieval with HTTP Range-request support.
 
 **Depends on**: Phase 5 (auth — new `attachments:read`/`attachments:ingest`
 scopes).
 
 **Exit criteria**: uploading identical bytes twice deduplicates (one
-stored object, two `AttachmentRef` rows); a WebDAV client (a real OS file
-manager, not a bespoke test client) can browse and download an
-attachment by mounting `/dav/{appId}/...`.
+stored object, two `AttachmentRef` rows); a GraphQL query against an
+entity lists its linked attachments (`contentHash`, `filename`,
+`mimeType`, `sizeBytes`); a `GET` against a content-addressed attachment
+URL with a `Range` header returns `206 Partial Content` for exactly the
+requested byte range.
 
 ## Phase 16 — Sharding & replication
 
@@ -728,7 +737,7 @@ parameter, single-use/short-lived ticket consumption.
 **Depends on**: Phase 5 (auth/token issuance infrastructure — this
 extends it, doesn't replace it), Phase 14 (streaming channel playback,
 the first real header-incapable caller this phase serves), Phase 15
-(WebDAV/attachment retrieval, the second).
+(attachment retrieval, the second).
 
 **Exit criteria**: a `<video src>`-style URL carrying only a ticket +
 signature (never a raw bearer token) successfully streams content; the
@@ -765,7 +774,7 @@ rooted in a DID that isn't a registered `AppTrustRoot` for the target
 `AppId` is rejected; a UCAN rooted in a registered `AppTrustRoot` is
 accepted for that `AppId`'s own custom permission strings with no
 central-IdP-side pre-registration of those strings; every read through
-any surface (GraphQL, WebDAV, streaming playback, ticket-authenticated
+any surface (GraphQL, attachment retrieval, streaming playback, ticket-authenticated
 access) writes an `AccessLogEntry` recording `ReaderActorId` and
 whether `ReaderTrustBasis` is `Authoritative` or `Attested`; tampering
 with a past `AccessLog` entry is detectable by replaying its
@@ -790,7 +799,7 @@ identity; two independent peer servers under different trust domains
 mutually authenticate by exchanging trust bundles, with no shared
 central IdP; a request bearing no valid SVID is rejected at the mTLS
 handshake, before it reaches application code; an external caller
-reaches every surface (GraphQL, WebDAV, streaming, ticket/OAuth
+reaches every surface (GraphQL, attachments, streaming, ticket/OAuth
 endpoints) through one gateway address, never a direct connection to an
 internal service.
 

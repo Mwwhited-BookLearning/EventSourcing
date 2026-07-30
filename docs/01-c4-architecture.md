@@ -62,7 +62,7 @@ rectangle "**Publishing System**\n<<Person>>\n--\nEmits domain patches/actions -
 rectangle "**Consuming System**\n<<Person>>\n--\nQueries current state, history, and subscribes to live changes" <<Person>> as follower
 rectangle "**Platform Operator**\n<<Person>>\n--\nRegisters event types / schemas, per AppId (ADR-030)" <<Person>> as operator
 
-rectangle "**Open Event-Sourced Entity Platform**\n<<System>>\n--\nMulti-tenant framework: persists everything, folds into an Entity Store, exposes GraphQL. One instance per site." <<System>> as eventStore
+rectangle "**Open Event-Sourced Entity Platform**\n<<System>>\n--\nDedicated, siloed deployment per tenant (ADR-075): persists everything, folds into an Entity Store, exposes GraphQL. May itself span multiple sites for one tenant's own fault tolerance (ADR-033)." <<System>> as eventStore
 rectangle "**EventStore.DevIdp**\n<<System_Ext>>\n--\nDev-mode OIDC token issuer + OAuth Token Exchange (OpenIddict, in-process) -- ADR-006/036" <<System_Ext>> as idp
 rectangle "**Peer Site**\n<<System_Ext>>\n--\nAnother instance of the same platform, replicating shared shards -- ADR-033" <<System_Ext>> as peerSite
 
@@ -128,7 +128,7 @@ rectangle "Open Event-Sourced Entity Platform (one site)" <<Boundary>> as system
     rectangle "**Spec Generator**\n<<Container>>\n//.NET//\n--\nBuilds OpenAPI (publish) + GraphQL SDL from registry state; MaskingSchemaTransformer (ADR-002/009)" <<Container>> as specGen
     rectangle "**Streaming Channel Service**\n<<Container>>\n//.NET//\n--\nBatch ingest + tail/replay for telemetry & media channels (ADR-031) -- bypasses schema validation/hash-chain/fold entirely" <<Container>> as streaming
     database "**Streaming Channel Store**\n<<Container>>\n//Plain append-only table, v1 engine choice (ADR-031)//\n--\nTelemetryChannel, TelemetrySample" <<Container>> as streamStore
-    rectangle "**Attachment Service**\n<<Container>>\n//.NET + WebDAV endpoint//\n--\nContent-addressed binary uploads, browsable via WebDAV (ADR-032)" <<Container>> as attachments
+    rectangle "**Attachment Service**\n<<Container>>\n//.NET//\n--\nContent-addressed binary uploads; browse via GraphQL, fetch via GET with Range support (ADR-032)" <<Container>> as attachments
     database "**Attachment Store**\n<<Container>>\n//Content-addressed//\n--\nAttachment, AttachmentRef" <<Container>> as attachmentStore
     rectangle "**Peer Sync Outbox/Inbox**\n<<Container>>\n//Durable store + background service, gossip topology//\n--\nFault/abend/restart-tolerant (ADR-033); reuses the same durable transport as Inbox above" <<Container>> as peerSync
 }
@@ -142,7 +142,7 @@ publisher --> inbox : Publishes patches/actions\n//HTTPS/JSON, Bearer + DPoP//
 follower --> graphql : Query / Subscription\n//HTTPS (QUERY method), Bearer + DPoP//
 operator --> registry : Registers schemas\n//HTTPS/JSON, Bearer//
 publisher --> streaming : Batch-ingests channel samples\n//HTTPS, Bearer//
-publisher --> attachments : Uploads binary content\n//HTTPS/WebDAV, Bearer//
+publisher --> attachments : Uploads binary content\n//HTTPS, Bearer//
 
 inbox --> eventLog : Append "received" (Idempotent Receiver + Inbox pattern)
 inbox --> router : Notify new item
@@ -157,7 +157,7 @@ specGen --> registry : Read schema/event-type metadata
 publisher --> specGen : GET /openapi.json (anonymous)
 follower --> specGen : GraphQL SDL introspection (anonymous)
 streaming --> streamStore : Batch append; tail/replay (ADR-010's shape, reused)
-attachments --> attachmentStore : Content-addressed put/get; WebDAV PROPFIND/GET/PUT
+attachments --> attachmentStore : Content-addressed put/get; GraphQL browse, GET with Range
 eventLog --> peerSync : Feeds outbound peer sync
 peerSync --> eventLog : Delivers events from peers -- same path as Inbox, no special-casing
 peerSync --> peerSite : Gossip exchange\n//HTTPS/JSON//

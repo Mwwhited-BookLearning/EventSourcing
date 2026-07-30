@@ -1,26 +1,34 @@
-# Feature: Binary attachments (content-addressed, linked to an entity or event, browsable via WebDAV)
+# Feature: Binary attachments (content-addressed, linked to an entity or event, browsable via GraphQL, retrieved via plain HTTP)
 
 Context: data model in [`../data/streaming-and-attachments.md`](../data/streaming-and-attachments.md)
 (`Attachment`/`AttachmentRef`); decision record `ADR-032` in
 [`../adrs/adr-032-binary-attachments.md`](../adrs/adr-032-binary-attachments.md);
-concrete library choice in
-[`../libraries/dotnet/nwebdav.md`](../libraries/dotnet/nwebdav.md); pattern
-write-ups (not yet standalone docs) in `../patterns/README.md`'s
-"Content-addressable storage" and "Browsable access via a real filesystem
-protocol" catalog entries. The `Attachment Service` container and
-`Attachment Store` database appear in `../01-c4-architecture.md`; build
-sequencing is Phase 15 in `../08-build-plan.md`. This is the first feature
-doc for `ADR-032` — there is no prior version to supersede, so unlike
-several other `features/*.md` files this one carries no stale-scenario
-banner.
+pattern write-ups (not yet standalone docs) in `../patterns/README.md`'s
+"Content-addressable storage" catalog entry. The `Attachment Service`
+container and `Attachment Store` database appear in
+`../01-c4-architecture.md`; build sequencing is Phase 15 in
+`../08-build-plan.md`. This is the first feature doc for `ADR-032` —
+there is no prior version to supersede, so unlike several other
+`features/*.md` files this one carries no stale-scenario banner.
+
+**WebDAV (OS-native file-manager mounting) was considered and explicitly
+declined** — see `ADR-032`'s Decision and
+[the WebDAV library comparison](../comparisons/webdav-library.md): every
+other real access path (upload, fetch+range, browse/list) was already
+served by mechanisms this design had adopted for unrelated reasons, so
+WebDAV's one unique value (mounting a share as a network drive) wasn't
+worth its trade-offs. The three real access paths this doc covers below
+are the ones actually built.
 
 Upload/link travels over the ordinary Publish API (`ADR-012`'s `QUERY`
 convention doesn't apply here — `POST /attachments` and `POST /publish/...`
 are genuine state-changing writes, not queries) and is unaffected by
 `ADR-037`'s GraphQL swap, which only replaced the OData-era read surface.
-Browsing/retrieval is a second, deliberately separate surface: **WebDAV**
-(RFC 4918), consumed by an OS file manager, not by the GraphQL Gateway —
-`GET`'s byte-range support reuses `ADR-031`'s Range-request reasoning
+Browsing an entity's attachments is an ordinary GraphQL query, resolved
+as a nested field off the owning entity (`entity(id) { attachments {
+contentHash, filename, mimeType, sizeBytes } } }`) — no separate browse
+API needed. Retrieval is a plain `GET` against a content-addressed URL,
+whose byte-range support reuses `ADR-031`'s Range-request reasoning
 (seekable retrieval), the same mechanism, not a second implementation.
 
 ## Sequence diagram — uploading and linking an attachment
@@ -67,40 +75,33 @@ independent flags — either, both, or (for a second entry) different
 combinations may be set in the same publish call, each producing one
 `AttachmentRef` row.
 
-## Sequence diagram — browsing and retrieving via WebDAV
+## Sequence diagram — browsing via GraphQL and retrieving via a Range GET
 
 ```plantuml
-@startuml BinaryAttachments_WebDAV_Sequence
+@startuml BinaryAttachments_Browse_Sequence
 autonumber
-actor "WebDAV Client\n(OS file manager)" as client
-participant "NWebDav middleware" as webdav
-participant "AttachmentWebDavStore\n(IStore / IStoreCollection / IStoreItem)" as davStore
-database "Attachment Store" as db
+actor "Consuming System" as follower
+participant "GraphQL Gateway" as graphql
+participant "Attachment API" as attachApi
+database "Attachment & Entity Store" as db
 
-client -> webdav: PROPFIND /dav/{appId}/Patient/patient-1/\nDepth: 1
-webdav -> davStore: GetItemsAsync(collectionPath)
-davStore -> db: SELECT AttachmentRef JOIN Attachment\nWHERE EntityId = "patient-1"
-db --> davStore: rows (ContentHash, FileName, MimeType, SizeBytes)
-davStore --> webdav: virtual IStoreItem list\n(name = FileName, falls back to ContentHash)
-webdav --> client: 207 Multi-Status (resource list)
+follower -> graphql: QUERY { entity(id: "patient-1") {\n  attachments { contentHash, filename, mimeType, sizeBytes } } }
+graphql -> db: SELECT AttachmentRef JOIN Attachment\nWHERE EntityId = "patient-1"
+db --> graphql: rows (ContentHash, FileName, MimeType, SizeBytes)
+graphql --> follower: 200 { entity: { attachments: [ {contentHash, filename, ...}, ... ] } }
 
-client -> webdav: GET /dav/{appId}/Patient/patient-1/consent-form.pdf\nRange: bytes=0-999
-webdav -> davStore: GetReadableStreamAsync(item, range)
-davStore -> db: SELECT Bytes FROM Attachment WHERE ContentHash = :ContentHash
-db --> davStore: full byte[]
-davStore --> webdav: byte[0..999] slice (seekable stream)
-webdav --> client: 206 Partial Content\nContent-Range: bytes 0-999/SizeBytes
-
-client -> webdav: LOCK /dav/{appId}/Patient/patient-1/consent-form.pdf
-webdav --> client: 200 (lock granted, uncontested --\nno real cooperative locking in v1, ADR-032)
+follower -> attachApi: GET /attachments/{contentHash}\nRange: bytes=0-999
+attachApi -> db: SELECT Bytes FROM Attachment WHERE ContentHash = :ContentHash
+db --> attachApi: full byte[]
+attachApi --> follower: 206 Partial Content\nContent-Range: bytes 0-999/SizeBytes
 @enduml
 ```
 
-The virtual hierarchy is projected, not real: `/dav/{appId}/{entityType}/
-{entityId}/` has no backing folder row anywhere — `AttachmentWebDavStore`
-computes it on every request from `AttachmentRef.EntityId` joins, the same
-content-addressed rows `ADR-032` already defined for the upload path
-above.
+There is no virtual folder/file hierarchy of any kind — attachments are
+addressed directly by `ContentHash` (the Decision above), discovered by
+querying the entity they're linked to, exactly the access shape `ADR-032`
+specifies. `GET`'s byte-range support is the same `ADR-031` Range-request
+mechanism, not a second implementation.
 
 ## Data model (ER diagram)
 
@@ -142,7 +143,8 @@ note bottom of attachment
   ContentHash is the real primary key in spirit (SHA-256 of Bytes) --
   uploading identical bytes twice reuses this row rather than
   inserting a second one (ADR-032's dedup-by-content-equality).
-  Never deleted or mutated once inserted.
+  Never deleted or mutated once inserted. FileName is optional,
+  display-name only -- never part of the address.
 end note
 @enduml
 ```
@@ -157,30 +159,33 @@ Consequences already state.
 
 ## Salt (UI mockup)
 
-Not applicable — this ADR deliberately has no designed UI surface. WebDAV
-is consumed by general-purpose OS file managers (Windows Explorer, macOS
-Finder) that already know how to render a mounted WebDAV URL; there's
-nothing bespoke to mock up. A true OS-level virtual filesystem (on-demand
-hydration, offline sync, `<video>`-style placeholder files) is explicitly
-out of scope for the core engine (`ADR-032`'s closing note) — if built at
-all, it's a client-side consumer under `ADR-039`'s MVVM client, and would
-get its own Salt mockup there, not here.
+Not applicable — this ADR deliberately has no designed UI surface.
+Attachments are consumed the same way any other GraphQL-queried/
+HTTP-fetched resource in this design is: through whatever client
+(`ADR-039`'s MVVM client, a script, a browser tab) already knows how to
+run a GraphQL query and issue a `GET`. There's nothing bespoke to mock
+up. A true OS-level virtual filesystem (on-demand hydration, offline
+sync, mounting attachments as a drive) was considered as a possible
+future client-side extension but is now explicitly dropped, not just
+deferred, since the WebDAV surface it would have built on top of was
+never built — see `ADR-032`'s closing note and `ADR-039`'s own
+Consequences.
 
 ## Gherkin
 
 ```gherkin
-Feature: Binary attachments (content-addressed, linked to an entity or event, browsable via WebDAV)
+Feature: Binary attachments (content-addressed, linked to an entity or event, browsable via GraphQL, retrieved via plain HTTP)
   As a publishing system
   I want to upload a binary attachment once and link it to an entity and/or a specific event
-  And as a WebDAV client
-  I want to browse and retrieve those attachments through a familiar file-manager UX
+  And as a consuming system
+  I want to browse an entity's attachments via GraphQL and retrieve them via plain HTTP
   So that supporting documents are stored once, deduplicated by content, and never require a bespoke browse API
 
   # Every request carries a Bearer token with sufficient scope
   # (attachments:ingest for POST /attachments and attachmentRefs on a publish,
-  # attachments:read for PROPFIND/GET/LOCK, events:publish for the publish call
-  # itself) unless a scenario says otherwise. See auth.md for authentication/
-  # authorization behavior itself.
+  # attachments:read for the GraphQL browse query and the retrieval GET,
+  # events:publish for the publish call itself) unless a scenario says
+  # otherwise. See auth.md for authentication/authorization behavior itself.
 
   Background:
     Given the entity type "Patient" is registered (ADR-021)
@@ -229,31 +234,32 @@ Feature: Binary attachments (content-addressed, linked to an entity or event, br
     Then the response status should be 201 with the created eventId as "visit-1"
     And an AttachmentRef should exist with contentHash "h-referral-1", eventId "visit-1", and no entityId
 
-  Scenario: Browsing an entity's attachments lists them under its virtual WebDAV folder
+  Scenario: Browsing an entity's attachments via GraphQL lists them
     Given attachment "h-history-1" (named "history.pdf") is linked to entity "patient-1"
     And attachment "h-referral-1" (named "referral.pdf") is linked to entity "patient-1"
-    When I PROPFIND "/dav/app-1/Patient/patient-1/" with Depth 1
-    Then the response status should be 207
-    And the resource list should include "history.pdf" and "referral.pdf"
+    When I QUERY the GraphQL Gateway with:
+      """
+      { entity(id: "patient-1") { attachments { contentHash, filename, mimeType, sizeBytes } } }
+      """
+    Then the response status should be 200
+    And the "attachments" list should include entries with filename "history.pdf" and filename "referral.pdf"
 
   Scenario: Retrieving an attachment via a byte-range GET returns partial content
     Given attachment "h-history-1" (named "history.pdf", 10000 bytes) is linked to entity "patient-1"
-    When I GET "/dav/app-1/Patient/patient-1/history.pdf" with header "Range: bytes=0-999"
+    When I GET "/attachments/h-history-1" with header "Range: bytes=0-999"
     Then the response status should be 206
     And the response header "Content-Range" should be "bytes 0-999/10000"
     And the response body should be exactly the first 1000 bytes of "history.pdf"
 
-  Scenario: Deleting an uploaded attachment is rejected -- it is never mutated once uploaded
-    Given attachment "h-history-1" (named "history.pdf") is linked to entity "patient-1"
-    When I DELETE "/dav/app-1/Patient/patient-1/history.pdf"
-    Then the response status should be 403
-    And the Attachment row for ContentHash "h-history-1" should still exist with its original bytes
-    And the AttachmentRef linking it to "patient-1" should be unchanged
-
-  Scenario: A LOCK request against an attachment is granted uncontested, not real cooperative locking
-    Given attachment "h-history-1" (named "history.pdf") is linked to entity "patient-1"
-    When I LOCK "/dav/app-1/Patient/patient-1/history.pdf"
+  Scenario: Retrieving an attachment with no Range header returns the whole object
+    Given attachment "h-history-1" (named "history.pdf", 10000 bytes) is linked to entity "patient-1"
+    When I GET "/attachments/h-history-1" without a "Range" header
     Then the response status should be 200
-    And a second, concurrent LOCK request against the same resource should also succeed
-    And no lock token issued this way blocks any other client's GET or PROPFIND
+    And the response body should be exactly the 10000 bytes of "history.pdf"
+
+  Scenario: An attachment is never mutated once uploaded
+    Given attachment "h-history-1" (named "history.pdf") is linked to entity "patient-1"
+    When the same bytes are uploaded again via "/attachments"
+    Then the Attachment row for ContentHash "h-history-1" is reused, not replaced
+    And no endpoint in this design accepts a request to modify or delete an existing Attachment row
 ```

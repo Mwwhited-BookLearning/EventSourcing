@@ -7,9 +7,10 @@ Status: Accepted
 Context: `ADR-006`/`ADR-017` assume every caller can set an `Authorization`
 (and `DPoP`) HTTP header. Some real callers genuinely can't: an HTML
 `<video src>`/`<audio src>` element (`ADR-031`'s streaming channel
-playback), a WebDAV client mounting an `ADR-032` share without full
-custom-header support, or any URL handed to a component the calling
-application doesn't control the request internals of. This isn't a new
+playback), an `<img src>`/`<a href>` element pointing directly at an
+`ADR-032` content-addressed attachment URL, or any URL handed to a
+component the calling application doesn't control the request
+internals of. This isn't a new
 problem for this design — `ADR-006` originally carried an
 `access_token`-in-URL workaround for exactly this reason (`EventSource`
 can't set headers either), and `ADR-012` **removed** it once Follow moved
@@ -58,12 +59,12 @@ Decision:
      It appends both to the target URL: `.../stream/{id}?ticket=...&sig=...`,
      and only *that* URL — never the bearer token, never the shared
      secret — is handed to the header-incapable component (`<video>.src`,
-     a WebDAV path, etc.).
+     an `<img>`/`<a>` `href`, etc.).
   3. **Resolution — an OAuth 2.0 Token Introspection (RFC 7662)-shaped
      call, extended with the `sig` parameter.** The header-incapable
      component's plain `GET .../stream/{id}?ticket=...&sig=...` lands at
-     the Streaming Channel Service (`ADR-031`) or Attachment/WebDAV
-     Service (`ADR-032`) exactly as any unauthenticated request would.
+     the Streaming Channel Service (`ADR-031`) or Attachment Service
+     (`ADR-032`) exactly as any unauthenticated request would.
      That service holds **no shared secret and performs no signature
      verification itself** — it forwards `ticket`+`sig` to the IdP:
      ```
@@ -104,7 +105,7 @@ Decision:
   API call keeps authenticating exactly as `ADR-006`/`ADR-017` already
   specify. This mechanism exists *only* for the specific, real
   capability gap named above — Streaming Channel playback URLs
-  (`ADR-031`) and WebDAV/Attachment retrieval URLs (`ADR-032`) — not as
+  (`ADR-031`) and attachment retrieval URLs (`ADR-032`) — not as
   an alternative auth path for anything that can already send a header.
 
 Consequences:

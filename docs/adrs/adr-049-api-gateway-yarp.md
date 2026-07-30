@@ -9,7 +9,7 @@ proxy tier exists in this design — each `EventStore.Host.<Provider>`
 is a single deployable serving its own endpoints directly." That
 premise no longer holds. `06-solution-structure.md` now lists multiple,
 independently-addressable external surfaces — the GraphQL Gateway
-(`ADR-037`), WebDAV attachment access (`ADR-032`), streaming channel
+(`ADR-037`), attachment retrieval (`ADR-032`), streaming channel
 playback (`ADR-031`), ticket issuance/introspection (`ADR-040`), and
 OAuth token endpoints (`ADR-006`) — exactly the shape the real **API
 Gateway pattern** ([microservices.io](https://microservices.io/patterns/apigateway.html))

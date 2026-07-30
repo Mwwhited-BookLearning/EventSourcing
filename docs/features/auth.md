@@ -3,9 +3,9 @@
 > **Partially superseded.** Every token now also carries a DPoP proof
 > (`ADR-017`) not shown below. `EventStore.DevIdp` also performs OAuth
 > Token Exchange for self-attested UCANs (`ADR-036`) and for
-> header-incapable-client tickets (`ADR-040` — streaming/WebDAV playback
-> URLs, resolved via an RFC 7662-shaped introspection call, not shown
-> below). The Follow-specific `QUERY` framing below is accurate for the
+> header-incapable-client tickets (`ADR-040` — streaming playback /
+> attachment retrieval URLs, resolved via an RFC 7662-shaped
+> introspection call, not shown below). The Follow-specific `QUERY` framing below is accurate for the
 > method itself but predates its GraphQL Subscription wrapping
 > (`ADR-037` — see `follow-subscribe.md`'s banner). Tracked as
 > outstanding propagation work (`CLAUDE.md`), not done in this pass.
