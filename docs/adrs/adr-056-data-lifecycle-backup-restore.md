@@ -80,3 +80,12 @@ Consequences:
   sizing a backup plan doesn't have to reconstruct it from first
   principles across `event-log.md`/`streaming-and-attachments.md`/
   `09-cqrs-read-models.md`.
+
+**Compliance note** (a proving-ground compliance review, this session):
+this ADR's authoritative/must-back-up classification is exactly what
+HIPAA's Security Rule already requires for the clinical-trials domain —
+45 CFR §164.308(a)(7)(ii)(A)'s Data Backup Plan mandates "procedures to
+create and maintain retrievable exact copies of electronic protected
+health information," the same bar this ADR draws around the Event Log,
+Schema Registry, Streaming Channel Store, Attachment Store, and Read
+Access Audit Log.

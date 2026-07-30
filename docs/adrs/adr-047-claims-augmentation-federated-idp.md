@@ -92,3 +92,11 @@ Consequences:
   same operational shape `ADR-006`'s own `/.well-known/openid-
   configuration` discovery already has, just pointed at a third party
   instead of `EventStore.DevIdp` itself.
+
+**Compliance note** (a proving-ground compliance review, this session):
+the "augments — never replaces" rule for a federated IdP's own identity
+claims is the same integrity guarantee NIST SP 800-63C's Federation
+Assurance Level (FAL) requires of a relying party — an assertion's
+signed identity attributes must pass through unaltered, with local
+claims added alongside, never overwriting what the external,
+already-authoritative IdP verified.

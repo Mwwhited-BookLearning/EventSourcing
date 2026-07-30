@@ -40,7 +40,7 @@ it already carries most of what IEC 62304 asks for (name, what it's
 for, where it's adopted); known anomalies and the specific functional
 requirement each library fulfills are the fields still to be retrofitted
 per entry, named as real remaining work, not silently skipped. A
-separate, automatically-generated **SBOM** (`microsoft/sbom-tool`, SPDX
+separate, automatically-generated **SBOM** ([`microsoft/sbom-tool`](dotnet/sbom-tool.md), SPDX
 format) is the machine-readable complement to this human-curated
 catalog — the SBOM answers "what's actually built," this catalog
 answers "why, and what's the risk."
@@ -59,6 +59,7 @@ answers "why, and what's the risk."
 | [Testcontainers](dotnet/testcontainers.md) | dotnet | Disposable real-database integration tests | `06-solution-structure.md` |
 | [Scalar](dotnet/scalar.md) | dotnet | OpenAPI documentation UI | `ADR-025` |
 | [YARP](dotnet/yarp.md) | dotnet | Reverse proxy / API Gateway — single external entry point | `ADR-049` |
+| [SPIFFE/SPIRE](dotnet/spiffe-spire.md) | dotnet | Internal service/peer workload identity (X.509-SVID, mTLS, cross-trust-domain federation) | `ADR-048` |
 | [Microsoft.Extensions.Compliance.Redaction](dotnet/compliance-redaction.md) | dotnet | Data classification + automatic log redaction (PII/PHI/PCI) | `ADR-050` |
 | [Kiota](dotnet/kiota.md) | dotnet (generates C#+TypeScript) | OpenAPI-based client SDK generation — publish-side, one tool for both target languages | `ADR-054` |
 | [Strawberry Shake](dotnet/strawberry-shake.md) | dotnet | GraphQL client SDK generation for .NET consumers, same vendor as server-side `HotChocolate` | `ADR-054` |
@@ -68,6 +69,11 @@ answers "why, and what's the risk."
 | [ASP.NET Core Rate Limiting middleware](dotnet/aspnetcore-ratelimiting.md) | dotnet | Per-tenant rate limiting/quota, first-party, composes with YARP | `ADR-058` |
 | [FsCheck](dotnet/fscheck.md) | dotnet | Property-based testing — hash-chain and conflict-resolution-policy invariants | `ADR-063` |
 | [Polly + Simmy](dotnet/polly-simmy.md) | dotnet | In-process fault injection — durable outbox/inbox crash-recovery testing | `ADR-063` |
+| [Azure Key Vault](dotnet/azure-key-vault.md) | dotnet | `IErasureKeyStore` backend — cloud key management | `ADR-057` |
+| [AWS KMS](dotnet/aws-kms.md) | dotnet | `IErasureKeyStore` backend — cloud key management | `ADR-057` |
+| [Google Cloud KMS](dotnet/google-cloud-kms.md) | dotnet | `IErasureKeyStore` backend — cloud key management | `ADR-057` |
+| [HashiCorp Vault](dotnet/hashicorp-vault.md) | dotnet | `IErasureKeyStore` backend — on-prem/self-hosted key management | `ADR-057` |
+| [microsoft/sbom-tool](dotnet/sbom-tool.md) | dotnet | Automated SPDX SBOM generation at build/release time | `ADR-074` |
 | [Vue 3](web/vue.md) | web | Client application shell (MVVM presentation layer) | `ADR-039`, `mvvm-client-architecture.md` |
 | [Pinia](web/pinia.md) | web | Client-side state store (MVVM data layer) | `mvvm-client-architecture.md` |
 | [Naive UI](web/naive-ui.md) | web | Vue component library + theming | `mvvm-client-architecture.md` |
@@ -86,3 +92,17 @@ there, not duplicated here, since a library that wasn't picked doesn't
 get a "how this design uses it" section: [Blazor, React, Angular](../comparisons/ui-framework.md)
 (lost to Vue), and every non-GraphQL option in
 [the API query layer comparison](../comparisons/api-query-layer.md).
+
+## Named for a future escalation, not yet adopted
+
+`ADR-063`'s staged distributed-correctness testing path names two further
+tools as the deliberate, deferred next steps if this design ever moves
+toward production — not adopted now, so deliberately given no standalone
+writeup here (there is no "how this design calls it" yet): **Testcontainers
++ [Toxiproxy](https://github.com/Shopify/toxiproxy)** (real network-level
+fault injection — genuine multi-process partition testing, reusing the
+`Testcontainers` infrastructure already adopted above) as the first move
+once a real production deployment is being planned, and **Jepsen-style
+external black-box verification** as the named ceiling beyond that. See
+[`docs/comparisons/distributed-correctness-testing.md`](../comparisons/distributed-correctness-testing.md)
+for the full comparison and `ADR-063` for the staged-adoption decision.

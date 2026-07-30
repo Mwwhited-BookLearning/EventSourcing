@@ -113,3 +113,8 @@ forensics by construction."
   entity-scoped grant mechanism, but the review should note the
   difference in intent rather than assume the identical mechanism means
   an identical use case.
+- **Accessibility (`ADR-073`)** — examiner- and case-attorney-facing
+  review screens (including `ADR-068`'s litigation-review playback UI)
+  render through this framework's client the same as any other domain;
+  WCAG 2.1 AA applies here too, not just the government-case-management
+  candidate it was originally tagged under.

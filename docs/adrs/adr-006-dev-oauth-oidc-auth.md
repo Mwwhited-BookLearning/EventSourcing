@@ -94,3 +94,14 @@ Consequences:
   per-deployment provider build from `ADR-001`, which still determines the
   DbContext/migrations wiring exactly as described there, independent of
   whether Aspire or plain `docker run` launched the process.
+
+**Compliance note** (a proving-ground compliance review, this session):
+the OAuth2/OIDC bearer-token authentication established here is the
+concrete mechanism satisfying NIST SP 800-53 Rev. 5's `IA-2`
+("Identification and Authentication (Organizational Users)") — uniquely
+identifying and authenticating a caller before any request reaches
+`ADR-008`'s per-event-type claim checks or is recorded as `ADR-064`'s
+`ActorId`. Every later audit/access-control mechanism this design has
+(`ADR-045`'s access log, `ADR-046`'s RBAC, `ADR-064`'s write-side
+attribution) depends on this identification step having actually
+happened first, not on any of them re-verifying identity themselves.

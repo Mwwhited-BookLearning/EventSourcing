@@ -17,10 +17,11 @@ the mechanisms this feature reuses rather than invents — streaming
 ingestion as a separate fast path, deep-linking via temporal fragment
 URIs, seekable playback via byte-range requests — are catalogued in
 `../patterns/README.md`'s "Decided, not yet written up as standalone
-docs" table. `RedactedRange`'s read-time redaction transform is
-deliberately **not** specified beyond its field shape here — it's an open
-question tracked in `../10-open-questions.md`, not a designed mechanism,
-and this doc doesn't pretend otherwise.
+docs" table. `RedactedRange`'s read-time redaction transform, originally
+left unspecified beyond its field shape, is now resolved in `ADR-052`
+(read-time, zero-fill/tone/blank-frame default per `ContentKind`, a
+configurable `Strategy`) — see `../comparisons/streaming-redaction-mechanism.md`
+for the full prior-art search and reasoning.
 
 The `Streaming Channel Service` container appears in
 `../01-c4-architecture.md` (its component diagram is flagged there as
@@ -153,7 +154,7 @@ entity "StoredEvent" as event {
 }
 
 channel ||--o{ sample : "ChannelId -- real FK,\nevery sample belongs to a declared channel"
-channel ..o{ redaction : "ChannelId -- field shape only (ADR-031);\nread-time substitution mechanism not\ndesigned further, see 10-open-questions.md"
+channel ..o{ redaction : "ChannelId -- field shape (ADR-031),\nread-time substitution mechanism\nresolved in ADR-052"
 channel ..> channel : "SourceChannelIds -- a Derived channel references\none or more source channels; a string list,\nnot a normal FK"
 event ..> channel : "TelemetryPointer.ChannelId -- logical only,\nNOT a DB FK; TelemetryPointer itself is a\ncolumn on StoredEvent, defined in event-log.md"
 
@@ -165,11 +166,11 @@ note right of sample
 end note
 
 note bottom of redaction
-  Named field shape only (ADR-031).
+  Field shape named in ADR-031.
   The read-time transform that substitutes
-  silence/blank-frames/zeroed-samples over
-  this span is a genuinely open question,
-  not yet a full ADR -- see 10-open-questions.md.
+  zero-fill/tone/blank-frame content over
+  this span is resolved in ADR-052 --
+  see comparisons/streaming-redaction-mechanism.md.
 end note
 @enduml
 ```

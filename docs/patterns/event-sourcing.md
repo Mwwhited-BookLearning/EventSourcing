@@ -101,3 +101,16 @@ in this design sits on top of:
 Current-state reads never touch the event log directly at request time —
 that's the Entity Store (`ADR-021`) and custom CQRS projections
 (`ADR-015`/`016`), covered in the next pattern.
+
+The envelope this pattern captures alongside each event keeps growing as
+new, genuinely distinct questions come up, each getting its own field
+rather than overloading an existing one (`CLAUDE.md`'s running list):
+`ADR-064` adds `ActorId` (who a verified authentication layer says
+published this, for every event, not just self-attested ones) and
+`ADR-066` adds `Signature` (a captured digital sign-off, for event types
+that require one) — both ordinary envelope metadata on `StoredEvent`,
+neither ever rewriting a stored event's `Payload` or touching `ADR-019`'s
+hash chain differently than any other field already does. `ADR-056`
+also names the Event Log directly as this design's one, non-negotiable
+**authoritative, must-be-backed-up** store — the write side everything
+else in this pattern is defined as being rebuildable *from*.

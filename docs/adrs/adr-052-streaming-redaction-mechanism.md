@@ -90,3 +90,11 @@ Consequences:
   tracked for the redaction mechanism itself; the `PartialReveal`
   promotion also narrows (not fully resolves) the separate
   masking-strategies open question — see `ADR-009`'s update.
+
+**Compliance note** (a proving-ground compliance review, this session):
+the video channel's blank-frame default addresses a real, named HIPAA
+identifier — "full-face photographic images and comparable images" is
+#17 of the 18 Safe Harbor identifiers (45 CFR § 164.514(b)(2)) — meaning
+claim-gated video redaction isn't just a privacy nicety here, it's
+covering an identifier class HIPAA explicitly names as needing removal
+for de-identification.

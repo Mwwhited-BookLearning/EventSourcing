@@ -107,3 +107,12 @@ Consequences:
   are now guaranteed to be surfaced as an `x-required-claims` OpenAPI/
   AsyncAPI Specification Extension in generated docs, and reused to
   drive log redaction — see that ADR for the full shape.
+
+**Compliance note** (a proving-ground compliance review, this session):
+`RequiredPublishClaim`/`RequiredReadClaim`'s per-event-type, per-node
+enforcement is the concrete mechanism implementing NIST SP 800-53 Rev.
+5's `AC-3` ("Access Enforcement") — the same control family `ADR-046`'s
+RBAC role indirection cites, layered on top of this ADR rather than
+replacing it: this is the actual request-time enforcement point, roles
+and direct grants (`ADR-046`) just decide which claims a caller ends up
+holding by the time this check runs.

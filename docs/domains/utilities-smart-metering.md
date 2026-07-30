@@ -44,6 +44,11 @@ domain still scores weak on masking, delegated access, and erasure.
   ingestion.
 
 **Secondary fit (real, but not the domain's defining characteristic):**
+- `ADR-074` — SBOM/SOUP list: NERC CIP-013 (supply-chain cyber security
+  risk management, effective July 2020) requires grid operators to
+  assess software integrity/authenticity and vendor supply-chain risk —
+  a real, verified driver for `ADR-074`'s SBOM generation, alongside
+  clinical trials' direct FDA Section 524B requirement.
 - `ADR-005` — event lineage: a billing calculation or load forecast
   derives from raw meter readings, a real but supporting DAG.
 - `ADR-046`/`ADR-043` (RLS) — role-based access across grid operators,
@@ -96,3 +101,13 @@ domain still scores weak on masking, delegated access, and erasure.
 - **State PUC regulation is fragmented, state-by-state**, the same
   multi-jurisdiction operational complexity noted for insurance's NAIC
   model laws.
+- **Accessibility (`ADR-073`)** — customer- and grid-operator-facing
+  screens render through this framework's client the same as any other
+  domain; WCAG 2.1 AA applies here too, most directly if this domain is
+  ever extended to residential-customer-facing billing/usage portals.
+- **GDPR breach notification (Art. 33/34)** — this domain already lists
+  GDPR/CCPA for consumption data above (the same under-scored tension
+  named there); the 72-hour notification *workflow* itself remains an
+  open question (`docs/10-open-questions.md`) — `ADR-045`'s access audit
+  log supplies the forensic inputs, but the notification process itself
+  isn't designed yet.

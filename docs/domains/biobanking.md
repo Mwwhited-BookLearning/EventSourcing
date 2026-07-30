@@ -100,3 +100,13 @@ sharpest erasure-vs-retention tension of any candidate.
   against a simple "erase on request" default and argues for the same
   per-field, structural-record-preserving approach `ADR-057` already
   takes elsewhere.
+- **Accessibility (`ADR-073`)** — biobank-staff and researcher-facing
+  screens render through this framework's client the same as any other
+  domain; WCAG 2.1 AA applies here too, not just the
+  government-case-management candidate it was originally tagged under.
+- **GDPR breach notification (Art. 33/34)** — this domain already relies
+  on GDPR Art. 9 for special-category genetic/health data above; the
+  72-hour notification *workflow* itself remains an open question
+  (`docs/10-open-questions.md`) — `ADR-045`'s access audit log supplies
+  the forensic inputs, but the notification process itself isn't
+  designed yet.

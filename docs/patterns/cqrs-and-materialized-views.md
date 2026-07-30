@@ -137,3 +137,11 @@ explicitly.
   authoritative publish](interactions/gated-authoritative-publish.md)
   for how it composes with Write-Audit-Publish and the Quarantine
   pattern at that specific point.
+- **`ADR-056`'s data-lifecycle classification leans directly on the
+  "entirely disposable, rebuildable" half of this pattern's own
+  definition** — the Entity Store, every custom projection, and every
+  materialized upcast are all named there as *not requiring backup*, for
+  exactly the reason stated above: a full rebuild is just replaying the
+  event log from `SequenceNumber 0` again, the same property this
+  pattern's own "When you'd reach for it" section promises, now put to
+  use for a disaster-recovery argument rather than just a read-shape one.

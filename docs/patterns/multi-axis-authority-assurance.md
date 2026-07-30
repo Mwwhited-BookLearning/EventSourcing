@@ -93,3 +93,15 @@ needs to route identity-verification work separately from
 detection-confirmation work; an async permission-approval mechanism that
 would create a real "authorization pending" state) rather than leaving
 this closed by default with no way back in.
+
+**One real, later mechanism does elevate along the AAL axis specifically,
+without reopening this decision**: [Step-Up
+Authentication](step-up-authentication.md) (`ADR-066`, RFC 9470) is a
+concrete, per-action *runtime* mechanism for moving a caller from a lower
+to a higher Authenticator Assurance Level — the same AAL concept this
+doc's NIST citation already names — triggered by a specific event type's
+`RequiredSignature` configuration. This doesn't split `AuthorityStatus`
+or `ReaderTrustBasis` into a separate stored AAL field the way the
+declined comparison above considered; it's an on-demand, per-request
+elevation check against the caller's *current* token, not a new persisted
+axis on data this design stores.

@@ -1,4 +1,4 @@
-[← Document index](README.md)
+[← Document index](../README.md)
 
 # Extensibility Points Reference
 

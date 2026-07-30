@@ -117,4 +117,21 @@ ordinary, queryable event (`QUERY /follow/EventUpcastFailed`) rather than
 a separate mechanism. `ADR-023` generalizes this: any schema/authority
 problem becomes an advisory flag on a persisted event, the same "don't
 drop it, mark it and move on" shape, just without always needing a
-distinct dead-letter event type for every failure kind.
+distinct dead-letter event type for every failure kind. `ADR-060`'s
+`WebhookDeliveryFailed` (an exhausted-retry webhook delivery published
+back as an ordinary event) is the identical shape applied to an outbound
+failure instead of an inbound one.
+
+**Reused a third time by `ADR-072`'s batch endpoint, and once more on
+the outbound side by `ADR-060`'s webhooks**: `POST /publish/batch`
+carries N submissions in one request, but each one still goes through
+this exact same per-event idempotency/inbox path (`ADR-011`/`ADR-023`) —
+batching is purely a transport optimization (one round trip, one DB
+transaction), never a different guarantee, and a batch's response is an
+array of the same per-event status envelope, in submission order, never
+an all-or-nothing outcome. `ADR-060`'s webhook delivery asks the same
+discipline of its *consumers*: a `webhook-id` header (Standard Webhooks)
+doubles as the idempotency key a receiving party is expected to
+de-duplicate on, the same Idempotent Receiver responsibility this
+framework's own publish endpoint already asks of every caller, now
+stated as guidance for a webhook consumer instead.

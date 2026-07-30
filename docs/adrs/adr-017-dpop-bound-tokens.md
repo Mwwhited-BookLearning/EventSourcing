@@ -60,3 +60,12 @@ Consequences:
 - Client clock skew becomes an operational concern for the first time
   (proof `iat` freshness checking) — nothing else in this design needed
   client/server time agreement.
+
+**Compliance note** (a proving-ground compliance review, this session):
+DPoP's proof-of-possession and replay resistance (RFC 9449) are exactly
+what NIST SP 800-63B requires of an AAL2+ authenticator — §5.2.8's
+mandatory replay resistance and §5.2.5's verifier-impersonation-
+resistance binding (strongly and irreversibly binding a channel
+identifier to the authenticator output via a client-held private key) —
+making this a real identity-assurance uplift over plain bearer tokens,
+not just defense-in-depth for its own sake.

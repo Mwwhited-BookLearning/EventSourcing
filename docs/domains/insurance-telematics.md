@@ -92,3 +92,21 @@ digital identity — it's broad rather than defining.
   brokerage, or education, `ADR-057`'s footnote does not flag insurance
   as having a comparable regulatory-retention pull against erasure; it
   scores a plain H, not H*.
+- **Accessibility (`ADR-073`)** — policyholder- and claimant-facing
+  screens render through this framework's client the same as any other
+  domain; WCAG 2.1 AA applies here too, not just the
+  government-case-management candidate it was originally tagged under.
+- **GDPR breach notification (Art. 33/34)** — this domain already relies
+  on GDPR/CCPA for policyholder erasure above; the 72-hour notification
+  *workflow* itself remains an open question (`docs/10-open-questions.md`)
+  — `ADR-045`'s access audit log supplies the forensic inputs, but the
+  notification process itself isn't designed yet.
+- **No existing ADR addresses algorithmic bias/fairness auditing for
+  automated underwriting or pricing decisions** — a genuine gap, not a
+  stretch: several states now require it directly (e.g. Colorado
+  SB21-169's testing requirement for external-data/AI models used in
+  insurance, and NY DFS's AI-underwriting guidance), and telematics-driven
+  pricing is exactly the kind of automated, data-driven decision those
+  rules target. Nothing in this framework's ADR set designs a
+  model-fairness-testing or bias-documentation mechanism — a candidate
+  for a future ADR, not yet decided.

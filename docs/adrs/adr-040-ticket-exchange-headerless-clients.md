@@ -149,3 +149,11 @@ Consequences:
   tracked as propagation work, done in this pass for the pattern catalog
   and references, deferred for the full API-contract rewrite consistent
   with `ADR-037`'s already-outstanding contract-doc debt.
+
+**Compliance note** (a proving-ground compliance review, this session):
+the single-use, signed ticket mechanism is what makes streaming/
+attachment retrieval satisfy HIPAA's Transmission Security standard (45
+CFR § 164.312(e)) for a header-incapable hop — the addressable integrity-
+controls/encryption specifications that standard calls for are exactly
+what the HMAC signature and single-use consumption provide where a bare
+`Authorization` header can't reach.

@@ -63,3 +63,13 @@ Consequences:
   or cross-server conflict resolution until the `Toxiproxy` tier is
   actually built — stated honestly rather than implied by having *some*
   testing in place.
+
+**Compliance note** (a proving-ground compliance review, this session):
+`FsCheck`'s hash-chain tamper-detection property and `Polly`/`Simmy`'s
+outbox crash-recovery tests are concrete instances of 21 CFR Part 11
+§11.10(a)'s "validation of systems to ensure accuracy, reliability,
+consistent intended performance, and the ability to discern invalid or
+altered records" — the clinical-trials domain's own computerized-system-
+validation requirement — though the still-deferred `Toxiproxy`/Jepsen
+tiers mean this is satisfied only partially today, the same staged
+honesty this ADR already states for production-readiness generally.

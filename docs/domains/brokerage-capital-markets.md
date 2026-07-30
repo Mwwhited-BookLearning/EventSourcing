@@ -29,6 +29,7 @@ was never built.
 | FINRA | Broker-dealer conduct and recordkeeping oversight (self-regulatory organization rules) |
 | MiFID II (EU) | EU markets-in-financial-instruments transaction recordkeeping/reporting |
 | PCI-DSS, `ADR-071`'s boundary | Payment-card data handling if the platform is card-funded — Sensitive Authentication Data can never be registered as a schema field, full stop |
+| SOX Section 404 | Internal-controls-over-financial-reporting attestation — its ITGCs are a confirmed **non-gap**, already satisfied by `ADR-045`/`ADR-019`/`ADR-067`, the same pattern as the 17a-4 finding below |
 
 ## Applicable ADRs
 
@@ -115,3 +116,13 @@ was never built.
   comparison's own narrative calls streaming channels a weak point too;
   neither is this domain's defining mechanism the way they are for
   digital identity/KYC and clinical trials respectively.
+- **SOX Section 404 — a confirming non-gap, same shape as the 17a-4
+  finding**: its ITGC (internal-controls-over-financial-reporting)
+  requirements are already satisfied by the combination of `ADR-045`'s
+  read access audit log, `ADR-019`'s hash-chained tamper evidence, and
+  `ADR-067`'s control-plane-actions-as-events — no new mechanism needed
+  if brokerage is ever built as a third proving-ground domain.
+- **Accessibility (`ADR-073`)** — trader/account-holder-facing screens
+  render through this framework's client the same as any other domain;
+  WCAG 2.1 AA applies here too, not just the government-case-management
+  candidate it was originally tagged under.

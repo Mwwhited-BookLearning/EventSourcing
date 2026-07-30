@@ -97,3 +97,12 @@ Consequences:
   is not automatically caught by adopting this library — a real
   discipline/code-review concern once built, not solved by the library
   alone. Stated honestly as a residual risk.
+
+**Compliance note** (a proving-ground compliance review, this session):
+log redaction is a distinct sink from `ADR-009`'s query/stream masking
+(that ADR's own compliance note covers the response-serialization sink,
+not duplicated here) — keeping PII/PHI out of application logs
+specifically is what HIPAA's Minimum Necessary standard (45 CFR §
+164.502(b)) and GDPR Art. 5(1)(f)'s confidentiality principle both also
+require of *any* processing surface, logs included, not just an
+externally-facing query response.

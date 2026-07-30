@@ -85,3 +85,13 @@ Consequences:
 - `EntityStoreRow.LastAppliedOriginId` (`docs/data/entity-store.md`)
   finally has a real consumer — diagnosing which site's write most
   recently won a fold, useful when investigating a `ConflictFlag`.
+
+**Compliance note** (a proving-ground compliance review, this session):
+the minimum-replication-factor-of-2 requirement is the concrete
+mechanism satisfying HIPAA's Contingency Plan standard (45 CFR
+§164.308(a)(7) — data backup, disaster recovery, and emergency-mode-
+operation procedures for electronic protected health information), not
+an incidental side effect of fault tolerance; the same multi-site
+durability generalizes to the data-backup/disaster-recovery
+expectations most proving-ground domains' compliance frameworks state
+in some form.

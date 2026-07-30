@@ -88,8 +88,9 @@ Decision:
   sovereignty requirement, composing with `ADR-061`'s region-pinning)
   while a different tenant in the same deployment uses a cloud KMS.
   Concrete backends, all real, named options rather than one deployment-
-  wide pick: **cloud** — Azure Key Vault, AWS KMS, Google Cloud KMS;
-  **on-prem/self-hosted** — `HashiCorp Vault` run inside the
+  wide pick: **cloud** — [Azure Key Vault](../libraries/dotnet/azure-key-vault.md),
+  [AWS KMS](../libraries/dotnet/aws-kms.md), [Google Cloud KMS](../libraries/dotnet/google-cloud-kms.md);
+  **on-prem/self-hosted** — [`HashiCorp Vault`](../libraries/dotnet/hashicorp-vault.md) run inside the
   deployment's own data center (the same tool [HashiCorp's own GDPR-
   compliant event-sourcing write-up](https://www.hashicorp.com/en/resources/gdpr-compliant-event-sourcing-with-hashicorp-vault)
   independently arrives at for this exact per-subject-key shape, and

@@ -91,3 +91,12 @@ Consequences:
 - `AsyncApiDocumentBuilder` (`ADR-002`) is unaffected — Follow's
   underlying SSE transport and envelope shape don't change; only how a
   *filter* is expressed to select what streams changes.
+
+**Compliance note** (a proving-ground compliance review, this session):
+the PII/PHI-out-of-URLs/logs rationale above is itself the concrete
+mechanism satisfying two already-real drivers, not just good hygiene —
+HIPAA's Minimum Necessary standard (45 CFR § 164.502(b)) and GDPR Art.
+5(1)(f)'s integrity-and-confidentiality principle both require limiting
+exposure of protected data to what's strictly needed, which a
+`$filter`-equivalent GraphQL argument riding in a URL/access-log/
+proxy-cache line would violate outright.

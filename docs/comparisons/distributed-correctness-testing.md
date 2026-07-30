@@ -2,13 +2,14 @@
 
 # Validating the Hard Invariants: Property-Based Testing vs. In-Process Fault Injection vs. Network-Level Fault Injection vs. Jepsen-Style External Verification
 
-**Not decided.** Raised by `ADR-055`'s own closing note and
-`docs/10-open-questions.md`'s remaining row: ordinary test-pyramid
-coverage (unit/integration/e2e/UI) is settled — this is about a
-different, narrower question, and it's genuinely a fork with real
-trade-offs, not a case where one option is obviously right. Written for
-a reader who doesn't already know this territory (per direct request) —
-each concept is explained plainly before it's compared, not assumed.
+**Resolved in [`ADR-063`](../adrs/adr-063-staged-distributed-correctness-testing.md)**,
+adopting the staged path below directly. Raised by `ADR-055`'s own
+closing note: ordinary test-pyramid coverage (unit/integration/e2e/UI)
+is settled — this is about a different, narrower question, and it's
+genuinely a fork with real trade-offs, not a case where one option is
+obviously right. Written for a reader who doesn't already know this
+territory (per direct request) — each concept is explained plainly
+before it's compared, not assumed.
 
 ## What makes these three invariants different from ordinary test coverage
 
@@ -188,9 +189,10 @@ have a blind spot.
 
 ## A staged way to decide, given no in-house test/QA expertise
 
-Not a recommendation to pick one — a way to invest incrementally,
-cheapest and most certain value first, so a decision doesn't have to be
-made all at once before any of this exists:
+**This is the path `ADR-063` adopted directly.** Not a single forced
+pick — a way to invest incrementally, cheapest and most certain value
+first, so a decision doesn't have to be made all at once before any of
+this exists:
 
 1. **Adopt `FsCheck` (Option A) first, regardless of anything else
    decided here.** It's the cheapest (no new infrastructure), the

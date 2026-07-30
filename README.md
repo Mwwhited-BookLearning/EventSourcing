@@ -198,6 +198,7 @@ source, not a link to a file that still exists.
 | `docs/libraries/{platform}/*.md` | One file per adopted off-the-shelf library/framework — what it's for, general usage; `libraries/README.md` is the catalog |
 | `docs/extensibility-points.md` | Consolidated catalog of every plugin/extension seam a hosting team can customize without forking core code, and the shared registration model (`ADR-059`) they all follow |
 | `docs/domains/*.md` | One reference doc per proving-ground domain considered — applicable ADRs, governing regulations, special concerns; `domains/README.md` is the catalog |
+| `docs/naming.md` | Company and product names (OoBDev; `Duplex` the base engine; `Vitals`/`Meridian` the two proving-ground products) — not an architecture decision, kept separate on purpose |
 
 ## Open decisions flagged for the implementer
 

@@ -233,3 +233,16 @@ Consequences:
   increase in surface area, justified specifically because trying to
   make one pipeline serve both discrete business events and high-frequency
   raw signals well would have compromised both.
+
+**Compliance note** (a proving-ground compliance review, this session):
+a `Media` channel recording a clinical-trial patient's monitoring
+session is Protected Health Information from the moment it's captured,
+making `RedactedRange`'s claims-gated substitution the concrete
+technical access control HIPAA's Security Rule requires for
+restricting ePHI to authorized persons (45 CFR §164.312(a)) — a
+genuinely different obligation from `ADR-009`'s JSON-value masking, not
+a restatement of it. The same tail/replay-plus-Range-Request read path
+also doubles as the preservation/playback mechanism a forensics-style
+continuous-capture stream's chain of custody needs, the same
+ISO/IEC 27037 territory `ADR-019`'s compliance note already cites for
+digital forensics.

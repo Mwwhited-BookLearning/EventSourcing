@@ -65,3 +65,13 @@ Consequences:
   independently disagree about whether something's been reviewed,
   resolved the same way as any other divergence (`ADR-024`'s
   `ConflictFlag`, reused, not a new mechanism).
+
+**Compliance note** (a proving-ground compliance review, this session):
+`AuthorityStatus`'s `unattested → pending_review → accepted` lifecycle
+is exactly pharmacovigilance's routine intake shape — an adverse-event
+report is captured and persisted immediately but isn't case-locked
+until a safety reviewer adjudicates it, mirroring FDA's postmarketing
+adverse-drug/biologic-experience reporting requirements (21 CFR
+§314.80/§600.80) — already confirmed as this ADR's primary fit in
+`docs/domains/pharmacovigilance.md`, not a stretch found after the
+fact.

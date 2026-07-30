@@ -826,8 +826,10 @@ superseded and pointing at the ADR that superseded it.
   equivalent structure is flagged as *not* independently re-checked, not
   silently treated as identical. `ADR-071`/`072`/`073`/`074` already
   carry their compliance basis throughout their own body, not just a
-  bottom note. Remaining compliance-adjacent ADRs (e.g. `031`, `035`/
-  `042`, `060`, `070`) are lower priority — not done this pass.
+  bottom note. **Superseded by the full-package compliance-review pass
+  below** — the remaining ~58 ADRs (including `031`/`035`/`042`/`060`/
+  `070`, named here as "lower priority" at the time) were all reviewed
+  in a later pass this same session, not left behind.
 - **Accessibility corrected to its own ADR, not left inside `ADR-039`**
   — direct feedback caught a real category error: accessibility applies
   no matter which UI architecture renders a screen (`ADR-039`'s MVVM, or
@@ -878,6 +880,133 @@ stale ones, since there was nothing stale to banner — these are new).
 every other phase's citation pattern; Phases 12/14/15/16/18/20 still
 don't cite a feature doc by name and could be updated the same way if
 this gets revisited.
+
+**Full-package compliance review, all 74 ADRs + all 15 proving-ground
+domain docs** (this session, direct instruction: "all ADRs and proving
+ground domains should get compliance review") — nine parallel review
+passes, each with disjoint file ownership to avoid conflicting
+concurrent edits:
+- **21 more ADRs gained a bottom "Compliance note"** this pass —
+  `006`, `008`, `017` (identity/access-control foundations, NIST SP
+  800-53 IA-2/AC-3, SP 800-63B replay/impersonation resistance);
+  `030`, `031`, `033`, `035` (SOC 2/ISO 27001 baseline, HIPAA
+  §164.312(a)/§164.308(a)(7), FDA 21 CFR §314.80/§600.80); `037`,
+  `038`, `040`, `042`, `047`, `048`, `049`, `050`, `052` (HIPAA Minimum
+  Necessary + GDPR Art. 5(1)(f), SOX 404 ITGCs, HIPAA §164.312(e), FDA
+  ALCOA+, NIST SP 800-63C/800-207/800-171/SC-7, HIPAA Safe Harbor
+  §164.514(b)(2)); `056`, `060`, `063`, `065`, `068` (HIPAA
+  §164.308(a)(7)(ii)(A)/§164.502(b), 21 CFR Part 11 §11.10(a)/(e), FRE
+  902(13)/(14), explicit `ADR-057` Art. 17 cross-reference). Combined
+  with the twelve from the earlier pass, **33 of 74 ADRs now carry an
+  explicit compliance note**, plus `071`–`074` which already carry their
+  compliance basis throughout their own body. The remaining ~37 ADRs
+  were genuinely reviewed and judged to have no distinct compliance
+  driver (purely mechanical/internal decisions) or an already-adequate
+  inline discussion — reviewed, not silently skipped; every one of the
+  four review agents reported a per-ADR verdict, not just the ones with
+  a note added.
+- **All 15 `docs/domains/*.md` files updated** — every domain needed at
+  minimum the `ADR-073` accessibility cross-reference (that ADR states
+  it applies to any domain's client, not just the one it was originally
+  tagged under), plus domain-specific additions: SBOM/`ADR-074` tied to
+  FDA Section 524B for clinical-trials-device-telemetry (and secondarily
+  industrial IoT, utilities, ITAR); OFAC/SAR and SOX-404-non-gap
+  confirmations for digital-identity-kyc and brokerage-capital-markets
+  respectively; GDPR Art. 33/34 breach-notification noted everywhere
+  GDPR was already cited. Two genuine domain-specific regulatory gaps
+  with no covering ADR were found and are now tracked in
+  `docs/10-open-questions.md` (rows 3–4): algorithmic-bias/fairness
+  auditing for insurance/telematics automated underwriting, and a
+  pharmacovigilance expedited-reporting deadline clock (FDA's 15-day
+  window) with no framework mechanism tracking it.
+- **`docs/patterns/` brought back in sync** with `ADR-054`–`074` — three
+  new standalone docs (`composition-root-and-pure-di.md`,
+  `step-up-authentication.md`, `anti-corruption-layer.md`, each verified
+  against real prior art before writing), four new "decided, not yet
+  written up" catalog rows (Bulk/Batch operations, Property-based
+  testing, Fault injection/Chaos Engineering, Test Pyramid), and
+  cross-reference fixes across ten existing pattern docs (e.g.
+  `strategy-pattern-extensible-masking.md` gained `ADR-057`'s
+  `IErasureKeyStore`, `mvvm-client-architecture.md`'s accessibility gap
+  now points to standalone `ADR-073` instead of an implicit note).
+- **`docs/libraries/` brought back in sync** — six new files:
+  `spiffe-spire.md` (honestly notes there's no first-party .NET SPIFFE
+  client), `sbom-tool.md`, and the four concrete `IErasureKeyStore`
+  backends `ADR-057` names by name (`azure-key-vault.md`, `aws-kms.md`,
+  `google-cloud-kms.md`, `hashicorp-vault.md`) — plus missing
+  cross-reference links added in both directions across six ADRs.
+  Confirmed no other adopted-library gap exists through `ADR-074`.
+- **A mechanical cross-reference sweep** across `README.md`, `01`–`10`,
+  `docs/data/`, `docs/features/`, `docs/comparisons/`, and
+  `references.md` fixed: two broken relative links, one stale ADR
+  citation (`10-open-questions.md` had said `ADR-039` adopts WCAG —
+  corrected to `ADR-073`), three placeholder "not yet decided" ADR
+  references that were actually already resolved (`docs/comparisons/
+  peer-discovery.md`→`ADR-051`, `streaming-redaction-mechanism.md`→
+  `ADR-052`, `distributed-correctness-testing.md`→`ADR-063`), a missing
+  `references.md` row for content-addressable storage, and several
+  stale "see `10-open-questions.md`" pointers for questions later
+  resolved elsewhere (trust-root registration → `ADR-044`; peer
+  discovery → `ADR-051`; streaming redaction → `ADR-052`, fixed in
+  three spots in `features/streaming-channels.md`). Confirmed
+  `docs/07-adrs.md`'s index is complete and accurate for all 74 rows.
+  Flagged, not fixed (matches this section's own already-known gaps):
+  `08-build-plan.md` still has zero phases for `ADR-050`–`074`;
+  `03-api-contracts.md`'s banner still doesn't name `ADR-040`/`072`'s
+  endpoints; `features/auth.md`'s banner doesn't yet cite `ADR-046`/
+  `047`/`048`.
+- **A dedicated common-solution-architecture gap check** (grounded in
+  the Twelve-Factor App, AWS Well-Architected, arc42, Google SRE, and
+  SLSA — each verified via WebFetch, not recalled from memory) found
+  **15 genuine gaps** no ADR addresses and nothing explicitly declares
+  out of scope — now `docs/10-open-questions.md` rows 5–19: CI/CD
+  pipeline & environment promotion, dependency-vulnerability scanning &
+  build signing/provenance, SLOs/alerting/incident response,
+  health/readiness probe semantics, a threat model & risk register,
+  measurable performance/NFR targets & load testing, a trusted-time/
+  clock-skew policy, migration-application mechanism, background-worker
+  concurrency model (can more than one `Router` run per site?),
+  multi-tenant data-isolation model (never formally compared, despite
+  this project's own "write the comparison before the ADR" convention),
+  rotation for the framework's own two self-minted HMAC secrets,
+  the outbound `LICENSE` choice (MIT Non-AI, not OSI-approved — real,
+  never recorded in any doc), archival/partitioning mechanism for
+  ever-growing stores, and an explicit i18n/l10n scope ruling. **Row 13
+  (feature flags) is the sharpest finding — an outright contradiction
+  between two already-Accepted ADRs**: `ADR-038` promises a bad rollout
+  can be "disabled instantly" via feature flags, but `ADR-041`/`ADR-058`
+  route every runtime-tunable value through static `IConfiguration`,
+  which has no instant, no-restart toggle. Confirmed a long list of
+  adjacent areas as already adequately covered (secrets sourcing,
+  backup/restore mechanics, RTO/RPO explicitly and correctly deferred to
+  deployment time, observability instrumentation, per-tenant rate
+  limiting, schema/API versioning, extensibility model, audit logging on
+  all three axes) rather than assumed — see the agent's full report for
+  the complete covered/gap split.
+- **`docs/references.md` gained ~26 new adopted-citation rows** for
+  every regulation/standard/pattern the above passes verified before
+  citing (NIST SP 800-53 IA-2/AC-2/AC-3/SC-7, SP 800-63B/800-63C,
+  SP 800-207/800-207A, SP 800-171/CMMC, SOC 2/ISO 27001, several HIPAA
+  subsections, GDPR Art. 5(1)(f), FDA ALCOA+ guidance, SOX 404, FRE
+  902(13)/(14), Anti-Corruption Layer, Test Pyramid, Chaos Engineering,
+  and the four `IErasureKeyStore` backend libraries) — plus two
+  bugs fixed in place: two stale "not yet adopted" candidate rows for
+  `FsCheck`/`Polly+Simmy` were removed (superseded by their own real
+  "adopted via `ADR-063`" rows a few lines below, a leftover duplicate
+  from `ADR-063` shipping after the comparison doc that first proposed
+  them), and the `FDA 21 CFR Part 11` row — which had said "not yet
+  adopted, no mechanism decided" — was corrected to reflect that
+  `ADR-066` (§11.50), `ADR-063` (§11.10(a)), and `ADR-068` (§11.10(e))
+  had already adopted parts of it in earlier passes without this row
+  ever being updated.
+- **`docs/10-open-questions.md` now carries 19 open rows** (up from 2)
+  — a genuinely larger tracker than before, but an honest one: this
+  pass's whole point was surfacing real, unweighed forks rather than
+  letting them live buried in review-agent output. Resolve these the
+  same way every prior row here was resolved — move to a real ADR (or a
+  comparison doc first, for the genuine multi-option forks like row
+  15's tenant-isolation model) once actually decided, don't leave them
+  parked indefinitely.
 
 Check this section before assuming any doc is fully consistent with
 `ADR-025` onward — the structural/architectural picture is current

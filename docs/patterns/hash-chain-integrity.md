@@ -108,3 +108,16 @@ design's general habit of reusing a primitive across unrelated concerns
 rather than adding a new dependency per concern (`ADR-018`'s reuse of the
 OData parser for the same reason, before that reasoning was superseded by
 the GraphQL-only swap — see `references.md`).
+
+**Reused twice more, later in this design, for the same "don't invent a
+second tamper-evidence primitive" reason**: `ADR-066`'s envelope
+`Signature` object (`SignerId`/`SignedAt`/`Meaning`/`Acr`, satisfying
+`21 CFR Part 11`'s non-repudiation requirement) is ordinary envelope
+metadata on the same `StoredEvent` this chain already covers — a signed
+record is exactly as tamper-evident as everything else in the log, no
+separate signing/verification mechanism needed. `ADR-068`'s lineage
+export bundle likewise reuses this exact SHA-256 chaining approach for a
+new purpose — a **manifest hash** over the ordered original `ChainHash`
+values plus export metadata, proving an exported chain segment is a
+complete, unaltered copy for a litigation chain-of-custody need this
+design didn't have when `ADR-019` was first written.
