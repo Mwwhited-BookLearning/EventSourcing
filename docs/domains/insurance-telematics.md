@@ -110,3 +110,45 @@ digital identity — it's broad rather than defining.
   rules target. Nothing in this framework's ADR set designs a
   model-fairness-testing or bias-documentation mechanism — a candidate
   for a future ADR, not yet decided.
+
+## Glossary
+
+- **Actuarial (Actuary / Actuarial Science)** — The discipline of
+  applying statistics and probability to assess and price risk
+  (mortality, morbidity, accident frequency and severity) — the
+  underlying discipline behind every premium and reserve calculation in
+  this domain.
+- **Adjuster (Claims Adjuster)** — The person who investigates a claim
+  and determines coverage and payout amount — a natural fit for
+  `ADR-043`/`ADR-044`'s delegated "secondary opinion" access when a
+  second adjuster or medical reviewer weighs in.
+- **Claim** — A policyholder's formal request for payment under a
+  policy following a covered loss — the trigger for this domain's
+  claims-review workflow, and the kind of dispute `ADR-068`'s bitemporal
+  export/playback reconstructs "what the carrier knew, and when" for.
+- **Combined Ratio** — An underwriting-profitability metric equal to the
+  loss ratio plus the expense ratio; a result below 100% means the
+  underwriting book itself was profitable before investment income.
+- **Loss Ratio** — The ratio of claims paid (plus reserves) to premiums
+  earned over a period — the headline metric a carrier uses to judge
+  whether a line of business, or an individual telematics-scored
+  policyholder segment, is priced correctly.
+- **NAIC (National Association of Insurance Commissioners)** — The US
+  standard-setting body whose model laws individual states adopt to
+  regulate insurance, making US insurance regulation fragmented
+  state-by-state rather than a single federal framework.
+- **Policyholder** — The person or entity who owns an insurance policy
+  and is the data subject for most of this domain's PHI/PII.
+- **Telematics** — Data collected from a device (an OBD-II dongle, a
+  smartphone app, a wearable) that measures real-world behavior —
+  driving patterns, vital signs — used to inform pricing or claims,
+  rather than relying on self-reported or demographic proxies alone;
+  the readings `ADR-070`'s device input integration captures and
+  `ADR-031`'s streaming channels typically carry.
+- **Underwriting** — The process of evaluating and pricing risk before
+  issuing a policy — deciding whether, and on what terms, to accept a
+  given risk.
+- **Usage-Based Insurance (UBI)** — An insurance pricing model that ties
+  premium directly to measured behavior or usage (telematics-scored
+  driving, wearable-tracked activity) rather than static demographic
+  rating factors alone — this domain's own defining practice.

@@ -123,3 +123,62 @@ named as a build target.
   (`docs/10-open-questions.md`) — `ADR-045`'s access audit log supplies
   the forensic inputs, but the notification process itself isn't
   designed yet.
+
+## Glossary
+
+- **Adverse Event (AE)** — Any unfavorable or unintended sign, symptom,
+  or medical condition occurring in a trial subject after starting the
+  intervention, whether or not it's judged to be caused by it.
+- **Case Report Form (CRF)** — The document (paper or electronic) used
+  to record each trial subject's protocol-required data; an
+  investigator's approval of a CRF entry is a regulated act of
+  attestation — the case-report-form approval `ADR-066`'s digital
+  sign-off mechanism directly targets.
+- **Contract Research Organization (CRO)** — An organization a Sponsor
+  contracts with to run some or all of a trial's operational conduct
+  (site management, monitoring, data management) on its behalf — one of
+  the tenants `ADR-030`'s multi-tenancy accounts for.
+- **Good Clinical Practice (GCP)** — The ICH-published international
+  ethical and scientific quality standard for designing, conducting,
+  recording, and reporting trials involving human subjects.
+- **Informed Consent** — The process (and signed/witnessed document) by
+  which a potential trial subject is given all information needed to
+  decide, voluntarily, whether to participate — a foundational GCP/Part
+  11 ethical requirement, typically captured here as a scanned document
+  under `ADR-032`'s binary attachments.
+- **Institutional Review Board (IRB) / Ethics Committee** — An
+  independent committee that reviews and approves a trial's protocol
+  and consent materials to protect subjects' rights and welfare before
+  and during the trial.
+- **Investigator / Principal Investigator (PI)** — The person
+  responsible for conducting the trial at a site and for the medical
+  decisions and record approvals — including `ADR-066`'s CRF sign-off —
+  made there.
+- **MLLP (Minimal Lower Layer Protocol)** — The lightweight TCP-based
+  framing protocol HL7v2 messages are actually transmitted over in real
+  hospital integrations, wrapping each message in start/end block
+  characters — the real transport `ADR-072`'s `Hl7V2Adapter` targets,
+  not HTTP.
+- **Monitor (Clinical Research Associate)** — A person, typically
+  employed by the Sponsor or CRO, who periodically reviews site records
+  against source data to confirm subjects' rights are protected and
+  data is accurate/complete — the human review step `ADR-035`/`ADR-042`
+  model as the gate between captured and accepted.
+- **Protocol** — The document that describes a trial's objective(s),
+  design, methodology, statistical considerations, and organization —
+  the authoritative rulebook a site must follow.
+- **Serious Adverse Event (SAE)** — An AE meeting one of several defined
+  severity criteria (results in death, is life-threatening, requires or
+  prolongs hospitalization, causes persistent/significant disability, is
+  a congenital anomaly, or otherwise requires intervention to prevent one
+  of those outcomes) — triggers expedited regulatory reporting distinct
+  from routine AE reporting.
+- **Source Data Verification (SDV)** — A monitor's or auditor's
+  comparison of data recorded in a trial's CRF against the original
+  ("source") clinical records to confirm accuracy — exactly the
+  clinician/monitor review `ADR-035`/`ADR-042`'s non-authoritative
+  capture and Live View are built around.
+- **Sponsor** — The individual, company, institution, or organization
+  that takes responsibility for initiating, managing, and/or financing a
+  trial — one of the independent tenants `ADR-030`'s multi-tenancy
+  accounts for.

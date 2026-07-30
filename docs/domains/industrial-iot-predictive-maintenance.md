@@ -108,3 +108,53 @@ FINRA-shaped compliance mechanism gets seriously exercised here.
   2.1 AA applies here too, though the driver is weaker than for a
   citizen- or patient-facing domain since users are internal plant staff
   rather than the general public.
+
+## Glossary
+
+- **Asset Management (ISO 55000)** — The coordinated activity of an
+  organization to realize value from its physical assets across their
+  lifecycle, balancing cost, risk, and performance — the standard this
+  domain's governing framework formalizes.
+- **Condition-Based Monitoring (CBM)** — Maintenance triggered by an
+  asset's actual measured condition (vibration, temperature, and
+  similar) rather than a fixed calendar schedule — the immediate
+  precursor practice predictive maintenance builds on; a CBM reading is
+  captured the same way any raw sensor reading is here, non-authoritative
+  until correlated and reviewed (`ADR-035`).
+- **Digital Twin** — A virtual, continuously updated model of a physical
+  asset, built from its real-time sensor data, used to simulate or
+  predict its behavior without touching the physical equipment itself.
+- **Historian (Data Historian)** — A purpose-built time-series database
+  that plant-floor systems have traditionally used to archive
+  high-frequency sensor readings — the role `ADR-031`'s streaming
+  channels play in this framework.
+- **Mean Time Between Failures (MTBF)** — The average operating time
+  between one failure and the next for a repairable asset — a core
+  reliability metric predictive-maintenance models try to extend.
+- **Mean Time To Repair (MTTR)** — The average time needed to diagnose
+  and fix a failed asset once it goes down — the companion metric to
+  MTBF, both used to justify a predictive-maintenance program's return
+  on investment.
+- **Operational Technology (OT)** — The hardware and software that
+  directly monitors or controls physical industrial equipment and
+  processes, distinguished from conventional IT — IEC 62443's actual
+  security scope.
+- **Overall Equipment Effectiveness (OEE)** — A composite manufacturing
+  metric (Availability × Performance × Quality) measuring how
+  effectively equipment is actually used against its theoretical
+  maximum — the standard KPI a derived/materialized maintenance alert
+  (`ADR-007`, still deferred) would ultimately need to move.
+- **Predictive Maintenance** — Maintenance timed by an actual forecast of
+  impending failure, derived from sensor telemetry and models, rather
+  than a fixed schedule (preventive maintenance) or a reactive
+  after-the-fact repair (corrective maintenance) — this domain's own
+  name, and exactly the kind of derived/materialized event `ADR-007` is
+  scored against.
+- **Programmable Logic Controller (PLC)** — A ruggedized industrial
+  computer that directly controls machinery or processes on the plant
+  floor — the typical device `ADR-070`'s sensor/gateway device input
+  integration would actually be talking to.
+- **SCADA (Supervisory Control and Data Acquisition)** — The software
+  and hardware system industrial sites use to monitor and control
+  processes across a plant or fleet in real time — historically the
+  source system this domain's telemetry would be pulled from.

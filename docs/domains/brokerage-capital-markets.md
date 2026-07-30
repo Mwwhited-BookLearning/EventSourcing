@@ -126,3 +126,67 @@ was never built.
   render through this framework's client the same as any other domain;
   WCAG 2.1 AA applies here too, not just the government-case-management
   candidate it was originally tagged under.
+
+## Glossary
+
+- **Best Execution** — a broker-dealer's duty to execute a customer's
+  order on the most favorable terms reasonably available under the
+  circumstances, not merely at a legal minimum — the standard `ADR-045`'s
+  read access audit log and `ADR-068`'s bitemporal export would help
+  reconstruct compliance with, after the fact.
+- **Broker-Dealer** — a firm registered under the Securities Exchange
+  Act of 1934 to both broker trades on behalf of others and deal (trade)
+  for its own account; nearly every mechanism in this domain's
+  Applicable ADRs list exists to support one.
+- **Clearing (Clearinghouse)** — the process, run by an intermediary
+  clearinghouse, of matching, confirming, and guaranteeing a trade
+  between its two counterparties before settlement — a natural
+  derivation step in an event-lineage DAG (`ADR-005`) from raw trade to
+  cleared trade to settled position.
+- **Custodian** — an institution that holds and safeguards a client's
+  securities and assets, distinct from the broker-dealer that executes
+  the trade — one more actor `ADR-046`/`ADR-043`'s role-based access
+  would need to distinguish.
+- **FINRA (Financial Industry Regulatory Authority)** — the
+  self-regulatory organization (SRO) that all US broker-dealers must
+  register with alongside the SEC, and that writes and enforces
+  conduct/suitability/recordkeeping rules such as Rule 2111.
+- **Market Maker** — a firm that continuously quotes both a buy and sell
+  price for a security, providing liquidity and profiting from the
+  bid-ask spread rather than from directional bets.
+- **MiFID II** — the EU's Markets in Financial Instruments Directive II,
+  which imposes its own best-execution and next-business-day
+  transaction-reporting obligations on EU trading activity — the
+  concrete driver behind this domain's `ADR-061` data-residency/
+  region-pinning fit for cross-border trading.
+- **NBBO (National Best Bid and Offer)** — the single best available buy
+  and sell price for a security across every US exchange at a given
+  moment, computed and disseminated under Reg NMS; the reference price
+  Reg NMS's Order Protection Rule (Rule 611) prohibits routing a trade
+  through.
+- **Reg NMS (Regulation National Market System)** — the SEC's rule set
+  (adopted 2005) requiring US equity markets to protect the NBBO and
+  route orders to it — the regulatory backbone best execution is
+  measured against.
+- **SAD (Sensitive Authentication Data)** — the PCI-DSS term for
+  card-present-only secrets (CVV2/CVC2/CID, full magnetic-stripe/chip
+  track data, PIN blocks) that Requirement 3.2/3.2.2 bars storing after
+  authorization, even encrypted — the exact trigger for `ADR-071`'s
+  registration-time hard-reject.
+- **Settlement (T+1)** — the point at which securities and cash actually
+  change hands after a trade; US equities moved from a two-business-day
+  (T+2) to a one-business-day (T+1) settlement cycle in May 2024,
+  tightening the window `ADR-019`'s hash-chained recordkeeping needs to
+  keep accurate.
+- **SRO (Self-Regulatory Organization)** — an industry body like FINRA,
+  delegated by the SEC to write and enforce rules for its members,
+  layering a second compliance regime on top of direct SEC oversight.
+- **Suitability** — FINRA Rule 2111's requirement that a broker-dealer
+  have a reasonable basis to believe a recommended transaction fits a
+  specific customer's investment profile (age, objectives, risk
+  tolerance, and similar) before recommending it.
+- **WORM (Write Once, Read Many)** — the traditional storage requirement
+  under SEC Rule 17a-4 for broker-dealer records, historically satisfied
+  by dedicated non-erasable media; the 2022–2023 amendment added an
+  audit-trail alternative that `ADR-019`'s hash-chained Event Log is
+  confirmed to already satisfy.

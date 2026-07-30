@@ -111,3 +111,77 @@ significant events onward to national and international bodies.
   staff-facing screens render through this framework's client the same
   as any other domain; WCAG 2.1 AA applies here too, not just the
   government-case-management candidate it was originally tagged under.
+
+## Glossary
+
+- **Case Definition** — the standardized set of clinical, laboratory,
+  and epidemiologic criteria (set by CDC/CSTE for nationally notifiable
+  conditions) used to decide whether a specific patient counts as a
+  case for surveillance purposes — the criteria a public-health
+  investigator applies during the review this file's `ADR-035`
+  non-authoritative-capture fit models: captured on report, not yet
+  classified.
+- **Case Investigation** — the follow-up work a public-health
+  investigator does on a single reported case — verifying the
+  diagnosis, gathering exposure history, and initiating contact tracing
+  if warranted — the human review step that moves a captured report
+  from pending to confirmed/classified under `ADR-035`.
+- **Cluster** — a group of cases linked in time, place, or exposure that
+  may or may not exceed the number expected, prompting further
+  investigation into whether it represents a true outbreak — a
+  candidate real-world instance of `ADR-007`'s still-deferred
+  derived/materialized-event mechanism, aggregated from individual case
+  reports.
+- **Contact Tracing** — identifying and following up with people who may
+  have been exposed to a person with a reportable condition, to break
+  onward chains of transmission — a data-gathering workflow that extends
+  a case's own event lineage (`ADR-005`) outward to the people connected
+  to it.
+- **Index Case** — the first identified case in a particular outbreak or
+  cluster, from which contact tracing and cluster investigation
+  typically start.
+- **International Health Regulations (IHR)** — the WHO's binding
+  framework obliging member states to notify events of international
+  public-health concern across borders; already named in this file's
+  regulations table as the driver behind its outbound, cross-jurisdiction
+  reporting shape.
+- **Minimum Necessary** — the HIPAA Privacy Rule's standard limiting the
+  disclosure of PHI to the smallest amount reasonably needed for the
+  stated purpose, which continues to apply even under the public-health
+  disclosure exception (§164.512(b)) this file relies on — the reason
+  this file's Special concerns section calls `ADR-009`/`ADR-050`'s
+  masking load-bearing rather than optional.
+- **NNDSS (National Notifiable Diseases Surveillance System)** — the
+  CDC-run collaboration through which state, local, territorial, and
+  federal public-health authorities share standardized case data on
+  roughly 120 notifiable diseases and conditions — the actual
+  national-level system this domain's local-to-state-to-national data
+  flow (this file's Special concerns section) ultimately feeds.
+- **Notifiable Disease** — a disease that a clinician or laboratory is
+  legally required to report to public-health authorities on diagnosis,
+  because of its contagiousness, severity, or public-health
+  significance — the trigger event for this domain's entire intake
+  workflow.
+- **Outbreak** — an occurrence of cases of a disease clearly in excess of
+  what would normally be expected in a given place or time period — the
+  aggregate-level finding this domain's `ADR-007` derived-event fit and
+  `ADR-068` bitemporal playback (reconstructing "what was known about an
+  outbreak's spread as of a given date") both describe.
+- **Public Health Authority** — a state, local, tribal, or federal agency
+  (or a person/entity acting under its authority) legally responsible
+  for public-health activities, the recipient HIPAA's §164.512(b)
+  exception permits disclosure to without patient authorization.
+- **Reportable Condition** — a disease or condition a jurisdiction's
+  statute requires be reported to health authorities; not always
+  identical to a nationally "notifiable" condition, since reporting
+  obligations are set state by state even where CDC also tracks the same
+  condition nationally.
+- **Sentinel Surveillance** — monitoring a representative subset of
+  healthcare facilities, providers, or regions (rather than the whole
+  population) chosen because they're well-positioned to detect a
+  condition of interest early or reliably — a lighter-weight complement
+  to comprehensive notifiable-disease reporting.
+- **Syndromic Surveillance** — monitoring symptom and clinical-sign
+  patterns (ER chief complaints, OTC medication sales, absenteeism) that
+  precede or substitute for a confirmed diagnosis, to detect a possible
+  outbreak faster than laboratory-confirmed case reporting would allow.

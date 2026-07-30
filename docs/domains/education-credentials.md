@@ -102,3 +102,63 @@ story.
   (`docs/10-open-questions.md`) — `ADR-045`'s access audit log supplies
   the forensic inputs, but the notification process itself isn't
   designed yet.
+
+## Glossary
+
+- **Accreditation** — the voluntary, third-party quality-assurance
+  process (regional or national accreditors in the US) that certifies an
+  institution or program meets recognized academic standards;
+  accredited status is usually a prerequisite for federal financial aid
+  and for other institutions/employers recognizing a credential.
+- **Credential Holder** — the individual (student or graduate) a
+  transcript, diploma, or verifiable credential is actually about — the
+  "subject" in W3C Verifiable Credentials terminology.
+- **Credential Issuer** — the institution (or, in W3C Verifiable
+  Credentials terms, the "issuer") that creates and digitally signs a
+  credential — the role `ADR-036`'s DID/UCAN self-attestation would
+  assign to an accredited institution issuing a diploma.
+- **Credential Verifier (Relying Party)** — a third party — an employer,
+  another institution, a licensing board — that checks a presented
+  credential's validity and issuer, typically without needing to
+  contact the issuer directly; the scenario `ADR-043`'s delegated,
+  temporary access grant is scored against.
+- **Digital Diploma** — a diploma or certificate issued as a
+  cryptographically verifiable digital artifact rather than (or
+  alongside) a paper original — this domain's clearest use case for
+  `ADR-032`'s binary attachments.
+- **Directory Information** — the narrow category of FERPA-covered data
+  (name, dates of attendance, degrees/honors, and similar) a school may
+  disclose without consent, having given public notice and an opt-out
+  window — the boundary FERPA-classified fields (`ADR-009`/`ADR-050`/
+  `ADR-052`) would need to encode correctly, since most other
+  education-record fields require consent by default.
+- **Eligible Student** — FERPA's term for a student who has either
+  turned 18 or is attending a postsecondary institution, at which point
+  FERPA's rights transfer from the parent to the student directly.
+- **FERPA (Family Educational Rights and Privacy Act)** — the US federal
+  law protecting the privacy of student education records, giving
+  parents (or eligible students) the right to inspect, seek correction
+  of, and control disclosure of those records.
+- **Micro-credential / Digital Badge** — a narrower, often single-skill
+  credential (short of a full degree) issued for completing a specific
+  course or demonstrating a specific competency — a smaller-grained
+  analog of the digital diploma, raising the same binary-attachment and
+  verifiable-credential questions at finer granularity.
+- **Registrar** — the institutional office of record responsible for
+  maintaining official academic records, enrollment, and transcripts —
+  the role this domain's row-level-access scenarios (`ADR-046`/
+  `ADR-043`) most often grant the broadest access to.
+- **Transcript** — the institution's official, cumulative record of a
+  student's coursework, grades, and credits earned — this domain's
+  other core `ADR-032` binary-attachment use case alongside the diploma
+  itself.
+- **Transfer Credit** — academic credit earned at one institution and
+  accepted toward a credential at another, requiring the receiving
+  institution to trust the sending institution's transcript — a
+  real-world instance of the credential-verification trust question
+  `ADR-036` addresses generally.
+- **Verifiable Credential (W3C VC)** — the W3C's standardized,
+  cryptographically secured, machine-readable credential format
+  (issuer/claims/proof) — the concrete standard behind this domain's
+  `ADR-036` fit for digital diplomas, scored as a real but secondary use
+  of that mechanism.

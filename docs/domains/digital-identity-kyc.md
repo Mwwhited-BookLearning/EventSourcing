@@ -89,3 +89,57 @@ built for one industry.
   *workflow* itself remains an open question (`docs/10-open-questions.md`)
   — `ADR-045`'s access audit log supplies the forensic inputs, but the
   notification process itself isn't designed yet.
+
+## Glossary
+
+- **Anti-Money Laundering (AML)** — The body of law, regulation, and
+  internal controls aimed at preventing the proceeds of crime from
+  entering the legitimate financial system; KYC verification is the
+  entry-point control this domain implements toward that goal.
+- **Beneficial Owner** — Under FinCEN's Customer Due Diligence rule, an
+  individual who directly or indirectly owns 25% or more of a legal
+  entity customer's equity, or who otherwise exercises substantial
+  control over it — the real person a KYC check on a corporate customer
+  must ultimately identify, not just the entity itself.
+- **Customer Due Diligence (CDD)** — The process of verifying a
+  customer's identity and assessing the risk they pose, required before
+  or during a business relationship under BSA/FinCEN rules.
+- **Decentralized Identifier (DID)** — A W3C-standardized identifier a
+  subject controls directly, rather than one issued and controlled by a
+  central registry, and cryptographically verifiable without a
+  third-party lookup — the identity primitive `ADR-036`'s self-
+  attestation is built directly on.
+- **eIDAS Level of Assurance** — The EU's three-tier scale (Low/
+  Substantial/High) for how strongly a digital identity claim has been
+  verified, which in turn determines which authentication/verification
+  method is acceptable for a given transaction.
+- **Know Your Customer (KYC)** — The general obligation, arising mostly
+  from AML law, for a regulated entity to verify who its customer
+  actually is before establishing a relationship — this domain's own
+  name and defining workflow.
+- **Politically Exposed Person (PEP)** — An individual who is or has
+  been entrusted with a prominent public function (and, by extension,
+  their family members and close associates), subject to enhanced due
+  diligence under FATF's recommendations because of elevated corruption/
+  bribery risk.
+- **Relying Party** — An organization that consumes another party's
+  identity-verification result rather than performing verification
+  itself — the KYC platform's own customer in this domain, and the
+  recipient of `ADR-060`'s outbound webhooks and `ADR-047`'s claims
+  augmentation.
+- **Sanctions List** — A government-maintained list (e.g. OFAC's
+  Specially Designated Nationals, or SDN, list) of individuals and
+  entities a regulated entity is prohibited from transacting with;
+  screening against it is a standing KYC obligation, not optional — the
+  gap this file's Special concerns section already names as unaddressed
+  by any ADR.
+- **Suspicious Activity Report (SAR)** — A filing a US financial
+  institution must submit to FinCEN when it knows, suspects, or has
+  reason to suspect a transaction (generally $5,000 or more, or $2,000
+  or more once a suspect has been identified) involves illicit activity
+  — the other half of the same unaddressed gap.
+- **Verifiable Credential (VC)** — A W3C-standardized, cryptographically
+  signed digital credential (e.g. "this DID passed identity
+  verification") that can be presented and checked without contacting
+  the original issuer each time — the natural companion artifact to
+  `ADR-036`'s DID/UCAN self-attestation.
