@@ -21,11 +21,21 @@ public class StoredEvent
     public bool ConflictFlag { get; set; }              // set by the fold step if a concurrent conflicting patch was detected (ADR-024)
     public bool LateArrivalFlag { get; set; }           // set by the fold step if OccurredAt was behind the entity/property's high-water mark (ADR-029)
     public DateTimeOffset OccurredAt { get; set; }      // CLIENT-DECLARED logical occurrence time, not server receipt time (ADR-029) — load-bearing for fold order
-    public string? AttestedActorId { get; set; }        // self-attested submitter identity — advisory, never gates Status (ADR-035)
+    public string ActorId { get; set; } = default!;      // verified caller identity (sub, or iss+sub per ADR-047) -- ALWAYS populated, blocking, not advisory (ADR-064) -- distinct from AttestedActorId below
+    public string? AttestedActorId { get; set; }        // self-attested submitter identity — advisory, never gates Status (ADR-035) -- a CLAIM, not a verified fact; never conflated with ActorId above
     public string? AttestedClaims { get; set; }          // JSON — structured capability/delegation claims (e.g. a UCAN invocation, ADR-036); references the attestation schema-registry entry
     public string AuthorityStatus { get; set; } = "accepted"; // unattested | pending_review | accepted | rejected — advisory trust axis, independent of SchemaStatus (ADR-035). Defaults to "accepted" for an ordinary authenticated publish (ADR-006 already verified identity/permission); only starts unattested/pending_review when the publish itself declares AttestedClaims or an explicit review-pending marker (ADR-042)
     public Guid? AuthorityDecisionRef { get; set; }      // denormalized back-pointer to the authorityDecision event that last set AuthorityStatus, set by the fold step (ADR-035)
     public string? TelemetryPointer { get; set; }        // position in a streaming channel this event is linked to/derived from — a distinct envelope field from parentEventIds/MaterializationOfEventId/AttachmentRef (ADR-031)
+    public Signature? Signature { get; set; }             // set only when EventTypeDefinition.RequiredSignature is configured -- a sixth distinct relationship-shaped envelope field (ADR-066)
+}
+
+public class Signature
+{
+    public string SignerId { get; set; } = default!;  // denormalized copy of ActorId above, kept explicit rather than implied (ADR-066)
+    public DateTimeOffset SignedAt { get; set; }
+    public string Meaning { get; set; } = default!;    // required -- e.g. "reviewed", "approved", "authorship" (21 CFR Part 11 §11.50)
+    public string Acr { get; set; } = default!;         // the acr claim the signing token actually carried, for audit
 }
 
 public enum EventKind

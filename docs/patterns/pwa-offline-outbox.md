@@ -110,3 +110,28 @@ state never blocks or corrupts another's. All instances of the same
 installed app share the same underlying Service Worker registration and
 cache (same origin), but IndexedDB records are namespaced per instance
 configuration so their queued commands never collide.
+
+**Scoped to active data, and erasure-aware, for any deployment handling
+classified data (`ADR-065`).** The cached entity data described above
+isn't a full history mirror — a local/edge instance subscribes with an
+explicit scope filter (whatever "active" means for the consuming
+domain, e.g. "assigned to this device and still open") and evicts a
+cached entity the moment it falls out of that scope. If `ADR-057`'s
+crypto-shredding erases an entity this instance has cached, the erasure
+event arrives through the same subscription as any other update, and
+the instance purges its local copy on receipt — mandatory, not
+optional. A device that's offline when erasure fires won't purge until
+it reconnects, the same limitation `ADR-060` already states for an
+already-delivered webhook payload.
+
+**Flush triggers beyond opportunistic connectivity (`ADR-069`).** The
+Background Sync trigger and open/focus fallback described above assume
+connectivity returns on its own before long. For genuinely isolated data
+capture, `ADR-069` adds a scheduled "phone home" trigger (the Web
+Periodic Background Sync API where available — Chromium-only,
+experimental — or an OS/device-level scheduled task otherwise) and an
+explicit/manual trigger, including a fully offline transfer for a
+device with no network path at all, reusing `ADR-068`'s portable bundle
+format. The outbox's `Flush` operation itself is unchanged either way —
+these are additional ways to invoke the same idempotent operation, not
+a new outbox.

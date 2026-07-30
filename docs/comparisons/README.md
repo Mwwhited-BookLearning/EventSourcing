@@ -21,7 +21,20 @@ rest:** [Masking content strategies](masking-strategies.md) is now fully
 decided — `FixedValue`, `PartialReveal`, and keyed `Hash` (`ADR-009`/
 `ADR-052`) are built; format-preserving encryption, generalization/
 bucketing, and tokenization are explicitly **declined**, per KISS, absent
-a stated requirement for any of them — see its own row below.
+a stated requirement for any of them — see its own row below. **A second
+comparison written before its decision existed, now also resolved**:
+[Distributed correctness testing](distributed-correctness-testing.md)
+was written at a non-expert's request specifically to inform a decision
+still to come — `ADR-063` has since adopted its suggested staged path
+directly (property-based + in-process fault injection now,
+network-level/Jepsen as a named production-readiness escalation), so
+this is no longer an exception to "decision already made," just an
+unusually explicit record of the reasoning behind one. **A third**:
+[Proving-ground domain](proving-ground-domain.md) — which real-world
+domain(s) to build the first non-`Orders` worked example(s) in — is a
+project-planning choice, not an architecture decision, so it has no ADR
+number; the decision (both clinical trials/device telemetry *and*
+digital identity/KYC) is recorded directly in the comparison doc itself.
 
 | Comparison | Decided in | Note |
 |---|---|---|
@@ -39,6 +52,8 @@ a stated requirement for any of them — see its own row below.
 | [Trust-root registration gate](trust-root-registration-gate.md) — narrower `registry:trust-admin` scope vs. `ADR-043`-style delegation vs. dual-control/Four Eyes approval | `ADR-044`'s Consequences (resolved directly, no new ADR) | Resolves the open question `ADR-044` raised; recommends the narrow scope as the mandatory gate, delegation as how it composes for multi-tenant operators, and explicitly declines system-wide dual control — argued as the one action in this design where Four Eyes' precondition is actually met, but disproportionate given `AppTrustRoot`'s per-`AppId`-contained blast radius |
 | [Masking content strategies](masking-strategies.md) — configurable partial reveal vs. format-preserving masking vs. generalization/bucketing vs. tokenization | `PartialReveal` and keyed `Hash` decided and built (`ADR-009`/`ADR-052`); format-preserving encryption, generalization/bucketing, and tokenization all declined (KISS) | `PartialReveal` and `Hash` (a keyed HMAC via `Microsoft.Extensions.Compliance.Redaction`'s `HmacRedactor`) both fit `ADR-009`'s claims-gated wrapper cleanly and are built, shared with `ADR-052`'s streaming-channel redaction. The other three are declined, not merely deferred: real FPE would be this design's first key-management surface; generalization/bucketing would add a fourth strategy (and a k-anonymity-overclaim risk to guard against in its docs) for no stated need; tokenization's separate-party reversal model doesn't fit the wrapper at all — none is worth building absent a real requirement |
 | [Federated identity mapping](federated-identity-mapping.md) — bare `sub == ActorId` vs. composite (`iss`, `sub`) vs. full JIT provisioning + SCIM-shaped lifecycle | `ADR-047` (Consequences addendum — composite `iss`+`sub` via a new `FederatedIdentityMapping` record, JIT-provisioned at token-exchange time) | Resolves `docs/10-open-questions.md`'s `sub`-to-`ActorId` mapping question directly, per OpenID Connect's own spec guidance (`iss`+`sub` together, never `sub` alone, is the only stable cross-issuer identifier) — no separate ADR written, since it only fills in `ADR-047`'s own already-flagged gap |
+| [Distributed correctness testing](distributed-correctness-testing.md) — property-based testing (`FsCheck`) vs. in-process fault injection (`Polly`+`Simmy`) vs. network-level fault injection (`Testcontainers`+`Toxiproxy`) vs. Jepsen-style external black-box verification | `ADR-063` (staged: `FsCheck`+`Simmy` now, `Toxiproxy`/Jepsen as a named production-readiness escalation) | Written for a non-expert to decide from (direct request); maps each option to which of `ADR-019`/`ADR-024`/`ADR-033`'s hard invariants it actually covers, since no single option covers all three — the staged path this comparison suggested was adopted directly, not overridden |
+| [Proving-ground domain](proving-ground-domain.md) — 8 candidate domains scored against every non-universal mechanism this framework has | Decided directly in the comparison doc (no ADR number — a project-planning choice) — both clinical trials/device telemetry and digital identity/KYC | Written the same full-pros/cons way as an ADR-gating comparison, per direct request; widens beyond the reviewer's own past-experience list on purpose. Two domains chosen over one for better combined coverage *and* to avoid the framework reading as built for one industry |
 | [Streaming-channel redaction mechanism](streaming-redaction-mechanism.md) — zero-fill vs. statistical-noise substitution (`RawScalar`/`RawBinary`), tone vs. silence and a spatial/temporal scope disambiguation (`Media`), materialized (`ADR-027`-style) vs. read-time (`ADR-028`-style) | `ADR-052` (read-time, zero-fill/tone default, configurable `Strategy` incl. `PartialReveal`) | Resolves `ADR-031`'s deliberately-deferred `RedactedRange` transform: searched prior art (SWGDE redaction guidelines, ONVIF `PrivacyMask`, SCTE-35 blackout signaling, differential privacy) found nothing formal that fits the shape directly, and surfaced that most industry tooling solves a spatial (in-frame) redaction problem `RedactedRange`'s field shape doesn't actually support (temporal only) |
 
 ## Not yet written up as their own standalone comparison doc

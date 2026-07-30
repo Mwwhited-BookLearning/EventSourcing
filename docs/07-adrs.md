@@ -80,3 +80,16 @@ Consequences: <trade-offs accepted>
 | [058](adrs/adr-058-rate-limiting-quota.md) | Per-tenant rate limiting via ASP.NET Core's built-in `RateLimiting` middleware | Accepted |
 | [059](adrs/adr-059-composition-root-extensibility-model.md) | Extensibility is composition-root registration only — no dynamic/runtime plugin discovery, ever | Accepted |
 | [060](adrs/adr-060-outbound-webhooks.md) | Outbound webhook/notification support — reuses the durable outbox primitive, Standard Webhooks-shaped signing | Accepted |
+| [061](adrs/adr-061-data-residency-region-pinning.md) | Data residency — per-`AppId` allowed regions, enforced at replication/sharding assignment | Accepted |
+| [062](adrs/adr-062-package-distribution-model.md) | Framework distributed as installable packages (NuGet + npm), not forked/cloned per deployment | Accepted |
+| [063](adrs/adr-063-staged-distributed-correctness-testing.md) | Staged adoption of distributed-correctness testing — property-based + in-process fault injection now, network-level/Jepsen as a production-readiness escalation | Accepted |
+| [064](adrs/adr-064-actor-id-on-every-event.md) | Capture `ActorId` on every `StoredEvent`, not just self-attested ones | Accepted |
+| [065](adrs/adr-065-local-active-scope-caching-erasure-invalidation.md) | Local/edge clients cache only the active-scoped subset, and purge it on erasure | Accepted |
+| [066](adrs/adr-066-digital-signoff-step-up-auth.md) | Digital sign-off for regulated actions — RFC 9470 step-up authentication + an envelope `Signature` object | Accepted |
+| [067](adrs/adr-067-control-plane-actions-as-reserved-events.md) | Control-plane actions (schema registration, RBAC grants, trust-root registration) are reserved event types in the same Event Log | Accepted |
+| [068](adrs/adr-068-lineage-export-and-bitemporal-playback.md) | Lineage-scoped event export for dev/support replay, bitemporal system-time playback, and a self-contained offline player for litigation review | Accepted |
+| [069](adrs/adr-069-pluggable-outbox-flush-triggers.md) | Pluggable outbox flush triggers — opportunistic, scheduled ("phone home"), and explicit/manual, including a fully offline transfer | Accepted |
+| [070](adrs/adr-070-device-input-integration.md) | Device input integration — WebUSB/WebHID/Web Serial/Web Bluetooth, with a native-bridge fallback | Accepted |
+| [071](adrs/adr-071-pci-sad-registration-boundary.md) | PCI-DSS Sensitive Authentication Data can never be registered as a schema field — a hard boundary at registration, not publish | Accepted |
+| [072](adrs/adr-072-bulk-ingestion-and-interchange-format-adapters.md) | Bulk/batch ingestion, and external interchange-format adapters (HL7v2/FHIR inbound, regulatory formats outbound) | Accepted |
+| [073](adrs/adr-073-accessibility-standard.md) | Accessibility standard — WCAG 2.1 AA baseline, WCAG 2.2 AA forward-looking, independent of which UI architecture renders a screen | Accepted |

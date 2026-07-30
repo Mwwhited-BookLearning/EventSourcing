@@ -82,6 +82,15 @@ larger batch of unrelated changes.
   actually adopts it, rather than repeating usage examples inline there.
   See `docs/libraries/README.md` for the catalog and the buy-over-build
   principle this folder exists to support.
+- `docs/domains/{domain}.md` — a **sixth kind of document**: one
+  reference doc per real-world domain considered as a proving-ground
+  worked example — applicable ADRs (with a one-line reason each),
+  governing regulations/standards, and special concerns (a real
+  tension, a weak spot, a standout fit). Generated from, not a repeat
+  of, `docs/comparisons/proving-ground-domain.md`'s coverage matrix and
+  regulatory mapping table — that comparison is where the *choice*
+  happened; these files are the per-domain reference for afterward.
+  `docs/domains/README.md` is the catalog.
 - `docs/design-docs/` — **removed.** Was a second, independently-developed
   design (a distributed, entity-centric event-sourced platform), imported
   purely as a reference for this integration; fully absorbed into ADRs
@@ -157,12 +166,17 @@ larger batch of unrelated changes.
   sense, `ADR-018`).
 - **A repeated relationship gets its own envelope-metadata field, never
   conflated with an existing one just because the shape looks similar.**
-  This design now has four: `parentEventIds` (causal derivation, `ADR-005`),
+  This design now has six: `parentEventIds` (causal derivation, `ADR-005`),
   `MaterializationOfEventId` (reshaped copy of, `ADR-027`),
-  `TelemetryPointer` (position in a signal/media stream, `ADR-031`), and
-  `AttachmentRef` (supporting binary content, `ADR-032`). If a fifth comes
-  up, ask what question it specifically answers before reusing one of these
-  four.
+  `TelemetryPointer` (position in a signal/media stream, `ADR-031`),
+  `AttachmentRef` (supporting binary content, `ADR-032`), `erasureScope`
+  (whose crypto-shredding key protects this field, when it's not the
+  event's own `EntityId`, `ADR-057`), and `Signature` (a captured
+  sign-off attestation — signer/time/meaning/`acr`, `ADR-066`; a milder
+  fit than the other five, since it's an audit record rather than a
+  pointer to another event/entity, worth a human gut-check if a seventh
+  ever comes up). If a seventh comes up, ask what question it
+  specifically answers before reusing one of these six.
 - **Prefer buy over build.** For a complex pattern or task, check for an
   existing, well-adopted framework/library before designing a bespoke
   mechanism — the same instinct as "never invent a bespoke mechanism when
@@ -459,6 +473,198 @@ through `ADR-060`), per direct follow-up direction:
   Signing/retry follows the Standard Webhooks specification directly
   rather than a fourth bespoke convention.
 
+All five remaining open questions (the testing-strategy residual, plus
+the second review's three findings, plus the proving-ground-domain
+question) are now resolved too, per direct follow-up direction —
+`docs/10-open-questions.md`'s table is genuinely empty as of this pass:
+- **Data residency** (`ADR-061`) — a real requirement, not
+  speculative: per-`AppId` `AllowedRegions`, enforced at `ADR-033`'s
+  peer-sync outbox (a region-constrained `AppId`'s events are simply
+  never queued toward a disallowed site), `ADR-034`'s `EntityType` shard
+  key left unchanged. Honest, named tension with `ADR-033`'s minimum-
+  replication-factor-of-2: residency wins over fault tolerance when they
+  conflict, stated as a deployment responsibility, not hidden.
+- **Package distribution** (`ADR-062`) — the framework is distributed as
+  installable packages (NuGet for the .NET engine, npm for the Vue
+  client), not forked/cloned per deployment. New `EventStore.
+  Abstractions` package carries every `docs/extensibility-points.md`
+  interface with no implementation. `ADR-059`'s composition-root model
+  is unaffected — this ADR only settles *where* the referenced code
+  comes from. SemVer 2.0.0 now governs every published package, a real
+  new obligation (public API surface discipline) this design didn't
+  previously have.
+- **Secrets management** — resolved as a direct addendum to `ADR-041`
+  (no new ADR number, since it only extends that ADR's existing
+  "configuration stays `Microsoft.Extensions.Configuration`" decision):
+  every secret (connection strings, `ADR-057`'s KEK, `ADR-040`/`ADR-060`'s
+  HMAC secrets) is an ordinary configuration value, sourced from
+  whichever provider a deployment already uses — no bespoke mechanism,
+  no vendor hard-dependency.
+- **Distributed-correctness testing, staged** (`ADR-063`) — adopts
+  `docs/comparisons/distributed-correctness-testing.md`'s suggested path
+  directly: `FsCheck` (property-based) + `Polly`/`Simmy` (in-process
+  fault injection) now; `Testcontainers`+`Toxiproxy` (real network-level
+  partition testing) named as the first move if/when this heads toward
+  production, Jepsen-style external verification as the ceiling beyond
+  that — not a default, a named escalation with a stated trigger
+  ("moving toward production"), not a calendar date.
+- **Proving-ground domain, decided: two, not one** —
+  `docs/comparisons/proving-ground-domain.md` scored 8 candidate domains
+  (widened beyond the reviewer's own past-experience list on purpose)
+  against every non-universal mechanism this framework has. **Clinical
+  trials + connected medical-device telemetry** (broadest single-domain
+  coverage; `ADR-043`'s "secondary opinion" access was already modeled
+  on this exact scenario) is being paired with **digital identity/KYC**
+  (the only domain that makes `ADR-036`'s DID/UCAN adoption central
+  rather than secondary) — two domains chosen deliberately over one,
+  both for combined feature coverage and to reduce the risk of this
+  framework reading as built for one industry.
+
+A traceability/auditability review (this session), prompted directly by
+the two proving-ground domains, found one clear fix and two genuine
+forks:
+- **`ActorId` on every `StoredEvent`** (`ADR-064`) — checked
+  `docs/data/event-log.md`'s actual shape rather than assumed, and found
+  a real gap: `AttestedActorId` exists but is scoped entirely to
+  `ADR-035`'s self-attestation path; an *ordinary* authenticated publish
+  (`ADR-006` already verifies a real identity) had nothing recording who
+  that verified caller was. Fixed directly, not left as an open
+  question, since there was no real design fork — `ADR-045`'s read
+  access audit log now has its missing write-side equivalent.
+- **`IErasureKeyStore` corrected from "one backend per deployment" to
+  keyed/multi-backend** (`ADR-057` amended) — direction received this
+  session: cloud, local/dev, and on-prem/self-hosted key-management
+  options must all be first-class, including running combinations of
+  them in one deployment (a healthcare tenant's keys in a self-hosted
+  on-prem `HashiCorp Vault`, composing with `ADR-061`'s region-pinning,
+  while another tenant in the same deployment uses a cloud KMS). Now the
+  same Strategy-pattern/keyed-DI shape as `IMaskingStrategy`, keyed by
+  `AppId`, not a single deployment-wide pick — the same correction
+  applied to `ADR-041`'s secrets addendum, where `Microsoft.Extensions.
+  Configuration`'s own provider-chaining already satisfies "combinations"
+  with no new mechanism needed.
+- **Two genuine open questions, not forced to a decision**: whether
+  non-repudiation/electronic signatures (FDA 21 CFR Part 11-shaped —
+  verified against the real regulation before citing) belong at the
+  framework level or the domain/application level, and whether control-
+  plane actions (schema registration, RBAC grants, `AppTrustRoot`
+  registration) get the same audit rigor as business events today — genuinely
+  unclear either way, tracked in `docs/10-open-questions.md`.
+
+**Local/edge active-scope caching + erasure invalidation** (`ADR-065`) —
+direction received this session: a local machine only needs *active*
+recording/review data, not full history, but a distributed clean/delete
+must still be possible when regulation requires it. Resolved as a
+client-side scoping+invalidation policy on top of mechanism this design
+already has (`ADR-037`'s filtered GraphQL Subscriptions), not a new
+replication tier — a local/edge client is a leaf consumer of one site,
+not a fourth peer in `ADR-033`'s mesh. Checked MongoDB Atlas Device Sync
+as candidate prior art and found it deprecated/shut down (Sept.
+2024/2025) — correctly not adopted; CouchDB's long-established filtered
+replication is the real precedent, already satisfied by this design's
+existing filter mechanism. Honest, named limitation: an offline device
+won't purge an erased entity until it reconnects — the same
+already-delivered-copy limitation `ADR-060` states for webhooks.
+
+**Soft/reveal-on-demand display masking** (`ADR-009` amended) — a
+*different* axis from claims-based masking, disambiguated explicitly:
+protects against shoulder-surfing for an already-authorized viewer, not
+against unauthorized access. Original framing (server sends both
+`value` and a `displayMask` together) was reconsidered mid-session per
+direct observation and replaced with a better design: a
+`revealOnDemand`-configured field's ordinary response is *always* the
+masked/display shape, for every caller including claim-holders; seeing
+the real value is a separate `revealField` action, checked against
+`requiredClaim` (and optionally `ADR-066`'s step-up auth) at the moment
+of the request. Cheaper serialization for the common case, sharper
+`ADR-045` audit granularity (a reveal is its own logged action, not
+inferred from a bulk response), and a narrower `ADR-065` local-cache
+exposure window — the real value is never present on a device until
+actually asked for. The general (non-`revealOnDemand`) masking wrapper
+is unchanged — this is an opt-in trade for fields where shoulder-surfing
+is a stated concern, not a new default for every classified field.
+
+**Digital sign-off for regulated actions** (`ADR-066`) — resolves the
+electronic-signature open question in favor of the framework level, per
+direct direction: additional sign-off (password re-entry, one-time
+code, or another secondary factor) triggers **RFC 9470**'s OAuth step-up
+challenge (`acr_values`/`max_age`) rather than this framework
+implementing any re-authentication method itself — that stays the IdP's
+job (`ADR-006`). A new envelope `Signature` object (`SignerId`/
+`SignedAt`/`Meaning`/`Acr`) satisfies 21 CFR Part 11 §11.50's three
+linked elements, hash-chained via the existing `ADR-019` mechanism, no
+new tamper-evidence primitive.
+
+**Control-plane actions as reserved events in the same Event Log**
+(`ADR-067`) — resolves the last open question this session's
+traceability review raised, per direct direction: schema registration
+(`ADR-020`), RBAC grants (`ADR-046`), and `AppTrustRoot` registration
+(`ADR-044`) become reserved event types (reusing `ADR-020`'s existing
+reservation pattern) in the *same* Event Log as business events, not a
+separate audit table — because they can be linked to the business
+events they cause/authorize via the existing `parentEventIds` lineage
+mechanism (`ADR-005`), something a separate store couldn't participate
+in. Explicitly the opposite storage choice from `ADR-045`'s `AccessLog`
+(reads vs. writes, different volume profile, no causal link to draw)
+— stated as a deliberate contrast, not an inconsistency. No new store,
+tamper-evidence primitive, or identity scheme — entirely a reuse of
+`ADR-005`/`ADR-019`/`ADR-020`/`ADR-021`'s existing mechanisms.
+`docs/10-open-questions.md` is fully empty again as of this pass.
+
+**Lineage export + bitemporal system-time playback** (`ADR-068`) —
+direction received this session: export event chains/graphs for dev/
+support replay, plus VCR-style play/rewind/fast-forward for litigation
+review showing dropped data recovered "in place" as originally
+observed, not the corrected hindsight view. Recognized the litigation
+half as exactly **bitemporal modeling**'s own formally-named
+distinction (Snodgrass/TSQL2, standardized in SQL:2011, shipped as SQL
+Server's `FOR SYSTEM_TIME AS OF`) — this design already captures both
+time axes without having queried one of them: `OccurredAt` is valid
+time, `SequenceNumber` is transaction time; `ADR-021`'s `EntityStoreRow`
+is a valid-time-corrected fold (deliberately smooths late arrivals for
+"what's true now"), and system-time playback is the missing
+transaction-time query — fold in raw arrival order up to a cutoff,
+showing a `LateArrivalFlag` correction land exactly when it did. Export
+walks the existing Lineage DAG (`ADR-005`), enforces masking/erasure
+identically to any other read (no bypass), and adds a chain-of-custody
+manifest hash reusing `ADR-019`'s primitive for a new purpose. Both
+capabilities reuse existing mechanisms throughout — no new tamper-
+evidence, masking, or authorization primitive. Extended further this
+pass: a **self-contained offline player** for handing the litigation
+export to a party with no access to this system at all — a single
+static HTML file (`vite-plugin-singlefile`, reusing `ADR-039`'s Vue
+playback component as a second build target, not a second stack) that
+independently re-verifies the hash chain/manifest from its own embedded
+data, no install, no server, ever — the industry-standard e-discovery
+delivery format (MetaDiscovery/OSForensics/EZViewer), not a novel idea.
+
+**Pluggable outbox flush triggers** (`ADR-069`) — extends `ADR-039`'s
+client outbox (doesn't revise it) for genuinely isolated data capture:
+the durable outbox's `Flush` operation is decoupled from its trigger,
+which can now be opportunistic (existing Background Sync/open-focus),
+scheduled "phone home" (Web Periodic Background Sync API — checked and
+found Chromium-only/experimental, same honesty standard as the original
+Background Sync caveat — or an OS/device-level scheduled task for
+native clients), or explicit/manual, including a fully air-gapped
+transfer that reuses `ADR-068`'s portable bundle format for outbound
+commands rather than inventing a second bundle shape.
+
+**Device input integration** (`ADR-070`) — answers "how do HID/raw USB/
+serial/BLE device streams get into the web client, particularly
+offline": a new `IDeviceInputSource` extensibility seam with one adapter
+per browser hardware API (`WebUsbInputSource`/`WebHidInputSource`/
+`WebSerialInputSource`/`WebBluetoothInputSource`), chosen per-device by
+its actual hardware interface, not a deployment-wide pick — plus a
+`NativeBridgeInputSource` (localhost WebSocket) for Firefox/Safari,
+which support none of the four browser APIs at all (checked, not
+assumed: WebUSB ~76%, Web Serial ~72%, WebHID ~27% global, Chromium-only
+across the board; Web Bluetooth explicitly declined by Mozilla, absent
+from WebKit entirely). Captured readings feed `ADR-039`'s existing
+outbox unchanged; server-side, continuous telemetry maps to `ADR-031`'s
+streaming channels and discrete readings to ordinary events defaulting
+to `ADR-035`'s non-authoritative capture, unless the device itself
+carries `ADR-036`'s self-attested identity.
+
 ### Propagation status
 
 **Structurally propagated everywhere** (all of `ADR-021`–`039`):
@@ -506,12 +712,108 @@ superseded and pointing at the ADR that superseded it.
   stale in its own banner) predate `ADR-041` — when that file's sketches
   are eventually redone, they should reflect explicit composition-root
   registration, not just the new projects' names.
-- **`08-build-plan.md` has no phases yet for `ADR-054`–`060`** (client
+- **`08-build-plan.md` has no phases yet for `ADR-054`–`070`** (client
   SDK generation, testing strategy, data lifecycle, GDPR erasure, rate
-  limiting, extensibility model, webhooks) — six real capabilities added
-  this pass with no build-plan entry, same gap this section already
-  tracks for everything past `ADR-024`. `ADR-057` (erasure) in particular
-  needs real exit criteria before it's built, given it revises `ADR-009`.
+  limiting, extensibility model, webhooks, data residency, package
+  distribution, staged correctness testing, `ActorId`, local active-scope
+  caching, digital sign-off, control-plane-as-events, lineage export/
+  bitemporal playback/offline player, pluggable outbox triggers, device
+  input integration) — seventeen real capabilities added across this
+  session's reviews with no build-plan entry, same gap this section
+  already tracks for everything past `ADR-024`. A follow-up design-review
+  pass (this session) confirmed `064`–`070` specifically were missing
+  from this bullet's own count until just now — the tracking itself had
+  drifted, not just the build plan. `ADR-057` (erasure) and `ADR-062`
+  (package distribution — affects how every other phase's deliverable is
+  even structured) most need real exit criteria before anything
+  downstream is built.
+- **Two follow-up findings from this review resolved directly, per
+  direct verified reasoning, no new ADR numbers**: a signer's `ActorId`/
+  `Signature` (`ADR-066`) is now stated as **categorically exempt** from
+  `ADR-057`'s erasure — checked against the real regulation, not
+  assumed: GDPR Art. 17(3)(b) (legal-obligation compliance) and 17(3)(e)
+  (establishment/exercise/defence of legal claims) both apply directly,
+  since a signature's entire evidentiary value depends on the signer's
+  identity being un-erasable. `ADR-068`'s bundle-format-versioning
+  question resolved the same way: full cross-version compatibility
+  isn't attempted — matched framework/player versions are guaranteed
+  playable, and a historical deployment's matching player is preserved
+  by archiving it alongside its export, not by engineering a future
+  player to read an arbitrarily old format. `docs/10-open-questions.md`
+  is empty again.
+- **PCI-DSS Sensitive Authentication Data boundary** (`ADR-071`) —
+  another review pass, checking whether the proving-ground domains
+  *not* chosen (brokerage/capital-markets, insurance) have requirements
+  the two chosen domains don't exercise. Found one genuine, structural
+  gap: PCI-DSS Requirement 3.2/3.2.2 bars storing Sensitive
+  Authentication Data (CVV2/CVC2/CID, full track data, PIN blocks) after
+  authorization **even encrypted** — a hard incompatibility with
+  `ADR-023`'s persist-everything posture neither `ADR-009`'s masking nor
+  `ADR-057`'s crypto-shredding can resolve, since both still write the
+  real value to `Payload` first. Resolved via a reserved
+  `regulatoryClassification` value, `"PCI-SAD"`, that makes schema
+  *registration* (not publish) hard-reject the event type — the one
+  place this design still enforces reject-on-invalid after `ADR-023`,
+  since registration was never subject to that ADR's posture in the
+  first place. Full PAN remains fully covered by ordinary masking/
+  crypto-shredding. Confirming non-gap from the same pass: SEC Rule
+  17a-4's broker-dealer recordkeeping rule already has its 2022–2023
+  audit-trail alternative satisfied by `ADR-019`'s existing hash chain —
+  no new mechanism needed if brokerage is ever built as a third
+  proving-ground domain.
+- **The proving-ground-domain comparison was extended twice more.**
+  `docs/comparisons/proving-ground-domain.md` gained a coverage matrix
+  for seven more candidates (pharmacovigilance, biobanking, public
+  health surveillance, ITAR/export-controlled defense data, government
+  case management, digital forensics, DSCSA pharma supply chain) plus a
+  regulatory/compliance-framework mapping across all fifteen domains
+  considered, per direct request for a "compliance axis" distinct from
+  technical fit. That review surfaced two genuine, cross-domain gaps,
+  both resolved directly once confirmed with concrete detail —
+  **`ADR-072`**: bulk/batch ingestion (`POST /publish/batch`, still one
+  persist-everything guarantee per event inside it, not a new
+  persistence model) and a new `IInterchangeFormatAdapter` extensibility
+  seam for external interchange standards, both inbound (confirmed
+  directly from the clinical-trials domain: HL7v2 — over its real
+  transport, MLLP/TCP, verified rather than assumed to be HTTP — and/or
+  FHIR bridging hospital EMR data in) and outbound (ICH E2B(R3) for
+  pharmacovigilance, GS1/EPCIS for DSCSA, composing with `ADR-060`'s
+  webhook delivery as a transform step ahead of it, not a replacement).
+- **The proving-ground coverage matrix was redone at full ADR
+  granularity, per direct request** — `docs/comparisons/
+  proving-ground-domain.md`'s two curated, mechanism-bundled matrices
+  (18 named mechanisms each) were replaced with one unified matrix
+  covering all 72 ADRs × all 15 domains: 26 ADRs that genuinely
+  differentiate by domain get a full H/M/L/— row each; the other 46 —
+  framework-level decisions that apply identically regardless of domain
+  (persistence providers, DI/composition, spec generation, testing
+  strategy, and similar) — are named explicitly in a "why these don't
+  differentiate" list rather than forced into artificial per-domain
+  scores or silently dropped. Verified the full 1–72 range is covered
+  exactly once across the two lists, no gaps or duplicates.
+- **A new `docs/domains/` folder, now complete** — one reference doc
+  per proving-ground domain (applicable ADRs, governing regulations,
+  special concerns) for all 15 domains considered, plus `domains/
+  README.md`'s catalog, per direct request. The two chosen domains were
+  written directly; the other thirteen were generated in parallel by
+  four dispatched agents, each grounded in `docs/comparisons/
+  proving-ground-domain.md`'s already-verified coverage matrix and
+  regulatory mapping table rather than inventing new claims — spot-
+  checked for quality afterward.
+- **Four more propagation gaps the same design-review pass found,
+  entirely untracked until now**: `01-c4-architecture.md` has zero
+  mention of any `ADR-054`–`070` capability (no new containers/
+  components for webhooks, rate limiting, digital sign-off, lineage
+  export/playback, or device input); `03-api-contracts.md` has zero
+  mention of the new `revealField`/export/playback/webhook-registration
+  endpoints or the RFC 9470 step-up challenge shape; **none** of the 18
+  files under `docs/features/` reference any ADR past `053` — the entire
+  `054`–`070` batch has zero Gherkin coverage, the largest single gap
+  found (contrast the `021`–`039` batch, whose feature-doc coverage gap
+  was already closed in an earlier pass); and `06-solution-structure.md`
+  reflects almost none of the new capabilities' projects (a webhook
+  dispatcher, a rate limiter, an SDK-generation step, device-input client
+  packages) beyond one incidental `EntityErasureKey` mention.
 
 **Feature-doc coverage gap closed** (found during a full-package review,
 this pass): `ADR-021`, `030`, `031`, `032`, `033`/`034` (combined, per

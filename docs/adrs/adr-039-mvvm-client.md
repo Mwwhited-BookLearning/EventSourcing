@@ -117,3 +117,9 @@ Consequences:
   comparison](../comparisons/ui-framework.md) already used to prefer
   Vue over Blazor for the same underlying property, applied a second
   time at the template-syntax layer specifically.
+- **Accessibility is deliberately not decided here** — a UI-technology-
+  agnostic requirement that would apply identically if `docs/
+  comparisons/ui-architecture-patterns.md`'s stated fallback chain
+  (MVVM → MVP → MVC → code-behind) ever fell back to a different
+  pattern for some screen this ADR doesn't fully dictate. See `ADR-073`
+  for the actual standard adopted.

@@ -89,7 +89,10 @@ queued.**
 | Crypto-shredding (cryptographic erasure) | Encrypt personal data with a key scoped to the data subject, held separately from the data; "erasure" destroys the key, never the row — satisfies GDPR/CCPA deletion without ever mutating an append-only log | `ADR-057` |
 | Envelope encryption | A per-subject data-encryption key (DEK) itself wrapped by a master key-encrypting-key (KEK) held in a KMS — the standard mechanism crypto-shredding is built on | `ADR-057` |
 | Webhook delivery with HMAC signing and retry | Push-based outbound notification to a registered URL, signed so the receiver can verify authenticity, retried with backoff, dead-lettered as an inspectable record rather than dropped silently | `ADR-060` |
+| Device input integration via Web Hardware APIs | Read directly from USB/HID/serial/BLE hardware from a web page, offline, via a browser-native permission-gated API, with a local native-bridge fallback where the browser API isn't supported | `ADR-070` |
 | Rate limiting (Token Bucket / Sliding Window / Concurrency Limiter) | Bound a caller's request volume or concurrent resource usage, partitioned per tenant so one caller can't starve another | `ADR-058` |
+| Bitemporal modeling (valid time vs. transaction time) | Track two independent time axes — when something was true in reality, vs. when the system learned about it — so "what do we know now" and "what did we show at the time" can both be queried honestly | `ADR-068` |
+| Event chain/lineage export | Extract a causally-connected subgraph of history into a portable, provenance-preserving bundle for replay in a different environment | `ADR-068` |
 
 ## A note on diagrams
 
