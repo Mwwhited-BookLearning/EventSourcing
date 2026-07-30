@@ -1,4 +1,4 @@
-[← Domains index](README.md)
+[← Domains index](../README.md)
 
 # Domain: Insurance + Telematics
 

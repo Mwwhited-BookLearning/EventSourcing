@@ -51,7 +51,7 @@ Alternates considered, not chosen:
 
 Directly evokes patient vital signs and continuous device telemetry —
 the literal subject matter of this proving-ground domain
-(`docs/domains/clinical-trials-device-telemetry.md`) — without needing
+(`docs/domains/clinical-trials-device-telemetry/README.md`) — without needing
 an invented word.
 
 Alternates considered, not chosen:
@@ -67,7 +67,7 @@ Alternates considered, not chosen:
 
 A meridian is a reference line you verify position against — a fitting
 metaphor for identity attestation and verification
-(`docs/domains/digital-identity-kyc.md`), and it keeps the
+(`docs/domains/digital-identity-kyc/README.md`), and it keeps the
 navigation-metaphor family going alongside `Duplex`.
 
 Alternates considered, not chosen:
