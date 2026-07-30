@@ -99,3 +99,68 @@ requires retention that erasure requests would otherwise conflict with.
   digital forensics or DSCSA, government case management has no
   organic fit for `ADR-031`/`ADR-070`; case data arrives as documents
   and structured submissions, not sensor or device readings.
+
+## Glossary
+
+- **Administrative Appeal** — a citizen's or applicant's formal request
+  to have an agency reconsider or reverse a determination, typically
+  the step preceding or following a fair hearing.
+- **Benefits Eligibility Determination** — the formal decision a
+  caseworker or agency issues on whether an applicant qualifies for a
+  public benefit (e.g., SNAP, Medicaid, TANF) and at what level —
+  exactly the kind of decision `ADR-066`'s digital sign-off is meant to
+  attest.
+- **Case File** — the complete record of submissions, supporting
+  documents, and reviews accumulated for one person's or entity's
+  matter over its lifecycle; here it accumulates as a lineage DAG of
+  causally linked events (`ADR-005`), not a single static folder.
+- **Caseworker** — the government employee responsible for reviewing
+  submissions, gathering evidence, and issuing determinations on the
+  cases assigned to them.
+- **Fair Hearing** — a formal, adjudicative due-process proceeding (a
+  term used specifically in benefits programs like SNAP and Medicaid)
+  at which an applicant or recipient can contest an adverse
+  determination before an impartial hearing officer — the kind of
+  after-the-fact review `ADR-068`'s bitemporal export/playback is
+  positioned to support.
+- **FOIA (Freedom of Information Act)** — the 1967 US federal law
+  giving any person the right to request access to federal agency
+  records, subject to nine exemptions (including personal privacy and
+  law enforcement); a FOIA response over a case file is exactly where
+  `ADR-009`/`ADR-050`'s masking would apply to withhold exempt fields
+  without withholding the whole record.
+- **Inter-Agency Referral** — routing a case, or a specific finding
+  within one, to another agency or program for action (e.g., a
+  benefits-fraud referral to an inspector general's office) — the
+  capped, time-boxed access grant `ADR-043` models.
+- **Need-to-Know** — the access-control principle that a caseworker,
+  supervisor, or auditor should see only the case information their
+  specific job function requires, not everything their general role
+  permits — the finer-grained test `ADR-043`'s entity-scoped claims are
+  named against in Special concerns above.
+- **Privacy Act of 1974** — the federal law governing how agencies
+  collect, maintain, use, and disclose personal information held in a
+  "system of records," including an individual's right to access and
+  amend their own records and an agency's obligation to account for
+  disclosures — the latter is what `ADR-045`'s read access audit log is
+  built to satisfy.
+- **Public Records Law** — state-level statutes requiring government
+  records, including case files, to be retained and made available for
+  public inspection absent a specific statutory exemption; the source
+  of the retention-vs-erasure tension `ADR-057` is named against above.
+- **Redaction** — removing or obscuring specific sensitive content from
+  a document before it's disclosed, while leaving the rest of the
+  record visible — the document-level analog of `ADR-009`'s field-level
+  masking.
+- **Section 508** — the Rehabilitation Act amendment requiring federal
+  agencies' information and communications technology to be accessible
+  to people with disabilities; satisfied here via `ADR-073`'s WCAG 2.1
+  AA baseline rather than a bespoke mechanism.
+- **Sunshine Laws** — an informal umbrella term for the family of
+  open-government statutes, including public-records law and
+  open-meetings requirements, at both the federal and state level.
+- **System of Records (SOR/SORN)** — under the Privacy Act, a group of
+  federal records from which information about an individual is
+  retrieved by name or personal identifier; an agency must publish a
+  System of Records Notice (SORN) in the Federal Register describing
+  one before operating it.

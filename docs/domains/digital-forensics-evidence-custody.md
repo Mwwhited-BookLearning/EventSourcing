@@ -118,3 +118,69 @@ forensics by construction."
   render through this framework's client the same as any other domain;
   WCAG 2.1 AA applies here too, not just the government-case-management
   candidate it was originally tagged under.
+
+## Glossary
+
+- **Bit-for-Bit (Forensic) Image** — an exact, sector-by-sector copy of
+  a storage device, including unallocated space and deleted-file
+  remnants, made so all analysis happens on a copy and the original
+  media is never touched — the attachment-shaped content `ADR-032`
+  scores highest against of any candidate reviewed.
+- **Chain of Custody** — the unbroken, documented record of who
+  possessed, accessed, or transferred a piece of evidence and when,
+  from collection through court presentation; a single undocumented gap
+  can render evidence inadmissible — restated in Special concerns above
+  as, structurally, `ADR-045`'s read access audit log.
+- **Digital Fingerprint / Hash Value** — a fixed-length checksum (e.g.,
+  SHA-256) computed from a file or image's contents, which changes if
+  even a single bit is altered, used to prove a copy is identical to
+  its source; paired with `ADR-066`'s digital sign-off, this is the
+  combination Special concerns above ties to FRE 901/902
+  self-authentication.
+- **E-Discovery** — the process of identifying, preserving, collecting,
+  and producing electronically stored information in response to
+  litigation or a regulatory investigation — the routine litigation-
+  review need `ADR-068`'s bitemporal export/playback targets directly.
+- **Examiner** — the credentialed forensic professional who performs
+  acquisition, analysis, and interpretation of digital evidence and
+  attests to the findings — the role `ADR-066`'s digital sign-off
+  captures at each chain-of-custody handoff.
+- **FRE 901 (Federal Rule of Evidence 901)** — the rule requiring a
+  party to produce evidence sufficient for a reasonable factfinder to
+  conclude an item is what it's claimed to be, before it can be
+  admitted at trial.
+- **FRE 902 / Self-Authenticating Evidence** — categories of evidence,
+  including certified electronically generated records under Rules
+  902(11)-(14), that require no extrinsic proof of authenticity to be
+  admitted — the rule Special concerns above says lines up directly
+  with the hash chain and `ADR-066`'s sign-off, with no new mechanism
+  needed.
+- **ISO/IEC 27037** — the international standard giving guidance to
+  Digital Evidence First Responders and Digital Evidence Specialists on
+  identifying, collecting, acquiring, and preserving digital evidence
+  so its integrity and cross-jurisdiction admissibility are preserved;
+  Special concerns above calls `ADR-045`'s access audit log a direct
+  structural match for its chain-of-custody requirement.
+- **Legal Hold** — a notice issued once litigation is reasonably
+  anticipated, obligating an organization to preserve all potentially
+  relevant records and suspend routine deletion — creating the same
+  retention-vs-erasure tension `ADR-057` is named against as a real but
+  secondary concern here.
+- **Metadata Preservation** — retaining a file's system-level
+  attributes (timestamps, paths, ownership) exactly as found during
+  acquisition, since altering metadata can itself constitute evidence
+  tampering.
+- **Pattern-of-Life Analysis** — reconstructing a subject's routine
+  behavior — movements, communications, device usage — by correlating
+  many discrete digital artifacts over time; the timeline aggregation
+  `ADR-007`'s derived/materialized events are named against above.
+- **Spoliation** — the intentional or negligent destruction,
+  alteration, or loss of evidence, which can trigger court sanctions or
+  an adverse-inference instruction against the responsible party; an
+  immutable `ADR-045` access log makes undetected spoliation of the
+  record itself detectable.
+- **Write Blocker** — hardware or software that lets an examiner read a
+  storage device with no possibility of writing to it, preventing
+  accidental modification of original evidence during acquisition — one
+  of the forensic acquisition devices `ADR-070`'s device input
+  integration is named against directly.

@@ -7,7 +7,12 @@ A **sixth kind of document**, alongside `docs/adrs/` (a decision),
 considered as a proving-ground worked example for this framework —
 which ADRs apply and why, which regulations/standards actually govern
 it, and any special concerns (a real tension, a weak spot, a standout
-fit) worth knowing before building against it.
+fit) worth knowing before building against it. Every file now also ends
+with its own `## Glossary` section — that industry's own jargon (a Case
+Report Form, a Beneficial Owner, an EPCIS event), verified before
+writing rather than recalled from memory. Distinct from
+[`docs/glossary.md`](../glossary.md), which covers Duplex's own
+cross-cutting engine terms once, not per domain.
 
 Not a duplicate of `docs/comparisons/proving-ground-domain.md` — that
 comparison doc is where the *choice* was made (the full H/M/L coverage

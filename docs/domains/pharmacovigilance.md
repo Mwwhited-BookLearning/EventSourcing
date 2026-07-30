@@ -120,3 +120,78 @@ work already happens, not a contrived stretch to exercise them.
   supply the delivery mechanism once a report is ready to send, but no
   ADR designs the deadline-tracking/escalation workflow itself — a
   candidate for a future ADR, not yet decided.
+
+## Glossary
+
+- **Adverse Drug Reaction (ADR)** — a harmful, unintended response to a
+  medicine at a normal dose. Note the acronym collision: everywhere
+  else in this design package, "ADR" means Architecture Decision Record
+  (as in `ADR-035`); within this domain doc's Overview and Governing
+  regulations sections, "ADR" means Adverse Drug Reaction instead — the
+  two are unrelated, and this entry exists to make that explicit rather
+  than leaving it to context, per this project's own convention for
+  disambiguating terminology collisions.
+- **Causality Assessment** — the structured judgment (e.g., the WHO-UMC
+  scale or the Naranjo algorithm) a reviewer applies to decide how
+  likely it is that a suspected drug, rather than the patient's
+  underlying condition or another medicine, actually caused a reported
+  reaction — the human judgment step `ADR-066`'s digital sign-off is
+  meant to attribute and timestamp.
+- **EudraVigilance** — the European Medicines Agency's database for
+  suspected adverse drug reaction reports across the EU/EEA, used for
+  signal detection and case exchange among regulators, sponsors, and
+  marketing-authorization holders — the outbound destination
+  `ADR-072`'s `IchE2bR3Adapter` and `ADR-060`'s webhook delivery target
+  together.
+- **Expedited Reporting** — the regulatory requirement (FDA 21 CFR
+  314.80/600.80's 15-calendar-day clock for serious, unexpected
+  reactions) to notify authorities of a safety case faster than routine
+  periodic reporting — the deadline-tracking gap this file's Special
+  concerns section already flags as undesigned.
+- **FAERS (FDA Adverse Event Reporting System)** — the FDA's
+  counterpart to EudraVigilance: the US database that receives
+  adverse-event, medication-error, and product-quality-complaint
+  reports supporting post-marketing drug/biologic safety surveillance.
+- **ICH E2B(R3)** — the internationally harmonized electronic message
+  format for exchanging individual case safety reports between sponsors
+  and regulators; already named directly in this file's Governing
+  regulations table and `ADR-072`'s adapter.
+- **Individual Case Safety Report (ICSR)** — the structured record of
+  one patient's suspected adverse reaction to one or more medicines,
+  gathered from a patient, prescriber, or manufacturer report; the unit
+  of intake this domain's Overview describes arriving and being amended
+  over time, and the natural fit for `ADR-035`'s non-authoritative
+  capture and `ADR-005`'s lineage as it's followed up.
+- **MedDRA (Medical Dictionary for Regulatory Activities)** — the
+  standardized, hierarchical medical terminology (System Organ Class
+  down to Lowest Level Term) that ICSRs and signal-detection queries are
+  coded against, maintained by the MSSO under ICH oversight; without it,
+  "unusual pattern across many reports" (this file's Overview) has no
+  common vocabulary to be detected in.
+- **Periodic Benefit-Risk Evaluation Report (PBRER)** — the ICH E2C(R2)
+  aggregate report format (superseding the older PSUR) summarizing a
+  marketed drug's cumulative benefit-risk picture over a reporting
+  interval, rather than any single case — the kind of aggregate output
+  `ADR-007`'s still-deferred derived-event mechanism would compute.
+- **Post-Marketing Surveillance** — ongoing safety monitoring of a drug
+  or biologic after regulatory approval, as opposed to the controlled
+  setting of a pre-approval clinical trial; the overarching activity
+  this whole domain doc describes.
+- **Qualified Person for Pharmacovigilance (QPPV)** — the individual an
+  EU marketing-authorization holder must designate (Regulation (EC) No
+  726/2004 Art. 23), resident in the EEA, personally accountable for
+  that company's pharmacovigilance system — a natural signer for
+  `ADR-066`'s digital sign-off on aggregate safety assessments.
+- **Serious Adverse Event (SAE)** — an adverse event meeting one of ICH
+  E2A's defining thresholds (death, life-threatening, hospitalization or
+  its prolongation, persistent/significant disability, congenital
+  anomaly, or an intervention required to prevent one of those
+  outcomes) — the severity tier that triggers the 15-day expedited
+  clock this file's Special concerns section notes has no owning ADR
+  yet, even though `ADR-060`/`ADR-072` already supply the delivery
+  mechanism once such a report is ready to send.
+- **Signal (Signal Detection)** — a statistically unusual pattern of
+  adverse reactions across many ICSRs suggesting a possible causal
+  association not yet confirmed — as this file's Overview states, never
+  carried by any single report on its own; the concrete example named
+  for `ADR-007`'s still-deferred derived-event mechanism.

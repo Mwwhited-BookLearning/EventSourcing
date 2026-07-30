@@ -199,6 +199,7 @@ source, not a link to a file that still exists.
 | `docs/extensibility-points.md` | Consolidated catalog of every plugin/extension seam a hosting team can customize without forking core code, and the shared registration model (`ADR-059`) they all follow |
 | `docs/domains/*.md` | One reference doc per proving-ground domain considered — applicable ADRs, governing regulations, special concerns; `domains/README.md` is the catalog |
 | `docs/naming.md` | Company and product names (OoBDev; `Duplex` the base engine; `Vitals`/`Meridian` the two proving-ground products) — not an architecture decision, kept separate on purpose |
+| `docs/glossary.md` | Every cross-cutting Duplex engine term/envelope field, defined once, cross-referenced to the ADR that decided it. Each `docs/domains/*.md` file has its own `## Glossary` section for that industry's jargon instead — this file doesn't repeat those |
 
 ## Open decisions flagged for the implementer
 

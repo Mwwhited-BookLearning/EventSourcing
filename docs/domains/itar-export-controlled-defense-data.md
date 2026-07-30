@@ -109,3 +109,78 @@ technical data is itself a regulated act, not just its disclosure.
   WCAG 2.1 AA applies here too, though the driver is weaker than for a
   citizen-facing domain since the user population is small and
   internally cleared rather than the general public.
+
+## Glossary
+
+- **CCL (Commerce Control List)** — the EAR's master list of dual-use
+  items subject to export licensing, organized into ten categories
+  (0–9); the list an ECCN is assigned from, distinct from ITAR's
+  separate US Munitions List.
+- **CMMC (Cybersecurity Maturity Model Certification)** — the Department
+  of Defense's tiered cybersecurity certification program for
+  contractors handling Federal Contract Information and CUI, with Level
+  2 requiring alignment to NIST SP 800-171 — already named in this
+  file's regulations table as a driver for `ADR-074`'s SBOM generation
+  and `ADR-045`'s access accountability.
+- **Controlled Unclassified Information (CUI)** — unclassified
+  government-related information that law, regulation, or
+  government-wide policy nonetheless requires be safeguarded or have its
+  dissemination controlled — the category NIST SP 800-171/CMMC (this
+  file's regulations table) governs, distinct from and less restrictive
+  than classified information (which this domain doc does not address).
+- **DDTC (Directorate of Defense Trade Controls)** — the office within
+  the US State Department's Bureau of Political-Military Affairs that
+  administers ITAR and the US Munitions List, including licensing
+  defense-article exports and Technical Assistance Agreements.
+- **Deemed Export** — under the EAR, releasing controlled technology or
+  source code to a foreign national anywhere, including inside the US,
+  which the regulation treats as an export to that person's home country
+  even though nothing physically crosses a border; ITAR reaches the same
+  situation without using this specific term. A direct real-world
+  instance of the access-vs-disclosure distinction this file's Special
+  concerns section makes: viewing controlled data is itself the
+  regulated act, not just its transmission abroad.
+- **Defense Article** — an item (including technical data) enumerated on
+  the US Munitions List and therefore subject to ITAR export controls —
+  the category of content `ADR-032`'s binary attachments largely
+  represent for this domain, per this file's Applicable ADRs section.
+- **EAR (Export Administration Regulations, 15 CFR 730–774)** — the
+  Commerce Department's export-control regime for dual-use items
+  (civilian applications with potential military relevance), the
+  counterpart to ITAR named in this file's regulations table; a given
+  item falls under one regime or the other, never both.
+- **ECCN (Export Control Classification Number)** — the alphanumeric
+  code (e.g., `4A001`) the Commerce Control List uses to classify a
+  dual-use item and determine its EAR licensing requirements; an item
+  outside the CCL is classified `EAR99`, subject to lighter control.
+- **Foreign Person** — under ITAR, anyone who is not a US citizen,
+  lawful permanent resident, or one of the other protected categories
+  composing `US Person` below; the counterpart category whose access to
+  controlled technical data (including via a deemed export) this
+  domain's core workflow exists to restrict.
+- **ITAR (International Traffic in Arms Regulations, 22 CFR 120–130)** —
+  the State Department's export-control regime for defense articles,
+  services, and related technical data, named as this domain's defining
+  framework in its regulations table; administered by `DDTC`, the office
+  `ADR-061`'s region-pinning ultimately exists to satisfy here.
+- **Technical Assistance Agreement (TAA)** — a DDTC-approved written
+  agreement authorizing a US company to disclose controlled technical
+  data or perform defense services for a specific foreign party — the
+  real-world instrument behind this file's Special concerns note that a
+  foreign-person exception is "a delegated-access shape, not a bespoke
+  mechanism," i.e., `ADR-043`'s capped, entity-scoped grant.
+- **Technical Data** — under ITAR (22 CFR 120.10), information required
+  for the design, development, production, operation, or maintenance of
+  a defense article — drawings, specifications, and documentation — the
+  actual content this domain doc's Overview names as what the platform
+  holds, and the attachment-shaped content `ADR-032` covers.
+- **US Munitions List (USML)** — ITAR's catalog of controlled defense
+  articles, services, and technical data, organized into 21 categories
+  from firearms (Category I) to a catch-all (Category XXI); the list
+  that makes an item a `Defense Article` subject to ITAR rather than
+  EAR.
+- **US Person** — under ITAR (22 CFR 120.15), a US citizen, lawful
+  permanent resident, protected individual, or an entity incorporated
+  and doing business in the US; the population this domain's `ADR-061`
+  region/access restriction exists to distinguish from a
+  `Foreign Person`.

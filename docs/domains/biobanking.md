@@ -110,3 +110,70 @@ sharpest erasure-vs-retention tension of any candidate.
   (`docs/10-open-questions.md`) — `ADR-045`'s access audit log supplies
   the forensic inputs, but the notification process itself isn't
   designed yet.
+
+## Glossary
+
+- **Biobank / Biorepository** — an organization or facility that
+  receives, stores, processes, and distributes biospecimens and
+  associated data to qualified researchers, per ISBER's own definition
+  of the term; the entity this whole domain doc is about.
+- **Biospecimen** — a sample of human-derived material (blood, tissue,
+  DNA, RNA, protein, urine, and similar) collected from a research
+  participant, per the NCI's definition; the physical artifact
+  `ADR-005`'s event lineage traces from specimen to every derived
+  sample, and the identifying artifact this file's Special concerns
+  section names as the sharpest test of `ADR-057`'s erasure right.
+- **Broad Consent** — the Common Rule's alternative to traditional
+  informed consent (45 CFR 46.116(d)) permitting storage, maintenance,
+  and future secondary research use of identifiable specimens/data for
+  studies not yet designed at collection time, potentially for an
+  indefinite period — the provision this file's Special concerns
+  section identifies as complicating a simple "erase on request"
+  default under `ADR-057`.
+- **Chain of Custody** — the documented, unbroken record of who held,
+  transferred, or handled a specimen from collection through storage,
+  processing, and distribution or destruction — the real-world process
+  `ADR-032`'s binary attachments and `ADR-005`'s lineage together are
+  meant to represent for a specimen's documentation trail.
+- **Coded Specimen** — a biospecimen labeled with a code rather than
+  direct identifiers, where a separate, access-controlled key links the
+  code back to the donor — a practical middle ground between fully
+  identified and fully de-identified/unlinked material, and the shape
+  `ADR-009`'s masking wrapper models at the field level.
+- **Common Rule (45 CFR 46)** — the US federal policy for the
+  protection of human research subjects, requiring IRB review and
+  informed consent (or an approved alternative like broad consent) for
+  federally funded human-subjects research; the primary governing
+  framework named in this file's regulations table.
+- **De-identification** — removing or obscuring information that could
+  identify a specimen's donor, so the remaining data can be used or
+  shared without reasonably permitting re-identification — the
+  operation an honest-broker workflow performs before releasing coded
+  material to a researcher, and the domain-specific counterpart to
+  `ADR-009`'s masking mechanism.
+- **Honest Broker** — a neutral intermediary, independent of the
+  requesting research project, who de-identifies and releases coded
+  specimens/data to researchers so investigators can't directly or
+  indirectly identify the participant it came from — a real-world
+  access-control role this file's `ADR-046`/`ADR-043` row-level-security
+  fit is meant to enforce in software.
+- **Informed Consent** — a research participant's voluntary agreement to
+  a specimen's collection and use, given after being told what it
+  involves, required by the Common Rule for identifiable human-subjects
+  research absent an approved alternative like broad consent.
+- **Institutional Review Board (IRB)** — the committee, required under
+  the Common Rule, that reviews and approves human-subjects research
+  (including specimen collection and secondary use) to protect
+  participants' rights, safety, and welfare before it proceeds — one of
+  the reviewer roles named in this file's Applicable ADRs
+  row-level-access fit.
+- **Material Transfer Agreement (MTA)** — the legal document governing a
+  transfer of physical biospecimens between institutions, defining
+  permitted use, ownership, and handling restrictions — the real-world
+  instrument behind a "collaborating lab's temporary, scoped access"
+  this file's `ADR-043`/`ADR-044` delegated-access fit already names.
+- **Secondary Use** — using a specimen or its data for a research
+  purpose other than the one it was originally collected for — the
+  situation broad consent exists to permit, and the recurring source of
+  both this domain's lineage-DAG shape (`ADR-005`) and its erasure
+  tension (`ADR-057`).

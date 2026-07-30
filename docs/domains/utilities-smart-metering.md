@@ -111,3 +111,73 @@ domain still scores weak on masking, delegated access, and erasure.
   open question (`docs/10-open-questions.md`) — `ADR-045`'s access audit
   log supplies the forensic inputs, but the notification process itself
   isn't designed yet.
+
+## Glossary
+
+- **AMI (Advanced Metering Infrastructure)** — the two-way communication
+  system (smart meters plus the network and head-end systems collecting
+  from them) that lets a utility take interval reads and remotely
+  control metering, replacing periodic manual meter reads — the source
+  of this domain's `ADR-031` streaming-telemetry fit and `ADR-070`
+  device-input-integration fit.
+- **Balancing Authority** — the NERC-certified entity responsible for
+  keeping electricity supply and demand balanced in real time within its
+  area (dispatching generation, managing interchange with neighbors,
+  holding frequency steady) — a grid-operations role distinct from an
+  individual utility serving retail customers.
+- **Bulk Electric System (BES)** — NERC's term for the interconnected
+  transmission-level facilities (as opposed to local distribution) whose
+  disruption could significantly affect grid reliability — the asset
+  scope NERC CIP's cybersecurity standards actually apply to.
+- **Demand Response** — a change in electricity usage by end-use
+  customers, away from their normal consumption pattern, in response to
+  a price signal or a utility incentive payment, used to relieve stress
+  on the grid at peak times — the kind of derived, incentive-driving
+  signal `ADR-007`'s deferred derived/materialized-events mechanism
+  would compute from raw meter telemetry.
+- **Grid Operator** — an entity (a balancing authority, an RTO/ISO, or a
+  utility's own operations center) responsible for the real-time
+  operation of transmission or distribution infrastructure, as distinct
+  from a customer-facing billing or metering function.
+- **Interval Data** — meter readings captured at fixed intervals
+  (commonly every 15 or 60 minutes) rather than a single monthly total —
+  the actual shape of the continuous smart-meter telemetry this domain
+  scores H on for `ADR-031`'s streaming channels.
+- **Load Forecast** — a prediction of future electricity demand derived
+  from historical consumption and other signals, used for grid planning
+  and generation dispatch — one concrete example of `ADR-007`'s still-
+  deferred derived/materialized-events mechanism.
+- **Meter Data Management System (MDMS)** — the software layer that
+  validates, cleans, and stores the high-volume interval data AMI
+  produces before it's used for billing or grid analytics — the kind of
+  validation step this domain's `ADR-035` non-authoritative-capture fit
+  (raw reading captured, not yet trusted for billing) models directly.
+- **NERC CIP (Critical Infrastructure Protection)** — the mandatory,
+  FERC-enforced cybersecurity and physical-security standards NERC sets
+  for entities that own, operate, or use the North American Bulk
+  Electric System.
+- **Outage Management System (OMS)** — the utility software that tracks
+  service interruptions, predicts their extent from meter and
+  grid-sensor signals, and coordinates restoration — a consumer of the
+  same raw telemetry this domain's streaming channels and derived-events
+  mechanisms already model.
+- **PUC (Public Utility Commission)** — a US state-level regulatory body
+  that oversees investor-owned utilities' rates, service quality, and
+  (in many states) smart-meter deployment and data-privacy rules — the
+  source of this domain's fragmented, state-by-state regulatory
+  complexity.
+- **Smart Meter** — the customer-premises device at the heart of AMI
+  that records consumption at fine time resolution and communicates it
+  back to the utility, replacing manual meter reading — the direct-
+  ingestion device this domain's `ADR-070` device-input-integration fit
+  is built around.
+- **Tamper Detection** — a smart meter's or grid sensor's ability to
+  flag physical interference or anomalous readings (e.g., meter bypass)
+  — a concrete example of exactly the kind of "not yet trusted for
+  billing" signal `ADR-035`'s non-authoritative capture is scored H
+  against.
+- **Time-of-Use (TOU) Rate** — an electricity pricing structure where
+  the price per kWh varies by time of day (and sometimes season or day
+  of week) to reflect real demand and encourage shifting usage away from
+  peak periods — a billing calculation that would derive from raw
+  interval data the same way a load forecast does (`ADR-007`).

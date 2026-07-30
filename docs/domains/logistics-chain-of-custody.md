@@ -110,3 +110,68 @@ industrial IoT: custody-chain metadata isn't primarily personal data.
   question (`docs/10-open-questions.md`) — `ADR-045`'s access audit log
   supplies the forensic inputs, but the notification process itself
   isn't designed yet.
+
+## Glossary
+
+- **AEO (Authorized Economic Operator)** — the customs-to-business
+  certification used outside the US (EU, Canada, Mexico, and other WCO
+  members) that marks a supply-chain participant as pre-vetted and
+  low-risk, entitling it to fewer border inspections; C-TPAT is the US
+  equivalent program.
+- **Bill of Lading (BOL)** — a legally binding document issued by a
+  carrier to a shipper that serves simultaneously as a receipt for
+  goods, evidence of the transport contract, and (in negotiable form) a
+  document of title — a natural candidate for `ADR-032`'s binary
+  attachments.
+- **Bonded Warehouse** — a customs-licensed storage facility where
+  imported goods can sit without paying import duties/taxes until
+  they're released for domestic sale or re-exported duty-free.
+- **C-TPAT (Customs-Trade Partnership Against Terrorism)** — the US
+  Customs and Border Protection program (the American AEO equivalent)
+  that gives vetted, low-risk supply-chain partners faster, lighter-touch
+  border processing.
+- **Chain of Custody** — the chronological record of who held,
+  controlled, or transferred a physical item and when, kept specifically
+  to prove the item wasn't tampered with, substituted, or contaminated
+  between handoffs — the domain's namesake concept, modeled here as a
+  literal event-lineage DAG, `ADR-005`.
+- **Cold Chain** — an unbroken, temperature-controlled supply chain
+  (e.g., for perishables or pharmaceuticals) where a break in
+  refrigeration at any handoff can spoil the goods — the in-transit
+  sensor telemetry this domain's streaming-channel fit (`ADR-031`) is
+  scored against.
+- **Customs Bond** — a contract of financial liability a bonded
+  warehouse operator or importer posts with a customs agency,
+  guaranteeing that duties will eventually be paid (or the goods
+  re-exported) even though they weren't paid at the border.
+- **EDI (Electronic Data Interchange)** — the decades-old standard for
+  structured, computer-to-computer document exchange (purchase orders,
+  shipping notices, invoices) between trading partners — the existing
+  industry practice `ADR-060`'s outbound webhooks are scored as slotting
+  into, not replacing.
+- **Freight Forwarder** — an intermediary that arranges shipment of
+  goods on behalf of a shipper, coordinating carriers, customs
+  paperwork, and warehousing without itself operating the vehicles or
+  vessels.
+- **In-Bond** — the status of goods moving through a country's
+  transportation network, or sitting in a bonded warehouse, before
+  duties have been paid — literally "under bond."
+- **Incoterms** — the International Chamber of Commerce's standardized
+  three-letter trade terms (e.g., FOB, CIF, DAP) that fix exactly when
+  risk, cost, and responsibility for goods pass from seller to buyer
+  during a shipment — they determine which handoff in the custody chain
+  is the legally significant one.
+- **Manifest / Waybill** — a consolidated list of all cargo carried on a
+  single conveyance (manifest) or a non-negotiable transport document
+  for a single shipment (waybill), distinct from a bill of lading in
+  that neither is a document of title.
+- **Proof of Delivery (POD)** — the signature, photo, or scan captured
+  at final handoff confirming a shipment reached its recipient in the
+  stated condition — the ambiguous case flagged in this file's Special
+  Concerns as sitting between a real digital sign-off (`ADR-066`) and
+  ordinary binary-attachment capture (`ADR-032`).
+- **Third-Party Logistics (3PL)** — an outsourced provider that handles
+  warehousing, transportation, or fulfillment on behalf of a shipper
+  that doesn't operate its own logistics network — one more tenant type
+  alongside carriers and customs brokers under `ADR-030`'s
+  multi-tenancy.

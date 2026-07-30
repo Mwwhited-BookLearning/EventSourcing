@@ -85,8 +85,12 @@ larger batch of unrelated changes.
 - `docs/domains/{domain}.md` — a **sixth kind of document**: one
   reference doc per real-world domain considered as a proving-ground
   worked example — applicable ADRs (with a one-line reason each),
-  governing regulations/standards, and special concerns (a real
-  tension, a weak spot, a standout fit). Generated from, not a repeat
+  governing regulations/standards, special concerns (a real
+  tension, a weak spot, a standout fit), and — added this session, now
+  a standing part of the template — a `## Glossary` section of that
+  industry's own jargon, verified before writing. Distinct from
+  `docs/glossary.md`, which covers Duplex's own cross-cutting engine
+  terms once rather than per domain. Generated from, not a repeat
   of, `docs/comparisons/proving-ground-domain.md`'s coverage matrix and
   regulatory mapping table — that comparison is where the *choice*
   happened; these files are the per-domain reference for afterward.
