@@ -160,7 +160,7 @@ which this framework has a concrete, already-designed answer for in
   mandatory quarantine and notification; the reconciliation step
   `ADR-035`'s non-authoritative capture models is exactly where a unit
   would be flagged suspect pending investigation.
-- **Track and Trace** — the general industry term for the combined
+- **Track and Trace** *(synonym: traceability — used interchangeably in pharma supply-chain usage for the same forward/backward capability)* — the general industry term for the combined
   ability to follow a product forward through the supply chain (track)
   and reconstruct its path backward from any point (trace) — the
   overall capability DSCSA mandates and `ADR-005`'s event lineage

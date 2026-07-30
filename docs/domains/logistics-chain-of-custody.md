@@ -113,19 +113,24 @@ industrial IoT: custody-chain metadata isn't primarily personal data.
 
 ## Glossary
 
-- **AEO (Authorized Economic Operator)** — the customs-to-business
+- **AEO (Authorized Economic Operator)** *(synonym: Trusted Trader —
+  the general term multiple countries' customs agencies use for AEO and
+  its national equivalents, including C-TPAT)* — the customs-to-business
   certification used outside the US (EU, Canada, Mexico, and other WCO
   members) that marks a supply-chain participant as pre-vetted and
   low-risk, entitling it to fewer border inspections; C-TPAT is the US
   equivalent program.
-- **Bill of Lading (BOL)** — a legally binding document issued by a
-  carrier to a shipper that serves simultaneously as a receipt for
+- **Bill of Lading (BOL)** *(synonym: B/L — the same abbreviation, a
+  different formatting convention)* — a legally binding document issued
+  by a carrier to a shipper that serves simultaneously as a receipt for
   goods, evidence of the transport contract, and (in negotiable form) a
   document of title — a natural candidate for `ADR-032`'s binary
   attachments.
-- **Bonded Warehouse** — a customs-licensed storage facility where
-  imported goods can sit without paying import duties/taxes until
-  they're released for domestic sale or re-exported duty-free.
+- **Bonded Warehouse** *(synonym: Customs Warehouse — same facility,
+  the term more common in EU usage)* — a customs-licensed storage
+  facility where imported goods can sit without paying import
+  duties/taxes until they're released for domestic sale or re-exported
+  duty-free.
 - **C-TPAT (Customs-Trade Partnership Against Terrorism)** — the US
   Customs and Border Protection program (the American AEO equivalent)
   that gives vetted, low-risk supply-chain partners faster, lighter-touch
@@ -140,27 +145,29 @@ industrial IoT: custody-chain metadata isn't primarily personal data.
   refrigeration at any handoff can spoil the goods — the in-transit
   sensor telemetry this domain's streaming-channel fit (`ADR-031`) is
   scored against.
-- **Customs Bond** — a contract of financial liability a bonded
-  warehouse operator or importer posts with a customs agency,
-  guaranteeing that duties will eventually be paid (or the goods
-  re-exported) even though they weren't paid at the border.
+- **Customs Bond** *(synonym: Import Bond)* — a contract of financial
+  liability a bonded warehouse operator or importer posts with a
+  customs agency, guaranteeing that duties will eventually be paid (or
+  the goods re-exported) even though they weren't paid at the border.
 - **EDI (Electronic Data Interchange)** — the decades-old standard for
   structured, computer-to-computer document exchange (purchase orders,
   shipping notices, invoices) between trading partners — the existing
   industry practice `ADR-060`'s outbound webhooks are scored as slotting
   into, not replacing.
-- **Freight Forwarder** — an intermediary that arranges shipment of
-  goods on behalf of a shipper, coordinating carriers, customs
-  paperwork, and warehousing without itself operating the vehicles or
-  vessels.
+- **Freight Forwarder** *(synonym: Forwarding Agent — used
+  interchangeably in the industry)* — an intermediary that arranges
+  shipment of goods on behalf of a shipper, coordinating carriers,
+  customs paperwork, and warehousing without itself operating the
+  vehicles or vessels.
 - **In-Bond** — the status of goods moving through a country's
   transportation network, or sitting in a bonded warehouse, before
   duties have been paid — literally "under bond."
-- **Incoterms** — the International Chamber of Commerce's standardized
-  three-letter trade terms (e.g., FOB, CIF, DAP) that fix exactly when
-  risk, cost, and responsibility for goods pass from seller to buyer
-  during a shipment — they determine which handoff in the custody chain
-  is the legally significant one.
+- **Incoterms** *(synonym: International Commercial Terms — literally
+  what the name is short for)* — the International Chamber of
+  Commerce's standardized three-letter trade terms (e.g., FOB, CIF,
+  DAP) that fix exactly when risk, cost, and responsibility for goods
+  pass from seller to buyer during a shipment — they determine which
+  handoff in the custody chain is the legally significant one.
 - **Manifest / Waybill** — a consolidated list of all cargo carried on a
   single conveyance (manifest) or a non-negotiable transport document
   for a single shipment (waybill), distinct from a bill of lading in

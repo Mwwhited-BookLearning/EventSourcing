@@ -126,13 +126,16 @@ digital identity — it's broad rather than defining.
   policy following a covered loss — the trigger for this domain's
   claims-review workflow, and the kind of dispute `ADR-068`'s bitemporal
   export/playback reconstructs "what the carrier knew, and when" for.
-- **Combined Ratio** — An underwriting-profitability metric equal to the
-  loss ratio plus the expense ratio; a result below 100% means the
-  underwriting book itself was profitable before investment income.
-- **Loss Ratio** — The ratio of claims paid (plus reserves) to premiums
-  earned over a period — the headline metric a carrier uses to judge
-  whether a line of business, or an individual telematics-scored
-  policyholder segment, is priced correctly.
+- **Combined Ratio** *(synonym: composite ratio, statutory ratio — when
+  applied to a company's overall results)* — An underwriting-profitability
+  metric equal to the loss ratio plus the expense ratio; a result below
+  100% means the underwriting book itself was profitable before
+  investment income.
+- **Loss Ratio** *(synonym: claims ratio — common UK usage)* — The ratio
+  of claims paid (plus reserves) to premiums earned over a period — the
+  headline metric a carrier uses to judge whether a line of business, or
+  an individual telematics-scored policyholder segment, is priced
+  correctly.
 - **NAIC (National Association of Insurance Commissioners)** — The US
   standard-setting body whose model laws individual states adopt to
   regulate insurance, making US insurance regulation fragmented

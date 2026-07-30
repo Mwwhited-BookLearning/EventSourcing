@@ -118,6 +118,32 @@ Consequences:
   just the UCAN's own `exp` — same operational requirement `ADR-040`'s
   ticket consumption already has (a still-unexpired-but-revoked
   credential must still fail), not a new category of problem.
+- **True-offline break-glass (zero upstream contact, not just a
+  currently-connected peer granting to another) composes directly from
+  two already-adopted mechanisms, not a third one.** Raised this
+  session by an independent cross-reference against a separate
+  architecture document, which names "any edge node can locally issue
+  an audited, short-lived emergency session with no upstream contact"
+  as a designed mode. This design already has both halves: `ADR-036`
+  already requires a device/edge actor to hold its own DID keypair for
+  self-attestation, and UCAN delegation (this ADR) is already
+  self-verifying via a signature chain rooted in the delegator's own
+  key — nothing about either mechanism requires the delegator to be
+  *online* at issuance time, only that the chain verify later. A device
+  pre-configured with a break-glass-scoped delegation template can
+  therefore self-issue a capped, time-boxed emergency capability to a
+  local operator entirely offline, using its own already-established
+  DID key — verified retroactively via `ADR-035`/`ADR-042`'s ordinary
+  `AuthorityStatus` review workflow once connectivity resumes, the same
+  "captured now, reviewed later" shape every other non-authoritative
+  capture already uses. **Not a new mechanism — a composition of
+  `ADR-036` and this ADR that neither states explicitly on its own,**
+  worth naming so a reader doesn't conclude offline break-glass is
+  unsolved. This is *further* from Four Eyes than the peer-granted case
+  already disambiguated above: Four Eyes requires two people acting
+  together before an action; true-offline break-glass is one person,
+  unilaterally, during or after the emergency, with review deferred
+  rather than required upfront — the opposite shape.
 
 **Compliance note** (a proving-ground compliance review, this session):
 this is the mechanism behind two proving-ground standout fits —

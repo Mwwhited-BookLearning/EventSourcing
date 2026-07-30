@@ -40,3 +40,10 @@ Consequences:
   worth of data) is the unit that gets replicated to at least two sites,
   not the whole store as one undifferentiated blob — a type-based shard
   boundary is also a natural replication-scope boundary.
+- **Under `ADR-075`'s silo deployment model, most tenants likely won't
+  need this mechanism at all** — a single-shard (or unsharded) deployment
+  is the expected default for an ordinary-sized dedicated tenant stack.
+  Sharding remains available, unchanged, as the opt-in answer for the
+  exceptional tenant whose own volume genuinely exceeds one shard's
+  capacity — a scaling tool for one deployment's own growth, not a
+  mechanism every deployment is assumed to need.

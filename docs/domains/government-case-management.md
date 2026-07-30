@@ -110,7 +110,7 @@ requires retention that erasure requests would otherwise conflict with.
   public benefit (e.g., SNAP, Medicaid, TANF) and at what level —
   exactly the kind of decision `ADR-066`'s digital sign-off is meant to
   attest.
-- **Case File** — the complete record of submissions, supporting
+- **Case File** *(synonym: case record — used interchangeably across government casework agencies; the choice of term is agency-specific convention, not a difference in meaning)* — the complete record of submissions, supporting
   documents, and reviews accumulated for one person's or entity's
   matter over its lifecycle; here it accumulates as a lineage DAG of
   causally linked events (`ADR-005`), not a single static folder.
@@ -144,7 +144,7 @@ requires retention that erasure requests would otherwise conflict with.
   amend their own records and an agency's obligation to account for
   disclosures — the latter is what `ADR-045`'s read access audit log is
   built to satisfy.
-- **Public Records Law** — state-level statutes requiring government
+- **Public Records Law** *(synonym: open records law — several states, e.g. Colorado, Georgia, Ohio, formally title their statute an "Open Records Act")* — state-level statutes requiring government
   records, including case files, to be retained and made available for
   public inspection absent a specific statutory exemption; the source
   of the retention-vs-erasure tension `ADR-057` is named against above.
@@ -156,9 +156,11 @@ requires retention that erasure requests would otherwise conflict with.
   agencies' information and communications technology to be accessible
   to people with disabilities; satisfied here via `ADR-073`'s WCAG 2.1
   AA baseline rather than a bespoke mechanism.
-- **Sunshine Laws** — an informal umbrella term for the family of
-  open-government statutes, including public-records law and
-  open-meetings requirements, at both the federal and state level.
+- **Sunshine Laws** *(synonym: open-government laws — e.g. the federal
+  Government in the Sunshine Act's own title uses this framing)* — an
+  informal umbrella term for the family of open-government statutes,
+  including public-records law and open-meetings requirements, at both
+  the federal and state level.
 - **System of Records (SOR/SORN)** — under the Privacy Act, a group of
   federal records from which information about an individual is
   retrieved by name or personal identifier; an agency must publish a

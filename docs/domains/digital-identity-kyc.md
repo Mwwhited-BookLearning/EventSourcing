@@ -96,7 +96,10 @@ built for one industry.
   internal controls aimed at preventing the proceeds of crime from
   entering the legitimate financial system; KYC verification is the
   entry-point control this domain implements toward that goal.
-- **Beneficial Owner** — Under FinCEN's Customer Due Diligence rule, an
+- **Beneficial Owner** *(synonym: Ultimate Beneficial Owner (UBO) — the
+  term FATF Recommendation 24 and the EU's AMLD registries use for the
+  same concept, interchangeable with FinCEN's own rule language)* —
+  Under FinCEN's Customer Due Diligence rule, an
   individual who directly or indirectly owns 25% or more of a legal
   entity customer's equity, or who otherwise exercises substantial
   control over it — the real person a KYC check on a corporate customer
@@ -122,7 +125,9 @@ built for one industry.
   their family members and close associates), subject to enhanced due
   diligence under FATF's recommendations because of elevated corruption/
   bribery risk.
-- **Relying Party** — An organization that consumes another party's
+- **Relying Party** *(synonym: Service Provider (SP) — SAML's name for
+  the identical role OIDC/OAuth call Relying Party)* — An organization
+  that consumes another party's
   identity-verification result rather than performing verification
   itself — the KYC platform's own customer in this domain, and the
   recipient of `ADR-060`'s outbound webhooks and `ADR-047`'s claims
@@ -133,7 +138,9 @@ built for one industry.
   screening against it is a standing KYC obligation, not optional — the
   gap this file's Special concerns section already names as unaddressed
   by any ADR.
-- **Suspicious Activity Report (SAR)** — A filing a US financial
+- **Suspicious Activity Report (SAR)** *(synonym: Suspicious Transaction
+  Report (STR) — the term most non-US, FATF-aligned jurisdictions use
+  for the same underlying filing obligation)* — A filing a US financial
   institution must submit to FinCEN when it knows, suspects, or has
   reason to suspect a transaction (generally $5,000 or more, or $2,000
   or more once a suspect has been identified) involves illicit activity

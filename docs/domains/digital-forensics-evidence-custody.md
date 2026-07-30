@@ -121,12 +121,12 @@ forensics by construction."
 
 ## Glossary
 
-- **Bit-for-Bit (Forensic) Image** — an exact, sector-by-sector copy of
+- **Bit-for-Bit (Forensic) Image** *(synonym: forensic image, disk image — used interchangeably for the same sector-by-sector copy)* — an exact, sector-by-sector copy of
   a storage device, including unallocated space and deleted-file
   remnants, made so all analysis happens on a copy and the original
   media is never touched — the attachment-shaped content `ADR-032`
   scores highest against of any candidate reviewed.
-- **Chain of Custody** — the unbroken, documented record of who
+- **Chain of Custody** *(synonym: chain of evidence)* — the unbroken, documented record of who
   possessed, accessed, or transferred a piece of evidence and when,
   from collection through court presentation; a single undocumented gap
   can render evidence inadmissible — restated in Special concerns above
@@ -137,11 +137,11 @@ forensics by construction."
   its source; paired with `ADR-066`'s digital sign-off, this is the
   combination Special concerns above ties to FRE 901/902
   self-authentication.
-- **E-Discovery** — the process of identifying, preserving, collecting,
+- **E-Discovery** *(synonym: electronic discovery — "e-" is literally short for "electronic," not an unrelated abbreviation)* — the process of identifying, preserving, collecting,
   and producing electronically stored information in response to
   litigation or a regulatory investigation — the routine litigation-
   review need `ADR-068`'s bitemporal export/playback targets directly.
-- **Examiner** — the credentialed forensic professional who performs
+- **Examiner** *(synonym: forensic analyst — CISA's own Cyber Defense Forensics Analyst work role lists "Digital Forensic Examiner" as an alternate title for the same role)* — the credentialed forensic professional who performs
   acquisition, analysis, and interpretation of digital evidence and
   attests to the findings — the role `ADR-066`'s digital sign-off
   captures at each chain-of-custody handoff.
@@ -161,7 +161,7 @@ forensics by construction."
   so its integrity and cross-jurisdiction admissibility are preserved;
   Special concerns above calls `ADR-045`'s access audit log a direct
   structural match for its chain-of-custody requirement.
-- **Legal Hold** — a notice issued once litigation is reasonably
+- **Legal Hold** *(synonym: litigation hold — used near-interchangeably in practice, though litigation hold is technically the narrower civil-litigation subset of the broader legal-hold preservation duty)* — a notice issued once litigation is reasonably
   anticipated, obligating an organization to preserve all potentially
   relevant records and suspend routine deletion — creating the same
   retention-vs-erasure tension `ADR-057` is named against as a real but
@@ -179,7 +179,7 @@ forensics by construction."
   an adverse-inference instruction against the responsible party; an
   immutable `ADR-045` access log makes undetected spoliation of the
   record itself detectable.
-- **Write Blocker** — hardware or software that lets an examiner read a
+- **Write Blocker** *(synonym: forensic bridge — the term hardware vendors like Tableau and WiebeTech use for the same device)* — hardware or software that lets an examiner read a
   storage device with no possibility of writing to it, preventing
   accidental modification of original evidence during acquisition — one
   of the forensic acquisition devices `ADR-070`'s device input

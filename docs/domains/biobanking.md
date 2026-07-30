@@ -117,13 +117,18 @@ sharpest erasure-vs-retention tension of any candidate.
   receives, stores, processes, and distributes biospecimens and
   associated data to qualified researchers, per ISBER's own definition
   of the term; the entity this whole domain doc is about.
-- **Biospecimen** — a sample of human-derived material (blood, tissue,
+- **Biospecimen** *(synonym: biosample — the NCI Dictionary of Cancer
+  Terms lists these as synonyms for the same physical sample)* — a
+  sample of human-derived material (blood, tissue,
   DNA, RNA, protein, urine, and similar) collected from a research
   participant, per the NCI's definition; the physical artifact
   `ADR-005`'s event lineage traces from specimen to every derived
   sample, and the identifying artifact this file's Special concerns
   section names as the sharpest test of `ADR-057`'s erasure right.
-- **Broad Consent** — the Common Rule's alternative to traditional
+- **Broad Consent** *(synonym: blanket consent — used interchangeably
+  with "broad consent" in the bioethics literature, though 45 CFR
+  46.116(d)'s actual regulatory text specifically uses "broad
+  consent")* — the Common Rule's alternative to traditional
   informed consent (45 CFR 46.116(d)) permitting storage, maintenance,
   and future secondary research use of identifiable specimens/data for
   studies not yet designed at collection time, potentially for an
@@ -135,17 +140,31 @@ sharpest erasure-vs-retention tension of any candidate.
   processing, and distribution or destruction — the real-world process
   `ADR-032`'s binary attachments and `ADR-005`'s lineage together are
   meant to represent for a specimen's documentation trail.
-- **Coded Specimen** — a biospecimen labeled with a code rather than
+- **Coded Specimen** *(synonym: pseudonymized specimen — increasingly
+  the preferred international/GDPR-aligned term for this same
+  reversible-link concept; a biobanking-harmonization survey found
+  respondents favoring "pseudonymization" over "coded/coding")* — a
+  biospecimen labeled with a code rather than
   direct identifiers, where a separate, access-controlled key links the
   code back to the donor — a practical middle ground between fully
   identified and fully de-identified/unlinked material, and the shape
   `ADR-009`'s masking wrapper models at the field level.
-- **Common Rule (45 CFR 46)** — the US federal policy for the
+- **Common Rule (45 CFR 46)** *(synonym: Federal Policy for the
+  Protection of Human Subjects — literally this regulation's own
+  official title, "Common Rule" being the common nickname)* — the US
+  federal policy for the
   protection of human research subjects, requiring IRB review and
   informed consent (or an approved alternative like broad consent) for
   federally funded human-subjects research; the primary governing
   framework named in this file's regulations table.
-- **De-identification** — removing or obscuring information that could
+- **De-identification** *(related, not synonymous, with
+  "anonymization" — the natural candidate synonym, but the two are
+  distinct regulatory standards: HIPAA's de-identification (Safe
+  Harbor or Expert Determination) still tolerates a defined,
+  non-zero re-identification risk, while GDPR-style anonymization is
+  meant to be irreversible; NIST's own cross-walk maps GDPR
+  "pseudonymization," not "anonymization," to HIPAA de-identification)*
+  — removing or obscuring information that could
   identify a specimen's donor, so the remaining data can be used or
   shared without reasonably permitting re-identification — the
   operation an honest-broker workflow performs before releasing coded
@@ -161,7 +180,11 @@ sharpest erasure-vs-retention tension of any candidate.
   a specimen's collection and use, given after being told what it
   involves, required by the Common Rule for identifiable human-subjects
   research absent an approved alternative like broad consent.
-- **Institutional Review Board (IRB)** — the committee, required under
+- **Institutional Review Board (IRB)** *(synonym: Ethics Committee
+  (EC) / Independent Ethics Committee (IEC) — the equivalent term used
+  internationally (Europe, Asia, Africa) for the same functional role;
+  ICH GCP itself refers to "IRB/IEC" as one interchangeable pairing)*
+  — the committee, required under
   the Common Rule, that reviews and approves human-subjects research
   (including specimen collection and secondary use) to protect
   participants' rights, safety, and welfare before it proceeds — one of

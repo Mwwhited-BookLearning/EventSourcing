@@ -2,7 +2,10 @@
 
 # ADR-030: Multi-tenant framework — `appId`-scoped schemas, domain-agnostic core
 
-Status: Accepted
+Status: Accepted — ~~one running deployment shared across
+customers~~ narrowed by `ADR-075` to one running deployment per
+customer; `AppId` remains exactly as decided below for scoping multiple
+*applications within one tenant's own dedicated deployment*.
 
 Context: `EntityId`'s `{appId}:{entityType}:{uniqueId}` shape (`ADR-021`)
 already implied something this design never stated explicitly: this is
@@ -14,6 +17,13 @@ and elsewhere). Left implicit, "the worked example" and "the framework"
 risk blurring together — a reader could reasonably come away thinking
 `Orders`-specific concepts are baked into the engine rather than being
 just the first thing registered into it.
+
+~~`AppId` is the boundary between different customers sharing one
+deployment.~~ **Superseded by `ADR-075`**: different *customers* now get
+different, fully separate deployments (the silo model) — `AppId`'s real,
+unaffected job is scoping different *applications within one customer's
+own deployment*, per the Decision below, which otherwise still holds
+exactly as written.
 
 Decision:
 - **`appId` becomes a real, first-class scoping key, not just a prefix
