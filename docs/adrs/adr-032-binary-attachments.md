@@ -165,3 +165,12 @@ Consequences:
   data shapes (signals, media, blobs) their own purpose-built, clearly
   linked, out-of-band home rather than stretching one table to fit
   everything.
+
+**Compliance note** (a proving-ground compliance review, this session):
+content-addressing gives this mechanism real evidentiary value beyond
+convenience — `ContentHash` is itself a tamper-evidence proof for
+biobanking's specimen imaging/lab reports (`ISO 20387`) and digital
+forensics' evidence attachments (`ISO/IEC 27037`, US Federal Rules of
+Evidence 901/902) without any extra mechanism — the content hash a
+verifier recomputes either matches what was originally stored or it
+doesn't.

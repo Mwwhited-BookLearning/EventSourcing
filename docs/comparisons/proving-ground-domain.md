@@ -197,10 +197,13 @@ cross-cutting frameworks (ones that apply to many domains at once) get
 stated once instead of repeated in every row.
 
 **Cross-cutting — applies broadly, not repeated per domain below:**
-- **WCAG 2.1 AA / ADA** — any domain rendering through `ADR-039`'s
-  MVVM client for real end users, not just the one domain (government
-  case management) it was originally tagged to. Resolved directly as a
-  standing requirement on `ADR-039` itself, not left domain-by-domain.
+- **WCAG 2.1 AA / ADA** — any domain rendering through this framework's
+  client for real end users, not just the one domain (government case
+  management) it was originally tagged to. Resolved as its own standing
+  requirement, `ADR-073` — deliberately not folded into `ADR-039`
+  specifically, since accessibility applies no matter which UI
+  architecture (`ADR-039`'s MVVM, or a fallback per `docs/comparisons/
+  ui-architecture-patterns.md`) actually renders a given screen.
 - **GDPR Art. 33/34 (breach notification)** — every domain below that
   already lists GDPR for another reason inherits this too; tracked as
   its own open question (`docs/10-open-questions.md`) since the

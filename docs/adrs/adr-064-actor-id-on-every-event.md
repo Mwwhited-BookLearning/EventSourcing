@@ -53,3 +53,10 @@ Consequences:
   masking need for it, if `ActorId` itself is ever considered sensitive
   in some deployment, would compose with `ADR-009` the same way any
   other envelope field could, not blocked by this decision).
+
+**Compliance note** (a proving-ground compliance review, this session):
+this is the foundational field several later compliance mechanisms
+build on directly — `21 CFR Part 11`'s signer-identity requirement
+(`ADR-066`), and every audit-trail-shaped confirming non-gap found
+(SEC 17a-4, SOX ITGCs) — none of which would have a verified actor to
+attribute a write to without it.

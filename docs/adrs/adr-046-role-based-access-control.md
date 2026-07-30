@@ -113,3 +113,10 @@ Consequences:
   of `ADR-045`'s `AccessLog` (`ReaderTrustBasis` could note "via role
   X") — not designed further here, left as a natural, low-cost future
   enrichment rather than a required change to `ADR-045`'s shape.
+
+**Compliance note** (a proving-ground compliance review, this session):
+`ANSI/INCITS 359`'s base RBAC tier is itself already the specific
+mechanism NIST SP 800-53's `AC-2`/`AC-3` access-control families call
+for; ITAR/export-controlled defense data scored this ADR's strongest
+fit of any candidate reviewed, since role-scoped access is exactly how
+US-person-only access restrictions get enforced in practice.

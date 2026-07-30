@@ -73,3 +73,12 @@ Consequences:
   buried logic — consistent with this design's broader preference for
   configuration over code for deployment-shaped decisions (`ADR-058`'s
   rate-limit values are the same shape).
+
+**Compliance note** (a proving-ground compliance review, this session):
+this is the single ADR where a proving-ground candidate's legal
+requirement and this mechanism are the *same thing*, not merely
+related — ITAR (22 CFR 120–130) and EAR (15 CFR 730–774) require
+export-controlled technical data to stay restricted to US persons/US
+soil by law, not by policy preference, making this the first candidate
+across all 15 reviewed where region-pinning is the domain's defining
+requirement rather than a nice-to-have.

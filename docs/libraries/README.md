@@ -27,6 +27,24 @@ abstract "GraphQL Gateway"/"WebDAV surface" with no concrete library
 named: [HotChocolate](dotnet/hotchocolate.md) (`ADR-037`'s GraphQL
 server) and [NWebDav](dotnet/nwebdav.md) (`ADR-032`'s WebDAV surface).
 
+## This catalog doubles as a SOUP list (`ADR-074`)
+
+Every entry below is, by [IEC 62304](https://openregulatory.com/document_templates/soup-list-software-of-unknown-provenance)'s
+own definition, **Software of Unknown Provenance** — off-the-shelf
+software not developed specifically for this framework — the moment
+this design or a derivative is used in a medical-device software
+context (a real concern given the clinical-trials-plus-device-telemetry
+proving-ground domain, not hypothetical). `ADR-074` formalizes this
+catalog as that SOUP list rather than standing up a parallel document —
+it already carries most of what IEC 62304 asks for (name, what it's
+for, where it's adopted); known anomalies and the specific functional
+requirement each library fulfills are the fields still to be retrofitted
+per entry, named as real remaining work, not silently skipped. A
+separate, automatically-generated **SBOM** (`microsoft/sbom-tool`, SPDX
+format) is the machine-readable complement to this human-curated
+catalog — the SBOM answers "what's actually built," this catalog
+answers "why, and what's the risk."
+
 ## Catalog
 
 | Library | Platform | For | Adopted in |

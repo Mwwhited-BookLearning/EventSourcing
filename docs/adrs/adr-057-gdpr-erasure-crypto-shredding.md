@@ -163,3 +163,12 @@ Consequences:
   data) this ADR was asked to solve. Consent management, data portability
   (Art. 20), and processing-purpose limitation remain entirely outside
   this design's scope, same as before.
+
+**Compliance note, with an honest caveat rather than an assumed
+equivalence**: this ADR's legal grounding (GDPR Art. 17(3) exemptions,
+`ADR-066`'s amendment) is verified specifically against GDPR. **CCPA/
+CPRA's deletion-right exemptions are a related but not verified-
+identical structure** — not re-checked against the actual CCPA text as
+part of this pass, so "GDPR/CCPA" appearing together elsewhere in this
+design's regulatory citations should not be read as proof the same
+exemption reasoning transfers directly; flagged rather than assumed.
