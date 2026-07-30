@@ -165,6 +165,74 @@ Consequences:
   data shapes (signals, media, blobs) their own purpose-built, clearly
   linked, out-of-band home rather than stretching one table to fit
   everything.
+- **Hot/cool/cold storage tiering is a real cost-reduction opportunity
+  here — and specifically here, not for the Event Log/Entity Store** —
+  raised this session: a structured, small `StoredEvent` row has no
+  natural "temperature" (access pattern doesn't vary enough by age to
+  matter); a large binary attachment genuinely does. **Resolved as a
+  real, pluggable mechanism, not left as a pure deployment-config
+  afterthought**: `IAttachmentContentStore` is a new keyed, multi-backend
+  seam — the exact same Strategy-pattern/keyed-DI shape `ADR-057`'s
+  `IErasureKeyStore` already established, applied here to content
+  storage instead of encryption keys. Multiple backends (Azure Blob
+  Hot/Cool/Cold/Archive tiers, S3 Standard/Infrequent-Access/Glacier, a
+  local dev store) can be registered simultaneously, each under its own
+  key. `Attachment` gains two fields alongside the stable, unaffected
+  `ContentHash`: **`ContentProviderKey`** (which registered backend
+  currently holds the bytes) and **`ContentProviderRef`** (an opaque,
+  provider-specific locator — a blob path/key within that backend).
+  `ContentHash` stays the one stable, content-addressed identity a
+  caller ever references; `ContentProviderKey`/`ContentProviderRef` are
+  purely internal routing info the read path uses to fetch from the
+  right backend, invisible to any consumer. **A background mover**,
+  the same "internal follower" shape `ADR-007`/`ADR-015`/`ADR-027`/
+  `ADR-031`'s derivation/materialization/projection workers already use
+  — reads attachments past a configurable age/access-pattern threshold
+  and re-writes them to a colder-tier backend, updating
+  `ContentProviderKey`/`ContentProviderRef` once the move completes. No
+  new mechanism family invented — a keyed-DI seam plus a background
+  follower, both already-established shapes, applied to a new resource
+  type. What *stays* a deployment/policy choice, consistent with
+  `ADR-056`'s retention-window treatment: which backends are registered,
+  and the actual age/access-pattern threshold that triggers a move.
+- **Content-defined chunking + per-chunk fingerprinting, for large
+  attachments specifically — real prior art checked before designing,
+  not invented.** `ContentHash` alone dedups a whole attachment against
+  an identical one; it does nothing for two large attachments that
+  mostly overlap, or for a peer/offline client that already has most of
+  an attachment and only needs the changed part. Verified real
+  precedent: restic, Borg Backup, and casync all converge on the same
+  shape — a rolling hash (Buzhash or a Rabin fingerprint) finds
+  **content-defined** chunk boundaries (so an edit shifts only nearby
+  chunks, not everything downstream, unlike fixed-size blocking), and
+  each resulting chunk gets its own cryptographic fingerprint (SHA-256
+  in restic/casync — the same primitive this design already uses
+  everywhere else). Checked and deliberately **not** adopting
+  BitTorrent's fixed-size-piece approach instead: fixed pieces only work
+  well when both sides already agree on identical byte offsets, and
+  don't survive insertions/deletions without re-hashing everything
+  after the edit point — exactly the problem content-defined chunking
+  exists to avoid. **`Attachment` gains an optional `ChunkIndex`** — a
+  linear list of `(ChunkHash, Offset, Length)` tuples, the same naming
+  shape casync's own chunk index uses — populated only above a
+  configurable size threshold (chunking a small scanned form or photo
+  is pure overhead with no benefit; restic/Borg/casync all chunk
+  everything by default because backup archives are typically large,
+  which doesn't hold for every attachment here). Two real benefits,
+  both already-needed capabilities gaining a mechanism rather than a
+  new requirement invented to justify one: **sub-file dedup** (two
+  large attachments sharing a common section store the shared chunks
+  once, extending `ContentHash`'s whole-object dedup down to chunk
+  granularity) and **partial sync** — `ADR-033`'s peer-sync mesh and
+  `ADR-069`'s offline-client reconnect scenario can diff two
+  `ChunkIndex`es and transfer only chunks the destination doesn't
+  already have, rather than the whole object again, with a natural
+  resume point if a transfer is interrupted mid-way. `ADR-031`'s
+  `Media` channels are a natural second beneficiary of the identical
+  mechanism (already delivered in codec-framed chunks, just not yet
+  individually fingerprinted/indexed) — not designed further here,
+  flagged as the same opportunity, not duplicated into a second
+  mechanism.
 
 **Compliance note** (a proving-ground compliance review, this session):
 content-addressing gives this mechanism real evidentiary value beyond

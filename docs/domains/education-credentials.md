@@ -113,18 +113,19 @@ story.
 - **Credential Holder** — the individual (student or graduate) a
   transcript, diploma, or verifiable credential is actually about — the
   "subject" in W3C Verifiable Credentials terminology.
-- **Credential Issuer** — the institution (or, in W3C Verifiable
-  Credentials terms, the "issuer") that creates and digitally signs a
-  credential — the role `ADR-036`'s DID/UCAN self-attestation would
-  assign to an accredited institution issuing a diploma.
+- **Credential Issuer** *(synonym: Issuer — the exact role name W3C
+  Verifiable Credentials terminology uses for the same party)* — the
+  institution that creates and digitally signs a credential — the role
+  `ADR-036`'s DID/UCAN self-attestation would assign to an accredited
+  institution issuing a diploma.
 - **Credential Verifier (Relying Party)** — a third party — an employer,
   another institution, a licensing board — that checks a presented
   credential's validity and issuer, typically without needing to
   contact the issuer directly; the scenario `ADR-043`'s delegated,
   temporary access grant is scored against.
-- **Digital Diploma** — a diploma or certificate issued as a
-  cryptographically verifiable digital artifact rather than (or
-  alongside) a paper original — this domain's clearest use case for
+- **Digital Diploma** *(synonym: e-diploma)* — a diploma or certificate
+  issued as a cryptographically verifiable digital artifact rather than
+  (or alongside) a paper original — this domain's clearest use case for
   `ADR-032`'s binary attachments.
 - **Directory Information** — the narrow category of FERPA-covered data
   (name, dates of attendance, degrees/honors, and similar) a school may

@@ -115,19 +115,21 @@ FINRA-shaped compliance mechanism gets seriously exercised here.
   organization to realize value from its physical assets across their
   lifecycle, balancing cost, risk, and performance — the standard this
   domain's governing framework formalizes.
-- **Condition-Based Monitoring (CBM)** — Maintenance triggered by an
-  asset's actual measured condition (vibration, temperature, and
-  similar) rather than a fixed calendar schedule — the immediate
-  precursor practice predictive maintenance builds on; a CBM reading is
-  captured the same way any raw sensor reading is here, non-authoritative
-  until correlated and reviewed (`ADR-035`).
+- **Condition-Based Monitoring (CBM)** *(synonym: Condition
+  Monitoring)* — Maintenance triggered by an asset's actual measured
+  condition (vibration, temperature, and similar) rather than a fixed
+  calendar schedule — the immediate precursor practice predictive
+  maintenance builds on; a CBM reading is captured the same way any raw
+  sensor reading is here, non-authoritative until correlated and
+  reviewed (`ADR-035`).
 - **Digital Twin** — A virtual, continuously updated model of a physical
   asset, built from its real-time sensor data, used to simulate or
   predict its behavior without touching the physical equipment itself.
-- **Historian (Data Historian)** — A purpose-built time-series database
-  that plant-floor systems have traditionally used to archive
-  high-frequency sensor readings — the role `ADR-031`'s streaming
-  channels play in this framework.
+- **Historian (Data Historian)** *(synonym: Process Historian, Plant
+  Historian)* — A purpose-built time-series database that plant-floor
+  systems have traditionally used to archive high-frequency sensor
+  readings — the role `ADR-031`'s streaming channels play in this
+  framework.
 - **Mean Time Between Failures (MTBF)** — The average operating time
   between one failure and the next for a repairable asset — a core
   reliability metric predictive-maintenance models try to extend.
@@ -150,10 +152,11 @@ FINRA-shaped compliance mechanism gets seriously exercised here.
   after-the-fact repair (corrective maintenance) — this domain's own
   name, and exactly the kind of derived/materialized event `ADR-007` is
   scored against.
-- **Programmable Logic Controller (PLC)** — A ruggedized industrial
-  computer that directly controls machinery or processes on the plant
-  floor — the typical device `ADR-070`'s sensor/gateway device input
-  integration would actually be talking to.
+- **Programmable Logic Controller (PLC)** *(synonym: Programmable
+  Controller)* — A ruggedized industrial computer that directly
+  controls machinery or processes on the plant floor — the typical
+  device `ADR-070`'s sensor/gateway device input integration would
+  actually be talking to.
 - **SCADA (Supervisory Control and Data Acquisition)** — The software
   and hardware system industrial sites use to monitor and control
   processes across a plant or fleet in real time — historically the

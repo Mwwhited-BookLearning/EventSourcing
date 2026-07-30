@@ -123,6 +123,42 @@ named as a build target.
   (`docs/10-open-questions.md`) — `ADR-045`'s access audit log supplies
   the forensic inputs, but the notification process itself isn't
   designed yet.
+- **Per-modality irreversible de-identification (EEG/video) is a real,
+  named gap — deliberately left to the application, not the framework.**
+  Surfaced by an independent cross-reference against a separate
+  architecture document ("Jason McCann's Final-State Architecture," this
+  session): `ADR-009`'s masking and `ADR-052`'s streaming redaction both
+  operate on *structured* content (a JSON field, a time-bounded byte
+  range) — neither claims to make a raw biometric signal or a face in a
+  video frame *irreversibly unidentifiable*, which is a fundamentally
+  different, modality-specific problem (an EEG waveform or a
+  face/gait/voice can themselves be identifying, not just the metadata
+  around them). Confirmed genuinely unsolved on both sides of that
+  comparison, not just this one. Correctly **not** a framework-level
+  requirement — any real solution (voice/face de-identification
+  algorithms, EEG feature-stripping) would be domain-specific signal
+  processing, not something a generic event-sourcing engine should own —
+  but a real device-telemetry deployment handling EEG/video needs its
+  own answer here, layered on top of `ADR-052`'s existing redaction seam
+  rather than assumed already covered by it.
+- **Dual-channel live-safety vs. standard persistence is a real,
+  application-specific need — already composable from `ADR-031`,
+  no new mechanism.** Some device-telemetry deployments genuinely need
+  a fast, low-latency review path (a bedside live waveform display,
+  intentionally lower-resolution/reduced-fidelity, for immediate
+  safety monitoring — e.g. catching a seizure or a desaturation event
+  as it happens) alongside a separate, slower, full-fidelity path for
+  the confirmed, persisted record — an informal pattern with real
+  precedent in broadcast (a low-latency preview feed vs. a
+  higher-fidelity master/archival encode) and in patient-monitoring
+  systems generally, though not checked against a specific formal
+  standard here. `ADR-031` already supports this without any change:
+  a device simply publishes to **two separate `Origin` `TelemetryChannel`s**
+  — one declared at a reduced sample rate/resolution for speed, one at
+  full fidelity for the record — both tailed/replayed independently.
+  Which channel is "the fast one" is domain/device metadata (a
+  `Purpose`/label an application chooses to attach), not a framework
+  concept `ADR-031` needs to formalize.
 
 ## Glossary
 
@@ -154,11 +190,11 @@ named as a build target.
   responsible for conducting the trial at a site and for the medical
   decisions and record approvals — including `ADR-066`'s CRF sign-off —
   made there.
-- **MLLP (Minimal Lower Layer Protocol)** — The lightweight TCP-based
-  framing protocol HL7v2 messages are actually transmitted over in real
-  hospital integrations, wrapping each message in start/end block
-  characters — the real transport `ADR-072`'s `Hl7V2Adapter` targets,
-  not HTTP.
+- **MLLP (Minimal Lower Layer Protocol)** *(synonym: Lower Layer
+  Protocol (LLP))* — The lightweight TCP-based framing protocol HL7v2
+  messages are actually transmitted over in real hospital integrations,
+  wrapping each message in start/end block characters — the real
+  transport `ADR-072`'s `Hl7V2Adapter` targets, not HTTP.
 - **Monitor (Clinical Research Associate)** — A person, typically
   employed by the Sponsor or CRO, who periodically reviews site records
   against source data to confirm subjects' rights are protected and
@@ -173,11 +209,12 @@ named as a build target.
   a congenital anomaly, or otherwise requires intervention to prevent one
   of those outcomes) — triggers expedited regulatory reporting distinct
   from routine AE reporting.
-- **Source Data Verification (SDV)** — A monitor's or auditor's
-  comparison of data recorded in a trial's CRF against the original
-  ("source") clinical records to confirm accuracy — exactly the
-  clinician/monitor review `ADR-035`/`ADR-042`'s non-authoritative
-  capture and Live View are built around.
+- **Source Data Verification (SDV)** *(synonym: Source Document
+  Verification)* — A monitor's or auditor's comparison of data recorded
+  in a trial's CRF against the original ("source") clinical records to
+  confirm accuracy — exactly the clinician/monitor review
+  `ADR-035`/`ADR-042`'s non-authoritative capture and Live View are
+  built around.
 - **Sponsor** — The individual, company, institution, or organization
   that takes responsibility for initiating, managing, and/or financing a
   trial — one of the independent tenants `ADR-030`'s multi-tenancy

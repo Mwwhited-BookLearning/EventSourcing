@@ -169,7 +169,12 @@ technical data is itself a regulated act, not just its disclosure.
   real-world instrument behind this file's Special concerns note that a
   foreign-person exception is "a delegated-access shape, not a bespoke
   mechanism," i.e., `ADR-043`'s capped, entity-scoped grant.
-- **Technical Data** — under ITAR (22 CFR 120.10), information required
+- **Technical Data** *(synonym: "technology" — the EAR's parallel
+  defined term for the same underlying concept of controlled
+  technical/design information; the two agencies simply use different
+  names for it, consistent with this file's EAR entry noting an item
+  falls under one regime or the other, never both)* — under ITAR (22
+  CFR 120.10), information required
   for the design, development, production, operation, or maintenance of
   a defense article — drawings, specifications, and documentation — the
   actual content this domain doc's Overview names as what the platform

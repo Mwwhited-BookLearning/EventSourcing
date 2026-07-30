@@ -131,7 +131,7 @@ work already happens, not a contrived stretch to exercise them.
   two are unrelated, and this entry exists to make that explicit rather
   than leaving it to context, per this project's own convention for
   disambiguating terminology collisions.
-- **Causality Assessment** — the structured judgment (e.g., the WHO-UMC
+- **Causality Assessment** *(synonym: causality evaluation — used interchangeably in the pharmacovigilance literature for the same judgment)* — the structured judgment (e.g., the WHO-UMC
   scale or the Naranjo algorithm) a reviewer applies to decide how
   likely it is that a suspected drug, rather than the patient's
   underlying condition or another medicine, actually caused a reported
@@ -143,11 +143,14 @@ work already happens, not a contrived stretch to exercise them.
   marketing-authorization holders — the outbound destination
   `ADR-072`'s `IchE2bR3Adapter` and `ADR-060`'s webhook delivery target
   together.
-- **Expedited Reporting** — the regulatory requirement (FDA 21 CFR
-  314.80/600.80's 15-calendar-day clock for serious, unexpected
-  reactions) to notify authorities of a safety case faster than routine
-  periodic reporting — the deadline-tracking gap this file's Special
-  concerns section already flags as undesigned.
+- **Expedited Reporting** *(synonym: 15-Day Alert Report — FDA's own
+  name, 21 CFR 314.80(c)(1)/600.80(c)(1), for this exact
+  reporting obligation for serious, unexpected reactions)* — the
+  regulatory requirement (FDA 21 CFR 314.80/600.80's 15-calendar-day
+  clock for serious, unexpected reactions) to notify authorities of a
+  safety case faster than routine periodic reporting — the
+  deadline-tracking gap this file's Special concerns section already
+  flags as undesigned.
 - **FAERS (FDA Adverse Event Reporting System)** — the FDA's
   counterpart to EudraVigilance: the US database that receives
   adverse-event, medication-error, and product-quality-complaint
@@ -190,7 +193,11 @@ work already happens, not a contrived stretch to exercise them.
   clock this file's Special concerns section notes has no owning ADR
   yet, even though `ADR-060`/`ADR-072` already supply the delivery
   mechanism once such a report is ready to send.
-- **Signal (Signal Detection)** — a statistically unusual pattern of
+- **Signal (Signal Detection)** *(synonym: safety signal — used
+  near-interchangeably in practice, though WHO's own definition of
+  "signal" is technically the broader of the two, also covering a
+  beneficial rather than only an adverse association)* — a statistically
+  unusual pattern of
   adverse reactions across many ICSRs suggesting a possible causal
   association not yet confirmed — as this file's Overview states, never
   carried by any single report on its own; the concrete example named

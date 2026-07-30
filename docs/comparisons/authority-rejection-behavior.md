@@ -37,7 +37,9 @@ can grey out. Nothing is un-applied.
 | | |
 |---|---|
 | **Pros** | Consistent with this design's strongest recurring principle — never mutate or delete (`README.md`'s "never lose or corrupt data," `ADR-009`'s closing note, `ConflictFlag`'s "flagged, not reversed" treatment). No replay-order complexity: rejecting an event doesn't require recomputing every later fold that happened after it. |
-| **Cons** | The *current*, materialized view of an entity can keep showing data everyone agrees is untrustworthy, unless every single consumer remembers to check `AuthorityStatus` and filter accordingly — a real correctness burden pushed onto every reader, every time, forever. For a domain where "what does the system currently say" needs to be clean by default (not just filterable-to-clean), this is a genuine gap. |
+| **Cons** | Plain annotate-only, as first written here, left a real gap: the *current*, materialized view of an entity could keep showing data everyone agrees is untrustworthy indefinitely, unless every consumer remembered to check `AuthorityStatus`. **Refined below, not superseded** — a targeted rebuild closes this gap without inheriting Option B's problems. |
+
+**Refinement (this session, prompted by an independent cross-reference finding — Jason McCann's "a compromised-but-still-valid edge signer's events are indelible and replayed on every rebuild" needs a retraction model, `AR5`/`Q27`):** Annotate-only doesn't have to mean "stale until some indeterminate future rebuild." A post-hoc `authorityDecision: rejected` event triggers an immediate **single-entity rebuild** — re-fold just that `EntityId`'s event history from `SequenceNumber 0`, reusing `ADR-021`'s already-cheap "replay is cheap, rebuild is cheap" property, scoped to one entity rather than the whole store. The fold rule is simply "apply this event only if its current `AuthorityStatus` is `accepted`" — checked fresh at fold time, not baked in at original-publish time. This gets Option A's exact guarantee (no compensating patch, no ambiguous "pre-rejection state" computation — the fold algorithm never has to reason about undoing a specific contribution, it just excludes it) **and** Option B's exact benefit (current state is clean by default, not merely filterable-to-clean) — with no known correctness edge case, unlike Option B. The one new, real cost: a rejection now costs one full re-fold of that entity's history (`O(that entity's event count)`, not `O(1)`) — cheap for almost every entity, worth naming explicitly for a pathologically long-lived, high-volume one. The rejected event itself is never deleted — it's excluded from the *fold*, not from the Event Log.
 
 ### Option B — Compensating patch
 
@@ -52,18 +54,20 @@ event reverting the affected properties to their pre-rejected-event state
 
 ## Recommendation
 
-**Annotate-only as the system-wide default, with `RejectionBehavior`
-staying a genuine per-event-type override** (already the shape
+**Annotate-only-plus-targeted-rebuild (the refinement above) as the
+system-wide default, with `RejectionBehavior` staying a genuine
+per-event-type override** (already the shape
 `docs/data/schema-registry.md`'s `EventTypeDefinition` needs regardless —
 this comparison argues for *which value is the default*, not for removing
-the per-type choice design-docs itself already specified). Annotate-only
-is the more consistent default given this design's own "never mutate,
-only append" principle stated everywhere else — the compensating-patch
-option's correctness problems (ambiguous revert semantics once other
-events touched the same properties later) are serious enough that
-defaulting to it system-wide would mean shipping a mechanism with a known
-unresolved edge case as the common case, not the exception. Domains that
-genuinely need Option B's guarantee (legal/evidentiary weight, per the
-open question's own framing) opt into it explicitly, per event type,
-accepting its sharper edges for the specific data where "clean current
-state" matters more than "simple, always-correct replay."
+the per-type choice design-docs itself already specified). This is a
+stronger recommendation than the original Annotate-only framing: it keeps
+the "never mutate, only append" principle fully intact (the rejected event
+is excluded from a fold, never edited or deleted) while also giving
+current state the same cleanliness Option B was for — without inheriting
+Option B's real correctness problem (ambiguous revert semantics once
+other events touched the same properties later). Domains that still
+prefer Option B's literal compensating-patch shape (e.g. a system that
+must show an explicit, visible correction event in the timeline, not just
+a quietly-excluded one) may still opt into it per event type — but the
+default no longer forces a choice between "never mutate" and "clean
+current state"; a targeted rebuild gets both.

@@ -137,15 +137,25 @@ significant events onward to national and international bodies.
   onward chains of transmission — a data-gathering workflow that extends
   a case's own event lineage (`ADR-005`) outward to the people connected
   to it.
-- **Index Case** — the first identified case in a particular outbreak or
-  cluster, from which contact tracing and cluster investigation
-  typically start.
+- **Index Case** *(related, not synonymous, with the popular term
+  "patient zero" — epidemiologists deliberately prefer "index case"
+  (the first case to come to investigators' attention) or "primary
+  case" (the actual first person infected) because "patient zero" is
+  an imprecise, media-driven term that conflates the two and carries a
+  history of stigmatizing misuse)* — the first identified case in a
+  particular outbreak or cluster, from which contact tracing and
+  cluster investigation typically start.
 - **International Health Regulations (IHR)** — the WHO's binding
   framework obliging member states to notify events of international
   public-health concern across borders; already named in this file's
   regulations table as the driver behind its outbound, cross-jurisdiction
   reporting shape.
-- **Minimum Necessary** — the HIPAA Privacy Rule's standard limiting the
+- **Minimum Necessary** *(synonym: need-to-know — many organizations
+  use this informal phrase in place of the formal HIPAA term, though
+  strictly need-to-know is the role-based-access mechanism that
+  implements the broader minimum-necessary standard rather than a
+  precise legal synonym for it)* — the HIPAA Privacy Rule's standard
+  limiting the
   disclosure of PHI to the smallest amount reasonably needed for the
   stated purpose, which continues to apply even under the public-health
   disclosure exception (§164.512(b)) this file relies on — the reason
@@ -162,7 +172,11 @@ significant events onward to national and international bodies.
   because of its contagiousness, severity, or public-health
   significance — the trigger event for this domain's entire intake
   workflow.
-- **Outbreak** — an occurrence of cases of a disease clearly in excess of
+- **Outbreak** *(synonym: epidemic — the CDC's own epidemiology
+  glossary defines "outbreak" as synonymous with "epidemic"; in
+  practice "outbreak" is conventionally reached for first because it
+  reads as less alarming, not because it denotes a distinct
+  concept)* — an occurrence of cases of a disease clearly in excess of
   what would normally be expected in a given place or time period — the
   aggregate-level finding this domain's `ADR-007` derived-event fit and
   `ADR-068` bitemporal playback (reconstructing "what was known about an

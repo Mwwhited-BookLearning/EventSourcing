@@ -129,24 +129,31 @@ domain still scores weak on masking, delegated access, and erasure.
   transmission-level facilities (as opposed to local distribution) whose
   disruption could significantly affect grid reliability — the asset
   scope NERC CIP's cybersecurity standards actually apply to.
-- **Demand Response** — a change in electricity usage by end-use
-  customers, away from their normal consumption pattern, in response to
-  a price signal or a utility incentive payment, used to relieve stress
-  on the grid at peak times — the kind of derived, incentive-driving
-  signal `ADR-007`'s deferred derived/materialized-events mechanism
-  would compute from raw meter telemetry.
-- **Grid Operator** — an entity (a balancing authority, an RTO/ISO, or a
-  utility's own operations center) responsible for the real-time
-  operation of transmission or distribution infrastructure, as distinct
-  from a customer-facing billing or metering function.
+- **Demand Response** *(synonym: DR — the abbreviation FERC and
+  industry sources commonly use)* — a change in electricity usage by
+  end-use customers, away from their normal consumption pattern, in
+  response to a price signal or a utility incentive payment, used to
+  relieve stress on the grid at peak times — the kind of derived,
+  incentive-driving signal `ADR-007`'s deferred
+  derived/materialized-events mechanism would compute from raw meter
+  telemetry.
+- **Grid Operator** *(synonym: System Operator — used interchangeably
+  for the same coordinating role; ISO/RTO are specific FERC-defined
+  organizational categories of it, not separate synonyms)* — an entity
+  (a balancing authority, an RTO/ISO, or a utility's own operations
+  center) responsible for the real-time operation of transmission or
+  distribution infrastructure, as distinct from a customer-facing
+  billing or metering function.
 - **Interval Data** — meter readings captured at fixed intervals
   (commonly every 15 or 60 minutes) rather than a single monthly total —
   the actual shape of the continuous smart-meter telemetry this domain
   scores H on for `ADR-031`'s streaming channels.
-- **Load Forecast** — a prediction of future electricity demand derived
-  from historical consumption and other signals, used for grid planning
-  and generation dispatch — one concrete example of `ADR-007`'s still-
-  deferred derived/materialized-events mechanism.
+- **Load Forecast** *(synonym: Demand Forecast — used interchangeably
+  in energy-forecasting literature)* — a prediction of future
+  electricity demand derived from historical consumption and other
+  signals, used for grid planning and generation dispatch — one
+  concrete example of `ADR-007`'s still-deferred
+  derived/materialized-events mechanism.
 - **Meter Data Management System (MDMS)** — the software layer that
   validates, cleans, and stores the high-volume interval data AMI
   produces before it's used for billing or grid analytics — the kind of
@@ -161,9 +168,11 @@ domain still scores weak on masking, delegated access, and erasure.
   grid-sensor signals, and coordinates restoration — a consumer of the
   same raw telemetry this domain's streaming channels and derived-events
   mechanisms already model.
-- **PUC (Public Utility Commission)** — a US state-level regulatory body
-  that oversees investor-owned utilities' rates, service quality, and
-  (in many states) smart-meter deployment and data-privacy rules — the
+- **PUC (Public Utility Commission)** *(synonym: Public Service
+  Commission (PSC) — the name some states use for the identical
+  regulatory function)* — a US state-level regulatory body that
+  oversees investor-owned utilities' rates, service quality, and (in
+  many states) smart-meter deployment and data-privacy rules — the
   source of this domain's fragmented, state-by-state regulatory
   complexity.
 - **Smart Meter** — the customer-premises device at the heart of AMI
