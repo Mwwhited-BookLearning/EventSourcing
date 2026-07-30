@@ -19,6 +19,7 @@ public class EventTypeDefinition
     public string? UpcastFromPrevious { get; set; }     // OData compute() expression list, this version <- previous (ADR-018); materialized on success (ADR-027)
     public string? DowncastToPrevious { get; set; }     // OData compute() expression list, previous <- this version (ADR-028); read-time only, never materialized
     public RejectionBehavior RejectionBehavior { get; set; } = RejectionBehavior.Annotate; // Annotate | Compensate — how an authorityDecision:rejected is handled for this type (ADR-035, comparisons/authority-rejection-behavior.md)
+    public RequiredSignature? RequiredSignature { get; set; } // null = no sign-off required; set = publish must satisfy an RFC 9470 step-up challenge first (ADR-066)
 
     public List<FilterableField> FilterableFields { get; set; } = new();
 }
@@ -33,6 +34,12 @@ public enum ParentValidationMode
 {
     Strict,     // publish is rejected (400) if any parentEventId does not resolve to a stored event
     Permissive  // dangling/forward parentEventId references are accepted and stored as unresolved
+}
+
+public class RequiredSignature
+{
+    public List<string> AcrValues { get; set; } = new(); // RFC 9470 acr_values -- which authentication context the caller's token must carry
+    public int? MaxAge { get; set; }                      // RFC 9470 max_age (seconds) -- how recently that authentication must have occurred
 }
 
 public enum RejectionBehavior
@@ -116,6 +123,49 @@ will accept a Token Exchange `subject_token` from, for a given `AppId`
 root of trust for UCAN capability delegation), so its own entity rather
 than a reused shape.
 
+## Data residency (`ADR-061`)
+
+```csharp
+public class AppDataResidencyPolicy
+{
+    public string AppId { get; set; } = default!;         // part of the composite key (ADR-030)
+    public List<string> AllowedRegions { get; set; } = new(); // e.g. ["eu-west", "eu-central"] -- matches a peer's Region tag (ADR-051's SeedPeers config)
+}
+```
+
+Absent for a given `AppId`, that tenant is unconstrained (today's
+behavior, unchanged) — this table is purely additive. Enforced at
+`ADR-033`'s peer-sync outbox, which filters candidate destination peers
+to those tagged with one of the listed regions before including an
+`AppId`'s events in an outbound sync batch — not enforced here at the
+registry layer, which only holds the *declared* constraint.
+
+## Webhook subscriptions (`ADR-060`)
+
+```csharp
+public class WebhookSubscription
+{
+    public Guid SubscriptionId { get; set; }
+    public string AppId { get; set; } = default!;          // part of the composite key (ADR-030)
+    public string TargetUrl { get; set; } = default!;
+    public string SigningSecret { get; set; } = default!;    // HMAC-SHA256 key, Standard Webhooks-shaped (ADR-060)
+    public List<string> EventTypes { get; set; } = new();    // which event/entity types this subscription wants notified about
+    public string FixedClaimsSnapshot { get; set; } = default!; // JSON -- the claim set computed once at registration time (ADR-060), never re-evaluated per delivery
+    public bool Active { get; set; } = true;
+    public DateTimeOffset RegisteredAt { get; set; }
+}
+```
+
+`FixedClaimsSnapshot` is what `ADR-060` means by "a fixed claim set
+computed once at registration time" — every payload this subscription
+is ever sent is masked (`ADR-009`) against this snapshot, never a
+live re-check, the same "claims fixed for a connection's lifetime" rule
+`ADR-009` already applies to a Follow connection. `WebhookOutbox`/
+`WebhookDeliveryCursor` (the delivery-side durable queue and per-
+subscription cursor) are a separate concern from this registration
+record — not yet placed in this file, still flagged as remaining
+propagation work per `ADR-060`'s own Consequences.
+
 ## Per-provider index strategy for filterable fields
 
 When a `FilterableField` is marked `IsIndexed = true`, the registry service
@@ -160,31 +210,61 @@ these two fields gate *whether you may touch a specific event type*, per
   middleware exists — see `../08-build-plan.md`, Phase 6.
 
 Property-level **masking** — wrapping individual field *values* in a
-`{"value": ...}` / `{"masked": "***"}` envelope for callers who lack a
-field-specific claim — is a related, finer-grained feature (`ADR-009`, v1
-scope). No new column on `EventTypeDefinition` for it: masking rules live
-inside the registered `JsonSchema` text itself, as an `x-masking` extension
-on a property (`{ "requiredClaim": "type:value", "strategy": "FixedValue",
-"maskedValue": "***" }`), an array's `items` (when scalar — wraps each
-element), or a property nested inside a complex-object `items` schema
-(wraps just that property per element). Unlike an earlier, since-replaced
-`null`-out design, this works on **any** scalar-typed field — including
-required, non-nullable ones — because the wrapper is a new type at that
-position, not a mutation of the original type's slot. It applies only to
-query/stream responses, never to the stored or published `Payload`; see
-`ADR-009` and `../06-solution-structure.md` for the schema-plus-data
-transform that computes it.
+`{"value": ...}` / `{"masked": "***"}` / `{"erased": true}` envelope
+(a three-way `oneOf`, the third branch added by `ADR-057`) for callers
+who lack a field-specific claim, or for a field whose crypto-shredding
+key has been destroyed — is a related, finer-grained feature (`ADR-009`,
+v1 scope). No new column on `EventTypeDefinition` for it: masking rules
+live inside the registered `JsonSchema` text itself, as an `x-masking`
+extension on a property (`{ "requiredClaim": "type:value", "strategy":
+"FixedValue", "maskedValue": "***" }`), an array's `items` (when scalar
+— wraps each element), or a property nested inside a complex-object
+`items` schema (wraps just that property per element). Unlike an
+earlier, since-replaced `null`-out design, this works on **any**
+scalar-typed field — including required, non-nullable ones — because
+the wrapper is a new type at that position, not a mutation of the
+original type's slot. It applies only to query/stream responses, never
+to the stored or published `Payload`; see `ADR-009` and
+`../06-solution-structure.md` for the schema-plus-data transform that
+computes it.
 
 `x-masking` also carries three **optional, schema-only** descriptive
 fields — `regulatoryClassification`, `governanceBody`,
 `regulationReference` (e.g. `"PHI"` / `"HHS/OCR"` /
-`"HIPAA 45 CFR §164.514(b)"`). These are documentation, not behavior: the
-masking transform never reads them, and they never appear in the runtime
-wrapper — they exist so a schema self-documents *why* a field is masked,
-discoverable via the registry and generated specs, per `ADR-009`.
+`"HIPAA 45 CFR §164.514(b)"`) — plus two behavioral ones added since:
+`erasureScope` (`ADR-057` — a JSON Pointer to the property naming the
+`EntityId` whose crypto-shredding key actually protects this field,
+for PII that belongs to a different entity than the event's own; a
+field with no `erasureScope` defaults to the event's own `EntityId`)
+and `revealOnDemand` (`ADR-009`'s amendment — a `showFirst`/`showLast`/
+`maskChar`/`preserveSeparators` object computing a display-safe
+`displayMask` sibling on the `value` branch, for shoulder-surfing
+mitigation independent of claims-based access). The three purely
+descriptive fields are documentation, not behavior: the masking
+transform never reads them, and they never appear in the runtime
+wrapper.
 
-**There is no deletion/erasure mechanism for regulated data, by design.**
-`Payload` is never mutated or removed once stored, for a masked field the
-same as any other — masking is a read-time presentation transform, not a
-storage-layer redaction. `ADR-009` records this as explicitly settled, not
-merely unaddressed.
+**One `regulatoryClassification` value is not merely descriptive:
+`"PCI-SAD"` (`ADR-071`) makes registration itself reject the event
+type (`400`).** PCI-DSS Sensitive Authentication Data (CVV2/CVC2/CID,
+full track data, PIN blocks) may never be persisted after
+authorization, encrypted or not — masking and `ADR-057`'s crypto-
+shredding both still write the real value to `Payload` first, which
+this rule already prohibits regardless of what happens afterward. A
+schema author self-declares `"PCI-SAD"` the same way they'd declare
+`"PHI"`/`"PCI"`; registration checks for exactly this one value and
+refuses the event type outright, the one place this design still
+enforces reject-on-invalid after `ADR-023`. A full card number (PAN)
+is *not* SAD and is unaffected — ordinary masking/crypto-shredding
+already covers it like any other classified field.
+
+~~**There is no deletion/erasure mechanism for regulated data, by
+design.** `Payload` is never mutated or removed once stored, for a
+masked field the same as any other — masking is a read-time
+presentation transform, not a storage-layer redaction. `ADR-009`
+records this as explicitly settled, not merely unaddressed.~~
+**Superseded by `ADR-057`**: erasure is now a real requirement, solved
+via crypto-shredding — a classified field's *value* is encrypted before
+it's first stored, so "erasure" destroys the key that makes existing
+ciphertext readable rather than ever touching `Payload` itself. See
+`ADR-057` and `ADR-009`'s own updated closing note.

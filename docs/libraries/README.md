@@ -48,6 +48,8 @@ server) and [NWebDav](dotnet/nwebdav.md) (`ADR-032`'s WebDAV surface).
 | [Moq](dotnet/moq.md) | dotnet | Mocking library for unit tests | `ADR-055` |
 | [Playwright for .NET](dotnet/playwright-dotnet.md) | dotnet | Cross-browser end-to-end UI action tests | `ADR-055` |
 | [ASP.NET Core Rate Limiting middleware](dotnet/aspnetcore-ratelimiting.md) | dotnet | Per-tenant rate limiting/quota, first-party, composes with YARP | `ADR-058` |
+| [FsCheck](dotnet/fscheck.md) | dotnet | Property-based testing — hash-chain and conflict-resolution-policy invariants | `ADR-063` |
+| [Polly + Simmy](dotnet/polly-simmy.md) | dotnet | In-process fault injection — durable outbox/inbox crash-recovery testing | `ADR-063` |
 | [Vue 3](web/vue.md) | web | Client application shell (MVVM presentation layer) | `ADR-039`, `mvvm-client-architecture.md` |
 | [Pinia](web/pinia.md) | web | Client-side state store (MVVM data layer) | `mvvm-client-architecture.md` |
 | [Naive UI](web/naive-ui.md) | web | Vue component library + theming | `mvvm-client-architecture.md` |
@@ -55,6 +57,7 @@ server) and [NWebDav](dotnet/nwebdav.md) (`ADR-032`'s WebDAV surface).
 | [GraphQL Code Generator](web/graphql-code-generator.md) | web | GraphQL client SDK generation for TypeScript consumers | `ADR-054` |
 | [Vitest](web/vitest.md) | web | Unit-test runner (frontend), Vite-native | `ADR-055` |
 | [Vue Test Utils](web/vue-test-utils.md) | web | Vue's own component-mounting/testing library | `ADR-055` |
+| [vite-plugin-singlefile](web/vite-plugin-singlefile.md) | web | Inlines a build into one static HTML file — the offline litigation-review player | `ADR-068` |
 
 ## Compared, not adopted
 

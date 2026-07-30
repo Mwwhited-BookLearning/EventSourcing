@@ -61,6 +61,31 @@ Decision:
   first-party choice; the object of this ADR is convention-magic and
   genuinely third-party libraries layered on top, not Microsoft's own
   framework packages.
+- **Addendum — production secrets management (resolves `docs/10-open-
+  questions.md`'s row directly, no new ADR): standard configuration
+  providers, not a bespoke secrets mechanism.** Direction received this
+  session: secrets are handled through standard configuration
+  frameworks. This is `Microsoft.Extensions.Configuration` again, not a
+  new decision — every secret this design needs (DB connection strings,
+  `ADR-057`'s KEK reference, `ADR-040`/`ADR-060`'s HMAC signing secrets,
+  any KMS credentials) is an ordinary configuration value, supplied by
+  whichever first-party or provider-native configuration source a
+  deployment already uses: environment variables, `dotnet user-secrets`
+  for local dev, or a configuration provider backed by the deployment's
+  own secret store (Azure Key Vault, AWS Secrets Manager, HashiCorp
+  Vault all have `Microsoft.Extensions.Configuration`-compatible
+  provider packages, each usable cloud-hosted or self-hosted/on-prem).
+  This framework itself adopts none of those providers as a hard
+  dependency — `IConfiguration` is the only surface it depends on,
+  consistent with `ADR-057`'s `IErasureKeyStore` being keyed/pluggable
+  per `AppId` rather than tied to one vendor. **Combinations already
+  work with no further design needed**: `Microsoft.Extensions.
+  Configuration` is built to chain multiple providers in one pipeline
+  (environment variables + a Key Vault provider + a self-hosted Vault
+  provider, layered, later sources overriding earlier ones) — cloud,
+  on-prem, and local secrets sources can already be mixed in one
+  deployment today, the same requirement `ADR-057`'s amendment states
+  explicitly for `IErasureKeyStore`.
 
 Consequences:
 - **No rework elsewhere**: nothing previously accepted in this design

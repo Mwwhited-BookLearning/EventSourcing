@@ -72,15 +72,32 @@ Decision:
   EntityId)`**, generated the first time a classified field is published
   for that entity. The DEK itself is wrapped by a master Key-Encrypting-
   Key (KEK) held in a real key-management backend — **kept pluggable via
-  an `IErasureKeyStore` seam** (the same Strategy-pattern shape `ADR-009`/
-  `ADR-052` already established, keyed-registered per `ADR-041`'s
-  composition root), not hardcoded to one vendor, since this design
-  hasn't committed to a single cloud KMS anywhere else either. A
-  deployment backs it with Azure Key Vault, AWS KMS, HashiCorp Vault (the
-  vendor a sibling implementation, [HashiCorp's own GDPR-compliant
-  event-sourcing write-up](https://www.hashicorp.com/en/resources/gdpr-compliant-event-sourcing-with-hashicorp-vault),
-  independently arrives at the same per-subject-key shape), or a simple
-  local encrypted store for dev.
+  an `IErasureKeyStore` seam, the same Strategy-pattern/keyed-DI shape
+  `ADR-009`/`ADR-052` already established for `IMaskingStrategy`/
+  `IStreamRedactionStrategy`, not a "one implementation per whole
+  deployment" seam like `ADR-053`'s upcast engine.** This is a
+  deliberate correction over an earlier, looser framing of this same
+  seam: **multiple `IErasureKeyStore` backends can be registered and
+  active simultaneously in one deployment**, selected per `AppId` (or
+  finer, per-entity, if a single tenant genuinely needs it) via
+  configuration — not a single global choice. Direction received this
+  session: cloud, local, and on-prem/self-hosted options must all be
+  first-class, including *combinations* of them within one running
+  deployment, since a real multi-tenant deployment may need a healthcare
+  tenant's keys in a self-hosted, on-prem `HashiCorp Vault` (data-
+  sovereignty requirement, composing with `ADR-061`'s region-pinning)
+  while a different tenant in the same deployment uses a cloud KMS.
+  Concrete backends, all real, named options rather than one deployment-
+  wide pick: **cloud** — Azure Key Vault, AWS KMS, Google Cloud KMS;
+  **on-prem/self-hosted** — `HashiCorp Vault` run inside the
+  deployment's own data center (the same tool [HashiCorp's own GDPR-
+  compliant event-sourcing write-up](https://www.hashicorp.com/en/resources/gdpr-compliant-event-sourcing-with-hashicorp-vault)
+  independently arrives at for this exact per-subject-key shape, and
+  explicitly not cloud-only — Vault is designed to run entirely
+  on-prem); **local** — a simple encrypted file/DB-backed store for dev
+  and small/single-node deployments with no real KMS available. A
+  deployment registers as many of these as it needs, keyed by `AppId`,
+  and a tenant's choice is ordinary configuration, not a code change.
 - **Read path**: `IPayloadMasker` (`ADR-009`'s existing enforcement
   point) gains one more step for a caller who *holds* the field's
   `RequiredClaim` — after the existing claim check passes, decrypt the
@@ -114,6 +131,18 @@ Consequences:
   superseded by this ADR** — struck through there, not deleted, per this
   project's additive-history convention. `README.md`'s "What this system
   deliberately is not" bullet on erasure is updated the same way.
+- **Reaches server-side replicas completely; a local/edge client's
+  already-decrypted cache needs its own explicit invalidation** —
+  `ADR-065` closes that gap (a subscribed local client purges its cached
+  copy on receiving the erasure event, since key destruction alone can't
+  reach plaintext a device already cached for offline use).
+- **Never reaches `SignerId`/`Signature` (`ADR-066`), and this is now a
+  deliberate, reasoned exemption, not just a structural side effect of
+  scope** — this ADR only ever encrypts `x-masking`-classified `Payload`
+  fields, never envelope metadata, which already meant a signature was
+  safe from erasure by accident. `ADR-066`'s amendment states the actual
+  legal basis (GDPR Art. 17(3)(b)/(e)) for why that's the *correct*
+  outcome, not merely a gap nobody built a path through yet.
 - **The key store becomes a new, critical authoritative store** — folds
   into `ADR-056`'s data-lifecycle classification directly: losing
   `IErasureKeyStore`'s contents *without* any erasure request having

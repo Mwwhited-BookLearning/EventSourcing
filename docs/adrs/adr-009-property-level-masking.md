@@ -136,6 +136,56 @@ Decision:
   concrete interface and registration shape, and
   [`docs/patterns/strategy-pattern-extensible-masking.md`](../patterns/strategy-pattern-extensible-masking.md)
   for the pattern itself, portably.
+- **Reveal-on-demand display masking (`revealOnDemand`) — a *different*
+  axis from everything above, disambiguated explicitly rather than
+  conflated**: everything above answers "should this caller receive the
+  real value at all" (a claims/authorization boundary). This answers a
+  different question — "even a fully authorized caller shouldn't have
+  the real value sitting on-screen (or in client memory) by default,
+  because someone else might be reading over their shoulder." The
+  well-established UX precedent is the password-field reveal toggle (an
+  eye icon, WCAG-accessible, never stealing focus) — generalized here to
+  any classified field, not just passwords.
+  - **A `revealOnDemand`-configured field's ordinary query/stream
+    response is *always* the masked/display representation — for every
+    caller, including one who holds `requiredClaim`.** There is no
+    claim-based branch at initial serialization time for these fields;
+    simpler than the general case, not a special case of it, per direct
+    observation this session. `displayMask` is computed the same way
+    `PartialRevealMaskingStrategy` already computes its output
+    (`showFirst`/`showLast`/`maskChar`/`preserveSeparators`, configured
+    under the field's own `revealOnDemand` object — independent of
+    whatever `strategy` a non-claim-holder would otherwise see, since a
+    field can be `FixedValue`-masked for unauthorized callers and still
+    want a partial-reveal *display* shape for this purpose).
+  - **Seeing the real value is a separate, explicit action** — a small,
+    dedicated GraphQL operation (`revealField(entityId, eventId,
+    fieldPath)`, `ADR-037`'s transport) that checks `requiredClaim` (and,
+    if configured, `ADR-066`'s step-up authentication — a field can
+    require a *fresh* re-authentication specifically to reveal it, not
+    just an ordinary claim) **at the moment of the request**, not at the
+    time of the original bulk query. Triggered by the client's reveal
+    toggle on click, not by data the client already silently received.
+  - **Why this is better than sending both representations up front**,
+    per direct observation this session: serialization for the common
+    case (most fields, most of the time, never actually revealed) stays
+    uniformly masked with no per-caller branch to compute; every reveal
+    becomes its own field-granularity, timestamped entry in `ADR-045`'s
+    read access audit log (sharper than knowing a bulk response merely
+    *contained* a value the caller may never have looked at); and the
+    real value is never present on a device until the exact moment it's
+    asked for, meaningfully narrowing `ADR-065`'s local-cache exposure
+    window for anything marked `revealOnDemand` specifically.
+  - **The general (non-`revealOnDemand`) masking wrapper is unchanged**
+    — a field without `revealOnDemand` still returns `{"value": ...}`
+    directly to a claim-holder in the same response, no extra round
+    trip, exactly as originally decided. `revealOnDemand` is an opt-in
+    per-field trade (a request per reveal, in exchange for the real
+    value never sitting in a bulk response) for fields where
+    shoulder-surfing is a specific, stated concern — not a new default
+    for every classified field, which would cost every bulk-authorized
+    read (a full chart review, say) one round trip per field for no
+    reason most fields don't need.
 - `x-masking` also carries three **optional, schema-only descriptive
   fields**: `regulatoryClassification` (e.g. `"PHI"`, `"PCI"`),
   `governanceBody` (e.g. `"HHS/OCR"`, `"PCI SSC"`), and
@@ -217,6 +267,21 @@ Consequences:
 - Ordering with `ADR-008` stays fixed: the event-type-level
   `RequiredReadClaim` check happens first (all-or-nothing); masking only
   ever applies to callers who already passed that check.
+- **`revealOnDemand`'s real cost is a round trip per reveal, not a
+  wire-payload cost on every response** — the opposite trade-off from
+  what an earlier pass through this design assumed, corrected once the
+  "always send both" framing was reconsidered: ordinary responses are
+  now uniformly cheaper (no per-caller branch, no second string riding
+  along unused), and the cost lands only on the moment a caller actually
+  clicks reveal, exactly when it's actually needed. `ADR-039`'s MVVM
+  client gains one reusable "reveal toggle" component (an eye-icon
+  control that calls `revealField` on click and renders the result,
+  falling back to `displayMask` on any failure/denial, WCAG-accessible
+  per the password-field precedent this pattern generalizes) rather than
+  a bespoke control per field. `ADR-050`'s guarantee that `x-masking`
+  survives into generated OpenAPI/AsyncAPI docs extends unchanged to
+  `revealOnDemand` — no special-casing needed there, it's just one more
+  property on the same extension object.
 - `regulatoryClassification`/`governanceBody`/`regulationReference` are
   free text in v1 — validated only for "non-empty string if present," not
   against a controlled vocabulary. That's a deliberate scope decision, not
@@ -224,7 +289,12 @@ Consequences:
   decide the list, which isn't asked for here. Revisit if compliance
   tooling ever needs to query/aggregate by classification reliably (free
   text invites drift like `"PHI"` vs. `"phi"` vs. `"Protected Health Info"`
-  meaning the same thing).
+  meaning the same thing). **One reserved exception to "free text, no
+  behavior"**: `regulatoryClassification: "PCI-SAD"` is checked and
+  enforced, not just documented — see `ADR-071` for why masking (this
+  ADR) and crypto-shredding (`ADR-057`) both fall short of PCI-DSS's
+  actual requirement for that specific data class, and why registration
+  itself has to refuse it instead.
 - **Consumer guidance: masked/absent fields must be skipped, never
   overlaid, when building a projection.** A consumer that maintains its
   own materialized state by applying incoming event fields onto existing

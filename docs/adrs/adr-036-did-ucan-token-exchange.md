@@ -82,3 +82,16 @@ Consequences:
   unverifiable-at-capture-time* actors, not for the framework's own
   internal service-to-service auth, which stays exactly as `ADR-006`/
   `ADR-017` already designed it.
+
+**Compliance note** (a proving-ground compliance review, this session):
+self-attestation proves *identity*, not *permissibility* — this ADR has
+no bearing on, and shouldn't be confused with, **OFAC sanctions
+screening** or **BSA Suspicious Activity Report (SAR)** filing, both
+real requirements for the digital-identity/KYC proving-ground domain
+(an actual build target). A cryptographically valid DID/UCAN can belong
+to a sanctioned party just as easily as a legitimate one — screening
+against a prohibition list, and any SAR filing decision, is separate
+business logic layered on top of a verified identity, not something
+self-attestation itself resolves. Tracked as an open question: whether
+this belongs as a framework-level extensibility seam or purely
+domain/application logic.

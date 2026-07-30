@@ -1,0 +1,102 @@
+[← Domains index](README.md)
+
+# Domain: ITAR/Export-Controlled Defense Data
+
+**Status: Considered, not chosen** — see
+`docs/comparisons/proving-ground-domain.md` for the full comparison.
+Clinical trials + device telemetry and digital identity/KYC were chosen
+instead.
+
+## Overview
+
+A platform holding export-controlled defense technical data — drawings,
+specifications, source code, and related artifacts subject to the
+International Traffic in Arms Regulations and the Export Administration
+Regulations. Across all fifteen domains this comparison considered, ITAR
+is the first one where `ADR-061`'s data-residency/region-pinning
+mechanism is the domain's *defining* requirement rather than a
+nice-to-have: ITAR data must stay restricted to US persons/US soil by
+law, not by policy choice. It also scores strongly on row-level access
+control, digital sign-off, and the audit log — access to controlled
+technical data is itself a regulated act, not just its disclosure.
+
+## Governing regulations/standards
+
+| Framework | What it governs here |
+|---|---|
+| ITAR (22 CFR 120–130) | Export-controlled defense articles/technical data — who may access it and where |
+| EAR (15 CFR 730–774) | Dual-use export controls, the civilian-adjacent counterpart to ITAR |
+| NIST SP 800-171 / CMMC | Controlled Unclassified Information handling requirements for defense contractors |
+
+## Applicable ADRs
+
+**Primary fit (the domain's defining characteristics):**
+- `ADR-061` — data residency/region-pinning: **the domain's defining
+  requirement**, not a nice-to-have — ITAR data must stay restricted to
+  US persons/US soil by statute, and this is the first candidate across
+  all fifteen reviewed where that's true.
+- `ADR-046`/`ADR-043` — RBAC + row-level security: access to controlled
+  technical data is itself a regulated act (who may even *view* a
+  drawing matters as much as who may edit it), not just a convenience.
+- `ADR-066` — digital sign-off: export-control release approvals and
+  technical-data-access authorizations are exactly the kind of
+  attestable, step-up-authenticated action this mechanism targets.
+- `ADR-045` — read access audit log: CMMC/NIST SP 800-171 access
+  accountability requirements map directly onto this mechanism.
+- `ADR-032` — binary attachments: the technical data itself (drawings,
+  specifications, source packages) is largely attachment-shaped content.
+- `ADR-005` — event lineage: a derived or redacted technical-data
+  artifact traces causally to its controlled source, a real DAG.
+
+**Secondary fit (real, but not the domain's defining characteristic):**
+- `ADR-030` — multi-tenancy: multiple programs/contracts/contractors
+  sharing the same platform.
+- `ADR-009`/`ADR-050`/`ADR-052` — masking/classification: applicable to
+  metadata fields, secondary to the access-control story above.
+- `ADR-043` — delegated access: controlled sharing with a cleared
+  subcontractor or foreign-partner exception, time-boxed and capped.
+- `ADR-033`/`ADR-034` — replication/sharding: moderate, mainly in
+  service of region-pinning rather than scale.
+- `ADR-007` — derived/materialized events: moderate, for
+  export-control-relevant aggregate reporting.
+- `ADR-068` — bitemporal export/playback: moderate, useful for
+  after-the-fact export-control compliance review.
+
+**Weak/no fit:**
+- `ADR-035` (non-authoritative capture) — controlled technical data
+  entering the system is typically already vetted through an
+  export-control review process before ingestion, not organically
+  "pending" the way a clinical reading or a self-attested identity claim
+  is.
+- `ADR-036` (DID/UCAN self-attestation) — no natural self-sovereign
+  identity story; access is governed by clearance/authorization records,
+  not self-attested claims.
+- `ADR-031` (streaming channels) — no natural telemetry story.
+- `ADR-057` (GDPR/CCPA erasure) — export-controlled records are governed
+  by federal recordkeeping/retention obligations, not a personal-data
+  erasure right; there is no natural pull toward this mechanism at all,
+  unlike clinical trials' or brokerage's genuine retention-vs-erasure
+  tension.
+
+## Special concerns
+
+- **Region-pinning is not optional here** — unlike digital identity/KYC
+  or public health surveillance, where `ADR-061` is a strong but still
+  secondary driver, ITAR's US-persons/US-soil restriction is a hard
+  legal requirement of the domain itself. A build against this domain
+  would need `ADR-061` enforced at the core, not bolted on afterward.
+- **Access control is the compliance surface, not just disclosure** —
+  ITAR/EAR violations can occur simply from an unauthorized person
+  *viewing* controlled technical data, which is why RBAC/row-level
+  security and the read access audit log both score high here: the
+  audit log isn't just forensic record-keeping, it's the primary
+  evidence of compliance.
+- **No natural erasure story** — this domain has essentially the inverse
+  shape of digital identity/KYC's "erasure is routine" note: retention
+  and controlled access dominate, and there is no realistic erasure
+  driver to stress-test `ADR-057` against.
+- **Foreign-person exceptions are a delegated-access shape, not a
+  bespoke mechanism** — a licensed technical-assistance agreement
+  permitting a specific foreign national time-boxed access to specific
+  data is a real-world instance of `ADR-043`'s capped, entity-scoped
+  grant, not a new access-control primitive this domain would require.

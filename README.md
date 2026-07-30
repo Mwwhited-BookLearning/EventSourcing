@@ -197,6 +197,7 @@ source, not a link to a file that still exists.
 | `docs/comparisons/*.md` | Full pros/cons for a genuine multi-option fork, written before the deciding ADR; `comparisons/README.md` is the catalog |
 | `docs/libraries/{platform}/*.md` | One file per adopted off-the-shelf library/framework — what it's for, general usage; `libraries/README.md` is the catalog |
 | `docs/extensibility-points.md` | Consolidated catalog of every plugin/extension seam a hosting team can customize without forking core code, and the shared registration model (`ADR-059`) they all follow |
+| `docs/domains/*.md` | One reference doc per proving-ground domain considered — applicable ADRs, governing regulations, special concerns; `domains/README.md` is the catalog |
 
 ## Open decisions flagged for the implementer
 

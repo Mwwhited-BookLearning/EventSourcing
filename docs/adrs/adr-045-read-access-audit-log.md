@@ -87,3 +87,25 @@ Consequences:
   tampering detection everywhere else it applies this pattern, and
   there's no reason `AccessLog` needs a second, recursive audit trail on
   top of that.
+- **`ADR-009`'s `revealOnDemand` reuses this unchanged** — a
+  `revealField` call writes an ordinary `AccessLogEntry` with
+  `Action: "reveal"` and `ResourceRef` naming the specific field path,
+  no schema change needed here. This gives field-level reveal actions
+  sharper audit granularity than an ordinary bulk query already has —
+  "this field was actually looked at," not just "this response
+  contained it."
+
+**Compliance note** (a proving-ground compliance review, this session):
+beyond HIPAA §164.312(b) (already this ADR's own driving citation),
+`AccessLog` is real, load-bearing infrastructure for two more
+requirements this design hadn't explicitly connected it to: **GDPR
+Art. 33/34 breach notification** — establishing a breach's scope and
+timeline ("who accessed what, when") is exactly what `AccessLog`
+already records, though the *notification workflow itself* (a 72-hour
+authority-notification clock, plus Art. 33(5)'s mandatory breach
+register covering even non-notifiable incidents) is not yet designed —
+tracked as an open question; and **SOX Section 404 IT General
+Controls** — the access-control ITGC specifically is already satisfied
+by this mechanism, a confirming non-gap for the brokerage proving-
+ground candidate, the same pattern `ADR-071` already found for SEC
+Rule 17a-4.
