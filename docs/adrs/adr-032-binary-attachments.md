@@ -94,36 +94,54 @@ ever entered the picture:
   depends on. Revisit only if a real, specific need for native
   mounting shows up — not preemptively, and not by default.
 
-- **A virtual hierarchy, not a real folder tree.** Attachments are
-  content-addressed (above), not stored at a path — WebDAV's collection/
-  resource model is *projected* on top: `/dav/{appId}/{entityType}/
-  {entityId}/` as a collection, with each linked `AttachmentRef` appearing
-  as a resource named from its declared filename (falling back to
-  `ContentHash` if none was given). `PUT` to a path is the WebDAV-native
-  way to upload — internally it's still the same content-addressed store
-  and the same `AttachmentRef` linking `ADR-032`'s Decision already
-  established, just reached through a familiar file-manager UX instead
-  of a raw HTTP API call.
-- **`GET` reuses `ADR-031`'s Range-request support** — the same
-  seekable-retrieval reasoning applies to a large PDF or image as to a
-  media chunk; not a second mechanism.
-- **Locking (`LOCK`/`UNLOCK`) is not implemented in v1** — attachments are
-  never mutated once uploaded (same "never delete, only append" posture
-  as everything else in this design), so WebDAV's lost-update-prevention
-  machinery has no real conflict to guard against here; a client that
-  sends `LOCK` gets a straightforward, uncontested grant, not real
-  cooperative locking semantics.
+### If WebDAV mounting is ever revisited (hypothetical, not built)
 
-**A true OS-level virtual file system (mount attachments as a drive that
-looks and feels like OneDrive/Google Drive/iCloud — on-demand hydration,
-placeholder files, offline sync) is a genuinely different, heavier
-technology** (Windows Cloud Filter API, macOS File Provider extension) —
-platform-specific client shell integration, not a server API. This is
-explicitly **out of the core engine's scope**, consistent with `ADR-030`:
-it would live in a client project (`ADR-039`'s MVVM client is the
-natural home), built *on top of* the WebDAV surface above rather than
-replacing it — noted here as a real, desirable extension point, not
-designed further here.
+The decision above is final — **skipped, not built** — and nothing below
+changes that. This is kept only so the design thinking behind *how* it
+would work isn't lost if a real, specific need for OS-native mounting
+ever surfaces later (per the Decision above, "revisit only if a real,
+specific need... shows up — not preemptively, and not by default").
+Every sentence in this subsection describes what *would* happen if this
+were built, not what exists today.
+
+- **A virtual hierarchy, not a real folder tree, would be projected.**
+  Attachments would stay content-addressed (above), not stored at a
+  path — WebDAV's collection/resource model would sit on top:
+  `/dav/{appId}/{entityType}/{entityId}/` as a collection, with each
+  linked `AttachmentRef` appearing as a resource named from its declared
+  filename (falling back to `ContentHash` if none was given). `PUT` to a
+  path would be the WebDAV-native way to upload — internally still the
+  same content-addressed store and the same `AttachmentRef` linking this
+  ADR's Decision already established, just reached through a familiar
+  file-manager UX instead of a raw HTTP API call.
+- **`GET` would reuse `ADR-031`'s Range-request support** — the same
+  seekable-retrieval reasoning that already applies to a large PDF or
+  image via the real, built access path above would carry over
+  unchanged; not a second mechanism.
+- **Locking (`LOCK`/`UNLOCK`) would have no real conflict to guard
+  against.** An attachment's *content* (`ContentHash`, the bytes it
+  addresses) is never mutated once uploaded (same "never delete, only
+  append" posture as everything else in this design, already true
+  today regardless of WebDAV) — so WebDAV's lost-update-prevention
+  machinery would have nothing to protect; a client sending `LOCK`
+  would get a straightforward, uncontested grant, not real cooperative
+  locking semantics. (The real, already-built `ContentProviderKey`/
+  `ContentProviderRef` routing fields described in the Consequences
+  below are a separate, deliberate exception to "never mutated" —
+  administrative metadata about *where* bytes currently live, not their
+  content — and exist independently of whether WebDAV is ever added.)
+
+**A true OS-level virtual file system** (mount attachments as a drive
+that looks and feels like OneDrive/Google Drive/iCloud — on-demand
+hydration, placeholder files, offline sync) would be a further,
+genuinely different, heavier technology still (Windows Cloud Filter API,
+macOS File Provider extension) — platform-specific client shell
+integration, not a server API, and explicitly out of the core engine's
+scope either way, consistent with `ADR-030`. `ADR-039` originally noted
+this as a natural extension point built on top of a WebDAV surface;
+since no WebDAV surface exists, `ADR-039` was revised to drop that
+extension point rather than leave it dangling on a foundation that was
+never built — see `ADR-039`'s own Consequences.
 
 ## Standalone attachments and direct permissions
 
@@ -192,9 +210,13 @@ Consequences:
   `ContentProviderKey`/`ContentProviderRef` once the move completes. No
   new mechanism family invented — a keyed-DI seam plus a background
   follower, both already-established shapes, applied to a new resource
-  type. What *stays* a deployment/policy choice, consistent with
-  `ADR-056`'s retention-window treatment: which backends are registered,
-  and the actual age/access-pattern threshold that triggers a move.
+  type. **`Attachment` gains `LastAccessedAt`, updated on every read** —
+  the concrete field the "access-pattern threshold" above actually
+  checks; raised and fixed this session after a buildability review
+  found the threshold had nothing backing it. What *stays* a
+  deployment/policy choice, consistent with `ADR-056`'s retention-window
+  treatment: which backends are registered, and the actual age/
+  `LastAccessedAt` threshold that triggers a move.
 - **Content-defined chunking + per-chunk fingerprinting, for large
   attachments specifically — real prior art checked before designing,
   not invented.** `ContentHash` alone dedups a whole attachment against
@@ -213,21 +235,32 @@ Consequences:
   don't survive insertions/deletions without re-hashing everything
   after the edit point — exactly the problem content-defined chunking
   exists to avoid. **`Attachment` gains an optional `ChunkIndex`** — a
-  linear list of `(ChunkHash, Offset, Length)` tuples, the same naming
-  shape casync's own chunk index uses — populated only above a
-  configurable size threshold (chunking a small scanned form or photo
-  is pure overhead with no benefit; restic/Borg/casync all chunk
-  everything by default because backup archives are typically large,
-  which doesn't hold for every attachment here). Two real benefits,
-  both already-needed capabilities gaining a mechanism rather than a
-  new requirement invented to justify one: **sub-file dedup** (two
-  large attachments sharing a common section store the shared chunks
-  once, extending `ContentHash`'s whole-object dedup down to chunk
-  granularity) and **partial sync** — `ADR-033`'s peer-sync mesh and
-  `ADR-069`'s offline-client reconnect scenario can diff two
-  `ChunkIndex`es and transfer only chunks the destination doesn't
-  already have, rather than the whole object again, with a natural
-  resume point if a transfer is interrupted mid-way. `ADR-031`'s
+  linear list of chunk records, the same naming shape casync's own
+  chunk index uses — populated only above a configurable size threshold
+  (chunking a small scanned form or photo is pure overhead with no
+  benefit; restic/Borg/casync all chunk everything by default because
+  backup archives are typically large, which doesn't hold for every
+  attachment here). **Each chunk record is independently
+  content-addressable and independently stored** — `(ChunkHash, Offset,
+  Length, ContentProviderKey, ContentProviderRef)`, not just an offset
+  range into one whole-object blob. This is the fix for a real gap a
+  buildability review found this session: fingerprinting sub-ranges of
+  one still-monolithic stored object gives you a manifest, but not
+  actual partial-sync capability, since there'd be nothing to fetch
+  *independently*. With each chunk stored under its own
+  `IAttachmentContentStore` reference (small chunks can share a backend
+  key with different refs, or even land in the same backend's
+  content-addressed bucket keyed by `ChunkHash`), two real benefits
+  follow, both already-needed capabilities gaining a mechanism rather
+  than a new requirement invented to justify one: **sub-file dedup**
+  (two large attachments sharing a common chunk store it once, by
+  `ChunkHash`, extending `ContentHash`'s whole-object dedup down to
+  chunk granularity) and **genuine partial sync** — `ADR-033`'s
+  peer-sync mesh and `ADR-069`'s offline-client reconnect scenario can
+  diff two `ChunkIndex`es and fetch only the specific chunks (by
+  `ChunkHash`) the destination doesn't already have, rather than the
+  whole object again, with a natural resume point if a transfer is
+  interrupted mid-way. `ADR-031`'s
   `Media` channels are a natural second beneficiary of the identical
   mechanism (already delivered in codec-framed chunks, just not yet
   individually fingerprinted/indexed) — not designed further here,

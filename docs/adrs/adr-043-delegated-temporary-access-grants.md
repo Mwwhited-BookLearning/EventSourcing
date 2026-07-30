@@ -71,15 +71,13 @@ Decision:
   that a grant happened; the live authorization check itself still
   happens at UCAN exchange/introspection time (an expired or revoked
   grant fails there), not by scanning events at query time.
-- **Not resolved here, flagged to `docs/10-open-questions.md`**: whether
+- ~~**Not resolved here, flagged to `docs/10-open-questions.md`**: whether
   every *read* made under a delegated grant should itself be logged as
-  an auditable event. Break-glass's own literature treats per-use audit
-  logging as standard practice specifically because emergency access is
-  an exception path worth watching closely — but this project's read
-  side isn't event-sourced today (only writes are), so logging every
-  read would be a genuinely new mechanism, not a reuse of an existing
-  one. Worth its own ADR if/when it's actually built, not decided by
-  default here.
+  an auditable event...~~ **Resolved by `ADR-045`, written directly in
+  response to this open question** — every read, through every surface,
+  now writes an `AccessLogEntry`, its own independent hash chain
+  alongside the write-side Event Log. Stale text found and corrected by
+  a design review this session.
 
 **Prior art**:
 - **Four Eyes Principle / two-person rule / dual control** — the
@@ -111,8 +109,12 @@ Consequences:
   above — worth a short cross-reference note in `docs/data/
   schema-registry.md`'s `RequiredReadClaim` description, not a rewrite
   of that ADR.
-- Per-use read audit logging is a genuine open question, not silently
-  decided either way — see `docs/10-open-questions.md`.
+- ~~Per-use read audit logging is a genuine open question, not silently
+  decided either way — see `docs/10-open-questions.md`.~~ **Resolved by
+  `ADR-045`**: every read, through every surface (including one made
+  under a delegated grant), now writes an `AccessLogEntry` — found
+  stale by a design review this session, since this ADR's text was
+  never updated after `ADR-045` shipped.
 - Revocation before natural expiration relies on the IdP actually
   checking revocation status at each exchange/introspection call, not
   just the UCAN's own `exp` — same operational requirement `ADR-040`'s
@@ -133,8 +135,19 @@ Consequences:
   pre-configured with a break-glass-scoped delegation template can
   therefore self-issue a capped, time-boxed emergency capability to a
   local operator entirely offline, using its own already-established
-  DID key — verified retroactively via `ADR-035`/`ADR-042`'s ordinary
-  `AuthorityStatus` review workflow once connectivity resumes, the same
+  DID key. **DID key provisioning itself is not a new gap this
+  composition needs to fill — reuse `ADR-017`'s existing mechanism**,
+  found and fixed this session after a buildability review confirmed
+  `ADR-036` describes what a DID proves but never how a device
+  generates or protects the private key behind it: `ADR-017`'s DPoP
+  already fully specifies exactly this end-to-end for every seeded
+  client ("generates its own asymmetric key pair and proves possession
+  of the private key on every request," `DevIdpSeeder` growing "a
+  key-generation step"). A device's DID key is the same client-held
+  asymmetric keypair, provisioned the identical way — not a second
+  key-management story. Verified retroactively via `ADR-035`/`ADR-042`'s
+  ordinary `AuthorityStatus` review workflow once connectivity resumes,
+  the same
   "captured now, reviewed later" shape every other non-authoritative
   capture already uses. **Not a new mechanism — a composition of
   `ADR-036` and this ADR that neither states explicitly on its own,**

@@ -21,8 +21,13 @@ Decision:
   alongside `payload`/`parentEventIds?`/`eventId?` — the publisher states
   which version of `{event-type}`'s schema their payload is shaped for.
   `SchemaValidationService` validates against *that* version specifically
-  (rejected `400`, `unknown-schema-version`, if it doesn't exist) — not
-  automatically "whichever is active."
+  — ~~rejected `400`, `unknown-schema-version`, if it doesn't exist~~
+  **superseded by `ADR-023`, found and fixed by a design review this
+  session**: an unknown `schemaVersion` now persists with `202 Accepted`
+  and `SchemaStatus: invalid`, exactly like any other schema-shape
+  problem, never rejected — `ADR-013`'s Problem Details table already
+  documents this correction, this ADR's own text just never got the
+  matching update until now. Not automatically "whichever is active."
 - If `schemaVersion` names a version **behind** the event type's current
   active version, `PublishEndpoint` runs the declared payload through
   `UpcastChain` (`ADR-018`) — the same chain a Follow/`ProjectionHost`
@@ -49,8 +54,11 @@ Decision:
   system-defined event type**, `EventUpcastFailed`, in the original
   event's place. Its payload carries: the original `eventType`, the
   original `schemaVersion`, the original (verbatim, unmodified) submitted
-  payload, and which `(EventType, FromVersion)` hop failed and why. The
-  HTTP response is still `201 Created` — something durable *was*
+  payload, and which `(EventType, FromVersion)` hop failed and why. ~~The
+  HTTP response is still `201 Created`~~ — **corrected to `202 Accepted`**,
+  matching `ADR-023`'s always-`202` publish response adopted after this
+  ADR was originally written (found and fixed by a design review this
+  session) — something durable *was*
   recorded — but its body names `EventUpcastFailed` as the stored type,
   not the caller's originally-intended one.
 - `EventUpcastFailed` is the first **system-owned event type** in this

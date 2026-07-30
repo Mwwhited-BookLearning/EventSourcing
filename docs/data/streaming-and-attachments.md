@@ -54,12 +54,25 @@ public class RedactedRange
 // EntityId/EventId here are just the most common lookup paths.
 public class Attachment
 {
-    public string ContentHash { get; set; } = default!;    // SHA-256 of the raw bytes -- PK
-    public byte[] Bytes { get; set; } = default!;
+    public string ContentHash { get; set; } = default!;    // SHA-256 of the raw bytes -- PK, stable regardless of where bytes physically live
+    public byte[]? Bytes { get; set; }                       // null once content lives in a registered IAttachmentContentStore backend rather than this table directly
     public string MimeType { get; set; } = default!;
     public long SizeBytes { get; set; }
-    public string? FileName { get; set; }                   // optional, display/WebDAV-resource-name only -- never part of the address
+    public string? FileName { get; set; }                   // optional, display-name only -- never part of the address
     public DateTimeOffset UploadedAt { get; set; }
+    public string? ContentProviderKey { get; set; }          // which registered IAttachmentContentStore backend currently holds the bytes -- null means "this table" (ADR-032); unused once ChunkIndex is populated (see below)
+    public string? ContentProviderRef { get; set; }          // opaque, provider-specific locator (a blob path/key) within that backend -- ADR-032; unused once ChunkIndex is populated
+    public DateTimeOffset LastAccessedAt { get; set; }        // updated on every read -- the concrete field the tiering mover's "access-pattern threshold" checks (ADR-032)
+    public List<ChunkRef>? ChunkIndex { get; set; }           // optional, only populated above a configurable size threshold -- content-defined chunking, ADR-032. When populated, this Attachment's own ContentProviderKey/Ref are unused -- each chunk is independently addressed instead
+}
+
+public class ChunkRef
+{
+    public string ChunkHash { get; set; } = default!;        // SHA-256 of this chunk's bytes -- independently content-addressable, not just an offset marker
+    public long Offset { get; set; }
+    public long Length { get; set; }
+    public string ContentProviderKey { get; set; } = default!; // this chunk's own backend -- chunks may live in different backends/tiers independently of each other
+    public string ContentProviderRef { get; set; } = default!; // this chunk's own locator within that backend
 }
 
 public class AttachmentRef
@@ -89,7 +102,9 @@ public class AttachmentRef
 
 `ADR-031`'s tail/replay reuses `ADR-010`'s Follow shape, applied to
 `TelemetrySample` instead of `StoredEvent`. `ADR-032`'s attachments are
-additionally browsable via WebDAV (RFC 4918) — a virtual collection/
-resource hierarchy projected over `Attachment`/`AttachmentRef`, detailed
+browsable via an ordinary GraphQL query against the owning entity, and
+retrieved via plain `GET` with HTTP Range-request support — detailed
 in `ADR-032` itself rather than here, since it's an access-pattern
-decision, not a storage-shape one.
+decision, not a storage-shape one. (A WebDAV-mounted virtual hierarchy
+was considered and explicitly declined — see `ADR-032`'s Decision and
+`docs/comparisons/webdav-library.md`.)

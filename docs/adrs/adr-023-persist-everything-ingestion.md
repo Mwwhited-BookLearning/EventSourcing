@@ -29,7 +29,7 @@ Decision:
     genuinely rejected — nothing to persist, there's no event to append.
   - Everything else — unknown `schemaVersion`, payload violates the
     known schema, unresolvable `EntityId`, upcast failure, missing
-    authority proof (`ADR-027`) — is **persisted**, not rejected.
+    authority proof (`ADR-035`) — is **persisted**, not rejected.
 - The publish response becomes **`202 Accepted`** (not `201 Created`) with
   a status envelope, replacing this ADR's predecessors' response shapes:
 
@@ -39,7 +39,7 @@ Decision:
     "status": "received",
     "entityId": null,
     "schemaStatus": null,
-    "authorityStatus": "unattested",
+    "authorityStatus": "accepted",
     "reason": null,
     "timestamp": "2026-07-29T14:32:00Z"
   }
@@ -95,7 +95,7 @@ Consequences:
   reliability (nothing is ever lost to a rejected publish) for a real
   shift of responsibility onto readers — the store's own posture is now
   "never lose an inbound message," not "only store good data."
-  `ADR-029`'s GraphQL layer surfaces both statuses as ordinary, filterable
+  `ADR-037`'s GraphQL layer surfaces both statuses as ordinary, filterable
   fields, matching this trade explicitly rather than hiding it.
 - Existing feature-doc Gherkin scenarios that assert `400` for a
   schema-invalid publish (`features/publish-event.md` and others) need

@@ -117,13 +117,35 @@ a party with no access to this system at all:**
   `ADR-055` already established this client is Vite-based). One
   playback implementation, two build targets: connected-to-a-live-API
   and embedded-in-a-static-file.
-- **Self-verifying, not merely self-contained**: on load, the player
-  independently recomputes `ADR-019`'s `ChainHash` sequence and this
-  ADR's manifest hash from the embedded event data and displays a clear
-  pass/fail integrity result — a reviewing party (opposing counsel, a
-  court, an expert witness) verifies the export's integrity from the
-  math alone, without needing to trust the exporting party's software
-  or reach back to the original system at all.
+- **Self-verifying, not merely self-contained — with one honest limit,
+  found by a design review this session, not glossed over.** On load,
+  the player independently recomputes `ADR-019`'s `ChainHash` sequence
+  and this ADR's manifest hash from the embedded event data and displays
+  a clear pass/fail integrity result. **This recomputation is exact,
+  independent of trusting the exporting party, for every event whose
+  fields are unmasked in the bundle** — the common, intended case, since
+  an export is normally run by a fully-authorized compliance/legal
+  actor for a litigation hold, holding every relevant claim already, and
+  `ADR-057`-erased fields are permanently unrecoverable by design,
+  full-access exporter or not. **It cannot be exact for an event
+  containing a field masked because the *exporting actor themselves*
+  lacked the claim for it** (the claims-restricted case `ADR-068`'s
+  no-bypass rule exists for) — `ChainHash`/`PayloadHash` were computed
+  once, at original publish time, over the real stored bytes; a field
+  replaced with `ADR-009`'s `{"masked": ...}` wrapper before bundling is
+  not those bytes, so re-hashing the bundle's (redacted) content cannot
+  reproduce the original chain values for that specific event. What the
+  player *can* still verify in that case: the chain's **structural**
+  linkage (each event's own `ChainHash`/`PayloadHash` — envelope
+  metadata, unaffected by masking — correctly derives from the prior
+  event's, per `ADR-019`'s formula over the metadata fields), just not
+  an independent re-derivation from the masked field's content itself.
+  This is a genuine, unavoidable trade-off between "redact before
+  sharing" and "let the recipient re-derive the exact original hash of
+  what was redacted" — not a bug to design around, a fact to state
+  honestly. The player's UI should distinguish "fully independently
+  verified" from "verified except for N masked fields, chain linkage
+  intact" rather than presenting one undifferentiated pass/fail.
 - **No masking/claims logic in the player, deliberately** — enforcement
   already happened once, at export time (per the export mechanism
   above); the player renders exactly what's in the bundle, `masked`/

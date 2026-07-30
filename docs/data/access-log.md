@@ -54,8 +54,8 @@ requirement this default already exceeds without a bespoke policy.
 ## What writes here
 
 Every read surface: GraphQL queries against the authoritative Entity
-Store or the Live View (`ADR-037`/`ADR-042`), WebDAV/attachment
-retrieval (`ADR-032`), streaming channel playback (`ADR-031`), and
+Store or the Live View (`ADR-037`/`ADR-042`), attachment retrieval
+(`ADR-032`), streaming channel playback (`ADR-031`), and
 ticket-authenticated headerless access (`ADR-040`) — each calls the
 access-logging step explicitly in its own composition (`ADR-041`), not
 via a reflection-based interceptor.

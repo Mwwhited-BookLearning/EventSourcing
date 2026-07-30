@@ -12,6 +12,14 @@ REST-endpoint shapes, and OData-vs-GraphQL specifics do not. Treat this
 file as accurate for project structure, stale in its code-sketch detail,
 until this note is removed.
 
+**Deployment-unit note, added this session (`ADR-075`)**: this whole
+solution builds to **one dedicated deployment per tenant** (the silo
+model), not one shared deployment serving many tenants. `AppId` below
+still scopes multiple *applications within one tenant's own deployment*
+exactly as `ADR-030` describes — what changed is that a different
+*customer* now means a wholly separate build/deploy of this same
+solution, never a second `AppId` inside the same running instance.
+
 ## Project layout
 
 ```
@@ -30,7 +38,7 @@ EventStore.sln
     EventStore.Sharding/            -- Shard Resolver: EntityId -> ShardKey -> store, entity-type-based (ADR-034)
     EventStore.PeerSync/            -- gossip peer-sync outbox/inbox, fault/abend/restart-tolerant (ADR-033)
     EventStore.Streaming/           -- TelemetryChannel/TelemetrySample ingestion + tail/replay, separate from the event pipeline entirely (ADR-031)
-    EventStore.Attachments/         -- content-addressed binary storage + WebDAV endpoint via NWebDav (ADR-032, docs/libraries/dotnet/nwebdav.md)
+    EventStore.Attachments/         -- content-addressed binary storage; POST upload, GET with Range, browsable via the GraphQL Gateway (ADR-032)
     EventStore.SpecGeneration/      -- OpenAPI builder (publish) + GraphQL SDL builder (supersedes the AsyncAPI builder for Follow -- Follow itself is gone, replaced by GraphQL Subscription)
     EventStore.Host.Core/           -- shared, provider-agnostic composition root logic (see below)
     EventStore.Host.Sqlite/         -- the actual deployable: Host.Core + SQLite wiring (ADR-001)

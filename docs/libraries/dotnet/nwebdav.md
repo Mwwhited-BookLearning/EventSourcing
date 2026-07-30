@@ -36,11 +36,18 @@ rather than a real filesystem.
 
 ## Where this project uses it
 
-`ADR-032` — browsable access to binary attachments, and the noted
-starting point for `ADR-039`'s deferred OS-level virtual filesystem
-(OneDrive/Google Drive/iCloud-style mounted attachments), which is a
-client-side WebDAV *consumer* built on top of this server surface, not a
-second implementation of the protocol.
+Nowhere, currently. `ADR-032` decided to skip WebDAV **entirely**, not
+just this library — once every other real attachment access path
+(upload, fetch+range, browse via GraphQL) was confirmed already served
+by mechanisms already adopted for unrelated reasons, WebDAV's one unique
+value (OS-native mounting) wasn't worth building at all, archived
+library or not. This was originally slated for `ADR-032`'s browsable
+attachment access, and as the starting point for `ADR-039`'s
+then-deferred OS-level virtual filesystem (OneDrive/Google Drive/
+iCloud-style mounted attachments) — both now moot: `ADR-039` was revised
+to drop that client-side extension point once the server-side surface it
+would have built on top of was declined. Kept here purely as a record of
+what was evaluated, per [the WebDAV library comparison](../../comparisons/webdav-library.md).
 
 ## Links
 

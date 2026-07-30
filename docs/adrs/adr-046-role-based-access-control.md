@@ -44,14 +44,18 @@ Decision:
   `AppTrustRoot`-rooted UCAN validation are all completely unaware
   whether a claim arrived via direct assignment or via a role — RBAC is
   purely an issuance-time indirection layered underneath.
-- **Role *assignment* (which user has which role) is identity-provider
-  state, not an event-sourced core-engine concern** — the same scoping
-  `ADR-006` already drew around seeded dev clients ("the production IdP
-  remains a separate, later decision, out of scope for this POC").
-  `EventStore.DevIdp`'s dev-mode seeding gains role-to-permission and
-  user-to-role tables alongside its existing seeded clients; a real
-  production IdP would own this the same way it would own user accounts
-  generally.
+- ~~Role *assignment* (which user has which role) is identity-provider
+  state, not an event-sourced core-engine concern~~ — **superseded by
+  `ADR-067`**: a role grant/revocation now publishes a reserved
+  `RoleGranted`/`RoleRevoked` event in the core Event Log itself, with
+  `Role`/`UserPermission` folding from those events the same way
+  `EntityStoreRow` folds business events. Found and fixed by a design
+  review this session — `ADR-067` (written later, after this ADR) says
+  so directly but never came back to strike this contradicting claim.
+  `EventStore.DevIdp`'s dev-mode seeding still gains role-to-permission
+  and user-to-role tables alongside its existing seeded clients, per the
+  original reasoning below — that part is unaffected, only *which
+  system of record* they fold from changed.
 - **Roles compose with what already exists, no new mechanism needed
   for either**: a delegated grant (`ADR-043`) can delegate an entire
   role, not just a single claim — same UCAN capped-delegation shape,
@@ -80,15 +84,21 @@ Decision:
 
 **A directly-assigned user permission is real state, not
 merely a delegated grant reused (`ADR-043`) or a role reused (above)**
-— it needs its own IdP-side record, `UserPermission { ActorId, AppId,
-Permission }`, alongside the role-assignment state `ADR-046` already
-places in identity-provider scope, not the core engine.
+— it needs its own record, `UserPermission { ActorId, AppId,
+Permission }`, folded from a reserved `PermissionGranted` event
+(`ADR-067`) ~~alongside the role-assignment state `ADR-046` already
+places in identity-provider scope, not the core engine~~ — **superseded
+by `ADR-067`**, same correction as above.
 
 Consequences:
 - `docs/data/schema-registry.md` gains the `Role` entity — done this
-  pass. `UserPermission` is identity-provider state (like role
+  pass. ~~`UserPermission` is identity-provider state (like role
   assignment itself), not a schema-registry entity — no core-engine
-  data model change for it.
+  data model change for it.~~ **Superseded by `ADR-067`** — `Role` and
+  `UserPermission` are both now core-engine entities, folded from
+  reserved control-plane events; `docs/data/schema-registry.md` needs
+  `UserPermission` added alongside `Role`, flagged as remaining
+  propagation work.
 - **No explicit-deny/negative-permission concept exists anywhere in
   this model, by design** — consistent with the additive-only decision
   above. An application that genuinely needs to revoke a specific

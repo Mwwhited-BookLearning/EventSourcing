@@ -29,7 +29,7 @@ Decision:
   of `upcastFromPrevious`, in the opposite direction.
 - **Trigger: an explicit request for an older version, never a default.**
   A consumer states the version it wants (e.g. `asOfSchemaVersion` on a
-  Follow connection, or a query argument once `ADR-031`'s GraphQL layer
+  Follow connection, or a query argument once `ADR-037`'s GraphQL layer
   exists) — omitting it means "current version," the existing behavior,
   completely unchanged. Downcasting never happens speculatively or
   automatically.

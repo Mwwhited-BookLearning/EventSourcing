@@ -36,7 +36,7 @@ Decision:
   with the number of origins ever seen.
 - **Peer Sync Outbox/Inbox reuses the exact same durable transport
   primitive `ADR-023`'s client-facing Inbox already established** —
-  client→server, server→server, and (once `ADR-036`'s MVVM client exists)
+  client→server, server→server, and (once `ADR-039`'s MVVM client exists)
   server→client are three relationships over one mechanism, not three.
   A synced event lands in the receiving server's event log exactly as if
   it arrived from its own client inbox — sync itself performs no

@@ -190,11 +190,14 @@ larger batch of unrelated changes.
   the gap is genuinely this project's own business logic), build a small,
   generalized library isolated from business logic — not scattered
   through it — and it earns the same writeup once it exists. `ADR-037`'s
-  GraphQL Gateway and `ADR-032`'s WebDAV surface had both gone unnamed at
-  the concrete-library level until this pass — `docs/libraries/dotnet/
-  hotchocolate.md` and `docs/libraries/dotnet/nwebdav.md` closed exactly
-  that gap, found while doing this buy-over-build pass, not requested by
-  name.
+  GraphQL Gateway and `ADR-032`'s then-proposed WebDAV surface had both
+  gone unnamed at the concrete-library level until this pass —
+  `docs/libraries/dotnet/hotchocolate.md` and `docs/libraries/dotnet/
+  nwebdav.md` closed exactly that gap at the time, found while doing this
+  buy-over-build pass, not requested by name. (`ADR-032`'s WebDAV surface
+  was itself declined outright in a later pass — see
+  `docs/comparisons/webdav-library.md` — so `nwebdav.md` now records what
+  was evaluated, not what shipped.)
 - **A new capability gets a Phase in `08-build-plan.md`**, with real
   dependencies and concrete exit criteria tied to a feature doc's Gherkin
   scenarios — not just an ADR with no build-plan entry. (Build-plan
@@ -242,7 +245,8 @@ foundational, locked-in decisions, for quick orientation:
 - **Two new data planes, deliberately separate from the event log** —
   streaming channels for telemetry/audio/video (`ADR-031`, with
   standard-protocol playback/deep-linking/redaction) and content-addressed
-  binary attachments, browsable via WebDAV (`ADR-032`).
+  binary attachments, browsable via GraphQL and plain HTTP — WebDAV
+  mounting was considered and explicitly declined (`ADR-032`).
 - **Distribution is real** — gossip-topology replication with a minimum
   2-replica, regional-fault-tolerant requirement (`ADR-033`,
   `docs/comparisons/peer-sync-topology.md`) and entity-type-based sharding
@@ -269,9 +273,10 @@ foundational, locked-in decisions, for quick orientation:
   fallback priority (`docs/comparisons/ui-architecture-patterns.md`) for
   UI technologies this ADR doesn't fully dictate.
 - **Ticket exchange for header-incapable clients** (`ADR-040`) — closes
-  the gap `ADR-031` (streaming playback) and `ADR-032` (WebDAV/attachment
-  retrieval) reopened: a `<video src>`/WebDAV client can't set an
-  `Authorization` header, the same problem `ADR-006`'s original
+  the gap `ADR-031` (streaming playback) and `ADR-032` (attachment
+  retrieval) reopened: a `<video src>` element or an `<img src>`/
+  `<a href>` pointing directly at a content-addressed attachment URL
+  can't set an `Authorization` header, the same problem `ADR-006`'s original
   `access_token`-in-URL workaround solved and `ADR-012` correctly removed.
   Solved via a short-lived, single-use, opaque ticket (RFC 8693 issuance,
   RFC 7662-shaped resolution) plus a client-side HMAC signature — not by
@@ -390,7 +395,7 @@ foundational, locked-in decisions, for quick orientation:
   data, not a compile-time constructor parameter.
 - **API Gateway (YARP)** (`ADR-049`) — also reverses a prior rejection,
   same trigger as `ADR-048`: this design's growth to multiple
-  independently-addressable external surfaces (GraphQL, WebDAV,
+  independently-addressable external surfaces (GraphQL, attachments,
   streaming, ticket/OAuth) is exactly the scenario the original "each
   host is a single deployable" rejection named as the reason to
   revisit. External auth/TLS terminates at the gateway; internal
@@ -971,7 +976,9 @@ concurrent edits:
   clock-skew policy, migration-application mechanism, background-worker
   concurrency model (can more than one `Router` run per site?),
   multi-tenant data-isolation model (never formally compared, despite
-  this project's own "write the comparison before the ADR" convention),
+  this project's own "write the comparison before the ADR" convention —
+  **since resolved, see below**: `docs/comparisons/multi-tenant-
+  isolation-model.md` + `ADR-075`),
   rotation for the framework's own two self-minted HMAC secrets,
   the outbound `LICENSE` choice (MIT Non-AI, not OSI-approved — real,
   never recorded in any doc), archival/partitioning mechanism for
@@ -1016,3 +1023,92 @@ Check this section before assuming any doc is fully consistent with
 `ADR-025` onward — the structural/architectural picture is current
 everywhere; the exhaustive detail (every contract example, every Gherkin
 scenario) is not, and each file says so where it applies.
+
+## Naming, glossaries, and the multi-tenancy decision (this session)
+
+- **Company/product naming** — `docs/naming.md` (new): OoBDev (Out of
+  Band Development), **Duplex** (the base engine), **Vitals** (clinical
+  trials/device telemetry), **Meridian** (digital identity/KYC), each
+  with alternates considered and a trademark-check caveat.
+- **A central glossary plus one per domain, all with verified
+  synonyms** — `docs/glossary.md` (new, ~55 cross-cutting Duplex terms,
+  each cross-referenced to its deciding ADR) and a new `## Glossary`
+  section added to all 15 `docs/domains/*.md` files (~150 industry
+  terms total). A follow-up pass added real, WebSearch-verified
+  synonyms to both — the central glossary directly, the 15 domain
+  glossaries via four parallel agents — with several **deliberately
+  not** treated as synonyms after verification (KYC vs. CDD, Clearinghouse
+  vs. CCP, Market Maker vs. Liquidity Provider, De-identification vs.
+  Anonymization, Index Case vs. "Patient Zero," Legal Hold vs.
+  Litigation Hold) — the same "disambiguate, don't conflate" discipline
+  this project already applies to its own terminology collisions.
+- **Multi-tenancy: pool model → silo model, a real, comparison-backed
+  reversal** — `docs/comparisons/multi-tenant-isolation-model.md` (new)
+  and `ADR-075` resolve `docs/10-open-questions.md`'s tenant-isolation
+  row (and an independent cross-reference against a separate
+  architecture document that found the identical unweighed gap).
+  Direction received: dedicated infrastructure per tenant, not shared —
+  "servers are cheaper than lawsuits." Verified real terminology before
+  deciding (AWS Well-Architected SaaS Lens's "Silo Isolation," Azure's
+  "Automated single-tenant deployments"). `ADR-030` revised in place
+  (struck through, not deleted) for the "many customers share one
+  deployment" framing specifically — `AppId` itself is unaffected,
+  now scoping applications *within* one tenant's own deployment.
+  `ADR-033`/`034` unchanged in mechanism, now understood to operate
+  *within* one tenant's deployment, never across different tenants'.
+  Cross-tenant exchange reuses `ADR-060`/`ADR-072` (a sibling tenant is
+  "just another external system to federate with"), not a new protocol.
+  The silo spectrum's zero-radius extreme (one machine, `SQLite`, no
+  peers) is already fully supported by `ADR-001`/`ADR-051`, named
+  explicitly in `ADR-075` rather than left implicit.
+- **Several smaller mid-conversation resolutions, same session**:
+  `ADR-034` now states most tenants won't need sharding at all under
+  the silo model (available, not default); `ADR-032` gained a keyed
+  multi-backend `IAttachmentContentStore` seam (`ADR-057`'s shape,
+  applied to content storage/tiering) plus content-defined chunking
+  (`ChunkIndex`, verified against restic/Borg/casync/rsync/BitTorrent/
+  IPFS prior art) for genuine sub-file dedup and partial sync; `ADR-043`
+  gained a true-offline break-glass composition (`ADR-036`'s DID key +
+  this ADR's UCAN delegation, no third mechanism); `docs/comparisons/
+  authority-rejection-behavior.md`'s Annotate-only default was
+  sharpened into "annotate-only plus a targeted single-entity rebuild,"
+  resolving a real gap an independent cross-reference had named
+  (`AR5`/`Q27`, "compromised-but-valid actor's history... needs a
+  retraction model") without inheriting the Compensating-patch option's
+  ambiguous-revert-semantics problem. `docs/10-open-questions.md` rows
+  11/17/18 narrowed or resolved (clock authority mostly closed —
+  ordering/tamper-evidence never depended on client-clock truthfulness
+  in the first place; LICENSE confirmed, not reconsidered; cold-storage
+  tiering resolved for attachments specifically, not the Event Log);
+  two new rows added (21: frontier tokens/read-your-writes across
+  `ADR-033`'s mesh; 20: `ThreadId`, a proposed `TelemetryChannel`-
+  grouping concept for multi-channel recording sessions, deliberately
+  not named `StreamId` since that term was already retired by
+  `ADR-021`).
+- **A three-lens design review of this session's own rapid changes**
+  (direct request: "do a design review to see what's missed") found
+  and fixed real gaps in the newest work specifically — the same
+  buildability rigor applied earlier to the core engine, applied here
+  to what had just been decided: `docs/data/streaming-and-attachments.md`'s
+  `Attachment` class was updated with the new `ContentProviderKey`/
+  `ContentProviderRef`/`ChunkIndex`/`LastAccessedAt` fields (previously
+  only in ADR prose); `ChunkIndex` entries were corrected to be
+  independently content-addressable and independently stored (not just
+  offset markers into one still-monolithic blob — the fix that makes
+  "partial sync" an actually-buildable claim, not just an aspiration);
+  `ADR-021` gained a real, new `QUERY /entities/{entityId}/events` path
+  (the whole-store "replay is cheap" property was per-event-type, not
+  per-entity — nothing let you cheaply fold just one entity's history
+  before this); `ADR-043`'s break-glass composition was fixed to cite
+  `ADR-017`'s already-specified device-keypair provisioning, since
+  `ADR-036` alone never said how a device gets or protects its DID
+  private key; `ADR-075`'s federation claim gained an honest, named
+  residual (tenant-to-tenant mapping has no external spec to anchor to,
+  unlike `ADR-072`'s HL7v2/FHIR/etc. adapters — tracked as open-questions
+  row 22, not glossed over); `01-c4-architecture.md`'s System box, `06-
+  solution-structure.md`, `08-build-plan.md` Phase 12, and `docs/
+  extensibility-points.md` all got their `ADR-075`/`IAttachmentContentStore`
+  propagation fixes; `references.md` gained the citation rows this
+  session's ADR amendments had cited in prose but never added to the
+  bibliography (AWS/Azure tenancy guidance, AS2/AS4, HIE federation,
+  rsync, restic/Borg/casync, BitTorrent BEP3, IPFS UnixFS).

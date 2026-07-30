@@ -61,6 +61,17 @@ Decision:
   and health-information-exchange-style **federated architecture**
   (each institution keeps its own data, exchanges specific records via
   standard APIs, never a central repository). No new protocol invented.
+  **Honest residual, not fully solved — flagged by a buildability
+  review this session, not glossed over**: `ADR-072`'s adapters were
+  built for *externally standardized* formats (HL7v2, FHIR, ICH E2B(R3),
+  GS1-EPCIS) — each side of that mapping is anchored to a real published
+  spec neither party controls. A sibling tenant emits this framework's
+  own *native* event shape instead, from an independently-versioned
+  schema registry (per tenant, by design) — there is no external spec
+  to anchor a tenant-to-tenant mapping to, and a bespoke adapter per
+  tenant pair doesn't scale past a handful of federation partners.
+  Tracked as an open question (`docs/10-open-questions.md`), not
+  resolved here.
 - **The silo spectrum runs all the way down to a single machine — no new
   mechanism needed for that extreme either.** A "radius zero,"
   origin-authoritative deployment (one standalone install, database on
