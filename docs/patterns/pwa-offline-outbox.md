@@ -124,6 +124,17 @@ optional. A device that's offline when erasure fires won't purge until
 it reconnects, the same limitation `ADR-060` already states for an
 already-delivered webhook payload.
 
+**Feeds the same outbox for locally-captured device readings, too
+(`ADR-070`).** A `WebUsbInputSource`/`WebHidInputSource`/
+`WebSerialInputSource`/`WebBluetoothInputSource`/`NativeBridgeInputSource`
+adapter (one per hardware interface, chosen by the physical device, not
+a deployment-wide pick) reads directly from USB/HID/serial/BLE hardware
+into an open app window, then writes into this same durable outbox
+unchanged — no second local-storage mechanism. The Service Worker's job
+stays exactly what it already is here: flush whatever's queued, with no
+awareness of whether an item came from a user action or a hardware
+reading.
+
 **Flush triggers beyond opportunistic connectivity (`ADR-069`).** The
 Background Sync trigger and open/focus fallback described above assume
 connectivity returns on its own before long. For genuinely isolated data

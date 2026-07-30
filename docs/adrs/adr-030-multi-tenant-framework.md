@@ -86,3 +86,12 @@ Consequences:
   already disambiguates applications. Multi-tenancy was closer to already
   built than not; this ADR is what makes it a stated, intentional property
   instead of an accidental side effect of `ADR-021`'s ID format.
+
+**Compliance note** (a proving-ground compliance review, this session):
+`docs/comparisons/proving-ground-domain.md` already names SOC 2's Trust
+Services Criteria and ISO/IEC 27001 as baseline expectations for any
+multi-tenant SaaS deployment of this framework, not unique to one
+domain — `AppId`-scoped tenant isolation (registry keys, scopes, and
+`ADR-061`'s residency enforcement built on top of it) is the concrete
+mechanism satisfying both frameworks' logical-segregation-of-customer-
+data control, not an incidental side effect of it.

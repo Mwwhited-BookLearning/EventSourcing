@@ -12,8 +12,8 @@ posture and `ADR-030`'s multi-tenancy. Direction received this session:
 "as standard as it comes in .NET/ASP.NET Core, the better."
 
 `ASP.NET Core` has shipped first-party rate-limiting middleware since
-.NET 7 (`System.Threading.RateLimiting`/`Microsoft.AspNetCore.
-RateLimiting`, [Microsoft Learn](https://learn.microsoft.com/en-us/aspnet/core/performance/rate-limit)),
+.NET 7 ([`System.Threading.RateLimiting`/`Microsoft.AspNetCore.
+RateLimiting`](../libraries/dotnet/aspnetcore-ratelimiting.md), [Microsoft Learn](https://learn.microsoft.com/en-us/aspnet/core/performance/rate-limit)),
 with four built-in algorithms — Fixed Window, Sliding Window, Token
 Bucket, Concurrency Limiter — partitionable per-key, `429` rejection, and
 `Retry-After` headers out of the box. Exactly the "as standard as it

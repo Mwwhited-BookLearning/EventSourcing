@@ -2,14 +2,14 @@
 
 # Streaming-Channel Redaction Mechanism: substitution content per `ContentKind`, and materialized vs. read-time
 
-**Not yet decided.** `ADR-031` named the `RedactedRange` shape
-(`ChannelId`, `FromTimestamp`, `ToTimestamp`, `RequiredClaim`) and
-explicitly stopped there: "a full ADR if/when it's actually built." This
-comparison does the prior-art search and lays out the fork that ADR will
-need to resolve — it doesn't force a premature pick where the evidence
-doesn't cleanly support one, following this project's own precedent
-(`upcast-transform-language.md`). Tracked in `docs/10-open-questions.md`
-until the queued streaming-redaction ADR actually gets written.
+**Resolved in [`ADR-052`](../adrs/adr-052-streaming-redaction-mechanism.md).**
+`ADR-031` named the `RedactedRange` shape (`ChannelId`, `FromTimestamp`,
+`ToTimestamp`, `RequiredClaim`) and explicitly stopped there: "a full ADR
+if/when it's actually built." This comparison did the prior-art search
+and laid out the fork that ADR needed to resolve — it doesn't force a
+premature pick where the evidence doesn't cleanly support one, following
+this project's own precedent (`upcast-transform-language.md`). The
+recommendation below is what `ADR-052` adopted.
 
 **Stated requirement driving this comparison:** `ADR-031`'s own Decision
 text already commits to two constraints before this comparison starts:

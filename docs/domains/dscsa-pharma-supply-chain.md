@@ -110,3 +110,8 @@ which this framework has a concrete, already-designed answer for in
   effect** — this is a live compliance requirement for the industry
   today, not a forward-looking standard, which is part of why the
   GS1/EPCIS interchange need surfaced as concretely as it did.
+- **Accessibility (`ADR-073`)** — trading-partner-facing screens render
+  through this framework's client the same as any other domain; WCAG
+  2.1 AA applies here too, though the driver is weaker than for a
+  citizen-facing domain since users are business partners rather than
+  the general public.

@@ -3,10 +3,10 @@
 # Peer Discovery: Static Seed-Peer List vs. DNS-Based Seed Discovery vs. Dedicated Discovery/Rendezvous Service
 
 **Raised by:** `ADR-033`, re-raised during a `references.md` review (see
-`docs/10-open-questions.md`). **Not yet decided in an ADR** — this doc lays
-out the options and gives a recommendation; formalizing it is left to a
-future ADR, not hardcoded here (`CLAUDE.md`'s "never hardcode a future
-ADR's number" convention).
+`docs/10-open-questions.md`). **Resolved in
+[`ADR-051`](../adrs/adr-051-peer-discovery-static-seed-list.md)** —
+Option A (static seed-peer list) below, matching this comparison's own
+recommendation.
 
 **Distinct from two related, already-decided questions, on purpose:**
 - **Not** `docs/comparisons/peer-sync-topology.md` (`ADR-033`, gossip/

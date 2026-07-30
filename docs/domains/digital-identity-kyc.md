@@ -24,7 +24,8 @@ built for one industry.
 | GDPR | EU subject data, right to erasure |
 | eIDAS | EU cross-border electronic identification |
 | BSA/FinCEN KYC rules | US anti-money-laundering identity-verification requirements |
-| SOC 2 | Relying-party trust/security expectations for an identity-verification service |
+| OFAC sanctions screening + BSA SAR filing | Screening verified identities against sanctions lists and filing Suspicious Activity Reports — a gap found this session, tracked as an open question (`docs/10-open-questions.md`), not yet resolved by any ADR |
+| SOC 2 | Relying-party trust/security expectations for an identity-verification service — a cross-cutting baseline for essentially any multi-tenant SaaS deployment of this framework, not unique to this domain |
 
 ## Applicable ADRs
 
@@ -73,3 +74,18 @@ built for one industry.
   (`ADR-061`) — many jurisdictions legally require identity-verification
   data to stay within-country; this domain is a strong real-world
   driver for that mechanism, not a hypothetical one.
+- **No existing ADR addresses OFAC sanctions screening or BSA Suspicious
+  Activity Report filing** — a genuine gap for a KYC platform, not a
+  stretch: verified identities routinely need screening against
+  sanctions lists, and a match can trigger a mandatory SAR filing to
+  FinCEN. Tracked as an open question (`docs/10-open-questions.md`) — a
+  candidate for a future ADR, not yet decided.
+- **Accessibility (`ADR-073`)** — relying-party-facing verification
+  screens render through this framework's client the same as any other
+  domain; WCAG 2.1 AA applies here too, not just the
+  government-case-management candidate it was originally tagged under.
+- **GDPR breach notification (Art. 33/34)** — this domain already relies
+  on GDPR for subject-erasure rights above; the 72-hour notification
+  *workflow* itself remains an open question (`docs/10-open-questions.md`)
+  — `ADR-045`'s access audit log supplies the forensic inputs, but the
+  notification process itself isn't designed yet.

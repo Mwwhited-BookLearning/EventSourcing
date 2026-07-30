@@ -251,3 +251,17 @@ full Vue app per entity) — Vue is this project's choice for the
 **application shell** around those entity views (navigation, layout,
 non-entity screens), not a claim that every rendered entity view itself
 is a Vue component.
+
+**Accessibility is deliberately decided elsewhere, not inside this
+pattern's own ADR.** `ADR-039` originally left accessibility unaddressed
+as an implementation detail; a later review caught that as a category
+error — accessibility applies to *whichever* UI pattern renders a given
+screen, MVVM here or a named fallback (MVP/MVC/code-behind, per
+[the UI architecture comparison](../comparisons/ui-architecture-patterns.md)),
+not something conditioned on this one pattern being in use. WCAG 2.1 AA
+(2.2 AA forward-looking) is now its own standing requirement, `ADR-073`
+— `ADR-039` (and this doc) just point to it rather than restating it, so
+the requirement doesn't read as MVVM-specific. `ADR-009`'s reveal-toggle
+component (the eye-icon control for `revealOnDemand` fields) is one
+concrete example of a component built to that standard already, not a
+separate accessibility mechanism of its own.

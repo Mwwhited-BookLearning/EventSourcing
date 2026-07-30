@@ -108,3 +108,15 @@ work already happens, not a contrived stretch to exercise them.
   is exactly the shape event lineage (`ADR-005`) and bitemporal playback
   (`ADR-068`) are built to represent, not a mismatch this domain has to
   work around.
+- **Accessibility (`ADR-073`)** — safety-reviewer-facing case workflow
+  screens render through this framework's client the same as any other
+  domain; WCAG 2.1 AA applies here too, not just the
+  government-case-management candidate it was originally tagged under.
+- **No existing ADR designs a regulatory expedited-reporting deadline
+  clock** — a genuine gap, the same shape as the already-tracked GDPR
+  Art. 33/34 72-hour breach-notification gap: FDA 21 CFR 314.80/600.80
+  impose a hard 15-calendar-day clock for serious, unexpected adverse
+  drug reactions. `ADR-060`'s webhooks and `ADR-072`'s `IchE2bR3Adapter`
+  supply the delivery mechanism once a report is ready to send, but no
+  ADR designs the deadline-tracking/escalation workflow itself — a
+  candidate for a future ADR, not yet decided.

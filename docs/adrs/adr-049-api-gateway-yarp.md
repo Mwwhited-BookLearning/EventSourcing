@@ -18,7 +18,7 @@ client interacts with what looks like one API rather than needing to
 know N separate addresses.
 
 Decision:
-- **YARP** (Microsoft's own reverse-proxy library — a first-party fit
+- **[YARP](../libraries/dotnet/yarp.md)** (Microsoft's own reverse-proxy library — a first-party fit
   per `ADR-041`) sits in front of every external-facing surface listed
   above, routing by path/host to the right internal service.
 - **External TLS termination and `ADR-006`/`ADR-017`/`ADR-040`
@@ -46,3 +46,11 @@ Consequences:
   the existing containers it currently shows as directly external-
   facing — not done this pass, flagged as outstanding propagation work
   (`CLAUDE.md`).
+
+**Compliance note** (a proving-ground compliance review, this session):
+centralizing external TLS termination and authentication at one gateway
+is the concrete managed-interface NIST SP 800-53 Rev. 5's SC-7
+(Boundary Protection) control calls for — connecting to external
+networks only through boundary protection devices like gateways that
+monitor and control all external traffic, rather than each service
+terminating its own external-facing connection independently.

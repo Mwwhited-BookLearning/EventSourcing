@@ -66,3 +66,7 @@ genuinely request/response-shaped, server-rendered screen (an admin
 page, a simple form-post flow), if this design ever grows one — not a
 default reached for ahead of MVP for anything closer to a persistent,
 interactive client view.
+
+**`ADR-073`'s WCAG 2.1 AA requirement applies here too**, same reasoning
+as MVP's own note: accessibility conformance doesn't relax just because
+a screen fell back two tiers down this design's stated priority order.

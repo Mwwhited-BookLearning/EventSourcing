@@ -108,13 +108,16 @@ from `SequenceNumber = 1`, not just comparing one row to itself. See
 
 `StoredEvent.SchemaVersion` (above) is what makes a version-spanning
 `mode=replay` (`ADR-010`) possible to reconcile at read time: an optional
-`upcastFromPrevious` OData `compute()` expression list, set per version
+`upcastFromPrevious` expression list, set per version
 (`>= 2`), reshapes an old-shaped payload forward, version by version, so
 every consumer sees the current shape regardless of which version
-originally validated a given row. Deliberately not a general transform
-language — an upcast mapping is always many-source-fields-to-one-
+originally validated a given row. Originally specified as an OData
+`compute()` expression list (`ADR-018`); `ADR-037` moved this off OData
+entirely, and `ADR-053` made the evaluator itself pluggable behind
+`IUpcastExpressionEvaluator`, CEL by default. Deliberately not a general
+transform language — an upcast mapping is always many-source-fields-to-one-
 destination-field or one-to-one, never one-to-many or many-to-many, so
-`compute()`'s expression-list shape is already sufficient. `Payload`
+this expression-list shape is already sufficient. `Payload`
 itself is never rewritten — see `ADR-018` and `../06-solution-structure.md`
 for the transform mechanics.
 

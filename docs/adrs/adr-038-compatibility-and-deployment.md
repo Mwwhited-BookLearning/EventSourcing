@@ -84,3 +84,11 @@ Consequences:
   explicitly** (Tolerant Reader, Postel's Law, Expand/Contract, N-1/N+1)
   so it's enforced as policy, not an accidental byproduct of other
   decisions.
+
+**Compliance note** (a proving-ground compliance review, this session):
+this ADR's wire-format/versioning/Expand-Contract/N-1-N+1 discipline is
+exactly the control activity SOX Section 404 IT General Controls audits
+under the "program change management" domain — demonstrable
+backward-compatible, rollback-safe deployment practice, not a
+data-model concern at all, is what that control domain actually checks
+for.

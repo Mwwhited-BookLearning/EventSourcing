@@ -89,3 +89,11 @@ Consequences:
 - No new signing mechanism invented — Standard Webhooks' HMAC-SHA256
   construction and header names are used as specified, not reinvented
   loosely "in the spirit of."
+
+**Compliance note** (a proving-ground compliance review, this session):
+a webhook subscription's fixed claim set, masked via `IPayloadMasker`
+before every delivery, is this ADR's own enforcement of HIPAA's Minimum
+Necessary Standard (45 CFR §164.502(b)) for the clinical-trials
+domain — a webhook target is exactly the kind of external recipient the
+rule requires be given no more PHI than the subscription's own claims
+justify, not a new obligation this ADR needs to additionally satisfy.

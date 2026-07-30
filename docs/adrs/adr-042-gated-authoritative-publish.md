@@ -143,3 +143,11 @@ Consequences:
 - `01-c4-architecture.md` needs a Live View component alongside the
   Entity Store's — not done this pass, flagged as outstanding
   propagation work (`CLAUDE.md`).
+
+**Compliance note** (a proving-ground compliance review, this session):
+making not-yet-approved data visible-but-labeled rather than silently
+withheld or discarded is precisely what FDA's "Data Integrity and
+Compliance With Drug CGMP: Questions and Answers" guidance requires
+under its ALCOA+ "Complete" principle — all results, including ones
+later rejected, must remain retained and reviewable, never quietly
+excluded from the record a regulator or auditor could inspect.

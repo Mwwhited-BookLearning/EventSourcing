@@ -107,3 +107,7 @@ significant events onward to national and international bodies.
   two candidates in this same review round — it is fundamentally about
   case data moving *upward* through jurisdictional tiers, not a single
   organization's internal record-keeping.
+- **Accessibility (`ADR-073`)** — investigator- and health-department-
+  staff-facing screens render through this framework's client the same
+  as any other domain; WCAG 2.1 AA applies here too, not just the
+  government-case-management candidate it was originally tagged under.

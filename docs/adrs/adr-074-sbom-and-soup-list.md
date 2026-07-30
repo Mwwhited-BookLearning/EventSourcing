@@ -31,7 +31,7 @@ checked against the actual sources before designing anything:
   device software context.
 
 Decision:
-- **SBOM generation via [`microsoft/sbom-tool`](https://github.com/microsoft/sbom-tool)**
+- **SBOM generation via [`microsoft/sbom-tool`](../libraries/dotnet/sbom-tool.md)**
   — Microsoft's own, open-sourced, SPDX 2.2-compatible generator,
   consistent with `ADR-041`'s first-party preference. Chosen specifically
   because it auto-detects **both** NuGet and npm dependency graphs in

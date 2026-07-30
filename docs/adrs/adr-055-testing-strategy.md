@@ -26,7 +26,7 @@ job of `EventStore.IntegrationTests`' `Testcontainers`-based suite
 (`06-solution-structure.md`), not a new layer.
 
 Decision:
-- **Backend unit tests: MSTest + Moq**, per direct preference. MSTest v3
+- **Backend unit tests: [MSTest](../libraries/dotnet/mstest.md) + [Moq](../libraries/dotnet/moq.md)**, per direct preference. MSTest v3
   is Microsoft's own first-party test framework (`ADR-041`'s "prefer
   first-party" convention, the same reasoning that already picked
   `Microsoft.Extensions.Compliance.Redaction` over a third-party
@@ -42,7 +42,7 @@ Decision:
   per direct preference. Swapping to `NSubstitute` later is a mechanical,
   low-cost change if trust becomes a real concern (no assertions/API
   surface this design depends on are `Moq`-specific).
-- **Frontend unit tests: Vitest + Vue Test Utils.** `Vitest` is
+- **Frontend unit tests: [Vitest](../libraries/web/vitest.md) + [Vue Test Utils](../libraries/web/vue-test-utils.md).** `Vitest` is
   maintained by the Vue/Vite team itself, needs zero additional config
   since `ADR-039`'s client is already Vite-based, and has solidified as
   the standard for Vue 3 projects. `@vue/test-utils` is Vue's own
@@ -56,7 +56,7 @@ Decision:
   real HTTP/GraphQL surface rather than mocks — this **is** this
   design's service-level integration testing layer; nothing new is
   needed to satisfy that part of the request.
-- **UI action tests: Playwright**, per direct experience/no strong
+- **UI action tests: [Playwright](../libraries/dotnet/playwright-dotnet.md)**, per direct experience/no strong
   competing preference. Microsoft's own, cross-browser (Chromium,
   Firefox, WebKit), actively developed. **Playwright for .NET, using its
   MSTest base classes** — one language, one assertion/mocking/runner

@@ -72,3 +72,9 @@ inline principle still applies: a Presenter's `OnCommand()`-style methods
 are still commands the View delegates to, not logic embedded directly
 inside a widget's click-handler body — MVP is one notch of ceremony below
 MVVM's binding, not a step back toward code-behind.
+
+**`ADR-073`'s WCAG 2.1 AA requirement applies here unchanged** if a
+screen ever does fall back to MVP — accessibility is a property of the
+rendered UI, not of which mediation pattern produced it, so a Presenter-
+mediated screen owes the same conformance bar an MVVM one does, with no
+separate standard for this tier.

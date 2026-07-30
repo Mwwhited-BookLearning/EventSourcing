@@ -19,6 +19,13 @@ running two proving-ground domains side by side a real, low-cost option
 rather than a second framework, per the Recommendation below (written
 before this decision, kept as the reasoning that led to it).
 
+**See `docs/domains/README.md` for the per-domain reference generated
+from this comparison's coverage matrix and regulatory mapping table**
+below — one file per domain considered here (all 15), covering which
+ADRs apply and why, governing regulations, and special concerns; this
+doc is where the *choice* was made, those files are the per-domain
+reference for afterward.
+
 **A follow-up review (this session), checking the *other* candidates
 below for requirements the two chosen domains don't exercise**, found
 one genuine, actionable gap and one confirming non-gap: brokerage/

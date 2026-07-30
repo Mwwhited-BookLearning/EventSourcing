@@ -61,6 +61,10 @@ technical data is itself a regulated act, not just its disclosure.
   export-control-relevant aggregate reporting.
 - `ADR-068` — bitemporal export/playback: moderate, useful for
   after-the-fact export-control compliance review.
+- `ADR-074` — SBOM/SOUP list: NIST SP 800-171/CMMC's controlled-
+  unclassified-information handling requirements include software
+  supply-chain security, a real driver for `ADR-074`'s SBOM generation
+  alongside clinical trials' direct FDA Section 524B requirement.
 
 **Weak/no fit:**
 - `ADR-035` (non-authoritative capture) — controlled technical data
@@ -100,3 +104,8 @@ technical data is itself a regulated act, not just its disclosure.
   permitting a specific foreign national time-boxed access to specific
   data is a real-world instance of `ADR-043`'s capped, entity-scoped
   grant, not a new access-control primitive this domain would require.
+- **Accessibility (`ADR-073`)** — cleared-personnel-facing screens
+  render through this framework's client the same as any other domain;
+  WCAG 2.1 AA applies here too, though the driver is weaker than for a
+  citizen-facing domain since the user population is small and
+  internally cleared rather than the general public.

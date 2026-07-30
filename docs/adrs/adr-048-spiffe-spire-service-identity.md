@@ -16,7 +16,7 @@ the original rejection named as the reason to revisit. Full comparison
 in [`docs/comparisons/service-identity.md`](../comparisons/service-identity.md).
 
 Decision:
-- **SPIFFE/SPIRE issues workload identity for this framework's own
+- **[SPIFFE/SPIRE](../libraries/dotnet/spiffe-spire.md) issues workload identity for this framework's own
   internal services** (`EventStore.Router`, `.Fold`, `.GraphQL`,
   `.Sharding`, `.PeerSync`, `.Streaming`, `.Attachments`) — each gets a
   SPIFFE ID (`spiffe://<trust-domain>/eventstore/<service-name>`),
@@ -63,3 +63,12 @@ Consequences:
   `AppTrustRoot`, or `ADR-047`'s federated-IdP claims augmentation — all
   three are about *user/application* identity and permission, a
   different axis from the *workload* identity this ADR addresses.
+
+**Compliance note** (a proving-ground compliance review, this session):
+this is a direct implementation of NIST SP 800-207's Zero Trust
+Architecture model, whose own follow-on SP 800-207A names SPIFFE
+specifically as reference application-identity infrastructure; it's
+also the concrete mechanism an ITAR/CMMC-scoped deployment (NIST SP
+800-171) would point to for verifying every internal workload's
+identity rather than trusting network location, relevant given
+`docs/domains/itar-export-controlled-defense-data.md`'s coverage.

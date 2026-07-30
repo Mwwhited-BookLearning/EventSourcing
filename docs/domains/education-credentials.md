@@ -92,3 +92,13 @@ story.
   workflow, no replication/sharding driver, and none of the newer
   forensic-shaped mechanisms (digital sign-off, bitemporal playback,
   device input integration) find a natural home here.
+- **Accessibility (`ADR-073`)** — student/registrar/employer-facing
+  screens render through this framework's client the same as any other
+  domain; WCAG 2.1 AA applies here too, not just the
+  government-case-management candidate it was originally tagged under.
+- **GDPR breach notification (Art. 33/34)** — this domain already relies
+  on GDPR for the erasure-vs-retention tension above; the 72-hour
+  notification *workflow* itself remains an open question
+  (`docs/10-open-questions.md`) — `ADR-045`'s access audit log supplies
+  the forensic inputs, but the notification process itself isn't
+  designed yet.

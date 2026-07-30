@@ -16,8 +16,8 @@ public class EventTypeDefinition
     public string? RequiredReadClaim { get; set; }     // gates Follow + Lineage; null = no extra restriction
     public ChangeKind ChangeKind { get; set; }          // Full | Partial — required, no default (ADR-016); Partial payloads are Optional<T>-wrapped per-property (ADR-022)
     public string EntityIdField { get; set; } = default!; // JSON path into Payload that yields this type's uniqueId (ADR-021) — required, no default
-    public string? UpcastFromPrevious { get; set; }     // OData compute() expression list, this version <- previous (ADR-018); materialized on success (ADR-027)
-    public string? DowncastToPrevious { get; set; }     // OData compute() expression list, previous <- this version (ADR-028); read-time only, never materialized
+    public string? UpcastFromPrevious { get; set; }     // originally an OData compute() expression list, this version <- previous (ADR-018); materialized on success (ADR-027); evaluated via a pluggable IUpcastExpressionEvaluator, CEL by default (ADR-053), since ADR-037 moved this off OData entirely
+    public string? DowncastToPrevious { get; set; }     // previous <- this version (ADR-028); read-time only, never materialized; same pluggable-evaluator move as UpcastFromPrevious above (ADR-037/ADR-053)
     public RejectionBehavior RejectionBehavior { get; set; } = RejectionBehavior.Annotate; // Annotate | Compensate — how an authorityDecision:rejected is handled for this type (ADR-035, comparisons/authority-rejection-behavior.md)
     public RequiredSignature? RequiredSignature { get; set; } // null = no sign-off required; set = publish must satisfy an RFC 9470 step-up challenge first (ADR-066)
 
@@ -80,7 +80,9 @@ DID counts as a root of trust for a given namespace). The core engine
 never validates *what* a permission string means, only that a presented
 UCAN's delegation chain roots in a DID registered here for the `AppId`
 the request is scoped to. Who may register/deregister a trust root is
-not designed further here — see `10-open-questions.md`.
+resolved in `ADR-044`'s Consequences — a narrow `registry:trust-admin`
+scope, separate from `registry:admin` — see
+`../comparisons/trust-root-registration-gate.md` for the full comparison.
 
 ## Roles (`ADR-046`)
 

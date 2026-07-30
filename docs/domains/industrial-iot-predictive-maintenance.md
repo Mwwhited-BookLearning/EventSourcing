@@ -57,6 +57,10 @@ FINRA-shaped compliance mechanism gets seriously exercised here.
   from plant-floor equipment.
 
 **Secondary fit (real, but not the domain's defining characteristic):**
+- `ADR-074` — SBOM/SOUP list: IEC 62443's industrial-cybersecurity scope
+  includes component/software provenance for control-system software, a
+  real if narrower fit than clinical trials' direct FDA Section 524B
+  driver.
 - `ADR-036` — DID/UCAN self-attestation: plausible for device
   self-attestation, not central.
 - `ADR-032` — binary attachments: inspection photos, thermal-imaging
@@ -99,3 +103,8 @@ FINRA-shaped compliance mechanism gets seriously exercised here.
 - **Weak on masking/RBAC/erasure specifically because the data itself
   isn't personal** — not a gap in the mechanisms, a mismatch between this
   domain's data shape and what those mechanisms were built to protect.
+- **Accessibility (`ADR-073`)** — operator/technician dashboards render
+  through this framework's client the same as any other domain; WCAG
+  2.1 AA applies here too, though the driver is weaker than for a
+  citizen- or patient-facing domain since users are internal plant staff
+  rather than the general public.

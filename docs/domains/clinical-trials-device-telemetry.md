@@ -53,6 +53,16 @@ named as a build target.
   from this domain** — real integration with hospital EMR systems needs
   HL7v2 (via its real transport, MLLP/TCP, not HTTP) and/or FHIR, inbound
   into this platform's own event shape.
+- `ADR-068` — bitemporal export/playback: scores H in the coverage
+  matrix — "what did we know about this patient's/device's record, and
+  as of when" is a routine trial-monitoring and litigation-hold need,
+  not an occasional forensic exception.
+- `ADR-074` — SBOM/SOUP list: **directly named by this domain, not
+  hypothetical** — FDA Section 524B requires a machine-readable SBOM for
+  any "cyber device" (a medical device containing software that could be
+  vulnerable to cybersecurity threats) submitted via 510(k)/PMA/De Novo/
+  HDE/PDP pathways, which is exactly the connected-medical-device half of
+  this domain.
 
 **Secondary fit (real, but not the domain's defining characteristic):**
 - `ADR-005` — event lineage (a trial result derives causally from raw
@@ -96,3 +106,20 @@ named as a build target.
   transport) and/or `FhirAdapter` bridge hospital-sourced patient data
   into this platform's own event shape, landing as non-authoritative
   capture pending review like any other externally-sourced data.
+- **SBOM/SOUP (`ADR-074`) is a direct, named requirement, not a
+  cross-cutting nicety here** — connected medical devices (vitals
+  monitors, infusion pumps, wearables) are exactly what FDA Section 524B
+  calls a "cyber device," making this the one domain where `ADR-074`'s
+  SBOM generation is a premarket-submission requirement rather than a
+  general supply-chain best practice.
+- **Accessibility (`ADR-073`)** — patient- and coordinator-facing
+  screens (consent capture, patient-reported outcomes, site-coordinator
+  review queues) render through this framework's client the same as any
+  other domain; WCAG 2.1 AA applies here too, not just the
+  government-case-management candidate it was originally tagged under.
+- **GDPR breach notification (Art. 33/34)** — this domain already relies
+  on GDPR for the erasure-vs-retention tension above; the 72-hour
+  notification *workflow* itself remains an open question
+  (`docs/10-open-questions.md`) — `ADR-045`'s access audit log supplies
+  the forensic inputs, but the notification process itself isn't
+  designed yet.

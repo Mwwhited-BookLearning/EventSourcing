@@ -92,3 +92,11 @@ Consequences:
   local cache (currently described for `ViewDefinition`/entity data
   generally) should be understood as scoped this way for any deployment
   handling classified (`ADR-009`) data — done this pass.
+
+**Compliance note** (a proving-ground compliance review, this session):
+this ADR is the concrete mechanism that makes `ADR-057`'s GDPR Art. 17
+erasure guarantee actually reach an edge/offline client — without the
+mandatory purge-on-erasure-event rule decided here, a local device's
+already-decrypted cache would remain a live copy of "erased" personal
+data indefinitely, silently defeating Art. 17 at exactly the layer
+server-side key destruction can't touch.

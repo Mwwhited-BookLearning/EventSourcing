@@ -116,6 +116,19 @@ key calls straight into `ADR-009`'s own `PartialRevealMaskingStrategy`
 reveal computation for channels whose content is structured/string-shaped
 enough to support it.
 
+**Reused a third time, with one real correction, by `ADR-057`**:
+`IErasureKeyStore` (crypto-shredding's key-management backend) follows
+the identical keyed-DI shape — but was originally framed as "one
+implementation per whole deployment," which `ADR-057`'s own amendment
+corrects to match this pattern's actual intent more closely: **multiple
+`IErasureKeyStore` backends can be registered and active simultaneously**
+(a cloud KMS for one tenant, a self-hosted `HashiCorp Vault` for
+another, in the same running deployment), selected per `AppId` rather
+than picked once for the whole process — the same "new case is a new
+class plus one registration line" payoff this pattern already gives
+`IMaskingStrategy`/`IStreamRedactionStrategy`, just keyed by tenant
+instead of by a schema-carried strategy name.
+
 Adding a fourth masking strategy later (generalization/bucketing is the
 one currently named as undecided, not unfit — see
 `docs/comparisons/masking-strategies.md`) is a new `IMaskingStrategy`

@@ -92,3 +92,13 @@ secondary option) as the sole query surface over the Entity Store
   (`@renamedFrom`/`@derivedFrom`) rather than living only in a separate
   registry document — the schema and its own migration history can't
   silently drift apart (`ADR-037`, `ADR-018`).
+- **Two new resolver concepts land on this same Gateway, not a separate
+  API surface**: `ADR-068`'s lineage-scoped event export and bitemporal
+  system-time playback (VCR-style play/rewind/fast-forward for
+  litigation review) are both new *read* shapes over history, enforced
+  through the identical `RequiredReadClaim`/masking/access-audit pipeline
+  every other GraphQL query already goes through — an export or a
+  playback position is a read, never a privileged bypass of this design's
+  existing authorization pipeline. Not yet drawn into `01-c4-
+  architecture.md`'s GraphQL Gateway component diagram — flagged there as
+  remaining propagation work, not silently missing.

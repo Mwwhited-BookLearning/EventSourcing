@@ -85,6 +85,10 @@ requires retention that erasure requests would otherwise conflict with.
   doesn't itself resolve** — it constrains whatever client is built
   against `ADR-039`'s MVVM architecture, not the event-sourcing core;
   worth naming so it isn't mistaken for a gap in the data/API layers.
+  Concretely satisfied via `ADR-073`'s WCAG 2.1 AA baseline — this
+  domain is where accessibility was originally (too narrowly) tagged
+  before that ADR generalized it as cross-cutting to every domain's
+  client, not unique to government case management.
 - **Need-to-know granularity can be unusually fine-grained** — case
   types touching especially sensitive populations (e.g., child welfare,
   benefits-fraud investigations) may need row-level restrictions finer
