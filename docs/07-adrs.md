@@ -93,3 +93,4 @@ Consequences: <trade-offs accepted>
 | [071](adrs/adr-071-pci-sad-registration-boundary.md) | PCI-DSS Sensitive Authentication Data can never be registered as a schema field — a hard boundary at registration, not publish | Accepted |
 | [072](adrs/adr-072-bulk-ingestion-and-interchange-format-adapters.md) | Bulk/batch ingestion, and external interchange-format adapters (HL7v2/FHIR inbound, regulatory formats outbound) | Accepted |
 | [073](adrs/adr-073-accessibility-standard.md) | Accessibility standard — WCAG 2.1 AA baseline, WCAG 2.2 AA forward-looking, independent of which UI architecture renders a screen | Accepted |
+| [074](adrs/adr-074-sbom-and-soup-list.md) | SBOM generation (`microsoft/sbom-tool`), and the library catalog doubles as a SOUP list (IEC 62304) | Accepted |

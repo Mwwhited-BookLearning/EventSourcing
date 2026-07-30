@@ -315,6 +315,14 @@ Consequences:
   exists to prevent, just one layer further downstream than the store
   itself can reach.
 
+**Compliance note** (a proving-ground compliance review, this session):
+this ADR's `regulatoryClassification`/masking mechanism is what makes
+`HIPAA`, `GDPR Art. 9` (special category data), and `PCI-DSS` all
+satisfiable by the same primitive rather than three bespoke ones —
+biobanking, clinical trials, and government case management each
+scored this ADR's masking mechanism as a primary fit for exactly that
+reason.
+
 ## Surfaced in generated docs, and reused for log redaction (`ADR-050`)
 
 Two extensions on top of the Decision above, added by `ADR-050`, not a

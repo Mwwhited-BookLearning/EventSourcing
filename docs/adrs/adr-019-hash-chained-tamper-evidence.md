@@ -64,3 +64,12 @@ Consequences:
   `ChainHash` computation is plain application code in `EventAppender`,
   identical on SQLite/Postgres/SQL Server; only the column itself (`TEXT`,
   portable per `ADR-004`) is persisted per provider.
+
+**Compliance note** (a proving-ground compliance review, this session):
+this mechanism is the load-bearing primitive behind several confirmed
+non-gaps found across proving-ground candidates — SEC Rule 17a-4's
+broker-dealer recordkeeping (`ADR-071`), SOX Section 404's change-
+management ITGC (`ADR-067`), and digital forensics' evidentiary
+authentication (US Federal Rules of Evidence 901/902, ISO/IEC 27037) —
+none of which needed a new mechanism, all satisfied by this one already
+existing.

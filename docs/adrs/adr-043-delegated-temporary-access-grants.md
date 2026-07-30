@@ -118,3 +118,10 @@ Consequences:
   just the UCAN's own `exp` — same operational requirement `ADR-040`'s
   ticket consumption already has (a still-unexpired-but-revoked
   credential must still fail), not a new category of problem.
+
+**Compliance note** (a proving-ground compliance review, this session):
+this is the mechanism behind two proving-ground standout fits —
+biobanking's IRB/biobank-committee-reviewed researcher access requests,
+and digital forensics' temporary expert-witness access — both real-
+world instances of exactly this "capped, entity-scoped, time-boxed"
+grant shape, not a stretch to justify the mechanism.

@@ -800,6 +800,54 @@ superseded and pointing at the ADR that superseded it.
   proving-ground-domain.md`'s already-verified coverage matrix and
   regulatory mapping table rather than inventing new claims — spot-
   checked for quality afterward.
+- **A compliance-focused review of the regulatory mapping table found
+  four more real items**, checked before asserting: GDPR Art. 33/34
+  breach notification (72-hour clock + a mandatory breach register, a
+  near-universal gap — tracked as an open question, since `ADR-045`/
+  `ADR-019` give the forensic inputs but no ADR designs the notification
+  *workflow*), OFAC sanctions screening + BSA SAR filing (real,
+  unaddressed, specific to digital-identity/KYC — an actual build
+  target, not just considered — also tracked as an open question:
+  framework-level seam vs. domain logic), SOX Section 404 ITGCs
+  (a confirming non-gap — already satisfied by `ADR-045`/`ADR-019`/
+  `ADR-067`, the same pattern as `ADR-071`'s SEC 17a-4 finding), and
+  WCAG/ADA accessibility (real and timely — the DOJ's ADA Title II rule
+  requires WCAG 2.1 AA with an April 2026 deadline already in effect).
+  **`ADR-073`** resolves accessibility as its own standing requirement,
+  deliberately *not* folded into `ADR-039` — accessibility applies
+  regardless of which UI architecture renders a screen (`ADR-039`'s
+  MVVM, or a named fallback), a category-error direct feedback caught
+  before it shipped. Per standing instruction, every ADR touching a
+  compliance-relevant mechanism now carries a bottom "Compliance note"
+  — done for `ADR-009`/`ADR-019`/`ADR-032`/`ADR-036`/`ADR-043`/
+  `ADR-045`/`ADR-046`/`ADR-057`/`ADR-061`/`ADR-064`/`ADR-066`/`ADR-067`
+  this pass (twelve ADRs); `ADR-057`'s note is honest rather than
+  assumed — GDPR's Art. 17(3) exemption basis is verified, CCPA/CPRA's
+  equivalent structure is flagged as *not* independently re-checked, not
+  silently treated as identical. `ADR-071`/`072`/`073`/`074` already
+  carry their compliance basis throughout their own body, not just a
+  bottom note. Remaining compliance-adjacent ADRs (e.g. `031`, `035`/
+  `042`, `060`, `070`) are lower priority — not done this pass.
+- **Accessibility corrected to its own ADR, not left inside `ADR-039`**
+  — direct feedback caught a real category error: accessibility applies
+  no matter which UI architecture renders a screen (`ADR-039`'s MVVM, or
+  a named fallback per `docs/comparisons/ui-architecture-patterns.md`),
+  so it doesn't belong conditioned on one pattern. `ADR-073` now owns
+  WCAG 2.1 AA (2.2 AA forward-looking) as its own standing requirement;
+  `ADR-039` just points to it.
+- **SBOM + SOUP list** (`ADR-074`) — direct request: `microsoft/
+  sbom-tool` (first-party, SPDX 2.2, auto-detects both NuGet and npm in
+  one pass) generates an automated SBOM satisfying Executive Order
+  14028 and, more concretely, FDA Section 524B's mandatory SBOM for any
+  "cyber device" premarket submission — directly relevant to the
+  clinical-trials-plus-device-telemetry proving-ground domain, not
+  hypothetical. `docs/libraries/README.md`'s existing catalog is
+  formalized as this project's IEC 62304 SOUP list rather than a new
+  parallel document — every adopted library is SOUP the moment this
+  design is used in a medical-device context. Retrofitting every
+  existing library entry with full SOUP detail (known anomalies,
+  fulfilled functional requirements) is named as real remaining work,
+  not done in this pass.
 - **Four more propagation gaps the same design-review pass found,
   entirely untracked until now**: `01-c4-architecture.md` has zero
   mention of any `ADR-054`–`070` capability (no new containers/
