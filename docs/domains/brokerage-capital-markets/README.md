@@ -127,6 +127,10 @@ was never built.
   WCAG 2.1 AA applies here too, not just the government-case-management
   candidate it was originally tagged under.
 
+## Feature docs
+
+- [Trade Order Lifecycle and Recordkeeping](features/trade-order-lifecycle.md) — hash-chained recordkeeping (ADR-019) across an order's lifecycle, the PCI-SAD registration boundary (ADR-071), and control-plane actions as reserved events (ADR-067).
+
 ## Glossary
 
 - **Best Execution** — a broker-dealer's duty to execute a customer's

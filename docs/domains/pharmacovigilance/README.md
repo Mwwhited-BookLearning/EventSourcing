@@ -121,6 +121,10 @@ work already happens, not a contrived stretch to exercise them.
   ADR designs the deadline-tracking/escalation workflow itself — a
   candidate for a future ADR, not yet decided.
 
+## Feature docs
+
+- [Individual Case Safety Report Intake and Signal Review](features/icsr-intake-and-signal-review.md) — ICSR capture as non-authoritative until reviewed (`ADR-035`/`ADR-042`), a reviewer's signed causality assessment (`ADR-066`), follow-up amendments via event lineage (`ADR-005`), and bitemporal system-time playback of a case's history (`ADR-068`).
+
 ## Glossary
 
 - **Adverse Drug Reaction (ADR)** — a harmful, unintended response to a

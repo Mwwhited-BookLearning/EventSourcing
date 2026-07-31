@@ -91,6 +91,36 @@ named as a build target.
   fit toward a real, load-bearing offline-continuity mechanism, not
   just a device-self-attestation nicety.
 
+## Workflows
+
+Four feature docs, three end-to-end workflows — the target structure for
+this domain as a complete reference application, not four disconnected
+examples. All four share the same `AppId` (`"trial1"`), the same
+`EntityId` format (`{appId}:{entityType}:{uniqueId}`, `ADR-021`), and the
+same continuity patient (`SubjectId` `"S-0091"`, `trial1:Patient:S-0091`)
+wherever a workflow's own narrative calls for one, so a reader can follow
+one patient's record across all three.
+
+- **Workflow A — Enrollment & Consent**: a patient is screened, walked
+  through informed consent, and becomes an active study participant,
+  with the investigator's countersignature captured as a real `ADR-066`
+  digital sign-off.
+  1. [Patient Enrollment and Informed Consent](features/patient-enrollment-and-informed-consent.md)
+- **Workflow B — Device Monitoring → Adverse Event Review**: a connected
+  bedside monitor is paired to the patient enrolled in Workflow A, its
+  continuous vitals stream is provisioned as a Streaming Channel, and a
+  detector escalates a real anomaly into the adverse-event review process
+  already documented for this domain.
+  1. [Device Onboarding and Continuous Monitoring](features/device-onboarding-and-continuous-monitoring.md) — pairing, channel provisioning, continuous ingestion, and the detector's escalating publish.
+  2. [Adverse Event Capture and Review](features/adverse-event-capture-and-review.md) — that publish's non-authoritative capture, delegated secondary-opinion review, and the investigator's signed-off decision.
+- **Workflow C — Trial Data Export & Subject Rights**: two related "data
+  leaving the system properly" needs — a sponsor/regulator's lineage
+  export and bitemporal system-time playback of the same patient's
+  record from Workflows A/B, and a GDPR erasure request for a different,
+  withdrawn subject, directly stress-testing the retention-vs-erasure
+  tension named below.
+  1. [Trial Data Export and Subject Rights](features/trial-data-export-and-subject-rights.md)
+
 ## Special concerns
 
 - **Retention vs. erasure, a real and useful tension, not a
@@ -167,6 +197,17 @@ named as a build target.
   Which channel is "the fast one" is domain/device metadata (a
   `Purpose`/label an application chooses to attach), not a framework
   concept `ADR-031` needs to formalize.
+
+## Feature docs
+
+All four feature docs this domain now has, grouped into the three
+end-to-end workflows above (see "Workflows" for the ordering within each
+one):
+
+- [Patient Enrollment and Informed Consent](features/patient-enrollment-and-informed-consent.md) — screening, non-authoritative consent capture, and an investigator's signed-off consent countersignature (`ADR-021`, `ADR-066`, `ADR-046`, `ADR-009`). Workflow A.
+- [Device Onboarding and Continuous Monitoring](features/device-onboarding-and-continuous-monitoring.md) — pairing a connected bedside monitor (`ADR-070`) and provisioning/ingesting its continuous vitals stream (`ADR-031`), ending at a detector's escalating publish. Workflow B, upstream half.
+- [Adverse Event Capture and Review](features/adverse-event-capture-and-review.md) — a device reading or site-entered AE result flows from non-authoritative capture (`ADR-035`/`ADR-042`) through delegated secondary-opinion review (`ADR-043`) to an investigator's signed-off, accepted record (`ADR-066`). Workflow B, downstream half.
+- [Trial Data Export and Subject Rights](features/trial-data-export-and-subject-rights.md) — sponsor/regulator lineage export and bitemporal system-time playback (`ADR-068`), and a withdrawn subject's GDPR erasure via crypto-shredding (`ADR-057`). Workflow C.
 
 ## Glossary
 

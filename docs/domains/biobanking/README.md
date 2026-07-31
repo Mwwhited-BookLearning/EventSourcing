@@ -111,6 +111,13 @@ sharpest erasure-vs-retention tension of any candidate.
   the forensic inputs, but the notification process itself isn't
   designed yet.
 
+## Feature docs
+
+- [`features/specimen-collection-derivation-and-lineage.md`](features/specimen-collection-derivation-and-lineage.md)
+  — specimen collection, derivation into secondary samples with a real
+  `ADR-005` lineage DAG, and IRB-authorized delegated researcher access
+  scoped to a single specimen (`ADR-043`/`ADR-036`/`ADR-045`).
+
 ## Glossary
 
 - **Biobank / Biorepository** — an organization or facility that

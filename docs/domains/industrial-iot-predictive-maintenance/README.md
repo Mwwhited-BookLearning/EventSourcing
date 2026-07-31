@@ -109,6 +109,10 @@ FINRA-shaped compliance mechanism gets seriously exercised here.
   citizen- or patient-facing domain since users are internal plant staff
   rather than the general public.
 
+## Feature docs
+
+- [Sensor-Driven Maintenance Alert](features/sensor-driven-maintenance-alert.md) — continuous equipment telemetry (`ADR-031`) feeds a detector application that publishes a maintenance-alert event pointing back into the raw stream (`TelemetryPointer`), with lineage (`ADR-005`) and non-authoritative capture (`ADR-035`) applied to the alert itself — a real bridge mechanism, not the still-deferred `ADR-007` derived-event mechanism.
+
 ## Glossary
 
 - **Asset Management (ISO 55000)** — The coordinated activity of an

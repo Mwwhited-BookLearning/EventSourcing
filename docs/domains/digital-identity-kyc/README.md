@@ -90,6 +90,10 @@ built for one industry.
   — `ADR-045`'s access audit log supplies the forensic inputs, but the
   notification process itself isn't designed yet.
 
+## Feature docs
+
+- [Customer Onboarding and Identity Verification](features/customer-onboarding-and-identity-verification.md) — an applicant's self-attested DID/UCAN identity claim (`ADR-036`) flows from non-authoritative capture (`ADR-035`/`ADR-042`) through analyst review to an accepted, claims-bearing identity record (`ADR-046`).
+
 ## Glossary
 
 - **Anti-Money Laundering (AML)** — The body of law, regulation, and
