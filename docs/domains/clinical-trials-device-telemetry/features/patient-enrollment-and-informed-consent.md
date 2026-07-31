@@ -332,39 +332,102 @@ the same pre-storage rejection shape `ADR-066` names in
 `adverse-event-capture-and-review.md`'s own state machine, applied here
 to the consent countersignature instead of the AE review decision.
 
-## Salt (UI mockup) — coordinator's enrollment/consent screen and PI's approval queue
+## Salt (UI mockup) — enrollment-to-consent user flow, across coordinator and PI screens
+
+### Screen 1: Site Coordinator's screening form
 
 ```plantuml
 @startsalt
 {
-  { "Site 04-221 -- Patient Enrollment (Site Coordinator: coord-3)" }
+  { "Site 04-221 -- Patient Screening (Site Coordinator: coord-3)" }
   ..
   { "Subject ID" | "^S-0091^" }
+  { "Protocol ID" | "^trial1-proto-A^" }
   { "Screening date" | "^2026-07-20^" } | { "Eligibility" | "^Eligible^" }
   [ Submit PatientScreened ]
+  "Status: Screened (AuthorityStatus accepted immediately, ADR-042)"
+}
+@endsalt
+```
+
+The coordinator clicks **Submit PatientScreened**; `202`/`accepted` comes
+back immediately (ordinary authenticated capture, `ADR-006`), and the
+coordinator continues on the same client to Screen 2 to capture consent
+for the same subject.
+
+### Screen 2: Coordinator's informed consent capture
+
+```plantuml
+@startsalt
+{
+  { "Site 04-221 -- Informed Consent Capture (Subject: S-0091)" }
   ..
-  { "Informed consent" }
   { "Consent version" | "^v3^" }
+  { "Consent obtained at" | "^2026-07-22T09:10:00Z^" }
+  { "Witness (this coordinator)" | "^coord-3^" }
   { "Attach scanned, signed consent form" | [ Upload PDF ] }
+  "Uploaded: sha256:9f1c... (AttachmentRef, ADR-032)"
   [ Submit InformedConsentCaptured ]
   "Status: ConsentPending -- awaiting investigator countersignature"
 }
-{ "PI's Consent Approval Queue -- Site 04-221 (pi-7)" }
-..
-| Subject | EnrollmentStatus  | Consent obtained |
-| S-0091  | ConsentPending    | 2026-07-22        |
-| S-0044  | Enrolled          | 2026-06-30        |
-..
-{ "Selected: S-0091 -- consent v3, attachment sha256:9f1c..." }
-{ [ Approve ] | [ Reject ] }
-"Approval requires step-up authentication (RFC 9470) -- ADR-066"
+@endsalt
 ```
 
-Every row on the PI's queue comes from the Live View for
-`ConsentPending` rows, the same `isAuthoritative: false` convention
-`adverse-event-capture-and-review.md`'s review queue already uses — a
-coordinator's own screen never shows an "Approve"/"Reject" control at
-all, since it lacks `consent:approve` (`ADR-046`).
+The patient's actual signature lives on the paper/scanned document this
+screen uploads, not typed into this UI — the coordinator is the one
+submitting the resulting `AttachmentRef` and declaring
+`reviewPending: true`. Clicking **Submit InformedConsentCaptured** returns
+`202`/`pending_review`; the record now exists only in the Live View
+(`EnrollmentStatus: ConsentPending`, `isAuthoritative: false`), and the
+workflow hands off from the coordinator to the Principal Investigator.
+
+### Screen 3: PI's countersignature queue, gated on step-up authentication
+
+```plantuml
+@startsalt
+{
+  { "PI's Consent Approval Queue -- Site 04-221 (pi-7)" }
+  ..
+  | Subject | EnrollmentStatus  | Consent obtained |
+  | S-0091  | ConsentPending    | 2026-07-22        |
+  | S-0044  | Enrolled          | 2026-06-30        |
+  ..
+  { "Selected: S-0091 -- consent v3, attachment sha256:9f1c..." }
+  { [ Approve ] | [ Reject ] }
+  "Approval requires step-up authentication (RFC 9470) -- ADR-066"
+}
+@endsalt
+```
+
+Every row here comes from the Live View, the same `isAuthoritative: false`
+convention `adverse-event-capture-and-review.md`'s review queue already
+uses — a coordinator's own screen never shows this queue at all, since it
+lacks `consent:approve` (`ADR-046`). The PI clicks **Approve**; if the
+current token doesn't already satisfy `RequiredSignature.AcrValues`/
+`MaxAge`, the IdP's own step-up challenge runs before the signed
+`ConsentApproval` event is actually submitted, and only then does the flow
+move to Screen 4.
+
+### Screen 4: Confirmation — subject is now an active participant
+
+```plantuml
+@startsalt
+{
+  { "Site 04-221 -- Subject S-0091" }
+  ..
+  { "EnrollmentStatus" | "Enrolled" }
+  { "Consent" | "v3, approved" }
+  { "Countersigned by" | "pi-7, 2026-07-22 (step-up verified)" }
+  ..
+  "This record is now authoritative -- folded into the Entity Store\n (catch-up fold, ADR-042)."
+}
+@endsalt
+```
+
+This is the same `trial1:Patient:S-0091` record, now read from the
+authoritative Entity Store rather than the Live View — the first point in
+this flow where `EnrollmentStatus` reads `"Enrolled"` for any caller,
+regardless of claims.
 
 ## Gherkin
 

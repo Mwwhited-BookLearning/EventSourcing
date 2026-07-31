@@ -282,14 +282,82 @@ deliberate — filing an adverse event doesn't pause the vitals stream;
 `adverse-event-capture-and-review.md`'s review process runs entirely
 downstream of, and concurrently with, this loop.
 
-## Salt (UI mockup) — coordinator's device pairing and channel status screen
+## Salt (UI mockup) — pairing-to-escalation user flow, across coordinator and detector screens
+
+### Screen 1: Device pairing screen (WebHID prompt / Native Bridge status)
+
+```plantuml
+@startsalt
+{
+  { "Site 04-221 -- Pair a Device (Site Coordinator: coord-3)" }
+  ..
+  [ Pair via browser (WebHID) ] | [ Pair via Native Bridge ]
+  ..
+  { "Chromium: navigator.hid.requestDevice() --" }
+  { "  Select a device:" }
+  { () "VitalSync VS-200 (dev-0091)" }
+  { () "VitalSync VS-200 (dev-0044)" }
+  [ Select ]
+  ..
+  "Firefox/Safari fallback: Native Bridge companion app --\n status: connected (ws://localhost:9091)"
+}
+@endsalt
+```
+
+Clicking **Pair via browser (WebHID)** triggers the native device-picker
+dialog (Chromium-only, secure-context-required, `ADR-070`); clicking
+**Pair via Native Bridge** instead shows the companion app's connection
+status for Firefox/Safari. Either path ends the same way — the coordinator
+selects the bedside monitor and submits `DeviceOnboarded`, moving the flow
+to Screen 2.
+
+### Screen 2: Channel provisioning confirmation
+
+```plantuml
+@startsalt
+{
+  { "Site 04-221 -- Provision Telemetry Channel (Subject: S-0091)" }
+  ..
+  { "Device" | "dev-0091 (paired)" }
+  { "Channel ID" | "^vitals-s0091^" }
+  { "Content kind" | "^RawScalar^" } | { "Sample type" | "^Float64^" }
+  { "Sample interval (us)" | "^1000000^" }
+  [ Provision Channel ]
+  "Provisioned: channelId vitals-s0091 (201) -- scoped to the\n PATIENT entity, not the device (ADR-031)"
+}
+@endsalt
+```
+
+Clicking **Provision Channel** registers `vitals-s0091` against
+`trial1:Patient:S-0091`; once provisioned, the coordinator's client
+navigates to Screen 3 to watch the stream it just opened.
+
+### Screen 3: Live vitals monitoring dashboard
 
 ```plantuml
 @startsalt
 {
   { "Site 04-221 -- Connected Devices" }
   ..
-  { "Pair a device:" | [ Pair via browser (WebHID) ] | [ Pair via Native Bridge ] }
+  | Device    | Subject | Interface    | Channel        | Last sample        | Status     |
+  | dev-0091  | S-0091  | WebHid       | vitals-s0091   | 2026-07-29 14:03:11 | Streaming  |
+  | dev-0044  | S-0044  | NativeBridge | vitals-s0044   | 2026-07-29 13:58:02 | Streaming  |
+}
+@endsalt
+```
+
+No per-sample validation or Entity Store fold happens behind this
+dashboard (`ADR-031`) — it's a tail of `TelemetrySample` rows, refreshing
+on its own. Nothing here changes on a coordinator action; it changes when
+the Detector Worker's own polling loop escalates an anomaly, moving the
+flow to Screen 4.
+
+### Screen 4: Detector's escalation, handing off to adverse-event review
+
+```plantuml
+@startsalt
+{
+  { "Site 04-221 -- Connected Devices" }
   ..
   | Device    | Subject | Interface    | Channel        | Last sample        | Status     |
   | dev-0091  | S-0091  | WebHid       | vitals-s0091   | 2026-07-29 14:03:11 | Streaming  |
@@ -298,12 +366,17 @@ downstream of, and concurrently with, this loop.
   { "! Anomaly detected on vitals-s0091 -- AdverseEventReported ae-1042 filed" }
   [ Open in AE Review Queue ]
 }
+@endsalt
 ```
 
-Clicking "Open in AE Review Queue" navigates to
+The desaturation-threshold rule firing is automatic, not a coordinator
+action — the banner simply appears on the same dashboard the moment the
+detector's `AdverseEventReported` publish for `ae-1042` lands
+(`pending_review`). Clicking **Open in AE Review Queue** navigates to
 `adverse-event-capture-and-review.md`'s own PI review-queue screen — this
-doc's UI ends at the moment an anomaly is escalated; the review
-experience itself belongs entirely to that doc.
+doc's UI ends at the moment an anomaly is escalated; the review experience
+itself belongs entirely to that doc, and monitoring itself continues
+uninterrupted underneath it.
 
 ## Gherkin
 

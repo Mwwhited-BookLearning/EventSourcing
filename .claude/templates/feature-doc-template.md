@@ -24,10 +24,17 @@ mockup: `docs/features/mvvm-client.md`).
    `entity`/`database`, `hide circle`, `skinparam linetype ortho`. Show
    only the columns this doc's scenarios actually touch — full column
    lists live in `docs/data/*.md`, linked, not repeated.
-5. **Salt (UI mockup)** (`## Salt (UI mockup)`) — `@startsalt`/`@endsalt`.
-   If there's genuinely no UI surface for this feature, say so
-   explicitly and name what doc *does* own the eventual UI, same as
-   `entity-concept.md` does — never just omit the section silently.
+5. **Salt (UI mockup)** (`## Salt (UI mockup)`) — a **user flow across
+   multiple screens**, not one static mockup: 2-4 separate
+   `@startsalt`/`@endsalt` blocks in sequence, each labeled ("Screen 1:
+   ...", "Screen 2: ...") with a one-line description of the user
+   action that transitions between them (a button click, a form
+   submit, a role handoff). Ground each screen in a real step the
+   doc's own sequence diagram(s) already show — don't invent a flow the
+   rest of the doc doesn't support. If there's genuinely no UI surface
+   for this feature, say so explicitly and name what doc *does* own the
+   eventual UI, same as `entity-concept.md` does — never just omit the
+   section silently.
 6. **Gherkin** (`## Gherkin`), one fenced ` ```gherkin ` block, embedded
    directly in this doc — **not** a separate `.feature` file** (per
    direct instruction: Gherkin stays embedded in the design doc until
