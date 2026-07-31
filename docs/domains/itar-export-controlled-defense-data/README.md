@@ -110,6 +110,10 @@ technical data is itself a regulated act, not just its disclosure.
   citizen-facing domain since the user population is small and
   internally cleared rather than the general public.
 
+## Feature docs
+
+- [`features/controlled-technical-data-access-request.md`](features/controlled-technical-data-access-request.md) — publishing a controlled technical-data asset under an ITAR-scoped `AppId` with region-pinned replication (`ADR-061`), and reading it via ordinary RBAC (`ADR-046`) or a TAA-scoped delegated grant (`ADR-043`, `ADR-066`, `ADR-045`).
+
 ## Glossary
 
 - **CCL (Commerce Control List)** — the EAR's master list of dual-use

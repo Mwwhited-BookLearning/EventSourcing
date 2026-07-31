@@ -111,6 +111,10 @@ industrial IoT: custody-chain metadata isn't primarily personal data.
   supplies the forensic inputs, but the notification process itself
   isn't designed yet.
 
+## Feature docs
+
+- [Shipment Custody Transfer and Exception Handling](features/shipment-custody-transfer.md) — a shipment's handoffs form a lineage DAG (ADR-005), hash-chained (ADR-019) and replicated across sites (ADR-033).
+
 ## Glossary
 
 - **AEO (Authorized Economic Operator)** *(synonym: Trusted Trader —

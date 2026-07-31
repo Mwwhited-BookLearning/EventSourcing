@@ -100,6 +100,10 @@ requires retention that erasure requests would otherwise conflict with.
   organic fit for `ADR-031`/`ADR-070`; case data arrives as documents
   and structured submissions, not sensor or device readings.
 
+## Feature docs
+
+- [`features/case-file-disclosure-request.md`](features/case-file-disclosure-request.md) — a public-records request's review, redacted disclosure, and audit trail (`ADR-009`, `ADR-045`, `ADR-067`).
+
 ## Glossary
 
 - **Administrative Appeal** — a citizen's or applicant's formal request

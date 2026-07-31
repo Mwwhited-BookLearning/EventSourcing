@@ -103,6 +103,10 @@ story.
   the forensic inputs, but the notification process itself isn't
   designed yet.
 
+## Feature docs
+
+- [Credential Issuance and Verification](features/credential-issuance-and-verification.md) — diploma issuance with FERPA-masked fields (`ADR-009`), delegated relying-party access (`ADR-043`), and offline DID/UCAN verification (`ADR-036`, reused from its original `ADR-035` trigger case).
+
 ## Glossary
 
 - **Accreditation** — the voluntary, third-party quality-assurance

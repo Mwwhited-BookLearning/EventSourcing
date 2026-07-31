@@ -112,6 +112,10 @@ domain still scores weak on masking, delegated access, and erasure.
   log supplies the forensic inputs, but the notification process itself
   isn't designed yet.
 
+## Feature docs
+
+- [Smart Meter Interval Data and Demand Response Event](features/interval-data-and-demand-response.md) — continuous interval telemetry (ADR-031) feeding a non-authoritative-until-validated demand-response trigger (ADR-035), rate-limited per utility tenant (ADR-058).
+
 ## Glossary
 
 - **AMI (Advanced Metering Infrastructure)** — the two-way communication

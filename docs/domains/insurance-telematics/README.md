@@ -111,6 +111,10 @@ digital identity — it's broad rather than defining.
   model-fairness-testing or bias-documentation mechanism — a candidate
   for a future ADR, not yet decided.
 
+## Feature docs
+
+- [Usage-Based Insurance Trip Scoring and Claim](features/usage-based-insurance-trip-scoring-and-claim.md) — driving-behavior telemetry (`ADR-031`) accumulates into a scored trip, a claim references that scored history, a delegated secondary-opinion grant (`ADR-043`) lets a second reviewer weigh in, and a disputed claim is reconstructed via lineage export and bitemporal playback (`ADR-068`).
+
 ## Glossary
 
 - **Actuarial (Actuary / Actuarial Science)** — The discipline of

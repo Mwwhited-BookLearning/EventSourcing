@@ -112,6 +112,14 @@ significant events onward to national and international bodies.
   as any other domain; WCAG 2.1 AA applies here too, not just the
   government-case-management candidate it was originally tagged under.
 
+## Feature docs
+
+- [`features/reportable-condition-case-investigation.md`](features/reportable-condition-case-investigation.md)
+  — clinician/lab case intake through investigator classification
+  (`ADR-035`/`ADR-042`), an accepted case's region-pinned peer-sync
+  replication (`ADR-061`) and upward HL7v2/FHIR interchange-adapter
+  reporting (`ADR-072`/`ADR-060`).
+
 ## Glossary
 
 - **Case Definition** — the standardized set of clinical, laboratory,

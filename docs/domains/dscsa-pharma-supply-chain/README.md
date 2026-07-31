@@ -116,6 +116,10 @@ which this framework has a concrete, already-designed answer for in
   citizen-facing domain since users are business partners rather than
   the general public.
 
+## Feature docs
+
+- [`features/product-serialization-and-trading-partner-transaction.md`](features/product-serialization-and-trading-partner-transaction.md) — batch unit-scan capture, a signed trading-partner transaction, and GS1/EPCIS interchange with the next trading partner (`ADR-072`, `ADR-005`, `ADR-070`, `ADR-060`, `ADR-045`).
+
 ## Glossary
 
 - **Aggregation / Disaggregation** — combining serialized units into

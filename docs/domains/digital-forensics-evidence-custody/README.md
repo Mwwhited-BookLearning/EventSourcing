@@ -119,6 +119,10 @@ forensics by construction."
   WCAG 2.1 AA applies here too, not just the government-case-management
   candidate it was originally tagged under.
 
+## Feature docs
+
+- [`features/evidence-acquisition-and-custody-export.md`](features/evidence-acquisition-and-custody-export.md) — acquisition, signed custody handoffs, derived-artifact lineage, and a litigation export with self-verifying offline playback (`ADR-019`, `ADR-068`, `ADR-032`, `ADR-005`, `ADR-045`, `ADR-066`).
+
 ## Glossary
 
 - **Bit-for-Bit (Forensic) Image** *(synonym: forensic image, disk image — used interchangeably for the same sector-by-sector copy)* — an exact, sector-by-sector copy of
