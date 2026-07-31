@@ -12,20 +12,20 @@ EudraVigilance/FAERS), `ADR-005` (event lineage — a case's follow-up
 amendments), `ADR-023` (persist-everything ingestion), and `ADR-021`
 (`EntityId`, the always-on Entity Store). Full `StoredEvent`/
 `EventParent` column lists are in
-[`../../data/event-log.md`](../../data/event-log.md);
+[`../../../data/event-log.md`](../../../data/event-log.md);
 `EntityStoreRow`/`LiveEntityStoreRow` are in
-[`../../data/entity-store.md`](../../data/entity-store.md).
+[`../../../data/entity-store.md`](../../../data/entity-store.md).
 
 This doc deliberately does **not** re-derive:
 - `AuthorityStatus`'s general trust-axis mechanics, the `unattested`/
   `pending_review`/`accepted`/`rejected` lifecycle, or the Live View's
   `isAuthoritative: false` wrapper in general — those are
-  [`non-authoritative-capture.md`](../../features/non-authoritative-capture.md).
+  [`non-authoritative-capture.md`](../../../features/non-authoritative-capture.md).
   This doc shows the *same* mechanism landing on one concrete case type
   (an ICSR) rather than re-explaining the gate itself.
 - RFC 9470 step-up authentication's general challenge/response shape —
   that's `ADR-066` and
-  [`../../patterns/step-up-authentication.md`](../../patterns/step-up-authentication.md).
+  [`../../../patterns/step-up-authentication.md`](../../../patterns/step-up-authentication.md).
   This doc only shows *which* action (a causality-assessment sign-off)
   triggers it here.
 - `ADR-007`'s automated signal-detection mechanism — **still deferred,
@@ -229,8 +229,8 @@ end note
 The `Payload`/`Data` JSON shape both `event` and `live`/`auth` above
 actually carry, once folded, is domain-specific and not part of the
 generic envelope column lists in
-[`../../data/event-log.md`](../../data/event-log.md)/
-[`../../data/entity-store.md`](../../data/entity-store.md) — sketched
+[`../../../data/event-log.md`](../../../data/event-log.md)/
+[`../../../data/entity-store.md`](../../../data/entity-store.md) — sketched
 here as the C# shape this doc's scenarios exercise:
 
 ```csharp
@@ -262,8 +262,8 @@ public class IcsrAuthorityDecisionPayload
 ```
 
 Full generic column lists remain in
-[`../../data/event-log.md`](../../data/event-log.md) and
-[`../../data/entity-store.md`](../../data/entity-store.md); this diagram
+[`../../../data/event-log.md`](../../../data/event-log.md) and
+[`../../../data/entity-store.md`](../../../data/entity-store.md); this diagram
 and sketch show only the ICSR-specific shape riding inside those generic
 envelopes.
 

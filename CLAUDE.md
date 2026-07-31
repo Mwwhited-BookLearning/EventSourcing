@@ -42,14 +42,32 @@ re-derive the process from scratch:
 - `protocols/parallel-batch-dispatch.md` — how to split large multi-file
   work (one unit per domain/ADR-range/review-lens) across parallel
   background agents without them racing on shared files.
+- `protocols/todo-tracking.md` — how to add/complete an item in
+  `TODO.md` and how that differs from `docs/10-open-questions.md` (a
+  fork not yet decided) and `docs/changes/{date}.md` (history of work
+  already done).
+- `protocols/context-handoff.md` — how to keep `.claude/context.md`
+  current: a session-handoff snapshot, not a log, so a fresh session
+  can resume from the repo alone.
 
 ## Layout
 
 - `README.md` — entry point: what the system is, doc index, open decisions.
+- `.claude/context.md` — **read this first when resuming cold** (a new
+  session, a lost/unresumable conversation, a handoff to someone else):
+  a snapshot of current state, what's actively in flight, and working
+  notes that only ever existed in conversation until captured here. Kept
+  current per `.claude/protocols/context-handoff.md` — a dashboard to
+  overwrite each session, not a log to append to.
+- `TODO.md` — the live tracker for concrete, already-decided work not yet
+  done (a doc rewrite, a missing diagram, a rename) — distinct from
+  `docs/10-open-questions.md`'s undecided forks and from
+  `docs/changes/{date}.md`'s history of work already finished. See
+  `.claude/protocols/todo-tracking.md` for the add/complete workflow.
 - `docs/01`–`09` — the core design, read in that order (C4 architecture →
   data model → API contracts → OData pushdown → schema registry → solution
   structure → ADRs → build plan → CQRS read side). `04-odata-filter-
-  pushdown.md` is partway through being superseded — see Propagation status.
+  pushdown.md` is partway through being superseded — see `TODO.md`.
 - `docs/02-data-model.md` — **classification overview + index only**, same
   split as the two below. The entity classes themselves live one group per
   file under `docs/data/` (`schema-registry.md`, `event-log.md`,
@@ -123,7 +141,13 @@ re-derive the process from scratch:
   workflow diagram, a Salt mockup, embedded Gherkin — one real use case
   worked through end-to-end, using `.claude/templates/feature-doc-
   template.md`, the same depth as `docs/features/*.md` for the core
-  engine). Distinct from `docs/glossary.md`, which covers Duplex's own
+  engine). **The 13 considered-not-chosen domains stay at one feature
+  doc each; the two chosen proving-ground domains (clinical trials +
+  device telemetry, digital identity/KYC) were taken further, each to 4
+  feature docs sequenced into a `## Workflows` section on that domain's
+  own `README.md`** — see `docs/changes/2026-07-30.md`'s "two chosen
+  domains taken to full reference-application depth" section. Distinct
+  from `docs/glossary.md`, which covers Duplex's own
   cross-cutting engine terms once, not per domain. Generated from — not
   a repeat of — `docs/comparisons/proving-ground-domain.md`'s coverage
   matrix and regulatory mapping table. `docs/domains/README.md` is the
@@ -177,7 +201,7 @@ re-derive the process from scratch:
   clear (examples: "query parameter" vs. the HTTP `QUERY` method,
   `ADR-010`; "projection" as a CQRS read model vs. design-docs' schema-
   mapping sense, `ADR-018`; `ChannelOrigin.Origin` vs. `OriginId`,
-  flagged but not yet fixed — see Propagation status).
+  tracked in `TODO.md`).
 - **A repeated relationship gets its own envelope-metadata field, never
   conflated with an existing one just because the shape looks similar.**
   This design has seven now: `parentEventIds` (causal derivation,
@@ -193,7 +217,7 @@ re-derive the process from scratch:
   eighth comes up, ask what question it specifically answers first.
 - **A new capability gets a Phase in `08-build-plan.md`.** Build-plan
   propagation for everything past `ADR-050` is currently behind — see
-  Propagation status.
+  `TODO.md`.
 
 ## Standing requirements, now attached to a written ADR
 
@@ -238,67 +262,17 @@ backwards when reading an individual ADR in isolation:
 
 ### Propagation status
 
-**Genuinely still outstanding** (named, not silently missing — check
-this list before assuming any doc is fully consistent with the latest
-ADRs):
-- Streaming Channel, Attachment, and Live View component diagrams in
-  `01-c4-architecture.md` — not drawn.
-- `03-api-contracts.md`'s Follow/Lineage/Registry-listing sections still
-  describe the OData contract in full detail, not just a banner —
-  rewriting them for the actual GraphQL contract shape is real,
-  substantial work, not yet done. Also doesn't mention `ADR-040`'s
-  ticket-exchange endpoints, `ADR-072`'s bulk-ingestion/interchange
-  endpoints, the `revealField`/export/playback/webhook-registration
-  endpoints, or the RFC 9470 step-up challenge shape.
-- Every banner'd `features/*.md` file's Gherkin scenarios are themselves
-  still unchanged (`400`→`202`+`SchemaStatus`, OData→GraphQL syntax) —
-  the banners say what's stale, they don't fix the scenarios. Separately,
-  **none** of the `features/*.md` files reference any ADR past `ADR-053`
-  — the entire `054`–`074` batch has zero feature-doc/Gherkin coverage.
-- No dedicated GraphQL-pushdown doc exists to replace
-  `04-odata-filter-pushdown.md` outright — `docs/comparisons/api-query-
-  layer.md` and `docs/patterns/graphql-query-language.md` narrow the gap
-  but aren't the contract-level rewrite itself.
-- `06-solution-structure.md`'s detailed DI-wiring code sketches predate
-  `ADR-041` (explicit composition) and mostly predate `ADR-054`
-  onward's new projects (a webhook dispatcher, a rate limiter, an
-  SDK-generation step, device-input client packages) — flagged stale in
-  the file's own banner, not silently wrong.
-- **`08-build-plan.md` has no phases for `ADR-050`–`ADR-075`** — every
-  capability from per-tenant rate limiting through the silo deployment
-  model has no build-plan entry. `ADR-057` (erasure) and `ADR-062`
-  (package distribution) most need real exit criteria before anything
-  downstream is built.
-- `features/auth.md`'s "partially superseded" banner doesn't yet cite
-  `ADR-046`/`047`/`048` (RBAC, claims augmentation, SPIFFE).
-- `docs/libraries/README.md`'s SOUP-list entries need full retrofitting
-  (known anomalies, fulfilled functional requirements per IEC 62304) —
-  currently just a catalog, not yet a complete SOUP list.
-- A data-model drift table a design review found this session and only
-  partially fixed: `OriginId`/`LogicalClock` described in `ADR-033` but
-  absent from `docs/data/event-log.md`; `RequiredClaims` still modeled
-  as singular in the data model despite `ADR-050` making it a list;
-  `DeprecatedAt` (`ADR-038`) and `ViewDefinition` fields (`ADR-039`)
-  absent; `PeerSyncCursor`/`WebhookOutbox` tables missing; the generated-
-  spec `oneOf` wrapper (`ADR-002`) still shows two branches, not three
-  (`ADR-057`'s `erased`); seven entities (`LiveEntityStoreRow`,
-  `EntityErasureKey`, `AppTrustRoot`, `Role`, `UserPermission`,
-  `TrustedFederationIssuer`, `AppDataResidencyPolicy`,
-  `WebhookSubscription`) have no `DbSet` in `EventStoreContext`.
+The concrete list of what's not yet propagated/fixed lives in
+[`TODO.md`](TODO.md), not here — restating it in both places would just
+drift stale, the same reasoning `docs/10-open-questions.md` already
+applies to itself. Check `TODO.md` before assuming any doc is fully
+consistent with the latest ADRs.
 
-**Everything else** — every ADR's own propagation into the data model,
-patterns, libraries, references, and compliance notes — has been swept
-and fixed across several review passes this session (a full 74-ADR
-compliance review, a fresh-eyes contradiction hunt across all 75, a
-buildability check against the core engine and against this session's
-newest mechanisms, and a mechanical cross-reference sweep). Real bugs
-those passes found and fixed, worth knowing about if you're about to
-touch the same area: `ADR-032`'s WebDAV mounting was decided against
-("skipped, not built") but kept being described as if it shipped, in
-five other files, until this pass; `ADR-046`/`047`/`067` disagreed about
-who owns `Role`/`UserPermission` (resolved in `ADR-067`'s favor);
-`ADR-018` was never actually revised off OData despite `ADR-037` saying
-it needed to be; `ADR-068`'s offline player claimed hash re-verification
-"from the math alone" even for masked/erased content, which is
-mathematically impossible for exactly the redacted fields (now an
-honest, qualified limitation instead).
+What's already been checked and resolved — a full 74-ADR compliance
+review, a fresh-eyes contradiction hunt across all 75, a buildability
+check, and a mechanical cross-reference sweep, all this session — is
+narrated in `docs/changes/2026-07-30.md`, including the real bugs those
+passes found and fixed (`ADR-032`'s WebDAV mounting described as shipped
+when it wasn't, `ADR-046`/`047`/`067`'s `Role`/`UserPermission` ownership
+disagreement, `ADR-018` never actually revised off OData, `ADR-068`'s
+overclaimed offline hash re-verification). Not repeated here either.
