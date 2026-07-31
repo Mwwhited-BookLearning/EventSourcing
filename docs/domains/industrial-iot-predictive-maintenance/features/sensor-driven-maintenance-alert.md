@@ -403,7 +403,7 @@ Feature: Sensor-Driven Maintenance Alert
       """
       with EntityIdField "$.AssetId"
     And the event type "authorityDecision" version 1 is registered with EntityIdField "$.targetEventId"
-    And a "WebhookSubscription" is registered for AppId "iiot-demo" on event type "MaintenanceAlertRaised" targeting the plant's CMMS endpoint
+    And a "WebhookSubscription" is registered for AppId "iiot" on event type "MaintenanceAlertRaised" targeting the plant's CMMS endpoint
 
   Scenario: A high-confidence detector publish lands accepted immediately
     Given channel "pump-42-vibration" has samples spanning "2026-07-30T09:00:00Z" to "2026-07-30T09:00:05Z"

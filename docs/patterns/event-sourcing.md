@@ -114,3 +114,9 @@ hash chain differently than any other field already does. `ADR-056`
 also names the Event Log directly as this design's one, non-negotiable
 **authoritative, must-be-backed-up** store — the write side everything
 else in this pattern is defined as being rebuildable *from*.
+
+**This write-always log is also the first of three patterns composing at
+one specific point** — see [Gated authoritative
+publish](interactions/gated-authoritative-publish.md) for how it combines
+with Write-Audit-Publish, the Quarantine pattern, and CQRS's multiple-
+read-models property to produce `ADR-042`'s gated fold + Live View split.
