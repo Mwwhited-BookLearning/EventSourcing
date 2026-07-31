@@ -324,7 +324,9 @@ including after `Erased` (an export of an erased subject's record would
 simply render `erased: true` for the same fields an ordinary query
 would).
 
-## Salt (UI mockup) — auditor's export/playback console and DPO's erasure panel
+## Salt (UI mockup) — export/playback flow and erasure flow, each its own short screen sequence
+
+### Export flow — Screen 1: export/playback request form
 
 ```plantuml
 @startsalt
@@ -333,22 +335,84 @@ would).
   ..
   { "Entity ID" | "^trial1:AdverseEvent:ae-1042^" }
   [ Export Lineage Bundle ]
-  "Bundle: ae-1042-export.ndjson + manifest.json (ManifestHash verified)"
   ..
   { "System-Time Playback" }
   { "Entity ID" | "^trial1:Patient:S-0091^" }
   { "As of SequenceNumber" | "^48812^" | [<] [Play] [>] }
-  "Reconstruction: EnrollmentStatus=Enrolled, last vitals sample flagged\n LateArrival -- recovered in place at seq 48810"
 }
-{ "Subject Rights -- Data Protection Officer (dpo-1)" }
-..
-| Subject | Status        | Withdrawn on | Erasure requested |
-| S-0077  | Withdrawn     | 2026-07-28   | [ Request Erasure ] |
-| S-0091  | Enrolled      | --           | (not eligible)       |
-..
-"! Requesting erasure is irreversible -- destroys the subject's\n  encryption key permanently. Structural trial records are retained."
-[ Confirm Erasure Request ]
+@endsalt
 ```
+
+Clicking **Export Lineage Bundle** returns the NDJSON bundle + manifest
+directly on this screen (a produced artifact, never a second page).
+Clicking **Play** on the System-Time Playback control instead navigates to
+Screen 2, the reconstruction viewer for the chosen `asOfSequenceNumber`.
+
+### Export flow — Screen 2: bitemporal playback viewer
+
+```plantuml
+@startsalt
+{
+  { "System-Time Playback -- trial1:Patient:S-0091 @ SequenceNumber 48812" }
+  ..
+  { "EnrollmentStatus" | "Enrolled" }
+  { "Last vitals sample" | "flagged LateArrival -- recovered in place at seq 48810" }
+  ..
+  [<] [ Play ] [>]
+  "Scrubbing to seq 48809 hides this correction -- it lands exactly\n at 48810, never smoothed away (ADR-068)"
+}
+@endsalt
+```
+
+This viewer shows "what we knew as of `SequenceNumber` 48812" — folding
+events in arrival order, the literal opposite of the authoritative fold's
+own valid-time-corrected rule — with the late-arriving correction visibly
+landing in place rather than smoothed into the record's current shape.
+
+### Erasure flow — Screen 1: subject-rights / erasure request
+
+```plantuml
+@startsalt
+{
+  { "Subject Rights -- Data Protection Officer (dpo-1)" }
+  ..
+  | Subject | Status        | Withdrawn on | Erasure requested   |
+  | S-0077  | Withdrawn     | 2026-07-28   | [ Request Erasure ] |
+  | S-0091  | Enrolled      | --           | (not eligible)      |
+  ..
+  "! Requesting erasure is irreversible -- destroys the subject's\n  encryption key permanently. Structural trial records are retained."
+  [ Confirm Erasure Request ]
+}
+@endsalt
+```
+
+`S-0091` (this domain's main continuity thread) shows as *not eligible*
+for erasure — only a `Withdrawn` subject like `S-0077` can be requested.
+Clicking **Confirm Erasure Request** publishes `EntityErasureRequested`
+for `trial1:Patient:S-0077` and irreversibly destroys its `DEK`
+(`ADR-057`); Screen 2 shows the result on a subsequent read.
+
+### Erasure flow — Screen 2: confirmation, record intact but identifying fields erased
+
+```plantuml
+@startsalt
+{
+  { "trial1:Patient:S-0077 -- Record (post-erasure read)" }
+  ..
+  { "SubjectId" | "S-0077" } | { "SiteId" | "04-221" }
+  { "EnrollmentStatus" | "Withdrawn" }
+  { "LegalName" | "{ \"erased\": true }" }
+  { "DateOfBirth" | "{ \"erased\": true }" }
+}
+@endsalt
+```
+
+The record's structure and non-PHI fields (`SubjectId`, `SiteId`,
+`EnrollmentStatus`) remain fully readable forever, satisfying ICH-GCP's
+retention requirement; only `LegalName`/`DateOfBirth` — the fields whose
+`erasureScope` resolved to this now-destroyed `DEK` — render
+`{"erased": true}`, distinct from `masked`: no claim, however privileged,
+can ever restore this.
 
 ## Gherkin
 

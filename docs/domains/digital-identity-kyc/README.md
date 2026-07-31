@@ -60,6 +60,48 @@ built for one industry.
 - `ADR-031` (streaming channels) — no natural telemetry story at all,
   the mirror image of clinical trials' weak spot (DID/UCAN).
 
+## Workflows
+
+Four feature docs, together tracing three real end-to-end workflows
+through this domain — not four disconnected examples. Every entity below
+resolves to the same running example, `kyc:ApplicantIdentity:applicant-1001`
+(`ADR-021`'s `{appId}:{entityType}:{uniqueId}` format), so a reader can
+follow one applicant's full lifecycle across all four docs.
+
+- **Workflow A — Document/Biometric Capture → Verification.**
+  1. [Document and Biometric Capture](features/document-and-biometric-capture.md)
+     — the applicant uploads identity documents and completes a biometric
+     liveness capture (`ADR-032` attachments, `ADR-009` masking, `ADR-042`'s
+     automated-detector `AuthorityStatus` trigger).
+  2. [Customer Onboarding and Identity Verification](features/customer-onboarding-and-identity-verification.md)
+     — the applicant self-attests a DID/UCAN identity claim, which an
+     analyst then reviews to an accepted, claims-bearing identity record
+     (`ADR-036`, `ADR-035`/`ADR-042`, `ADR-046`).
+- **Workflow B — Relying-Party Access.**
+  1. [Relying-Party Verification Request](features/relying-party-verification-request.md)
+     — a relying party (a bank, a landlord) requests confirmation of the
+     now-verified customer's identity via a delegated, entity-scoped,
+     time-boxed UCAN credential (`ADR-043`'s "secondary opinion" grant
+     mechanism applied to identity presentation), with the read logged
+     (`ADR-045`) and the response claims-gated (`ADR-046`).
+- **Workflow C — Ongoing Screening & SAR Escalation.**
+  1. [Periodic Screening and SAR Escalation](features/periodic-screening-and-sar-escalation.md)
+     — a periodic re-screening job flags a sanctions-list match as an
+     unconfirmed detector output (`ADR-042`), a compliance officer
+     decides it (`ADR-046`/`ADR-050`), and a confirmed hit escalates to a
+     digitally signed SAR filing record (`ADR-066`). Deliberately
+     demonstrates the *application-level* answer to this file's own
+     still-open OFAC/SAR question below, without closing it.
+
+## Feature docs
+
+All four docs the Workflows section above sequences:
+
+- [Document and Biometric Capture](features/document-and-biometric-capture.md) — the upstream half of onboarding: attachment upload/linking and biometric liveness capture, feeding the identity claim below.
+- [Customer Onboarding and Identity Verification](features/customer-onboarding-and-identity-verification.md) — an applicant's self-attested DID/UCAN identity claim (`ADR-036`) flows from non-authoritative capture (`ADR-035`/`ADR-042`) through analyst review to an accepted, claims-bearing identity record (`ADR-046`).
+- [Relying-Party Verification Request](features/relying-party-verification-request.md) — a delegated, entity-scoped, time-boxed access grant (`ADR-043`) lets a relying party pull a claims-gated confirmation of verification status, logged (`ADR-045`).
+- [Periodic Screening and SAR Escalation](features/periodic-screening-and-sar-escalation.md) — periodic re-screening, compliance review, and digitally signed SAR filing (`ADR-066`), demonstrating the application-level answer to this domain's own open OFAC/SAR question.
+
 ## Special concerns
 
 - **No natural streaming-telemetry use** — if this domain is ever
@@ -89,10 +131,6 @@ built for one industry.
   *workflow* itself remains an open question (`docs/10-open-questions.md`)
   — `ADR-045`'s access audit log supplies the forensic inputs, but the
   notification process itself isn't designed yet.
-
-## Feature docs
-
-- [Customer Onboarding and Identity Verification](features/customer-onboarding-and-identity-verification.md) — an applicant's self-attested DID/UCAN identity claim (`ADR-036`) flows from non-authoritative capture (`ADR-035`/`ADR-042`) through analyst review to an accepted, claims-bearing identity record (`ADR-046`).
 
 ## Glossary
 

@@ -348,7 +348,9 @@ it represents the pre-storage rejection `ADR-066` names, where the
 `authorityDecision` publish never reaches the Event Log at all until the
 PI's token satisfies the configured `RequiredSignature`.
 
-## Salt (UI mockup) — PI's adverse-event review queue
+## Salt (UI mockup) — capture-to-decision user flow, across the PI's queue, detail, and confirmed-record screens
+
+### Screen 1: Non-authoritative Live View — adverse event review queue
 
 ```plantuml
 @startsalt
@@ -359,8 +361,27 @@ PI's token satisfies the configured `RequiredSignature`.
   | ae-1042 | S-0091  | Severe   | [X] | pending_review   |
   | ae-1039 | S-0044  | Moderate | [ ] | pending_review   |
   | ae-1030 | S-0091  | Mild     | [ ] | accepted         |
+}
+@endsalt
+```
+
+Every row comes from the Live View, not the authoritative Entity Store —
+`ae-1042`/`ae-1039` are still `pending_review` and would not appear at all
+if this screen only read `EntityStoreRow` (`ADR-042`). The
+`isAuthoritative: false` marker is shown once, at the whole-view level,
+per `ADR-042`'s wrapper convention — never a per-row/per-field flag.
+Clicking the `ae-1042` row opens Screen 2, the detail/decision view for
+that one event.
+
+### Screen 2: Clinical reviewer's review and decision screen
+
+```plantuml
+@startsalt
+{
+  { "ae-1042 -- Review (Live View, isAuthoritative: false)" }
   ..
-  { "Selected: ae-1042 -- Severe, SAE, TelemetryPointer -> vitals-s0091" }
+  { "Subject" | "S-0091" } | { "Severity" | "Severe" } | { "SAE" | "true" }
+  { "TelemetryPointer" | "vitals-s0091 @ 2026-07-29T14:02:10Z" }
   ..
   { "Grant secondary opinion (ADR-043):" | "^did:key:colleague-2^" | [ Grant 24h, this AE only ] }
   ..
@@ -370,15 +391,33 @@ PI's token satisfies the configured `RequiredSignature`.
 @endsalt
 ```
 
-Every row comes from the Live View, not the authoritative Entity Store —
-`ae-1042`/`ae-1039` are still `pending_review` and would not appear at
-all if this screen only read `EntityStoreRow` (`ADR-042`). The
-`isAuthoritative: false` marker is shown once, at the whole-view level,
-per `ADR-042`'s wrapper convention — never a per-row/per-field flag.
-Clicking either sign-off button dispatches an `authorityDecision`
-publish; per the sequence diagram above, a token that doesn't already
-satisfy the required `acr`/`max_age` triggers a redirect through the IdP
-before the click actually completes.
+**Grant 24h, this AE only** publishes an `ADR-043` `accessGrant`,
+entity-scoped to exactly `trial1:AdverseEvent:ae-1042`, without changing
+this record's `AuthorityStatus`. Clicking **Sign off: Approve** dispatches
+the `authorityDecision` publish; a token that doesn't already satisfy the
+required `acr`/`max_age` triggers a redirect through the IdP before the
+click actually completes — only then does the flow move to Screen 3.
+
+### Screen 3: Confirmed record, after the authoritative catch-up fold
+
+```plantuml
+@startsalt
+{
+  { "ae-1042 -- Adverse Event Record (Entity Store, isAuthoritative: true)" }
+  ..
+  { "Subject" | "S-0091" } | { "Severity" | "Severe" } | { "SAE" | "true" }
+  { "AuthorityStatus" | "accepted" }
+  { "Signed off by" | "pi-7, 2026-07-29 (step-up verified, Meaning: approved)" }
+}
+@endsalt
+```
+
+This is the same `trial1:AdverseEvent:ae-1042` record, now read from the
+authoritative Entity Store rather than the Live View, folded there by the
+same catch-up mechanism `ADR-042` uses once `AuthorityStatus` reaches
+`accepted`. A **Sign off: Reject** decision instead never reaches this
+screen at all — the record stays visible only on Screen 1/2, re-labeled
+`rejected`, never deleted.
 
 ## Gherkin
 

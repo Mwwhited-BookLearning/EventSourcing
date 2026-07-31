@@ -266,7 +266,7 @@ public class IdentityClaimSubmittedPayload
     public string ClaimedLegalName { get; set; } = default!; // x-masking classified: PII, requiredClaim "identity:pii-read" (ADR-009/ADR-050)
     public string DateOfBirth { get; set; } = default!;      // x-masking classified: PII, same requiredClaim (ADR-009/ADR-050); ISO 8601 date
     public string DocumentType { get; set; } = default!;     // "passport" | "drivers_license" | "national_id"
-    public Guid? DocumentAttachmentRef { get; set; }          // pointer into ADR-032's content-addressed attachment store (scanned ID document image)
+    public string? DocumentAttachmentRef { get; set; }        // ContentHash (SHA-256) into ADR-032's content-addressed attachment store (scanned ID document image) -- not a Guid, corrected per a design review this session
 }
 
 // Registered event type "authorityDecision" v1 (already generic, ADR-035);
