@@ -41,13 +41,6 @@ Internally sequenced — do these roughly in this order, since each later
 item is easier to get right once the earlier ones exist to reference,
 though none is strictly blocked from starting early.
 
-- [ ] **`03-api-contracts.md`'s Follow/Lineage/Registry-listing sections
-  still describe the OData contract in full detail**, not just a
-  banner — rewriting them for the actual GraphQL contract shape is real,
-  substantial work. Also doesn't mention `ADR-040`'s ticket-exchange
-  endpoints, `ADR-072`'s bulk-ingestion/interchange endpoints, the
-  `revealField`/export/playback/webhook-registration endpoints, or the
-  RFC 9470 step-up challenge shape.
 - [ ] **`06-solution-structure.md`'s detailed DI-wiring code sketches
   predate `ADR-041`** (explicit composition) and mostly predate
   `ADR-054` onward's new projects (a webhook dispatcher, a rate limiter,

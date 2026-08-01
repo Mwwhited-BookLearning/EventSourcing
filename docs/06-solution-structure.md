@@ -1,16 +1,20 @@
 # Solution Structure
 
-**Propagation note**: the project layout immediately below reflects the
-post-integration shape (`ADR-021`–`039`). Most of the detailed DI-wiring
-code sketches further down this file (`PublishEndpoint`, `FollowEndpoint`,
-`LineageEndpoint`, the OData-era `MapMethods(..., ["QUERY"], ...)`
-routing) still describe the pre-`ADR-023`/`037` mechanics in detail and
-haven't been rewritten yet — the *concepts* they illustrate (how
-idempotency is checked, how masking composes with upcasting, how a
-recursive CTE stays cycle-safe) remain accurate; the specific class names,
-REST-endpoint shapes, and OData-vs-GraphQL specifics do not. Treat this
-file as accurate for project structure, stale in its code-sketch detail,
-until this note is removed.
+**Propagation note, updated this session**: the project layout immediately
+below reflects the post-integration shape (`ADR-021`–`039`) and now also
+includes the `ADR-054`+ projects (Gateway/rate limiting, webhook
+dispatcher, device-input client) that were missing. The detailed DI-wiring
+code sketches further down this file have been brought current on naming
+(`FollowEndpoint`/`LineageEndpoint` → the GraphQL Follow Subscription/
+Lineage Query resolvers, `MapMethods(..., ["QUERY"], ...)`-per-surface →
+`EventStore.GraphQL`'s single mapped endpoint, `RequiredPublishClaim`/
+`RequiredReadClaim` → `RequiredClaims`) and the now-superseded
+`AsyncApiDocumentBuilder`/`asyncapi.json` material is marked inline as
+preserved-for-reference rather than current (`ADR-037`). `PublishEndpoint`
+itself is unaffected by `ADR-037` and keeps its name. Not yet re-verified
+line-by-line against every ADR past `ADR-041` (explicit composition) —
+treat any code sketch not explicitly called out above with the same
+"concept accurate, exact wiring unverified" caution as before.
 
 **Deployment-unit note, added this session (`ADR-075`)**: this whole
 solution builds to **one dedicated deployment per tenant** (the silo
@@ -25,6 +29,7 @@ solution, never a second `AppId` inside the same running instance.
 ```
 EventStore.sln
   src/
+    EventStore.Gateway/              -- YARP reverse proxy, the single external entry point (ADR-049); external TLS termination + ADR-006/017/040 auth happen here, handing off to ADR-048 SPIFFE/SPIRE workload identity internally; per-AppId rate limiting (Token Bucket for Inbox, Concurrency Limiter for GraphQL Subscriptions/Follow, Sliding Window for everything else, ADR-058) is enforced here first
     EventStore.Domain/              -- entities, no EF dependency; AppId is now part of every key (ADR-030)
     EventStore.Persistence/         -- DbContext, repositories, IJsonPathTranslator interface + all 3 impls
     EventStore.Persistence.Migrations.Sqlite/
@@ -37,9 +42,10 @@ EventStore.sln
     EventStore.GraphQL/             -- GraphQL Gateway: Query/Subscription, per-AppId schema (ADR-030/037), served via HotChocolate (docs/libraries/dotnet/hotchocolate.md); supersedes EventStore.Follow.Api/EventStore.Lineage.Api entirely
     EventStore.Sharding/            -- Shard Resolver: EntityId -> ShardKey -> store, entity-type-based (ADR-034)
     EventStore.PeerSync/            -- gossip peer-sync outbox/inbox, fault/abend/restart-tolerant (ADR-033)
+    EventStore.Webhooks/            -- outbound webhook dispatcher: drains the durable WebhookOutbox (same fault/abend/restart-tolerant primitive as PeerSync/client outbox, ADR-033/039), Standard Webhooks HMAC signing, masks every payload against its subscription's fixed claim set before sending, exponential-backoff retry, dead-letters as WebhookDeliveryFailed on exhaustion (ADR-060)
     EventStore.Streaming/           -- TelemetryChannel/TelemetrySample ingestion + tail/replay, separate from the event pipeline entirely (ADR-031)
     EventStore.Attachments/         -- content-addressed binary storage; POST upload, GET with Range, browsable via the GraphQL Gateway (ADR-032)
-    EventStore.SpecGeneration/      -- OpenAPI builder (publish) + GraphQL SDL builder (supersedes the AsyncAPI builder for Follow -- Follow itself is gone, replaced by GraphQL Subscription)
+    EventStore.SpecGeneration/      -- OpenAPI builder (publish) + GraphQL SDL builder (supersedes the AsyncAPI builder for Follow -- Follow itself is gone, replaced by GraphQL Subscription); the two specs this project generates are what Kiota / GraphQL Code Generator / Strawberry Shake regenerate typed client SDKs from at consumer build time (ADR-054) -- no SDK-generation project lives in this solution itself, since generated code is never committed here, only in a consuming application's own build
     EventStore.Host.Core/           -- shared, provider-agnostic composition root logic (see below)
     EventStore.Host.Sqlite/         -- the actual deployable: Host.Core + SQLite wiring (ADR-001)
     EventStore.Host.Postgres/       -- the actual deployable: Host.Core + PostgreSQL wiring
@@ -59,10 +65,14 @@ EventStore.sln
     -- MVVM client (ADR-039) -- consumes the framework, doesn't extend it:
     EventStore.Client.Core/               -- ViewModel base types, ICommandDispatcher, client-local durable outbox/inbox (same fault-tolerance bar as EventStore.PeerSync)
     EventStore.Client.WebViewBridge/      -- native<->HTML+JS bridge (WebView2/WKWebView/CEF), hosts the web app below
+    EventStore.Client.DeviceInput/        -- IDeviceInputSource seam (docs/extensibility-points.md) + NativeBridgeInputSource, the local companion app exposing a localhost WebSocket/HTTP server for Firefox/Safari or any device interface none of the four browser APIs below reach (ADR-070); captured readings feed EventStore.Client.Core's outbox unchanged
     client-web/                           -- npm workspace, NOT a .NET project: Vue 3 + Pinia + Naive UI application shell
                                            -- (docs/patterns/mvvm-client-architecture.md, docs/libraries/web/*.md); built to
                                            -- static assets, loaded by WebViewBridge for the native shell and served directly
                                            -- for the browser/PWA target -- one build artifact, two hosts
+                                           -- also hosts WebUsbInputSource/WebHidInputSource/WebSerialInputSource/WebBluetoothInputSource
+                                           -- (ADR-070) -- WebUSB/WebHID/Web Serial/Web Bluetooth are browser-only APIs, reachable
+                                           -- only from this open page/window context, Chromium-only for 3 of the 4 (ADR-070)
 
     -- Sample application, explicitly NOT part of the framework (ADR-030):
     Samples.Orders.Projections/           -- worked example: OrderSummaryProjection (features/cqrs-projections.md)
@@ -132,13 +142,15 @@ public static class HostCoreExtensions
         builder.Services.AddScoped<ISchemaRegistryReader, SchemaRegistryReader>();
         builder.Services.AddScoped<SchemaValidationService>();
         builder.Services.AddScoped<ParentLinkService>();
-        builder.Services.AddScoped<ODataFilterParser>();
-        builder.Services.AddProblemDetails(); // ADR-013: one error shape, every endpoint
+        // ODataFilterParser removed, ADR-037 -- HotChocolate's [UseFiltering] middleware resolves
+        // the GraphQL `where` argument natively; there is no separate parser this project owns anymore.
+        builder.Services.AddProblemDetails(); // ADR-013: one error shape, every endpoint (Publish only -- GraphQL uses its own partial-success error shape, 03-api-contracts.md)
         builder.Services.AddMemoryCache(); // backs the ~60s spec-document cache, ADR-002
         builder.Services.AddSingleton<EventSchemaConverter>();      // JsonSchema text -> shared Microsoft.OpenApi OpenApiSchema
         builder.Services.AddSingleton<MaskingSchemaTransformer>();  // schema-level x-masking -> oneOf[value,masked,erased] wrapper (ADR-057)
         builder.Services.AddSingleton<OpenApiDocumentBuilder>();
-        builder.Services.AddSingleton<AsyncApiDocumentBuilder>();
+        // AsyncApiDocumentBuilder removed, ADR-037 -- Follow's spec is now GraphQL SDL, served by
+        // HotChocolate itself; see the "Spec generation" section below for the superseded detail.
 
         builder.Services.AddCors(o => o.AddPolicy("EventStoreCors", policy =>
         {
@@ -159,15 +171,18 @@ public static class HostCoreExtensions
 
         builder.Services.AddAuthorizationBuilder()
             .AddPolicy("events:publish", p => p.Requirements.Add(new ScopeRequirement("events:publish")))
-            .AddPolicy("events:follow", p => p.Requirements.Add(new ScopeRequirement("events:follow")))
-            .AddPolicy("events:lineage:read", p => p.Requirements.Add(new ScopeRequirement("events:lineage:read")))
             .AddPolicy("registry:admin", p => p.Requirements.Add(new ScopeRequirement("registry:admin")));
+            // events:follow / events:lineage:read are no longer ASP.NET route policies -- Follow and
+            // Lineage are GraphQL Subscription/Query resolvers now (ADR-037), authorized via
+            // HotChocolate's own [Authorize] directive on the schema, resolved against the same
+            // ScopeRequirement handler at the GraphQL Gateway (EventStore.GraphQL), not a Minimal API policy.
     }
 
     public static void MapEventStoreCommonEndpoints(this WebApplication app)
     {
         app.UseCors("EventStoreCors"); // ADR-014 -- before endpoint mapping, applies to all of them
-        // /publish, /follow, /events/{id}/..., /registry, /openapi.json, /asyncapi.json
+        // /publish, /openapi.json -- Follow, Lineage, and registry listing are GraphQL resolvers now
+        // (ADR-037), mapped separately by EventStore.GraphQL's own MapGraphQL() call, not here.
     }
 }
 ```
@@ -205,6 +220,18 @@ space-delimited string claim (`"events:publish events:follow"`), and
 tokens" match. See `ADR-006`.
 
 ### Spec generation — one shared schema model, two document builders
+
+> **`AsyncApiDocumentBuilder`/`asyncapi.json` below is superseded, `ADR-037`.**
+> Follow moved from an AsyncAPI-described SSE endpoint to a GraphQL
+> Subscription (still delivered over SSE via the `graphql-sse` protocol —
+> only the document/query language changed, not the transport). HotChocolate
+> serves the GraphQL SDL itself (its own built-in schema-introspection/SDL
+> endpoint), so there is no second, hand-built spec document for Follow to
+> generate — `EventStore.SpecGeneration` keeps only the OpenAPI half
+> (`OpenApiDocumentBuilder`, publish-side, unaffected by `ADR-037`). The code
+> below is preserved as a description of the pre-`ADR-037` mechanism, not
+> the current one — see `03-api-contracts.md` for the current GraphQL SDL
+> story.
 
 Add the `Microsoft.OpenApi` NuGet package (the official .NET OpenAPI 3.1
 object model) to `EventStore.SpecGeneration`. It's used for more than just
@@ -282,41 +309,52 @@ once.
 
 ### Event-type security (required claims) — why this isn't a fifth `AddPolicy`
 
-`RequiredPublishClaim`/`RequiredReadClaim` (`ADR-008`) can't be wired as
-static ASP.NET Core policies the way the four scopes are: a policy's
-requirement is fixed at startup, but which claim is required depends on
-*which event type* the request names, which is only known once the route
-value is bound and the registry is queried. So this check is plain
+`RequiredClaims` (`ADR-008`, generalized from a single `RequiredPublishClaim`/
+`RequiredReadClaim` field to an `OR`-matched list by `ADR-050`) can't be
+wired as static ASP.NET Core policies the way the four scopes are: a
+policy's requirement is fixed at startup, but which claims are required
+depends on *which event type* the request names, which is only known once
+the route value is bound (Publish) or the resolver's `EventType` argument
+is resolved (GraphQL) and the registry is queried. So this check is plain
 application code, run after the `EventTypeDefinition` is loaded — not a
 declarative `[Authorize(Policy = "...")]`:
 
 ```csharp
-static bool HasRequiredClaim(ClaimsPrincipal user, string? requiredClaim)
+static bool HasRequiredClaim(ClaimsPrincipal user, string requiredClaim)
 {
-    if (requiredClaim is null) return true;
     var (type, value) = SplitOnce(requiredClaim, ':');
     return user.HasClaim(type, value); // a single discrete claim -- the built-in check is fine here,
 }                                       // unlike ScopeRequirement's space-delimited-claim problem above
+
+// Called against a RequiredClaims list for a given Direction, OR-matched (ADR-050):
+static bool HasAnyRequiredClaim(ClaimsPrincipal user, IReadOnlyList<RequiredClaim> requiredClaims, ClaimDirection direction)
+{
+    var forDirection = requiredClaims.Where(c => c.Direction == direction).ToList();
+    return forDirection.Count == 0 || forDirection.Any(c => HasRequiredClaim(user, c.Claim));
+}
 ```
 
-Called from `PublishEndpoint` (against `RequiredPublishClaim`, after
-resolving the active `EventTypeDefinition`, before schema validation) and
-`FollowEndpoint` (against `RequiredReadClaim` for its own event type, once
-at connect time, alongside the `$filter`-field validation) exactly as a
-single pass/fail check. `LineageEndpoint` uses it differently, per
-`ADR-008`'s "you can only see what you can see": once for the root
-`{eventId}`'s own type (pass/fail, `403` if it fails — you can't query the
-lineage of something you can't see), then again, independently, for every
-*other* distinct `EventType` the traversal discovers — a failure there
-doesn't reject the request, it turns that one node into a `restricted:
-true` stub (see `03-api-contracts.md`) without affecting any other node in
-the response.
+Called from `PublishEndpoint` (against a `Publish`-direction
+`RequiredClaims` entry, after resolving the active `EventTypeDefinition`,
+before schema validation — `ADR-050` generalized this from a single
+`RequiredPublishClaim` to a list, `OR`-matched) and the GraphQL
+Gateway's Follow **Subscription resolver** (against a `Read`-direction
+`RequiredClaims` entry for its own event type, once at connect time,
+alongside `[UseFiltering]`'s `where`-field validation) exactly as a
+single pass/fail check. The Lineage **Query resolver** uses it
+differently, per `ADR-008`'s "you can only see what you can see": once
+for the root `eventId`'s own type (pass/fail, `403` if it fails — you
+can't query the lineage of something you can't see), then again,
+independently, for every *other* distinct `EventType` the traversal
+discovers — a failure there doesn't reject the request, it turns that
+one node into a `restricted: true` stub (see `03-api-contracts.md`)
+without affecting any other node in the response.
 
 ```csharp
-// LineageEndpoint (illustrative): build the restricted-type set once,
-// same primitive as the root check, then consult it per discovered node
+// Lineage Query resolver (illustrative): build the restricted-type set once,
+// same HasAnyRequiredClaim primitive as the root check, then consult it per discovered node
 var restrictedTypes = allEventTypesInResult
-    .Where(t => t.RequiredReadClaim is not null && !HasRequiredClaim(user, t.RequiredReadClaim))
+    .Where(t => !HasAnyRequiredClaim(user, t.RequiredClaims, ClaimDirection.Read))
     .Select(t => t.Name)
     .ToHashSet();
 // a node whose EventType is in restrictedTypes becomes { eventId, resolved: true, restricted: true }
@@ -447,23 +485,25 @@ itself never changes.
 
 Because it's a pure `(schema, data) -> data` step with claim-checking
 injected, it composes as a link in a small command chain rather than logic
-embedded in `FollowEndpoint` specifically:
+embedded in the Follow Subscription resolver specifically:
 
 ```csharp
-// FollowEndpoint's per-event pipeline (illustrative):
+// Follow Subscription resolver's per-event pipeline (illustrative):
 var maskedPayload = payloadMasker.Mask(activeSchema, rawPayload, claimType => user.HasClaim(...));
 ```
 
 The *set* of claims to check is fixed for the life of one Follow connection
-(same JWT throughout), so `hasClaim` can close over a claim set computed
-once at connect time — but the masker itself doesn't know or care that
-that's how its caller chose to supply it. A future direct "read event by
-id" endpoint reuses `IPayloadMasker` unchanged; only the surrounding
-pipeline (an ASP.NET Core middleware for a discrete request/response, or
-an explicit per-event step for a long-lived SSE connection like today's
-Follow) differs per transport. The stored `Payload` is never touched by
-any of this — masking is computed fresh at the response boundary, for
-whichever caller is asking.
+(same JWT throughout — the connection is now a GraphQL Subscription over
+`graphql-sse`, `ADR-037`, but the claim-set-fixed-for-connection-lifetime
+rule is unchanged from before that move), so `hasClaim` can close over a
+claim set computed once at connect time — but the masker itself doesn't
+know or care that that's how its caller chose to supply it. A future direct
+"read event by id" resolver reuses `IPayloadMasker` unchanged; only the
+surrounding pipeline (a GraphQL Query resolver for a discrete request, or
+an explicit per-event step for a long-lived Subscription like Follow)
+differs per transport. The stored `Payload` is never touched by any of
+this — masking is computed fresh at the response boundary, for whichever
+caller is asking.
 
 Per-deployment build is the accepted v1 approach (three artifacts, one per
 provider, no runtime config value) — see `ADR-001`. Each
@@ -472,31 +512,41 @@ provider, no runtime config value) — see `ADR-001`. Each
 above) — there's no assembly-selection logic to get wrong at startup,
 because each deployable only ever has one to choose from.
 
-## Routing `QUERY` and reading its body (`ADR-012`)
+## Routing `QUERY` — one GraphQL endpoint, not one `MapMethods` per surface (`ADR-012`/`ADR-037`)
 
-`MapMethods` accepts any method string — ASP.NET Core routing has no fixed
-verb enum, so `QUERY` needs no framework changes:
+There is no longer a per-surface `MapMethods("/follow/{eventType}", ["QUERY"], ...)`
+route, or a separate one for each Lineage/registry-listing path — `ADR-037`
+folded Follow, Lineage, and registry listing into one GraphQL endpoint,
+`EventStore.GraphQL`, mapped once. What survives from the OData era is
+*which HTTP method* that one endpoint travels over: HotChocolate's
+`MapGraphQL()` defaults to `POST`, but `ADR-037` keeps the query surface on
+`QUERY` (`ADR-012`'s original reasoning — a query document's arguments can
+carry PII/PHI, and `QUERY`'s body-carrying, cacheable-but-safe semantics
+keep that out of URLs/access logs/proxy caches the way `GET` never could).
+Getting HotChocolate to serve over `QUERY` instead of its default `POST`
+needs a small custom endpoint mapping, not a config flag — see
+`docs/libraries/dotnet/hotchocolate.md` for the concrete integration note.
+Mutations stay `POST` (they have side effects regardless of PII, so
+`QUERY`'s safety guarantee doesn't apply to them).
 
 ```csharp
-app.MapMethods("/follow/{eventType}", ["QUERY"], FollowEndpoint.Handle);
-app.MapMethods("/events/{eventId}/ancestors", ["QUERY"], LineageEndpoint.GetAncestors);
-// ...and the other three Lineage routes, and QUERY /registry
+// EventStore.GraphQL/Program.cs (illustrative) -- one endpoint, not one MapMethods call per surface
+app.MapGraphQL(); // then re-mapped/wrapped to accept QUERY instead of POST -- see hotchocolate.md
 ```
 
-The request body (`application/x-www-form-urlencoded`) is read via
-`HttpRequest.ReadFormAsync()`/`Request.Form`, which is exactly the API
-shape `Request.Query` already has (`IFormCollection` mirrors
-`IQueryCollection`) — every place that used to read
-`Request.Query["$filter"]` now reads `(await Request.ReadFormAsync())["$filter"]`,
-same string, same `ODataFilterParser`, nothing else changes. `$top`/`$skip`
-on the Lineage and Registry-list endpoints are read the same way.
+There is no request-body-reading step for this design to own anymore
+either — HotChocolate parses the GraphQL document (query text + variables)
+out of the request body itself; `ADR-003`'s old per-field `$filter`/`$top`/
+`$skip` string-reading is gone along with the OData surface it belonged to.
 
 ## Follow: tail vs replay cursor (`ADR-010`)
 
-`FollowEndpoint` is one continuous poll loop
+The Follow **Subscription resolver** runs one continuous poll loop
 (`04-odata-filter-pushdown.md`: `WHERE SequenceNumber > lastSeen AND
-predicate`) regardless of `mode` — only how `lastSeen` is *initialized*,
-once, at connect time, differs:
+predicate`, translated now from a GraphQL `where` argument via
+`[UseFiltering]` rather than a parsed OData AST — see that document for the
+current pipeline) regardless of `mode` — only how `lastSeen` is
+*initialized*, once, at connect time, differs:
 
 ```csharp
 long lastSeen = mode switch
@@ -508,11 +558,13 @@ long lastSeen = mode switch
 // then the existing poll loop runs unchanged from here, for either mode
 ```
 
-`fromSequenceNumber` is rejected with `400` before this point if
-`mode != Replay` — validated alongside the `$filter`-field check, same
-place `RequiredReadClaim` is checked (`ADR-008`). No new persistence, no
-per-consumer state: the caller supplies the cursor on every connection: it
-isn't remembered server-side between connections.
+`fromSequenceNumber` is rejected before this point if `mode != Replay` —
+validated alongside the `where`-argument's field validation, same place
+`RequiredClaims` (`Read` direction) is checked (`ADR-008`). GraphQL surfaces
+this rejection through its own error shape, not a bare `400` (`03-api-
+contracts.md`). No new persistence, no per-consumer state: the caller
+supplies the cursor on every connection; it isn't remembered server-side
+between connections.
 
 ## Event lineage (parent/child DAG) queries
 
@@ -559,8 +611,12 @@ Unlike `IJsonPathTranslator`, there is no per-`(EventType, FromVersion)`
 class to write. `upcastFromPrevious` (registered per version,
 `05-schema-registry-and-spec-generation.md`) is an OData `compute()`
 expression list — **data**, not code — so `UpcastChain` is one generic
-executor that evaluates it via the same `Microsoft.OData.UriParser`
-already used for `$filter` (`04-odata-filter-pushdown.md`):
+executor that evaluates it via `Microsoft.OData.UriParser`. **This is a
+schema-mapping DSL, not the query surface `ADR-037` moved to GraphQL** —
+`upcastFromPrevious` was never part of `$filter`/Follow/Lineage, so it
+keeps using OData's `compute()` grammar unchanged; see `04-odata-filter-
+pushdown.md`'s "Historical" section for the shared `Microsoft.OData.
+UriParser` grammar this expression list still borrows:
 
 ```csharp
 public class UpcastChain
@@ -582,11 +638,11 @@ public class UpcastChain
 }
 ```
 
-Called from `FollowEndpoint` (per streamed event, before masking's
-transform runs — masking operates on the *current* schema shape, so it
-must see the upcasted payload, not the as-stored one) and from
+Called from the Follow Subscription resolver (per streamed event, before
+masking's transform runs — masking operates on the *current* schema shape,
+so it must see the upcasted payload, not the as-stored one) and from
 `ProjectionHost` (per event, before `SnapshotMerger` — `09-cqrs-read-
-models.md`, `ADR-016`), never from `LineageEndpoint` (which never
+models.md`, `ADR-016`), never from the Lineage Query resolver (which never
 includes `Payload`).
 
 **Also called from `PublishEndpoint` itself now (`ADR-020`)** — not to
@@ -775,7 +831,8 @@ accidentally violate: there is no project reference to violate it with.
 - [OpenIddict](https://openiddict.com/) — `EventStore.DevIdp`'s token issuer (`ADR-006`).
 - [.NET Aspire](https://learn.microsoft.com/en-us/dotnet/aspire/get-started/aspire-overview) — `EventStore.AppHost` orchestration.
 - [Testcontainers](https://testcontainers.com/) — the integration test strategy across all three providers.
-- [ASP.NET Core Minimal APIs — Routing](https://learn.microsoft.com/en-us/aspnet/core/fundamentals/minimal-apis) — `MapMethods`, used for the `QUERY` routes (`ADR-012`).
+- [ASP.NET Core Minimal APIs — Routing](https://learn.microsoft.com/en-us/aspnet/core/fundamentals/minimal-apis) — `MapMethods`, still used for `PublishEndpoint` (`ADR-012`); Follow/Lineage/registry listing route through `EventStore.GraphQL`'s single endpoint instead (`ADR-037`).
+- [HotChocolate — Server Endpoints](https://chillicream.com/docs/hotchocolate/server/endpoints) — `MapGraphQL()` and the custom mapping needed to serve over `QUERY` instead of its default `POST` (`ADR-012`/`ADR-037`, `docs/libraries/dotnet/hotchocolate.md`).
 - [RFC 9449](https://datatracker.ietf.org/doc/html/rfc9449) — DPoP, the proof-validation middleware sketched above (`ADR-017`).
 - [Axon Framework — Event Versioning](https://docs.axoniq.io/axon-framework-reference/4.11/events/event-versioning/) — the upcaster-chain shape `UpcastChain` follows (`ADR-018`).
 
