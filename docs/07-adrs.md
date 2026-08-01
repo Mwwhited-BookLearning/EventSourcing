@@ -95,3 +95,7 @@ Consequences: <trade-offs accepted>
 | [073](adrs/adr-073-accessibility-standard.md) | Accessibility standard — WCAG 2.1 AA baseline, WCAG 2.2 AA forward-looking, independent of which UI architecture renders a screen | Accepted |
 | [074](adrs/adr-074-sbom-and-soup-list.md) | SBOM generation (`microsoft/sbom-tool`), and the library catalog doubles as a SOUP list (IEC 62304) | Accepted |
 | [075](adrs/adr-075-siloed-per-tenant-deployment.md) | Siloed, dedicated-per-tenant deployment — revises `ADR-030`'s pool model; cross-tenant exchange is federation via `ADR-060`/`ADR-072`, never shared infrastructure | Accepted |
+| [076](adrs/adr-076-ef-core-migration-bundles-deployment.md) | Database schema deployment via EF Core migration bundles, applied as a single deploy-time step (never `Database.Migrate()` at app startup) | Accepted |
+| [077](adrs/adr-077-dynamic-feature-flag-configuration-provider.md) | Instant feature-flag toggles via a chained, reloadable `IConfigurationProvider` — resolves the apparent `ADR-038`/`ADR-041`/`ADR-058` contradiction | Accepted |
+| [078](adrs/adr-078-leader-election-database-lease.md) | Single-active-worker leader election via a database-backed lease, per worker role (Router, UpcastMaterializer, each outbox pump) | Accepted |
+| [079](adrs/adr-079-sanctions-screening-extensibility-seam.md) | Pluggable sanctions/watchlist screening (`ISanctionsScreeningProvider`) — an application-scoped (KYC/Meridian) extension point, not core Duplex | Accepted |

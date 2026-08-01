@@ -247,7 +247,7 @@ re-derive the process from scratch:
 
 ## Decision index
 
-All 75 ADRs (`ADR-001`–`ADR-075`) are Accepted. For what each one
+All 79 ADRs (`ADR-001`–`ADR-079`) are Accepted. For what each one
 decides, read `docs/07-adrs.md`'s index (one-line description per row)
 or the ADR file itself — not this section, which no longer narrates
 individual decisions. For the forks weighed before a decision, see

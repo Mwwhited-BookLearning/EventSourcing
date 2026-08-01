@@ -94,6 +94,23 @@ Consequences:
   sharper audit granularity than an ordinary bulk query already has —
   "this field was actually looked at," not just "this response
   contained it."
+- **Addendum, resolved by direct design conversation (a later session):
+  a GDPR Art. 33/34 breach-notification *workflow* is deliberately out
+  of framework scope — an external legal/business process, not a
+  functional requirement.** `docs/10-open-questions.md` had left this
+  open: `AccessLog` supplies the forensic inputs (who accessed what,
+  when, tamper-evident), but no ADR had said whether the *response* —
+  a formal breach register (Art. 33(5) requires logging every breach,
+  even non-notifiable ones) and a 72-hour authority-notification
+  assessment — belongs in this framework at all. Resolved: it doesn't.
+  `AccessLog` is exactly the evidence a compliance/legal team's breach-
+  response process needs to establish scope and timeline; assessing
+  notification-worthiness, maintaining a breach register, and filing
+  within 72 hours are that team's process running on top of this
+  evidence, not software this framework should build — the same
+  reasoning `ADR-056` already applies to declining a specific retention/
+  backup *policy* while still supplying the mechanism a policy would
+  use.
 
 **Compliance note** (a proving-ground compliance review, this session):
 beyond HIPAA §164.312(b) (already this ADR's own driving citation),
@@ -101,10 +118,11 @@ beyond HIPAA §164.312(b) (already this ADR's own driving citation),
 requirements this design hadn't explicitly connected it to: **GDPR
 Art. 33/34 breach notification** — establishing a breach's scope and
 timeline ("who accessed what, when") is exactly what `AccessLog`
-already records, though the *notification workflow itself* (a 72-hour
+already records; ~~the *notification workflow itself* (a 72-hour
 authority-notification clock, plus Art. 33(5)'s mandatory breach
 register covering even non-notifiable incidents) is not yet designed —
-tracked as an open question; and **SOX Section 404 IT General
+tracked as an open question~~ **resolved, a later session: deliberately
+out of framework scope — see the addendum above**; and **SOX Section 404 IT General
 Controls** — the access-control ITGC specifically is already satisfied
 by this mechanism, a confirming non-gap for the brokerage proving-
 ground candidate, the same pattern `ADR-071` already found for SEC

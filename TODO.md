@@ -78,11 +78,15 @@ here instead of inlining.
   `ADR-054` onward's new projects (a webhook dispatcher, a rate limiter,
   an SDK-generation step, device-input client packages) — flagged stale
   in the file's own banner, not silently wrong, but not rewritten either.
-- [ ] **`08-build-plan.md` has no phases for `ADR-050`–`ADR-075`** —
+- [ ] **`08-build-plan.md` has no phases for `ADR-050`–`ADR-079`** —
   every capability from per-tenant rate limiting through the silo
-  deployment model has no build-plan entry. `ADR-057` (erasure) and
-  `ADR-062` (package distribution) most need real exit criteria before
-  anything downstream is built.
+  deployment model, migration bundles, dynamic feature flags, leader
+  election, and the sanctions-screening seam has no build-plan entry.
+  `ADR-057` (erasure) and `ADR-062` (package distribution) most need
+  real exit criteria before anything downstream is built. Candidate for
+  the dependency-checklist restructuring agreed in conversation (see
+  `.claude/context.md`) rather than more numbered phases tacked on the
+  end.
 - [ ] **`docs/features/auth.md`'s "partially superseded" banner doesn't
   yet cite `ADR-046`/`047`/`048`** (RBAC, claims augmentation, SPIFFE).
 - [ ] **`docs/libraries/README.md`'s SOUP-list entries need full
@@ -95,7 +99,19 @@ here instead of inlining.
   `DeprecatedAt` (`ADR-038`) and `ViewDefinition` fields (`ADR-039`)
   absent; `PeerSyncCursor`/`WebhookOutbox` tables missing; the generated-
   spec `oneOf` wrapper (`ADR-002`) still shows two branches, not three
-  (`ADR-057`'s `erased`); seven entities (`LiveEntityStoreRow`,
+  (`ADR-057`'s `erased`); nine entities (`LiveEntityStoreRow`,
   `EntityErasureKey`, `AppTrustRoot`, `Role`, `UserPermission`,
   `TrustedFederationIssuer`, `AppDataResidencyPolicy`,
-  `WebhookSubscription`) have no `DbSet` in `EventStoreContext`.
+  `WebhookSubscription`, and now also `ADR-077`'s `FeatureFlagState` and
+  `ADR-078`'s `LeaderLease`, both added to `docs/data/schema-registry.md`
+  this pass but not yet to this list) have no `DbSet` in
+  `EventStoreContext`.
+- [ ] **Domain-doc propagation for the four newest ADRs** (`076`–`079`):
+  `docs/domains/digital-identity-kyc/README.md`'s Special Concerns note
+  ("no existing ADR addresses OFAC sanctions screening... a candidate
+  for a future ADR") needs updating to point at `ADR-079` instead; both
+  `docs/domains/clinical-trials-device-telemetry/README.md`'s and
+  `digital-identity-kyc/README.md`'s Special Concerns notes on GDPR
+  breach notification need updating to reflect `ADR-045`'s addendum
+  (resolved: out of framework scope) rather than still listing it as
+  open.
