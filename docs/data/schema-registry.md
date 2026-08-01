@@ -151,6 +151,7 @@ public class WebhookSubscription
     public string AppId { get; set; } = default!;          // part of the composite key (ADR-030)
     public string TargetUrl { get; set; } = default!;
     public string SigningSecret { get; set; } = default!;    // HMAC-SHA256 key, Standard Webhooks-shaped (ADR-060)
+    public string? PreviousSigningSecret { get; set; }        // set only during a rotation overlap window -- dispatcher emits dual signatures against both while set (ADR-093)
     public List<string> EventTypes { get; set; } = new();    // which event/entity types this subscription wants notified about
     public string FixedClaimsSnapshot { get; set; } = default!; // JSON -- the claim set computed once at registration time (ADR-060), never re-evaluated per delivery
     public bool Active { get; set; } = true;

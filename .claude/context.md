@@ -18,8 +18,8 @@ naming.md`), built as a **worked teaching example**: append-only write
 side (schema registry, publish/follow/lineage APIs), a CQRS read side,
 and two fully worked proving-ground domains (clinical trials + device
 telemetry — "Vitals"; digital identity/KYC — "Meridian"). Governing
-principle: never lose or corrupt data. All 85 ADRs (`docs/adrs/adr-001`
-through `adr-085`) are Accepted — the *decisions* are essentially done;
+principle: never lose or corrupt data. All 93 ADRs (`docs/adrs/adr-001`
+through `adr-093`) are Accepted — the *decisions* are essentially done;
 what's left is propagating them consistently across ~150 files with no
 compiler to catch drift, which is why internal consistency matters more
 here than in most repos.
@@ -35,12 +35,23 @@ stale numbers here are worse than none)*
   don't assume HEAD is `0bd157d` anymore). Working tree still has
   unstaged edits (citation fixes in `ADR-076`–`082`, plus new `ADR-084`/
   `085` and `docs/changes/2026-07-31.md`, untracked) — see `git status`.
-- **`docs/10-open-questions.md` worked down from 22 rows to 8** (5, 7, 9,
-  11 [one narrow residual], 16, 18, 19, 21) via ten new ADRs (`ADR-076`–
-  `085`) plus an `ADR-045` addendum — full narrative in `docs/changes/
-  2026-07-31.md`, not repeated here. Rows 3/4 were relocated (not
-  resolved) to their owning domains' own `README.md`s, since they were
-  domain-specific, not framework-wide forks.
+- **`docs/10-open-questions.md` is now EMPTY** — worked down from 22
+  rows to 0 this session, via twenty-two new ADRs (`ADR-076`–`093`) plus
+  an `ADR-045` addendum. Full narrative in `docs/changes/2026-07-31.md`,
+  not repeated here. Rows 3/4 relocated (not resolved) to their owning
+  domains' `README.md`s; row 7 fully excluded (pure ops, not a
+  framework fork at all — a new standing exclusion category in the
+  file's own header now). **This is a milestone, not a steady state** —
+  the file's whole purpose is to catch the *next* real fork the moment
+  it's found (`CLAUDE.md`'s "add a row in the same pass you find one"),
+  not to stay empty. Don't read an empty table as "nothing to weigh
+  going forward." Recurring lenses worth applying to whatever's found
+  next, established this session: **(1)** an ops/runbook concern can be
+  excluded entirely, not just deprioritized; **(2)** prefer a real RFC/
+  web standard over a custom mechanism when one's available; **(3)**
+  reuse an existing framework mechanism/interface before inventing a
+  new one — several rows this session resolved as "no new machinery
+  needed" once traced through what already exists.
 - **Standing policy, this file's own scope now**: a resolved
   `docs/10-open-questions.md` row is **deleted outright**, not struck
   through — the resolving ADR is its permanent record; that day's

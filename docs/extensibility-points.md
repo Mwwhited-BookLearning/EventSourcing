@@ -36,6 +36,7 @@ distinction matters.
 | `IDeviceInputSource` | How the MVVM client reads from a connected physical device | `WebUsbInputSource`, `WebHidInputSource`, `WebSerialInputSource`, `WebBluetoothInputSource`, `NativeBridgeInputSource` (localhost WebSocket, for Firefox/Safari) | Dictated by the device's own hardware interface, not a deployment pick — several active simultaneously | `ADR-070` |
 | `IInterchangeFormatAdapter` | Transform between this framework's own JSON Schema shape and an external interchange standard, inbound or outbound | None shipped by default — a deployment registers `Hl7V2Adapter`, `FhirAdapter`, `IchE2bR3Adapter`, `Gs1EpcisAdapter`, or others as needed | Chosen per integration need — several active simultaneously | `ADR-072` |
 | `IAttachmentContentStore` | Where a large attachment's actual bytes are stored/tiered | None shipped by default — a deployment registers any mix of Azure Blob (Hot/Cool/Cold/Archive), S3 (Standard/Infrequent-Access/Glacier), or a local dev store | Keyed per `ContentProviderKey`, same multi-backend-simultaneously shape as `IErasureKeyStore` above | `ADR-032` |
+| `ITimestampAuthorityClient` | Which RFC 3161 Time Stamping Authority signs a `TimeStampToken` over a `ChainHash` | None shipped by default — a deployment registers a public TSA or an internally-operated one | Selected per deployment; enabled per event type alongside `RequiredSignature` | `ADR-086` |
 
 **Not a seam, for contrast**: `IPayloadMasker` itself (`ADR-009`) is the
 one framework-owned orchestrator that *consumes* `IMaskingStrategy` — a

@@ -92,9 +92,9 @@ here instead of inlining.
 - [ ] **`docs/libraries/README.md`'s SOUP-list entries need full
   retrofitting** (known anomalies, fulfilled functional requirements per
   IEC 62304) — currently just a catalog, not yet a complete SOUP list.
-- [ ] **Data-model drift table** (found by a design review, only
-  partially fixed): `OriginId`/`LogicalClock` described in `ADR-033` but
-  absent from `docs/data/event-log.md`; `RequiredClaims` still modeled
+- [ ] **Data-model drift table** (found by a design review, partially
+  fixed — `OriginId`/`LogicalClock` closed this session, `ADR-090`):
+  `RequiredClaims` still modeled
   as singular in the data model despite `ADR-050` making it a list;
   `DeprecatedAt` (`ADR-038`) and `ViewDefinition` fields (`ADR-039`)
   absent; `PeerSyncCursor`/`WebhookOutbox` tables missing; the generated-
