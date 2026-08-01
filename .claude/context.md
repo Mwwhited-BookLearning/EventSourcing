@@ -18,8 +18,8 @@ naming.md`), built as a **worked teaching example**: append-only write
 side (schema registry, publish/follow/lineage APIs), a CQRS read side,
 and two fully worked proving-ground domains (clinical trials + device
 telemetry — "Vitals"; digital identity/KYC — "Meridian"). Governing
-principle: never lose or corrupt data. All 75 ADRs (`docs/adrs/adr-001`
-through `adr-075`) are Accepted — the *decisions* are essentially done;
+principle: never lose or corrupt data. All 80 ADRs (`docs/adrs/adr-001`
+through `adr-080`) are Accepted — the *decisions* are essentially done;
 what's left is propagating them consistently across ~150 files with no
 compiler to catch drift, which is why internal consistency matters more
 here than in most repos.
@@ -32,11 +32,24 @@ stale numbers here are worse than none)*
 - As of **2026-07-31**: HEAD is `0bd157d` ("update designs"). Working
   tree has substantial uncommitted work this session (see `git status`)
   — commit or continue from there.
-- **79 ADRs now exist** (`ADR-076`–`079` added this session, resolving
-  `docs/10-open-questions.md` rows 12/13/14/1 respectively; `ADR-045`
-  gained an additive addendum resolving row 2). All five rows are now
-  struck through in `docs/10-open-questions.md`. `CLAUDE.md`'s ADR count
+- **80 ADRs now exist** (`ADR-076`–`080` added this session, resolving
+  `docs/10-open-questions.md` rows 12/13/14/1/6 respectively; `ADR-045`
+  gained an additive addendum resolving row 2). `CLAUDE.md`'s ADR count
   is updated to match.
+- **`docs/10-open-questions.md` triage, this session**: rows 1/2/6/12/
+  13/14 struck through (resolved, see above); rows 3/4 deleted outright
+  and relocated to their owning domains' own `README.md` Special
+  Concerns sections (they were domain-specific, not framework-wide
+  forks — a distinct action from "resolved," documented in the file's
+  own header now; row numbers were NOT renumbered after the deletion,
+  so there's now an intentional gap where rows 3/4 used to be). Rows 5
+  and 7 back-burnered (noted, not resolved, explicitly deprioritized —
+  5 because CI/CD platform choice doesn't matter for a design package/
+  POC, 7 because it's an ops/runbook concern, not a dev decision — a
+  general triage principle the user gave this session: **ops-focused
+  questions can be deferred; only genuine dev/design decisions need
+  resolving now**). Apply that principle when triaging the remaining
+  open rows (8–11, 16, 18–22) too, rather than re-deriving it each time.
 - Also created, this session: `TODO.md` (active-work tracker, replacing
   `CLAUDE.md`'s old inlined "Propagation status" list), this file, and
   `.claude/protocols/todo-tracking.md` + `context-handoff.md`.

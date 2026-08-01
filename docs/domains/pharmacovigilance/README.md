@@ -113,13 +113,20 @@ work already happens, not a contrived stretch to exercise them.
   domain; WCAG 2.1 AA applies here too, not just the
   government-case-management candidate it was originally tagged under.
 - **No existing ADR designs a regulatory expedited-reporting deadline
-  clock** — a genuine gap, the same shape as the already-tracked GDPR
-  Art. 33/34 72-hour breach-notification gap: FDA 21 CFR 314.80/600.80
-  impose a hard 15-calendar-day clock for serious, unexpected adverse
-  drug reactions. `ADR-060`'s webhooks and `ADR-072`'s `IchE2bR3Adapter`
+  clock** — a genuine gap, a similar shape to the GDPR Art. 33/34
+  72-hour breach-notification question `ADR-045`'s addendum resolved
+  (deliberately out of framework scope — an external legal/business
+  process). This FDA clock hasn't been given that same resolution,
+  though, since deadline escalation is arguably more mechanism-shaped
+  than a compliance judgment call: FDA 21 CFR 314.80/600.80 impose a
+  hard 15-calendar-day clock for serious, unexpected adverse drug
+  reactions. `ADR-060`'s webhooks and `ADR-072`'s `IchE2bR3Adapter`
   supply the delivery mechanism once a report is ready to send, but no
-  ADR designs the deadline-tracking/escalation workflow itself — a
-  candidate for a future ADR, not yet decided.
+  ADR designs the deadline-tracking/escalation workflow itself.
+  **Domain-scoped, not tracked in `docs/10-open-questions.md`** (moved
+  here from that file's former row 4, since this concern is specific to
+  this domain, not a framework-wide fork) — a candidate for a future
+  ADR, not yet decided.
 
 ## Feature docs
 
