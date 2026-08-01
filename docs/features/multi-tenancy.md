@@ -113,8 +113,7 @@ entity "EventTypeDefinition" as etd {
   --
   JsonSchema : text
   IsActive : bool
-  RequiredPublishClaim : string?
-  RequiredReadClaim : string?
+  RequiredClaims : {Direction, Claim}[]?
 }
 
 entity "FilterableField" as ff {

@@ -41,13 +41,6 @@ Internally sequenced — do these roughly in this order, since each later
 item is easier to get right once the earlier ones exist to reference,
 though none is strictly blocked from starting early.
 
-- [ ] **`06-solution-structure.md`'s detailed DI-wiring code sketches
-  predate `ADR-041`** (explicit composition) and mostly predate
-  `ADR-054` onward's new projects (a webhook dispatcher, a rate limiter,
-  an SDK-generation step, device-input client packages) — flagged stale
-  in the file's own banner, not silently wrong, but not rewritten either.
-  Not blocked on anything else in this file — the entity homes this
-  item used to wait on were settled this session.
 - [ ] **Every banner'd `docs/features/*.md` file's Gherkin scenarios are
   themselves still unchanged** (`400`→`202`+`SchemaStatus`, OData→GraphQL
   syntax) — the banners say what's stale, they don't fix the scenarios.
