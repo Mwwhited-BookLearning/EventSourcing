@@ -18,8 +18,8 @@ naming.md`), built as a **worked teaching example**: append-only write
 side (schema registry, publish/follow/lineage APIs), a CQRS read side,
 and two fully worked proving-ground domains (clinical trials + device
 telemetry — "Vitals"; digital identity/KYC — "Meridian"). Governing
-principle: never lose or corrupt data. All 80 ADRs (`docs/adrs/adr-001`
-through `adr-080`) are Accepted — the *decisions* are essentially done;
+principle: never lose or corrupt data. All 85 ADRs (`docs/adrs/adr-001`
+through `adr-085`) are Accepted — the *decisions* are essentially done;
 what's left is propagating them consistently across ~150 files with no
 compiler to catch drift, which is why internal consistency matters more
 here than in most repos.
@@ -29,42 +29,43 @@ here than in most repos.
 *(update this section's content, not just its presence, every session —
 stale numbers here are worse than none)*
 
-- As of **2026-07-31**: HEAD is `0bd157d` ("update designs"). Working
-  tree has substantial uncommitted work this session (see `git status`)
-  — commit or continue from there.
-- **80 ADRs now exist** (`ADR-076`–`080` added this session, resolving
-  `docs/10-open-questions.md` rows 12/13/14/1/6 respectively; `ADR-045`
-  gained an additive addendum resolving row 2). `CLAUDE.md`'s ADR count
-  is updated to match.
-- **`docs/10-open-questions.md` triage, this session**: rows 1/2/6/12/
-  13/14 struck through (resolved, see above); rows 3/4 deleted outright
-  and relocated to their owning domains' own `README.md` Special
-  Concerns sections (they were domain-specific, not framework-wide
-  forks — a distinct action from "resolved," documented in the file's
-  own header now; row numbers were NOT renumbered after the deletion,
-  so there's now an intentional gap where rows 3/4 used to be). Rows 5
-  and 7 back-burnered (noted, not resolved, explicitly deprioritized —
-  5 because CI/CD platform choice doesn't matter for a design package/
-  POC, 7 because it's an ops/runbook concern, not a dev decision — a
-  general triage principle the user gave this session: **ops-focused
-  questions can be deferred; only genuine dev/design decisions need
-  resolving now**). Apply that principle when triaging the remaining
-  open rows (8–11, 16, 18–22) too, rather than re-deriving it each time.
-- Also created, this session: `TODO.md` (active-work tracker, replacing
-  `CLAUDE.md`'s old inlined "Propagation status" list), this file, and
+- As of **2026-07-31**: HEAD is `a602317` ("updating design") — moved
+  several times this session via commits not made by this conversation
+  (an external process/terminal checkpointing the work; harmless, just
+  don't assume HEAD is `0bd157d` anymore). Working tree still has
+  unstaged edits (citation fixes in `ADR-076`–`082`, plus new `ADR-084`/
+  `085` and `docs/changes/2026-07-31.md`, untracked) — see `git status`.
+- **`docs/10-open-questions.md` worked down from 22 rows to 8** (5, 7, 9,
+  11 [one narrow residual], 16, 18, 19, 21) via ten new ADRs (`ADR-076`–
+  `085`) plus an `ADR-045` addendum — full narrative in `docs/changes/
+  2026-07-31.md`, not repeated here. Rows 3/4 were relocated (not
+  resolved) to their owning domains' own `README.md`s, since they were
+  domain-specific, not framework-wide forks.
+- **Standing policy, this file's own scope now**: a resolved
+  `docs/10-open-questions.md` row is **deleted outright**, not struck
+  through — the resolving ADR is its permanent record; that day's
+  `docs/changes/{date}.md` carries the one-line pointer instead. (This
+  reversed an earlier same-session correction that said the opposite —
+  see that file's own header for the reasoning, and don't re-derive
+  either policy from scratch.) Two recurring triage principles used to
+  get there, worth applying to the 8 rows still open rather than re-
+  deriving: **(1)** an ops/runbook concern can be deferred (rows 5, 7);
+  **(2)** a question resolvable with an existing mechanism (an ordinary
+  API call, an existing auth flow, existing lineage/masking/query
+  primitives) doesn't need new framework machinery invented for it.
+- Also created, this session: `TODO.md`, this file, and
   `.claude/protocols/todo-tracking.md` + `context-handoff.md`.
-- **Read `TODO.md` for what's mechanically outstanding** — it now
-  includes the propagation debt the four new ADRs themselves created
-  (two domain-README updates for `ADR-079`/`ADR-045`'s addendum; two new
-  entities — `FeatureFlagState`, `LeaderLease` — added to `docs/data/
-  schema-registry.md` already, but still missing from the drift table's
-  `DbSet` list and from `08-build-plan.md`, which has no phase for any
-  ADR past `050`).
-- **Still open, not yet executed** (see "Working notes" below for full
-  detail): the `08-build-plan.md` dependency-checklist restructuring,
-  the missing GraphQL query/filter-pushdown doc replacing `04-odata-
-  filter-pushdown.md`, and the user's request for a full repo-wide
-  staleness review pass.
+- **Read `TODO.md` for what's mechanically outstanding** — includes
+  propagation debt the new ADRs themselves created: stale
+  `telemetryPointer` JSON examples (`ADR-081`'s shape change), eight
+  domain READMEs' stale GDPR breach-notification notes, `FeatureFlagState`/
+  `LeaderLease` missing from the `DbSet` drift-table entry, and
+  `08-build-plan.md` having no phase for anything past `ADR-050`.
+- **Still open, not yet executed**: the `08-build-plan.md` dependency-
+  checklist restructuring, the missing GraphQL query/filter-pushdown doc
+  replacing `04-odata-filter-pushdown.md`, and a full repo-wide
+  staleness review pass — see "Working notes" below for the retained
+  detail on the first two.
 
 ## How to resume cold
 
@@ -88,17 +89,6 @@ stale numbers here are worse than none)*
   chosen domains at 4 feature docs / 3 workflows each) is intentional,
   not unfinished — don't mistake the 13 shallower domains for a batch
   that still needs finishing to 4 docs each.
-- **Design decisions reached in conversation, 2026-07-31, now promoted
-  into real ADRs — no longer duplicated here, see the ADRs themselves**:
-  `ADR-076` (EF Core migration bundles + optional DACPAC/pgschema apply),
-  `ADR-077` (dynamic feature-flag configuration provider — flag state as
-  a reserved Event Log event, polled, `AppId`-scoped), `ADR-078`
-  (database-lease leader election, per worker role, not a quorum
-  system), `ADR-079` (sanctions-screening seam, scoped to KYC/Meridian's
-  own composition root, not core Duplex — the first domain-scoped
-  extension point in this design), and `ADR-045`'s addendum (GDPR breach
-  notification ruled out of framework scope). Remaining follow-up from
-  these four is tracked in `TODO.md`, not here.
 - **`08-build-plan.md` restructuring — agreed direction, not yet
   executed.** Replace fixed `Phase N` labels with a dependency-checklist
   model (each item declares its own prerequisite ADRs/items; display

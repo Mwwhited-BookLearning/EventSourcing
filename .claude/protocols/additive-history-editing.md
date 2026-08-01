@@ -34,10 +34,13 @@ silently rewrite; it costs nothing and removes the ambiguity.
   got struck through with a pointer to it, rather than picking one
   arbitrarily or silently editing the earlier ones to match without a
   trace.
-- `docs/10-open-questions.md` rows that get resolved are struck through
-  with a pointer to the resolving ADR/comparison, not deleted — the
-  file's own stated purpose is to show *what got resolved and how*,
-  not just what's currently open.
+- `docs/10-open-questions.md` is the one deliberate **exception** to
+  this whole protocol: a resolved row is deleted outright, not struck
+  through, because the resolving ADR is already the permanent record of
+  what got resolved and how — retaining a second, struck-through copy in
+  the tracker would just duplicate it. That file's own header explains
+  the reasoning; don't assume every tracker in this repo follows the
+  strikethrough convention just because ADRs do.
 - `references.md`'s reference-only entries can flip to adopted later
   (SPIFFE/SPIRE, YARP, content-addressable storage all did) — the
   original rejection reasoning stays visible, annotated with what

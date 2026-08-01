@@ -116,12 +116,15 @@ All four docs the Workflows section above sequences:
   (`ADR-061`) — many jurisdictions legally require identity-verification
   data to stay within-country; this domain is a strong real-world
   driver for that mechanism, not a hypothetical one.
-- **No existing ADR addresses OFAC sanctions screening or BSA Suspicious
-  Activity Report filing** — a genuine gap for a KYC platform, not a
-  stretch: verified identities routinely need screening against
-  sanctions lists, and a match can trigger a mandatory SAR filing to
-  FinCEN. Tracked as an open question (`docs/10-open-questions.md`) — a
-  candidate for a future ADR, not yet decided.
+- **OFAC sanctions screening / BSA Suspicious Activity Report filing —
+  resolved, `ADR-079` (see `docs/changes/2026-07-31.md`).** Verified
+  identities routinely need screening against sanctions lists, and a
+  match can trigger a mandatory SAR filing to FinCEN — `ADR-079` decided
+  this is an extensibility seam (`ISanctionsScreeningProvider`, shaped
+  like `ADR-057`'s `IErasureKeyStore`), scoped to this application's own
+  composition root, not core Duplex. See [Periodic Screening and SAR
+  Escalation](features/periodic-screening-and-sar-escalation.md) for the
+  manual-decision flow the seam composes with.
 - **Accessibility (`ADR-073`)** — relying-party-facing verification
   screens render through this framework's client the same as any other
   domain; WCAG 2.1 AA applies here too, not just the

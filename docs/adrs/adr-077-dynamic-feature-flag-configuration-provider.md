@@ -78,4 +78,5 @@ Consequences:
 - `ADR-058` is unaffected, not revised — this ADR only adds an available
   answer to a question `ADR-058` deliberately left open, it doesn't
   change `ADR-058`'s own decision.
-- Resolves `docs/10-open-questions.md` row 13.
+- Resolves the design fork logged in `docs/changes/2026-07-31.md`
+  (formerly `docs/10-open-questions.md` row 13).

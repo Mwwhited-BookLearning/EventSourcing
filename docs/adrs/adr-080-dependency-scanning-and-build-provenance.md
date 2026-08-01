@@ -66,7 +66,8 @@ Consequences:
   (currently GitHub Actions or GitLab CI/CD) for this ADR's npm half to
   actually work as decided — flagged there, not forcing row 5's
   resolution.
-- Resolves `docs/10-open-questions.md` row 6.
+- Resolves the design fork logged in `docs/changes/2026-07-31.md`
+  (formerly `docs/10-open-questions.md` row 6).
 
 **Compliance note**: beyond `ADR-074`'s own FDA Section 524B driver
 (above), this ADR is directly relevant to the SLSA-provenance/dependency-
