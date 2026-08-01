@@ -168,6 +168,42 @@ subscription cursor) are a separate concern from this registration
 record — not yet placed in this file, still flagged as remaining
 propagation work per `ADR-060`'s own Consequences.
 
+## Feature flag state (`ADR-077`)
+
+```csharp
+public class FeatureFlagState
+{
+    public string AppId { get; set; } = default!;   // part of the composite key (ADR-030/ADR-075 — one tenant's flags never affect another's)
+    public string Key { get; set; } = default!;
+    public string Value { get; set; } = default!;    // JSON-encoded — a flag value isn't always boolean
+    public long LastAppliedSequenceNumber { get; set; } // watermark into the FeatureFlagSet event stream this row is folded from
+}
+```
+
+Folded from the reserved `FeatureFlagSet` event type (`ADR-067`'s
+control-plane-actions-as-reserved-events pattern — same write/read split
+as `AppTrustRoot`/`Role` above), not written directly. A custom
+`EventLogFeatureFlagConfigurationProvider` (`ADR-077`) polls this table
+on a short interval and fires an `IConfiguration` reload token when a
+value changes — the provider itself is application code, not a data-
+model concern, so it isn't specified further here.
+
+## Leader lease (`ADR-078`)
+
+```csharp
+public class LeaderLease
+{
+    public string WorkerRole { get; set; } = default!;  // "Router" | "UpcastMaterializer" | "PeerSyncOutboxPump" | "WebhookOutboxPump" — primary key
+    public string LeaseHolderId { get; set; } = default!; // this instance's own identity (host name + process id, or similar)
+    public DateTimeOffset LeaseExpiresAt { get; set; }
+}
+```
+
+Not `AppId`-scoped — unlike everything else in this file, a site's
+singleton background workers operate across every tenant a silo
+deployment hosts (`ADR-075`), not per tenant, so one lease row per
+`WorkerRole` is deployment-wide, not per-`AppId`.
+
 ## Per-provider index strategy for filterable fields
 
 When a `FilterableField` is marked `IsIndexed = true`, the registry service
