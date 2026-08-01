@@ -30,58 +30,15 @@ phase's items reference or build on an earlier phase's (or an earlier
 item within the same phase's) output where a real dependency exists,
 not the other way around. Within a phase, items are otherwise
 independent of each other and can be done in any order, or dispatched
-in parallel (`.claude/protocols/parallel-batch-dispatch.md`) — Phase 6
+in parallel (`.claude/protocols/parallel-batch-dispatch.md`) — Phase 5
 in particular is sized for that. Nothing here is a priority ranking
 beyond the dependency ordering itself; pick whichever phase suits
 available time.
 
-### Phase 1 — Quick, independent fixes
-
-No dependencies on anything else in this file; a mechanical sweep or a
-single small edit each. Good default starting point.
-
-- [ ] **Terminology collision never actually tracked: `ChannelOrigin.Origin`
-  vs. `OriginId`.** `docs/data/streaming-and-attachments.md`'s
-  `TelemetryChannel.Origin` (type `ChannelOrigin`, values `Origin |
-  Derived` — is this channel a raw source or computed from other
-  channels, `ADR-031`) and `StoredEvent.OriginId`/`EntityStoreRow.
-  LastAppliedOriginId` (which peer/site a replicated event came from,
-  `ADR-033`) are unrelated concepts that both use the word "Origin."
-  `CLAUDE.md`'s own "Conventions established so far" section has named
-  this as a flagged-but-unfixed collision for a while, pointing at
-  "Propagation status" for it — but no bullet for it ever actually
-  existed there; it fell through. Either rename one of the two, or add
-  an explicit disambiguation note next to both definitions (`docs/data/
-  streaming-and-attachments.md` and `docs/data/event-log.md`/`entity-
-  store.md`).
-- [ ] **`docs/features/auth.md`'s "partially superseded" banner doesn't
-  yet cite `ADR-046`/`047`/`048`** (RBAC, claims augmentation, SPIFFE).
-- [ ] **A `docs/naming.md`-adjacent note naming the SPDX/package-metadata
-  friction as an accepted consequence of the MIT Non-AI license choice**
-  — confirmed as deliberate (`docs/10-open-questions.md`, formerly row
-  17), but the actual note was never written.
-- [ ] **`TelemetryPointer`'s shape changed (`ADR-081`, singular object →
-  list) — every existing example showing the old shape is now stale.**
-  At minimum: `docs/domains/clinical-trials-device-telemetry/features/
-  device-onboarding-and-continuous-monitoring.md` and `docs/domains/
-  industrial-iot-predictive-maintenance/features/sensor-driven-
-  maintenance-alert.md` both show a bare `"telemetryPointer": {...}`
-  object in their Gherkin/JSON — needs wrapping in a one-element array
-  (`"telemetryPointer": [{...}]`) to match. A mechanical sweep, not a
-  design question — grep for `telemetryPointer` across `docs/`.
-- [ ] **Eight domain READMEs' GDPR breach-notification notes are stale**
-  — corrected count, this session (previously mis-tracked as just two):
-  `docs/domains/{digital-identity-kyc,clinical-trials-device-telemetry,
-  education-credentials,logistics-chain-of-custody,utilities-smart-
-  metering,insurance-telematics,pharmacovigilance,biobanking}/README.md`
-  all still describe the Art. 33/34 workflow as an open question; all
-  need updating to reflect `ADR-045`'s addendum (resolved: deliberately
-  out of framework scope) instead.
-
-### Phase 2 — Data-model correctness
+### Phase 1 — Data-model correctness
 
 Foundational: several later items (the build-plan restructuring in
-Phase 5, any future ADR touching these same entities) would silently
+Phase 4, any future ADR touching these same entities) would silently
 inherit whichever of these gaps isn't fixed first, so this phase comes
 before structural/content work rather than after.
 
@@ -99,9 +56,9 @@ before structural/content work rather than after.
   already defined in `docs/data/schema-registry.md`, just missing their
   `DbSet`) have no `DbSet` in `EventStoreContext`.
 
-### Phase 3 — Diagrams and library catalog
+### Phase 2 — Diagrams and library catalog
 
-Self-contained, no dependency on Phase 2 or the API-contract cluster
+Self-contained, no dependency on Phase 1 or the API-contract cluster
 below.
 
 - [ ] **Streaming Channel, Attachment, and Live View component diagrams
@@ -110,7 +67,7 @@ below.
   retrofitting** (known anomalies, fulfilled functional requirements per
   IEC 62304) — currently just a catalog, not yet a complete SOUP list.
 
-### Phase 4 — GraphQL/API-contract rewrite cluster
+### Phase 3 — GraphQL/API-contract rewrite cluster
 
 Internally sequenced — do these roughly in this order, since each later
 item is easier to get right once the earlier ones exist to reference,
@@ -134,7 +91,7 @@ though none is strictly blocked from starting early.
   `ADR-054` onward's new projects (a webhook dispatcher, a rate limiter,
   an SDK-generation step, device-input client packages) — flagged stale
   in the file's own banner, not silently wrong, but not rewritten either.
-  Easier once Phase 2's entities have settled homes and the contract
+  Easier once Phase 1's entities have settled homes and the contract
   above is current.
 - [ ] **Every banner'd `docs/features/*.md` file's Gherkin scenarios are
   themselves still unchanged** (`400`→`202`+`SchemaStatus`, OData→GraphQL
@@ -144,9 +101,9 @@ though none is strictly blocked from starting early.
   doc/Gherkin coverage. Do last in this cluster — needs the corrected
   contract shape above to write accurate scenarios against.
 
-### Phase 5 — Build-plan restructuring
+### Phase 4 — Build-plan restructuring
 
-Benefits from Phase 2 (accurate entities to reference) and Phase 4
+Benefits from Phase 1 (accurate entities to reference) and Phase 3
 (knowing what's actually built) being settled first, though it's a
 structural change to the tracking document itself, not new design
 content.
@@ -164,7 +121,7 @@ content.
   by topological sort — rather than more numbered phases tacked onto
   the end.
 
-### Phase 6 — Large content batch
+### Phase 5 — Large content batch
 
 Independent of every phase above; the single biggest item in this file,
 and the one best suited for parallel dispatch

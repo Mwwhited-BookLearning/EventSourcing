@@ -104,12 +104,13 @@ industrial IoT: custody-chain metadata isn't primarily personal data.
   other domain; WCAG 2.1 AA applies here too, though the driver is
   weaker than for a citizen-facing domain since users are business
   partners rather than the general public.
-- **GDPR breach notification (Art. 33/34)** — this domain already lists
-  GDPR for shipping-related PII above (a small slice of its overall
-  data); the 72-hour notification *workflow* itself remains an open
-  question (`docs/10-open-questions.md`) — `ADR-045`'s access audit log
-  supplies the forensic inputs, but the notification process itself
-  isn't designed yet.
+- **GDPR breach notification (Art. 33/34) — resolved, `ADR-045`'s
+  addendum.** This domain already lists GDPR for shipping-related PII
+  above (a small slice of its overall data); the 72-hour notification
+  *workflow* itself is deliberately out of framework scope — an
+  external legal/business process. `ADR-045`'s access audit log
+  supplies the forensic inputs a compliance team's own process would
+  use.
 
 ## Feature docs
 

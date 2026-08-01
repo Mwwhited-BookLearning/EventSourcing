@@ -108,7 +108,7 @@ tstore --> detector: streamed TelemetrySample rows
 detector -> detector: apply domain-specific anomaly model\n(bearing-wear frequency signature -- ADR-031 takes no position)
 
 alt high-confidence anomaly detected
-  detector -> inbox: POST /publish/MaintenanceAlertRaised\n{ payload: { AssetId: "pump-42", AlertSeverity: "High",\n  DetectorConfidence: 0.94, SuggestedAction: "Inspect bearing" },\n  telemetryPointer: { channelId: "pump-42-vibration",\n    fromTimestamp: t1, toTimestamp: t2 } }
+  detector -> inbox: POST /publish/MaintenanceAlertRaised\n{ payload: { AssetId: "pump-42", AlertSeverity: "High",\n  DetectorConfidence: 0.94, SuggestedAction: "Inspect bearing" },\n  telemetryPointer: [{ channelId: "pump-42-vibration",\n    fromTimestamp: t1, toTimestamp: t2 }] }
   inbox -> eventLog: INSERT StoredEvent\n(AuthorityStatus: "accepted" -- default, ADR-042 --\nno review-pending marker set)
   inbox --> detector: 202 { correlationId, status: "received",\n  authorityStatus: "accepted" }
   router -> fold: fold(StoredEvent)
@@ -117,7 +117,7 @@ alt high-confidence anomaly detected
   webhook -> cmms: POST <subscriber URL>\nwebhook-id/webhook-timestamp/webhook-signature (ADR-060)
   cmms --> webhook: 200 OK
 else low-confidence anomaly detected
-  detector -> inbox: POST /publish/MaintenanceAlertRaised\n{ payload: { AssetId: "pump-42", AlertSeverity: "Medium",\n  DetectorConfidence: 0.41, SuggestedAction: "Recommend inspection" },\n  telemetryPointer: { channelId: "pump-42-vibration",\n    fromTimestamp: t3, toTimestamp: t4 },\n  attestedClaims: { type: "detector-confidence", reviewPending: true,\n    confidence: 0.41, rule: "bearing-wear-v2" } }
+  detector -> inbox: POST /publish/MaintenanceAlertRaised\n{ payload: { AssetId: "pump-42", AlertSeverity: "Medium",\n  DetectorConfidence: 0.41, SuggestedAction: "Recommend inspection" },\n  telemetryPointer: [{ channelId: "pump-42-vibration",\n    fromTimestamp: t3, toTimestamp: t4 }],\n  attestedClaims: { type: "detector-confidence", reviewPending: true,\n    confidence: 0.41, rule: "bearing-wear-v2" } }
   note right of inbox
     An explicit review-pending marker, per ADR-042: "an automated
     detector that thinks it has found a pattern but whose result
@@ -411,7 +411,7 @@ Feature: Sensor-Driven Maintenance Alert
     When the detector POSTs to "/publish/MaintenanceAlertRaised" with body:
       """
       { "payload": { "AssetId": "pump-42", "AlertSeverity": "High", "DetectorConfidence": 0.94, "SuggestedAction": "Inspect bearing" },
-        "telemetryPointer": { "channelId": "pump-42-vibration", "fromTimestamp": "2026-07-30T09:00:00Z", "toTimestamp": "2026-07-30T09:00:05Z" } }
+        "telemetryPointer": [{ "channelId": "pump-42-vibration", "fromTimestamp": "2026-07-30T09:00:00Z", "toTimestamp": "2026-07-30T09:00:05Z" }] }
       """
     Then the response status should be 202
     And the response body should include "authorityStatus": "accepted"
@@ -427,7 +427,7 @@ Feature: Sensor-Driven Maintenance Alert
     When the detector POSTs to "/publish/MaintenanceAlertRaised" with body:
       """
       { "payload": { "AssetId": "pump-42", "AlertSeverity": "Medium", "DetectorConfidence": 0.41, "SuggestedAction": "Recommend inspection" },
-        "telemetryPointer": { "channelId": "pump-42-vibration", "fromTimestamp": "2026-07-30T10:00:00Z", "toTimestamp": "2026-07-30T10:00:03Z" },
+        "telemetryPointer": [{ "channelId": "pump-42-vibration", "fromTimestamp": "2026-07-30T10:00:00Z", "toTimestamp": "2026-07-30T10:00:03Z" }],
         "attestedClaims": { "type": "detector-confidence", "reviewPending": true, "confidence": 0.41, "rule": "bearing-wear-v2" } }
       """
     Then the response status should be 202
@@ -467,7 +467,7 @@ Feature: Sensor-Driven Maintenance Alert
     When a detector POSTs to "/publish/MaintenanceAlertRaised" with body:
       """
       { "payload": { "AssetId": "pump-42", "AlertSeverity": "High", "DetectorConfidence": 0.97, "SuggestedAction": "Escalate to replacement" },
-        "telemetryPointer": { "channelId": "pump-42-vibration", "fromTimestamp": "2026-07-30T11:00:00Z", "toTimestamp": "2026-07-30T11:00:02Z" },
+        "telemetryPointer": [{ "channelId": "pump-42-vibration", "fromTimestamp": "2026-07-30T11:00:00Z", "toTimestamp": "2026-07-30T11:00:02Z" }],
         "parentEventIds": ["alert-9"] }
       """
     Then the response status should be 202

@@ -129,7 +129,7 @@ telemetryDb --> read: TelemetrySample rows (SpO2 values)
 read --> detector: streamed samples
 detector -> detector: apply desaturation-threshold rule\n(domain-specific, ADR-031 takes no position)
 alt SpO2 breaches threshold -- something worth recording
-  detector -> inbox: POST /publish/AdverseEventReported\n{ payload: { AeId: "ae-1042", SubjectId: "S-0091",\n  Severity: "Severe", SeriousAdverseEvent: true },\n  telemetryPointer: { ChannelId: "vitals-s0091",\n  FromTimestamp: "2026-07-29T14:02:10Z" },\n  attestedClaims: { reviewPending: true,\n  reason: "auto-detected desaturation event" } }
+  detector -> inbox: POST /publish/AdverseEventReported\n{ payload: { AeId: "ae-1042", SubjectId: "S-0091",\n  Severity: "Severe", SeriousAdverseEvent: true },\n  telemetryPointer: [{ ChannelId: "vitals-s0091",\n  FromTimestamp: "2026-07-29T14:02:10Z" }],\n  attestedClaims: { reviewPending: true,\n  reason: "auto-detected desaturation event" } }
   inbox -> eventLog: INSERT StoredEvent\n(AuthorityStatus: "pending_review")
   inbox --> detector: 202 { status: "received", authorityStatus: "pending_review" }
   note right of inbox

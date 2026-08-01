@@ -6,7 +6,7 @@
 public class StoredEvent
 {
     public long SequenceNumber { get; set; }   // global monotonic order, identity column -- ARRIVAL order at this store, not logical order (ADR-029)
-    public string? OriginId { get; set; }       // which site/peer this event originated at, in a multi-site mesh -- null/local-site-implied for a single-site deployment (ADR-033; propagated to this file, ADR-090)
+    public string? OriginId { get; set; }       // which site/peer this event originated at, in a multi-site mesh -- null/local-site-implied for a single-site deployment (ADR-033; propagated to this file, ADR-090). NOT related to TelemetryChannel.Origin (raw-source-vs-derived, ADR-031, docs/data/streaming-and-attachments.md) -- both use the word "Origin" for unrelated concepts; disambiguated explicitly, not renamed
     public string? LogicalClock { get; set; }   // hybrid logical clock value assigned at the origin site, for cross-site ordering (ADR-033; propagated to this file, ADR-090)
     public Guid EventId { get; set; }          // unique — client-supplied for idempotent retries, or server-generated (ADR-011); plays the "CorrelationId" role too
     public string EntityId { get; set; } = default!;   // {appId}:{entityType}:{uniqueId} — required (ADR-021); supersedes the old optional StreamId
