@@ -119,10 +119,6 @@ here instead of inlining.
   object in their Gherkin/JSON — needs wrapping in a one-element array
   (`"telemetryPointer": [{...}]`) to match. A mechanical sweep, not a
   design question — grep for `telemetryPointer` across `docs/`.
-- [ ] **Domain-doc propagation for the four newest ADRs** (`076`–`079`):
-  `docs/domains/digital-identity-kyc/README.md`'s Special Concerns note
-  ("no existing ADR addresses OFAC sanctions screening... a candidate
-  for a future ADR") needs updating to point at `ADR-079` instead.
 - [ ] **Eight domain READMEs' GDPR breach-notification notes are stale**
   — corrected count, this session (previously mis-tracked as just two):
   `docs/domains/{digital-identity-kyc,clinical-trials-device-telemetry,

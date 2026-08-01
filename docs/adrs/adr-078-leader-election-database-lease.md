@@ -83,5 +83,6 @@ Consequences:
 - Clarifies `ADR-024`'s actual scope (write-time conflict flagging only)
   — worth a cross-reference wherever `ADR-024`/`ADR-029` could otherwise
   be misread as already covering concurrent-fold safety.
-- Resolves `docs/10-open-questions.md` row 14. `06-solution-structure.md`'s
+- Resolves the design fork logged in `docs/changes/2026-07-31.md`
+  (formerly `docs/10-open-questions.md` row 14). `06-solution-structure.md`'s
   spec-caching assumption remains separately open.

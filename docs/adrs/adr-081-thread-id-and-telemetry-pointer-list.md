@@ -73,4 +73,5 @@ Consequences:
 - `ADR-031` itself gets a struck-through pointer at the specific revised
   bullet (`TelemetryPointer`'s shape), per `.claude/protocols/additive-
   history-editing.md` — the rest of `ADR-031`'s decision is unaffected.
-- Resolves `docs/10-open-questions.md` row 20.
+- Resolves the design fork logged in `docs/changes/2026-07-31.md`
+  (formerly `docs/10-open-questions.md` row 20).

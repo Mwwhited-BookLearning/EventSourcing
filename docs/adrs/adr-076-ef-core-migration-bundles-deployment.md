@@ -63,7 +63,8 @@ Consequences:
 - `docker-compose.yml` (`ADR-026`'s production path) needs a migration/
   bundle-apply step (or an init container running one) sequenced ahead
   of the `Host` services — flagged as propagation work, not yet done.
-- Resolves `docs/10-open-questions.md` row 12.
+- Resolves the design fork logged in `docs/changes/2026-07-31.md`
+  (formerly `docs/10-open-questions.md` row 12).
 
 **Compliance note**: this ADR is the concrete mechanism satisfying
 `ADR-038`'s N-1/N+1 rollback-safety promise in practice — a migration

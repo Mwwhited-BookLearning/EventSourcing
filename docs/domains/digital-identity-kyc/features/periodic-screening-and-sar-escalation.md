@@ -1,21 +1,22 @@
 # Feature: Periodic Screening and SAR Escalation
 
-Context: this domain's own README, and `docs/10-open-questions.md` row 1,
-track a genuinely unresolved fork: should OFAC sanctions screening and
-BSA Suspicious Activity Report (SAR) filing be a **framework-level
-extensibility seam** (an `ISanctionsScreeningProvider`-shaped interface,
-the README's own suggested analogy to `ADR-057`'s `IErasureKeyStore`) or
-**purely domain/application logic layered on top of what already
-exists**? **This doc deliberately answers that question by
-demonstration, not by decision** — it builds the second option in full,
-using only mechanisms this design already has, and explicitly does
-**not** introduce any new framework-level interface. `docs/
-10-open-questions.md` row 1 stays open after this doc — nothing here
-argues that the framework-level seam option is wrong, only that the
-application-level option is *buildable* without one. Whether a future
-domain would find enough of this reusable to justify promoting some part
-of it to a framework seam is exactly the question row 1 already asks,
-left for whoever weighs that fork properly.
+Context: this domain's own README used to track a genuinely unresolved
+fork — should OFAC sanctions screening and BSA Suspicious Activity
+Report (SAR) filing be a **framework-level extensibility seam** (an
+`ISanctionsScreeningProvider`-shaped interface, analogous to `ADR-057`'s
+`IErasureKeyStore`) or **purely domain/application logic layered on top
+of what already exists**? **Resolved, `ADR-079` (see `docs/
+changes/2026-07-31.md`): yes, an extensibility seam — but scoped to this
+application's own composition root, not core Duplex**, the first
+domain-scoped (non-core) extension point in this design. **This doc
+predates that resolution and deliberately built the pure-application-
+logic version in full first** — using only mechanisms this design
+already had, introducing no new interface — which turned out to be
+exactly the right groundwork: `ADR-079`'s seam wraps an automated
+screening *signal* around the identical manual-decision flow this doc
+already demonstrates, rather than replacing it. Nothing here needs
+rewriting as a result; a future pass implementing `ISanctionsScreeningProvider`
+composes with this doc's flow, doesn't compete with it.
 
 The mechanisms this doc composes, all already Accepted: `ADR-035`/
 `ADR-042` (a sanctions-list hit is captured as an **automated detector's
@@ -417,9 +418,10 @@ Feature: Periodic Screening and SAR Escalation
   So that no automated match is ever trusted as a filed SAR without an
   explicit, non-repudiable human decision
 
-  # This doc demonstrates the APPLICATION-level answer to docs/10-open-
-  # questions.md row 1 (framework seam vs. domain logic for OFAC/SAR) --
-  # it does not close that question. EntityId format is
+  # This doc demonstrates the manual-decision flow ADR-079's
+  # ISanctionsScreeningProvider seam (scoped to this application, not
+  # core Duplex -- see docs/changes/2026-07-31.md) composes with, not
+  # replaces. EntityId format is
   # {appId}:{entityType}:{uniqueId} (ADR-021); "applicant-1001" is the
   # same accepted identity record customer-onboarding-and-identity-
   # verification.md's scenarios establish.

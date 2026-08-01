@@ -60,4 +60,5 @@ Consequences:
   is that pair's own maintenance burden, explicitly accepted — consistent
   with `ADR-075`'s own "servers are cheaper than lawsuits," bespoke-
   integration-cost-over-shared-infrastructure posture.
-- Resolves `docs/10-open-questions.md` row 22.
+- Resolves the design fork logged in `docs/changes/2026-07-31.md`
+  (formerly `docs/10-open-questions.md` row 22).

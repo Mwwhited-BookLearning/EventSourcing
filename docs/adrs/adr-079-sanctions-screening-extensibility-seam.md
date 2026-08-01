@@ -61,4 +61,5 @@ Consequences:
   future domain-specific needs (e.g. a similar automated-screening shape
   in a different regulated domain) can point back to, rather than each
   independently re-litigating "does this belong in core."
-- Resolves `docs/10-open-questions.md` row 1.
+- Resolves the design fork logged in `docs/changes/2026-07-31.md`
+  (formerly `docs/10-open-questions.md` row 1).
