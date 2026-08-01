@@ -1,19 +1,21 @@
-# API Contracts — OpenAPI (Publish) and AsyncAPI (Follow)
+# API Contracts — OpenAPI (Publish) and GraphQL (everything else)
 
-Both documents are generated from the Schema Registry; neither hand-authors
-JSON Schema. The registry is the single source of truth.
+Both the OpenAPI Publish contract and the GraphQL schema are generated
+from the Schema Registry; neither hand-authors JSON Schema or SDL. The
+registry is the single source of truth.
 
-> **Partially superseded, per `ADR-037`.** The **Publish** contract below
-> (`schemaVersion` required, `202` + status envelope, `EventUpcastFailed`)
-> is current — `ADR-023`/`ADR-020` are already reflected here. The
-> **Follow** (AsyncAPI/SSE, `$filter` in a `QUERY` body) and **Lineage**
-> (`QUERY /events/{id}/...`) sections below describe the OData-era
-> surface `ADR-037` replaced entirely with a GraphQL Gateway (Query for
-> current state/history, Subscription for live changes — still over the
-> HTTP `QUERY` method, for the same PII/PHI-in-URLs reason, just carrying
-> a GraphQL document instead of an OData expression). Rewriting those
-> sections for the actual GraphQL contract is flagged as outstanding
-> propagation work, not yet done — see `CLAUDE.md`.
+> **Rewritten this session, per `ADR-037` — the queued companion
+> rewrite is now done.** Follow, Lineage, and Registry-listing (the
+> sections that used to describe the OData-era AsyncAPI/`$filter`
+> surface in full) are rewritten below for the actual GraphQL contract.
+> `ADR-023`/`ADR-020`'s Publish contract needed no such rewrite — `ADR-
+> 037` replaced only the *read* surfaces, never Publish — but is updated
+> for `ADR-050`'s `RequiredClaims` generalization and `ADR-066`'s RFC
+> 9470 step-up challenge. New sections cover what this file never had at
+> all: `ADR-040`'s ticket exchange, `ADR-072`'s bulk-ingestion/
+> interchange endpoints, `ADR-009`/`ADR-050`'s `revealField` mutation,
+> `ADR-068`'s export/playback fields, and `ADR-060`'s webhook-
+> registration mutation.
 
 ## Error responses
 
@@ -24,6 +26,9 @@ why. In the endpoint-specific sections below, a response line like
 `'403': Token valid but missing the events:publish scope` means "a
 Problem Details response with that `detail`," not a bespoke body — assume
 the shape from `ADR-013` throughout rather than a per-endpoint schema.
+**GraphQL errors follow the same underlying reasoning, expressed in
+GraphQL's own partial-success shape instead** — see "GraphQL error
+shape" under Follow/Lineage below, not a second Problem Details profile.
 
 ## Authentication & Authorization
 
@@ -45,13 +50,17 @@ Authorization is scope-based, one policy per scope, mapped to endpoints as:
 | Endpoint | Required scope |
 |---|---|
 | `POST /publish/{event-type}` | `events:publish` |
-| `QUERY /follow/{event-type}` (`ADR-012`) | `events:follow` |
-| `QUERY /events/{id}/parents`, `/children`, `/ancestors`, `/descendants` (`ADR-012`) | `events:lineage:read` |
+| `POST /publish/batch` (`ADR-072`) | `events:publish` |
+| GraphQL `Subscription` (Follow, `ADR-037`) | `events:follow` |
+| GraphQL `Query` — lineage fields (`ancestors`/`descendants`/`parents`/`children`) | `events:lineage:read` |
+| GraphQL `Query` — registry listing | `registry:admin` |
+| GraphQL `Mutation` — `revealField`, `registerWebhookSubscription`, `exportLineage`, `playbackAsOf` | scope per mutation, named in each section below |
 | `PUT /registry/{event-type}` | `registry:admin` |
-| `QUERY /registry` (list, paginated — `ADR-012`), `GET /registry/{event-type}`, `GET /registry/{event-type}/{version}` | `registry:admin` |
-| `GET /openapi.json`, `GET /asyncapi.json` | none (anonymous — contract shape only, no event data) |
+| `POST /oauth/token` (ticket issuance, `ADR-040`) | requires an existing valid bearer token as the Token Exchange subject |
+| `GET /openapi.json`, GraphQL schema introspection | none (anonymous — contract shape only, no event data) |
 
-OpenAPI documents this with a shared security scheme:
+OpenAPI documents the Publish contract with a shared security scheme
+(unchanged from before this rewrite):
 
 ```yaml
 components:
@@ -74,27 +83,39 @@ paths:
           description: Token valid but missing the required scope
 ```
 
-**Browser SSE, post-`ADR-012`**: Follow is `QUERY`, not `GET`, so the
-native browser `EventSource` API — which can only issue `GET`, with no
-body and no custom headers — cannot connect to it at all. A browser client
-uses `fetch()` with a `QUERY` request and manually reads the
-`text/event-stream` response body instead. Because `fetch()` *can* set a
-real `Authorization` header, there is no more `access_token` query-string
-workaround for Follow — that mechanism existed specifically to work around
-`EventSource`'s limitation, and is removed along with it (`ADR-012`),
-not merely superseded. Every caller of Follow, browser or not,
-authenticates identically: header only.
+GraphQL authorization is enforced per-field/per-operation via
+HotChocolate's own authorization directives, checked against the same
+bearer token — not a second auth stack, the identical scopes/claims
+table above applied at GraphQL's own enforcement points instead of
+OpenAPI's `security` blocks.
+
+**Browser transport, post-`ADR-012`/`ADR-037`**: every GraphQL operation
+(Query, Mutation, Subscription) travels over the HTTP `QUERY` method
+(`ADR-012`), never `GET` — the query document itself, which can carry
+PII/PHI-bearing filter arguments, stays out of URLs/access-logs/proxy
+caches. A browser client uses `fetch()` with a `QUERY` request for
+Query/Mutation, and the same `fetch()`-initiated connection for
+Subscription (below) — never the native `EventSource` API, which can
+only issue `GET` with no custom headers and so cannot carry a real
+`Authorization` header at all. There is no `access_token` query-string
+workaround anywhere in this contract — removed along with
+`EventSource` support (`ADR-012`), not merely superseded.
 
 ### Event-type security (required claims) — a second authorization dimension
 
 The scope table above answers "can this caller call this *operation* at
-all." A separate, per-event-type check (`ADR-008`) answers "may this caller
-touch *this event type's data*": `EventTypeDefinition.RequiredPublishClaim`
-and `RequiredReadClaim` (`02-data-model.md`), each an optional single
-`"type:value"` claim string, checked with `ClaimsPrincipal.HasClaim`. Unlike
-the four scopes, these aren't static ASP.NET Core policies registered at
-startup — they're data loaded from the registry per request, so the check
-happens in application code after the event type is resolved, not via
+all." A separate, per-event-type check (`ADR-008`, generalized to a list
+by `ADR-050`) answers "may this caller touch *this event type's data*":
+`EventTypeDefinition.RequiredClaims` (`docs/data/schema-registry.md`) —
+a list of `{Direction, Claim}` pairs, each `Claim` an opaque
+`"type:value"` string, checked with `ClaimsPrincipal.HasClaim`. **`OR`
+semantics within one `Direction` by default** (`ADR-050`) — holding
+*any one* of the `Publish`-direction (or `Read`-direction) claims
+satisfies the gate; `ADR-008`'s original "exactly one claim per
+direction" limitation no longer applies. Unlike the four scopes, these
+aren't static ASP.NET Core policies registered at startup — they're
+data loaded from the registry per request, so the check happens in
+application code after the event type is resolved, not via
 `[Authorize(Policy = "...")]` (see `06-solution-structure.md`).
 
 Both checks apply, in order: scope first (cheap, static), then the
@@ -103,64 +124,223 @@ looks the same to the caller; if you need to distinguish "missing scope"
 from "missing required claim" for debugging, that's in the response detail,
 not the status code.
 
-- `POST /publish/{event-type}`: 403 if `RequiredPublishClaim` is set and the
-  caller's token lacks it — in addition to the existing `events:publish`
-  scope check.
-- `QUERY /follow/{event-type}` (`ADR-012`): 403 **at connection time** if
-  `RequiredReadClaim` is set and the caller's token lacks it — in addition
-  to `events:follow`.
-- Lineage API: see "RequiredReadClaim and the Lineage API" below — only
-  the root `{eventId}` a call names is pass/fail (`403` if restricted);
-  every node the traversal *discovers* is checked independently and
-  stubbed (`restricted: true`), never fails the rest of the response.
-- A caller who lacks `RequiredReadClaim` for an event that does exist gets
-  `403`, not `404` — distinguishable from a truly unknown `eventId`, which
-  is still `404`. This deliberately leaks existence rather than hiding it
-  behind a uniform `404`; see `ADR-008`'s consequences for why that
-  trade-off was made explicitly rather than left as an oversight.
+- `POST /publish/{event-type}`: `403` if a `Publish`-direction
+  `RequiredClaims` entry is configured and the caller's token holds
+  none of them — in addition to the existing `events:publish` scope
+  check.
+- GraphQL `Subscription` (Follow): `403` **at connection time** if a
+  `Read`-direction `RequiredClaims` entry is configured and the
+  caller's token holds none of them — in addition to `events:follow`.
+- Lineage query fields: see "RequiredClaims and the Lineage API" below —
+  only the root `eventId` a query names is pass/fail (`403` if
+  restricted); every node the traversal *discovers* is checked
+  independently and stubbed (`restricted: true`), never fails the rest
+  of the response.
+- A caller who lacks the required `Read`-direction claim for an event
+  that does exist gets `403`, not `404` — distinguishable from a truly
+  unknown `eventId`, which is still `404`. This deliberately leaks
+  existence rather than hiding it behind a uniform `404`; see `ADR-008`'s
+  consequences for why that trade-off was made explicitly rather than
+  left as an oversight.
 
 Property-level **masking** (wrapping individual field values in a
-`{value:...}`/`{masked:"***"}` envelope within an event the caller
-otherwise has `RequiredReadClaim` for) is a related, finer-grained feature
-— design accepted, build deprioritized to after Phases 0–6 — see `ADR-009`
-and the "Masking" note under "AsyncAPI (follow side)" below for where it's
-actually applied.
+`{value:...}`/`{masked:"***"}`/`{erased:true}` envelope within an event
+the caller otherwise holds the required claim for) is a related,
+finer-grained feature — see `ADR-009`/`ADR-050`/`ADR-057` and "GraphQL
+schema shape (Follow)" below for where it's actually applied, and
+"`revealField` — explicit reveal-on-demand" for the display-mask
+refinement.
+
+### Step-up authentication for signature-required event types (`ADR-066`, RFC 9470)
+
+An `EventTypeDefinition` may configure `RequiredSignature: { AcrValues,
+MaxAge }`. If a publish targets such a type and the caller's current
+token's `acr` claim doesn't meet the configured `AcrValues`, or the
+token is older than `MaxAge`, the Inbox responds with **RFC 9470**'s
+step-up challenge instead of accepting the publish:
+
+```
+POST /publish/{event-type}
+Authorization: Bearer <token, acr insufficient>
+
+HTTP/1.1 401 Unauthorized
+WWW-Authenticate: Bearer error="insufficient_user_authentication",
+  error_description="A higher authentication context is required",
+  max_age=300, acr_values="urn:eventstore:step-up"
+```
+
+The client redirects the caller through the IdP to step up (password
+re-entry, TOTP, WebAuthn — however that IdP implements it, not this
+framework's concern), then retries the identical publish with the
+resulting, stronger token. On acceptance, the stored event's `Signature`
+envelope field (`SignerId`, `SignedAt`, `Meaning` — required, rejected
+if absent — `Acr`) records the sign-off; see `docs/data/event-log.md`.
+This is the one case since `ADR-023`'s persist-everything posture where
+a publish can be legitimately turned away before it's stored, alongside
+the pre-existing "envelope itself is unparseable" exception — the
+event's own *data* is never rejected for shape/content reasons; only
+*insufficient authentication strength* for a signature-required type
+short-circuits before storage.
+
+## Ticket exchange for header-incapable clients (`ADR-040`)
+
+An `<video src>`/`<img src>`/`<a href>` pointed at streaming playback
+(`ADR-031`) or attachment retrieval (`ADR-032`) can't carry an
+`Authorization` header. A three-hop flow, each hop a real, already-
+adopted mechanism:
+
+```
+1. POST /oauth/token                              (header-based, DPoP-proved, normal caller)
+   grant_type=urn:ietf:params:oauth:grant-type:token-exchange
+   subject_token=<bearer JWT>
+   requested_token_type=urn:eventstore:token-type:ticket
+   → { "ticket": "<opaque, single-use, random>", "expiresIn": 60 }
+
+2. (client-side, no network call)
+   sig = base64url(HMAC-SHA256(ticket, sharedSecret))
+   target URL becomes: /stream/{channelId}?ticket=...&sig=...
+                    or: /attachments/{contentHash}?ticket=...&sig=...
+
+3. GET /stream/{channelId}?ticket=...&sig=...      (the header-incapable request itself)
+   → Streaming/Attachment Service forwards ticket+sig to:
+     POST /oauth/introspect
+     token=<ticket>
+     sig=<sig>
+     → { "active": true, ...original token's claims } (ticket now consumed, single-use)
+```
+
+Every ordinary API call in this document keeps authenticating via
+`Authorization`/`DPoP` exactly as specified above — this flow exists
+*only* for the two named header-incapable retrieval paths, not as a
+general auth alternative. See `ADR-040` for the full three-hop reasoning
+and the honest residual-risk accounting.
+
+## Bulk ingestion and external interchange adapters (`ADR-072`)
+
+**Bulk/batch ingestion**: `POST /publish/batch` accepts an NDJSON or
+JSON-array body of multiple event submissions in one request — each
+inside the batch is validated and persisted exactly as an individual
+`POST /publish/{event-type}` call would be (same `202` + status-
+envelope-per-item semantics, same `ADR-023` persist-everything posture);
+this is a transport-batching convenience, not a new persistence model or
+a new validation path.
+
+**External interchange-format adapters** (`IInterchangeFormatAdapter` —
+`Hl7V2Adapter`, `FhirAdapter`, `IchE2bR3Adapter`, `Gs1EpcisAdapter`) are
+**not a new public endpoint in this contract at all** — each adapter
+transforms an externally-standardized inbound format into this
+framework's own registered `JsonSchema` shape, then publishes the
+result through the *ordinary* publish path above (individual or
+`batch`), inheriting `ADR-023`'s persist-everything posture and
+`ADR-035`'s non-authoritative capture. HL7v2 specifically arrives over
+its own real transport (MLLP/TCP, not HTTP) ahead of that adapter step —
+outside this HTTP API contract's scope entirely, documented in `ADR-072`
+itself, not duplicated here.
+
+## `revealField` — explicit reveal-on-demand (`ADR-009`, `ADR-050`)
+
+A GraphQL mutation, distinct from an ordinary masked-field read:
+
+```graphql
+mutation {
+  revealField(entityId: "trial1:Patient:S-0091", eventId: "3fa8...afa6", fieldPath: "$.SubjectNationalId") {
+    value
+  }
+}
+```
+
+Checks the field's `requiredClaim` (and, if configured, `ADR-066`'s
+step-up authentication — a field can require a *fresh* re-
+authentication specifically to reveal it, not just an ordinary claim)
+**at the moment of the request**, writes an `ADR-045` `AccessLogEntry`
+with `Action: "reveal"` naming the specific field path (sharper audit
+granularity than an ordinary bulk query already has), and returns the
+real value only if authorized — otherwise the same `403` Problem
+Details shape any other claim-gated read uses. Never affects the
+underlying event's stored shape; a caller without the claim, or who
+never calls `revealField` at all, keeps seeing the ordinary
+`{masked: "..."}`/`{erased: true}` wrapper.
+
+## Lineage export and bitemporal playback (`ADR-068`)
+
+Two new GraphQL query fields on the same Gateway every other query goes
+through — an export or a playback position is a read, enforced through
+the identical `RequiredClaims`/masking/access-audit pipeline as any
+other query, never a privileged bypass:
+
+```graphql
+query {
+  exportLineage(rootEventId: "3fa8...afa6", direction: DESCENDANTS) {
+    bundleUrl   # NDJSON bundle + manifest hash + RFC 3161 timestamp (ADR-086) over that hash
+  }
+}
+
+query {
+  playbackAsOf(entityId: "trial1:Patient:S-0091", systemTime: "2026-06-01T00:00:00Z") {
+    data        # reconstructed state as this design's own record stood as of systemTime
+    extensions
+  }
+}
+```
+
+`exportLineage`'s NDJSON bundle is the same portable format `04-odata-
+filter-pushdown.md`'s (now `04-*.md`'s) archival mechanism (`ADR-089`)
+also uses for a detached Event Log segment — one serialization
+convention, reused, not two. `playbackAsOf` reconstructs *system-time*
+state (what this design knew as of a point in time), a different axis
+from `mode=replay`'s event-arrival-order replay — see `ADR-068` for the
+full distinction and the offline-player export target these same fields
+also feed.
+
+## Webhook subscription registration (`ADR-060`)
+
+```graphql
+mutation {
+  registerWebhookSubscription(
+    targetUrl: "https://sponsor.example.com/hooks/eventstore",
+    eventTypes: ["AdverseEventReported"]
+  ) {
+    subscriptionId
+    signingSecret   # returned once, at registration — a Standard Webhooks-shaped whsec_ value
+  }
+}
+```
+
+Requires `registry:admin` (subscription registration is control-plane
+configuration, the same scope tier as schema registration). The
+`FixedClaimsSnapshot` `ADR-060` computes at registration time — the
+claim set every future delivery to this subscription is masked against
+— is computed once, server-side, from the registering caller's own
+token; not a client-supplied input to this mutation.
 
 ## Generation timing
 
-Recommendation: **generate on demand**, computed fresh from current registry
-state on each request to `/openapi.json` and `/asyncapi.json`, with a short
-in-memory cache (e.g. 60s) invalidated on schema registration. This avoids
-staleness bugs without needing a cache-invalidation pipeline. Revisit only if
-the number of registered event types becomes large enough (hundreds+) that
-generation cost is measurable — track as `ADR-002`.
+Recommendation: **generate on demand**, computed fresh from current
+registry state on each request, with a short in-memory cache (e.g. 60s)
+invalidated on schema registration — applies identically to the OpenAPI
+Publish document and the per-`AppId` GraphQL SDL (`ADR-037`). This
+avoids staleness bugs without needing a cache-invalidation pipeline.
+Revisit only if the number of registered event types becomes large
+enough (hundreds+) that generation cost is measurable — track as
+`ADR-002`.
 
-**Both endpoints are anonymous** (per the scope table above) and both are
-served by `GET /openapi.json` / `GET /asyncapi.json`, mapped once in
-`EventStore.Host.Core` and shared identically by all three
-`EventStore.Host.<Provider>` deployables (`ADR-001`) — each a thin route
-that asks its builder for the (possibly cached) document and returns it as
-`application/json`, no other endpoint-specific logic.
+**Both `/openapi.json` and GraphQL schema introspection are anonymous**
+(per the scope table above), served by `EventStore.Host.Core` and
+shared identically by all three `EventStore.Host.<Provider>` deployables
+(`ADR-001`).
 
-**How each document is actually built** — both `OpenApiDocumentBuilder` and
-`AsyncApiDocumentBuilder` parse every active event type's registered schema
-into the *same* `Microsoft.OpenApi` `OpenApiSchema` object (via
-`EventSchemaConverter`), since AsyncAPI 3.0 deliberately reuses OpenAPI's
-Schema Object dialect — there is one shared schema representation, not two.
-`OpenApiDocumentBuilder` embeds it **unwrapped** (publish payloads are
-never wrapped by masking, per `ADR-009`) and serializes the whole document
-natively via `Microsoft.OpenApi`'s own writer. `AsyncApiDocumentBuilder`
-first runs it through `MaskingSchemaTransformer` — which rewrites any
-`x-masking`-carrying node into the `oneOf[value,masked,erased]` (`ADR-057`) wrapper described
-below — then hand-builds the surrounding channels/messages/operations
-envelope as JSON, since no mature .NET library fits AsyncAPI generation
-from a runtime registry. `MaskingSchemaTransformer` is schema-only and
-claims-independent (the wire *shape* is the same for every caller), so it
-exists as soon as AsyncAPI generation does — it is not deferred alongside
-masking's runtime enforcement (`IPayloadMasker`); see `ADR-002` and
-`06-solution-structure.md` for the full mechanism.
+**How the GraphQL schema is actually built**: composed per-`AppId`
+(`ADR-030`/`ADR-037`) directly from that application's own registered
+event types — a filter-input type for a given event type only ever
+exposes fields actually declared `FilterableField` for it (see `04-*.md`,
+formerly `04-odata-filter-pushdown.md`, for the full pushdown mechanism
+this composition drives). A maskable property's GraphQL type is the
+same `oneOf`-shaped wrapper `MaskingSchemaTransformer` already produces
+for the OpenAPI/AsyncAPI side (`value`/`masked`/`erased`, `ADR-057`) —
+one shared schema-transform concept, expressed in whichever document
+format is being generated.
 
-## OpenAPI (publish side)
+## OpenAPI (publish side) — unchanged by `ADR-037`
 
 - OpenAPI version: 3.1.x (aligns with JSON Schema 2020-12 — schemas are
   referenced directly, not translated).
@@ -171,7 +351,7 @@ masking's runtime enforcement (`IPayloadMasker`); see `ADR-002` and
   registered version of `{event-type}`'s schema `payload` is shaped for,
   `ADR-020`), `payload` (validated against *that* version specifically,
   not automatically "whichever is active"), plus optional
-  `parentEventIds` (lineage metadata — see `02-data-model.md`, "Event
+  `parentEventIds` (lineage metadata — see `docs/data/event-log.md`, "Event
   lineage"), optional `eventId` (idempotency key — see "Publish
   idempotency", `ADR-011`), optional `expectedVersion` (the Entity Store
   `Version` this patch was based on — enables conflict detection,
@@ -179,7 +359,8 @@ masking's runtime enforcement (`IPayloadMasker`); see `ADR-002` and
   for an event type whose `EntityIdField`, `ADR-021`, is itself derivable
   from a field already inside `payload`). If `schemaVersion` is behind
   the active version, the payload is also run through `UpcastChain`
-  (`ADR-018`) as a live compatibility check. **Per `ADR-023`, none of
+  (`ADR-018`, now CEL/JSONata-driven per `ADR-053`, not OData `compute()`)
+  as a live compatibility check. **Per `ADR-023`, none of
   this blocks persistence** — an unknown `schemaVersion`, a
   schema-invalid `payload`, or a failed upcast no longer produce a `400`;
   they persist with an advisory `SchemaStatus` instead (see the response
@@ -281,6 +462,8 @@ paths:
                   authorityStatus: { type: string, enum: [unattested, pending_review, accepted, rejected] }
                   conflictFlag: { type: boolean }
                   reason: { type: string, nullable: true }
+                  sequenceNumber: { type: integer, format: int64, description: "ADR-090 -- lets a caller filter a later read for read-your-writes" }
+                  originId: { type: string, nullable: true, description: "ADR-033/090 -- null for a single-site deployment" }
         '400':
           description: >
             The envelope itself couldn't be parsed as a valid publish
@@ -290,9 +473,9 @@ paths:
             used for a schema-invalid payload, an unknown schemaVersion,
             or a failed upcast (ADR-023) — those are 202 + SchemaStatus.
         '401':
-          description: Missing or invalid Bearer token
+          description: Missing or invalid Bearer token, or an RFC 9470 step-up challenge (ADR-066) — see WWW-Authenticate
         '403':
-          description: Token valid but missing the events:publish scope
+          description: Token valid but missing the events:publish scope or a required claim
         '404':
           description: Unknown event-type
         '409':
@@ -317,214 +500,146 @@ type — no manual authoring, no drift.
 this ADR (server-generated `EventId`, no idempotency guarantee). Supply it
 to make retries safe:
 
-1. First attempt: `{ "payload": {...}, "eventId": "3fa8...afa6" }` → `201`,
-   stored with that `EventId`.
+1. First attempt: `{ "payload": {...}, "eventId": "3fa8...afa6" }` →
+   `202`, stored with that `EventId`.
 2. Connection drops before the response arrives; caller retries the exact
    same request → the store finds the existing row by `EventId`, confirms
-   the content hash matches, and replays the **original** `201` response.
+   the content hash matches, and replays the **original** response.
    No second `StoredEvent` is created.
 3. Caller instead retries with the same `eventId` but a *different*
    `payload` → `409 Conflict` — this `eventId` is already bound to
    different content, which is treated as a caller error (idempotency-key
    reuse), not a fresh publish and not silently accepted.
 
-Checked immediately after the `RequiredPublishClaim` check (`ADR-008`),
-before schema/parent-link validation — an idempotent replay skips both
-(they already passed the first time) and performs no write at all.
+Checked immediately after the `RequiredClaims` (`Publish` direction)
+check (`ADR-008`/`ADR-050`), before schema/parent-link validation — an
+idempotent replay skips both (they already passed the first time) and
+performs no write at all.
 
-## AsyncAPI (follow side)
+## Follow — GraphQL Subscription over SSE (`ADR-037`)
 
-- AsyncAPI version: 3.0.x.
-- **Method is `QUERY`, not `GET`** (`ADR-012`) — the SSE binding
-  (`bindings.sse`) documents `method: QUERY`, flagged there as a risk
-  since some AsyncAPI tooling may not yet recognize it.
-- One channel per event type (or one parameterized channel — decide based on
-  how many event types typically exist; parameterized is simpler to
-  maintain if the set is large).
-- `$filter`, `mode`, and `fromSequenceNumber` are documented as channel/
-  operation parameters (unchanged semantics), but per `ADR-012` they now
-  travel in the `QUERY` request body (`application/x-www-form-urlencoded`,
-  same OData syntax as before), not the URL — the schema registry still
-  knows which fields are filterable, and that list can be surfaced in the
-  parameter description for discoverability.
-- `mode` (`ADR-010`): `tail` (default — only events from connection time
-  forward) or `replay` (replay matching history first, then tail with no
-  gap or duplicate). `fromSequenceNumber` (optional, only valid with
-  `mode=replay`, default `0`) sets where the replay starts; supplying it
-  with `mode=tail` is rejected (`400`). Applies identically whether or not
-  `$filter` is present — replay only returns matching events, using the
-  same predicate as live tailing.
-- Message payload again `$ref`s the same registry-sourced JSON Schema.
-  `EventId`, `SequenceNumber`, `OccurredAt`, and `parentEventIds` are
-  streamed as message **headers**, mirroring the publish-side split between
-  envelope metadata and schema-validated payload.
-- No `access_token` parameter — removed along with native `EventSource`
-  support (`ADR-012`); a browser client now authenticates via a real
-  `Authorization` header through `fetch()`, identically to every other
-  caller (see "Browser SSE, post-`ADR-012`" above).
-- Connecting requires `events:follow` plus, if the event type has one set,
-  `RequiredReadClaim` (`ADR-008`) — checked once at connect time, same point
-  as the `$filter`-field validation, not per streamed event. That check
-  gates the connection's *own* event type only, per node visibility
-  (`ADR-008`, "you can only see what you can see") — it doesn't extend to
-  the `parentEventIds` header on each streamed event: any parent whose
-  type is restricted for this caller is omitted from that list (the
-  connection's own visibility check is computed once at connect time; this
-  per-event filter reuses that same "can I see this type" set, looked up
-  per referenced parent, not re-evaluated as a full claim check per event).
-- **Masking** (`ADR-009`) has two independent halves on different
-  schedules — see `ADR-002` for the full mechanism. The **schema** half:
-  any property carrying `x-masking` is documented in this AsyncAPI output,
-  for every caller regardless of claims, as a wrapper —
-  `oneOf: [{value: <the property's real type>}, {masked: string}, {erased: boolean}]` (`ADR-057`), never
-  the bare original type — because `MaskingSchemaTransformer` rewrites it
-  unconditionally at document-build time. This half exists as soon as
-  AsyncAPI generation does (design-accepted, not deprioritized). The
-  **data** half: which branch is actually populated
-  (`{"value": <real value>}` for a caller holding the property's
-  `requiredClaim`, `{"masked": "***"}` — or whatever `maskedValue` was
-  configured — for one who doesn't) is filled in by `IPayloadMasker` at
-  serialization time, once per connection using the claims already
-  validated for `RequiredReadClaim`; *this* half is build-deprioritized to
-  after Phases 0–6 (`08-build-plan.md`, Phase 8). Until Phase 8 lands, the
-  schema is already correct but every maskable property streams as
-  `{"value": <real value>}` unconditionally — the wrapper shape never
-  lies, only the enforcement is pending. The same recursion rule applies
-  to both halves: `x-masking` on a scalar `items` schema wraps each
-  element; on a property nested inside a complex-object `items` schema,
-  wraps just that property per element. Masking never changes *whether* an
-  event is streamed, only the shape of the masked field(s) within it. The
-  registered/publish-side schema (`SchemaValidationService` validates
-  against, and what `/openapi.json` documents) is **not** wrapped —
-  publishers always send the plain, unwrapped value; only this generated
-  AsyncAPI view and the actual SSE wire format wrap it. `x-masking`'s
-  optional `regulatoryClassification`/`governanceBody`/`regulationReference`
-  fields are schema-only documentation — surfaced in the generated AsyncAPI
-  property description for discoverability, never in the runtime
-  `value`/`masked` wrapper itself.
+**Transport is unchanged: Server-Sent Events.** Only the query syntax
+changed, from an OData `$filter` string to a GraphQL Subscription
+document — `ADR-037`'s own consequences state this directly ("Follow's
+underlying SSE transport and envelope shape don't change; only how a
+filter is expressed"). Concretely, this design adopts the [GraphQL over
+Server-Sent Events
+Protocol](https://github.com/enisdenjo/graphql-sse/blob/master/PROTOCOL.md)
+("distinct connections mode" — one SSE connection per subscription
+operation), which HotChocolate (`ADR-037`'s adopted server) implements
+natively since v13 with no additional middleware — verified before
+adopting, not assumed.
 
-```yaml
-asyncapi: 3.0.0
-info:
-  title: Open Event Sourcing Store — Follow API
-  version: "1.0"
-channels:
-  follow-order-placed:
-    address: /follow/OrderPlaced
-    bindings:
-      sse:
-        method: QUERY   # ADR-012 -- was GET; risk: some tooling may not recognize this value yet
-    parameters:          # ADR-012: all of these travel in the QUERY request body, not the URL
-      filter:
-        description: >
-          OData $filter expression. Filterable fields for OrderPlaced:
-          Amount (Number), Status (String).
-      mode:
-        description: >
-          "tail" (default) streams only events from connection time
-          forward. "replay" replays matching history first, then tails
-          with no gap or duplicate.
-      fromSequenceNumber:
-        description: >
-          Only valid with mode=replay (400 otherwise). Replay starts after
-          this SequenceNumber; defaults to 0 (full matching history).
-    messages:
-      OrderPlaced:
-        headers:
-          $ref: '#/components/schemas/EventEnvelope'
-        payload:
-          $ref: '#/components/schemas/OrderPlaced'
-operations:
-  receiveOrderPlaced:
-    action: receive
-    channel:
-      $ref: '#/channels/follow-order-placed'
-    security:
-      - bearerAuth: [events:follow]
-components:
-  schemas:
-    OrderPlaced:
-      $ref: '#/schemas-from-registry/OrderPlaced/2'
-    EventEnvelope:
-      type: object
-      properties:
-        eventId: { type: string, format: uuid }
-        sequenceNumber: { type: integer }
-        occurredAt: { type: string, format: date-time }
-        parentEventIds:
-          type: array
-          items: { type: string, format: uuid }
-```
-
-## Lineage API (event chains)
-
-Unlike `/publish` and `/follow`, these paths are not per-event-type — they
-take an `eventId` and are static entries in the generated OpenAPI document
-(no `enum` populated from the registry needed):
-
-```
-QUERY /events/{eventId}/parents       -- immediate parents (direct)
-QUERY /events/{eventId}/children      -- immediate children (direct)
-QUERY /events/{eventId}/ancestors     -- full transitive closure "up" the DAG
-QUERY /events/{eventId}/descendants   -- full transitive closure "down" the DAG
-```
-
-`ADR-012`: all four moved from `GET` to `QUERY` and gained optional
-`$top`/`$skip` pagination (a simple limit/offset slice over the result
-array — no `@odata.count`/`@odata.nextLink`), carried in the request body
-(`application/x-www-form-urlencoded`) alongside nothing else — there's no
-other filter expression here, just the new pagination parameters. Omitting
-both returns everything, unchanged from before `ADR-012`.
-
-All four require the `events:lineage:read` scope, plus `RequiredReadClaim`
-on every event type touched by the response — see "RequiredReadClaim and
-the Lineage API" below. `404` if `eventId` itself is unknown or the caller
-lacks `RequiredReadClaim` for *it specifically* — see below. Each entry in
-the response:
-
-```json
-{
-  "eventId": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
-  "eventType": "PaymentReceived",
-  "sequenceNumber": 42,
-  "occurredAt": "2026-07-27T10:15:00Z",
-  "resolved": true,
-  "restricted": false
+```graphql
+subscription {
+  onOrderPlaced(where: { amount: { gt: 100 } }, mode: TAIL) {
+    orderId
+    amount
+    customerTaxId { value masked erased }   # x-masking wrapper, ADR-009/050/057
+  }
 }
 ```
+
+- **Connection**: `QUERY /graphql` (`ADR-012`) with the subscription
+  document as the request body — never `GET`, for the same PII/PHI-in-
+  URL reason every other GraphQL operation avoids it (a `where` argument
+  can carry PII).
+- **Filtering**: HotChocolate's `[UseFiltering]` middleware resolves
+  `where` against the event type's `FilterableField`-declared schema
+  shape — see `04-*.md` (formerly `04-odata-filter-pushdown.md`) for the
+  full per-provider pushdown mechanism this drives, unchanged from the
+  OData era underneath.
+- **`mode`** (`ADR-010`, unchanged semantics): `TAIL` (default — only
+  events from connection time forward) or `REPLAY` (replay matching
+  history first, then tail with no gap or duplicate), with an optional
+  `fromSequenceNumber` argument valid only alongside `REPLAY`.
+- **Required claims**: connecting requires `events:follow` plus, if the
+  event type has one configured, a `Read`-direction `RequiredClaims`
+  entry (`ADR-008`/`ADR-050`) — checked once at connect time, same point
+  as `where`-field validation, not per streamed event.
+- **`parentEventIds`** travels as GraphQL envelope-metadata fields
+  alongside the payload selection, not a separate transport header —
+  any parent whose type is restricted for the connected caller is
+  omitted from that list, the same per-node visibility rule the Lineage
+  API uses below.
+
+### GraphQL schema shape (masking)
+
+A maskable property's GraphQL type is the three-way wrapper
+`MaskingSchemaTransformer` produces — `{ value: T, masked: String,
+erased: Boolean }`, exactly one populated per response, selectable by
+name in the query document (as `customerTaxId { value masked erased }`
+above) rather than a fixed JSON shape every caller receives identically.
+This is schema-level and claims-independent (every caller's *schema*
+looks the same); which field actually resolves to non-null for a given
+caller is `IPayloadMasker`'s data-level enforcement, unchanged from the
+OpenAPI/AsyncAPI-era mechanism, just resolved per GraphQL field instead
+of serialized into one fixed JSON wrapper.
+
+### GraphQL error shape (Follow, and every other operation)
+
+GraphQL's own partial-success execution model (`data` + a separate
+`errors` array) is this contract's error shape for every GraphQL
+operation — a restricted/masked field resolves to `null` (or the
+appropriate wrapper branch) with a corresponding `errors` entry, rather
+than failing the whole response the way a REST `4xx` would. Non-nullable
+fields (`String!`) are audited and reserved only for properties
+guaranteed across every schema version, since a non-null field
+resolving to `null` nulls out its entire parent object per the GraphQL
+spec — the exact failure mode this design's tolerant posture exists to
+avoid (`ADR-037`).
+
+## Lineage API — GraphQL query fields (`ADR-037`)
+
+```graphql
+query {
+  event(eventId: "3fa8...afa6") {
+    ancestors(first: 50) { eventId eventType sequenceNumber occurredAt resolved restricted }
+    descendants(first: 50) { eventId eventType sequenceNumber occurredAt resolved restricted }
+    parents { eventId eventType sequenceNumber occurredAt resolved restricted }
+    children { eventId eventType sequenceNumber occurredAt resolved restricted }
+  }
+}
+```
+
+Same semantics as the pre-`ADR-037` REST paths, expressed as GraphQL
+fields on a resolved `event` root instead of four separate `QUERY
+/events/{id}/...` paths: `first`/`after` cursor-style arguments replace
+`$top`/`$skip` (HotChocolate's `[UsePaging]`, the GraphQL-native
+pagination shape, rather than a bespoke offset/limit pair); everything
+else — the `resolved`/`restricted` flag semantics, cycle-safety
+regardless of `ParentValidationMode`, `DataLoader`-batched traversal
+across shards/replicas (`ADR-034`/`ADR-033`) — is unchanged.
 
 Two independent reasons a node can be a leaf, each with its own flag —
 either flag makes traversal stop at that node, but they mean different
 things and both omit `eventType`/`sequenceNumber`/`occurredAt`:
 
-- `"resolved": false` — the reference does not currently correspond to a
+- `resolved: false` — the reference does not currently correspond to a
   stored event at all, only possible for event types registered with
-  `ParentValidationMode: Permissive` (`02-data-model.md`,
-  `05-schema-registry-and-spec-generation.md`). Entry: `{"eventId": "...",
-  "resolved": false}`.
-- `"restricted": true` — the event **exists** (`"resolved": true`) but the
-  caller lacks `RequiredReadClaim` for its type, so nothing further about
-  it is revealed. Entry: `{"eventId": "...", "resolved": true, "restricted":
-  true}`. See "RequiredReadClaim and the Lineage API" below.
+  `ParentValidationMode: Permissive` (`docs/data/schema-registry.md`).
+- `restricted: true` — the event **exists** (`resolved: true`) but the
+  caller lacks the required `Read`-direction claim for its type, so
+  nothing further about it is revealed. See "`RequiredClaims` and the
+  Lineage API" below.
 
 `ancestors`/`descendants` must be cycle-safe regardless of the queried
 event's `ParentValidationMode` — see `ADR-005` for why a cycle can exist even
 when the event you start from is Strict.
 
-### RequiredReadClaim and the Lineage API
+### `RequiredClaims` and the Lineage API
 
-Unlike `$filter` (single event type) or Follow (one event type per
-connection), a single lineage response can span multiple event types —
-that's the point of cross-type parenting. Per `ADR-008`, visibility is
-evaluated **per node, not per request** — "you can only see what you can
-see":
+Unlike Follow (one event type per subscription), a single lineage query
+can span multiple event types — that's the point of cross-type
+parenting. Per `ADR-008`, visibility is evaluated **per node, not per
+request** — "you can only see what you can see":
 
-- The **root** `{eventId}` a call names directly is a special case: if it
-  exists but the caller lacks `RequiredReadClaim` for its type, the
-  **whole request is rejected with `403`** (not `404` — this deliberately
-  leaks that *something* exists at that `eventId`, distinguishable from a
-  truly unknown one). You cannot ask about the lineage of something you
-  can't see at all.
+- The **root** `event(eventId: ...)` a query names directly is a special
+  case: if it exists but the caller lacks the required `Read`-direction
+  claim for its type, **the whole request is rejected with `403`** (not
+  `404` — this deliberately leaks that *something* exists at that
+  `eventId`, distinguishable from a truly unknown one). You cannot ask
+  about the lineage of something you can't see at all.
 - Every node the traversal *discovers* from there — parents, children,
   ancestors, descendants — is checked **independently**. A node the
   caller can't see comes back as a `restricted: true` stub (above) and
@@ -534,21 +649,43 @@ see":
   Lacking access to a parent's type never hides a child the caller
   otherwise has rights to, and vice versa: the two directions are
   evaluated completely independently, not linked.
-- This means `/ancestors` and `/descendants` return `200` with a mix of
-  full nodes and `restricted: true` stubs whenever the caller has partial
-  access across the discovered graph — there's no single status code
-  signaling "some nodes were hidden," the stubs themselves are the signal.
-  `/parents` and `/children` follow the identical rule; they just have a
-  smaller set of nodes to check (no recursion).
-- The same per-node check applies to Follow's `parentEventIds` envelope
-  header (`03-api-contracts.md`, "AsyncAPI (follow side)"): any parent
-  whose type is restricted for the connected caller is omitted from that
-  event's `parentEventIds` list, not surfaced as a bare ID they can't
+- This means `ancestors`/`descendants` return a normal GraphQL response
+  with a mix of full nodes and `restricted: true` stubs whenever the
+  caller has partial access across the discovered graph — there's no
+  single error signaling "some nodes were hidden," the stubs themselves
+  are the signal. `parents`/`children` follow the identical rule; they
+  just have a smaller set of nodes to check (no recursion).
+- The same per-node check applies to Follow's `parentEventIds` field
+  (above): any parent whose type is restricted for the connected caller
+  is omitted from that list, not surfaced as a bare ID they can't
   otherwise learn anything about.
+
+## Registry listing — GraphQL query field (`ADR-037`)
+
+```graphql
+query {
+  eventTypes(first: 50) {
+    name
+    version
+    isActive
+    filterableFields { jsonPath dataType isIndexed }
+  }
+  eventType(name: "OrderPlaced", version: 2) {
+    jsonSchema
+    requiredClaims { direction claim }
+  }
+}
+```
+
+Requires `registry:admin`, matching the pre-`ADR-037` `QUERY /registry`
+scope. Same underlying `ISchemaRegistryReader` data source the OpenAPI
+Publish document's generation already uses — one registry-reading
+interface, two document formats built from it.
 
 ## Shared schema source
 
-Both generators call the same internal method:
+Both the OpenAPI Publish document and the GraphQL SDL call the same
+internal method:
 
 ```csharp
 public interface ISchemaRegistryReader
@@ -557,19 +694,21 @@ public interface ISchemaRegistryReader
 }
 ```
 
-`OpenApiDocumentBuilder` and `AsyncApiDocumentBuilder` both depend on this
-interface only — neither talks to EF Core directly, keeping spec generation
+Neither talks to EF Core directly, keeping spec/schema generation
 decoupled from persistence.
 
 ## Suggested References
 
 - [OpenAPI Specification v3.1.1](https://spec.openapis.org/oas/v3.1.1.html) — the publish-side contract format (`ADR-002`).
-- [AsyncAPI Specification v3.0](https://www.asyncapi.com/docs/reference/specification/v3.0.0) — the follow-side contract format (`ADR-002`).
-- [RFC 9457](https://datatracker.ietf.org/doc/html/rfc9457) — Problem Details, every error response's shape (`ADR-013`).
-- [RFC 10008](https://datatracker.ietf.org/doc/html/rfc10008) — the HTTP QUERY method (`ADR-012`).
+- [GraphQL Specification](https://spec.graphql.org/) — the Query/Mutation/Subscription contract format for everything else (`ADR-037`).
+- [GraphQL over Server-Sent Events Protocol](https://github.com/enisdenjo/graphql-sse/blob/master/PROTOCOL.md) — Follow's Subscription transport, HotChocolate-native since v13.
+- [RFC 9457](https://datatracker.ietf.org/doc/html/rfc9457) — Problem Details, every non-GraphQL error response's shape (`ADR-013`).
+- [RFC 10008](https://datatracker.ietf.org/doc/html/rfc10008) — the HTTP QUERY method, carrying every GraphQL operation (`ADR-012`).
 - [RFC 6749 §4.4](https://datatracker.ietf.org/doc/html/rfc6749#section-4.4) / [RFC 6750](https://datatracker.ietf.org/doc/html/rfc6750) — Client Credentials grant and bearer token usage (`ADR-006`).
-- [RFC 9449](https://datatracker.ietf.org/doc/html/rfc9449) — DPoP, the proof header every request now also carries (`ADR-017`).
-- [WHATWG HTML — Server-Sent Events](https://html.spec.whatwg.org/multipage/server-sent-events.html) — the Follow stream's wire format.
-- [OASIS OData v4.01 — URL Conventions](https://docs.oasis-open.org/odata/odata/v4.01/odata-v4.01-part2-url-conventions.html) — the `$filter`/`$top`/`$skip` syntax borrowed (not fully complied with — see `04-odata-filter-pushdown.md`).
+- [RFC 9449](https://datatracker.ietf.org/doc/html/rfc9449) — DPoP, the proof header every request also carries (`ADR-017`).
+- [RFC 9470](https://www.rfc-editor.org/rfc/rfc9470.html) — OAuth 2.0 Step Up Authentication Challenge Protocol (`ADR-066`).
+- [RFC 8693](https://datatracker.ietf.org/doc/html/rfc8693) — OAuth 2.0 Token Exchange, the ticket-issuance hop (`ADR-040`).
+- [RFC 7662](https://datatracker.ietf.org/doc/html/rfc7662) — OAuth 2.0 Token Introspection, the ticket-resolution hop (`ADR-040`).
 
-See `references.md` for the full bibliography.
+See `references.md` for the full bibliography, including the historical
+OASIS OData reference (superseded, `ADR-037`) still cited from `04-*.md`.
