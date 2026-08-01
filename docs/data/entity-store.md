@@ -31,7 +31,7 @@ public class EntityStoreRow
     public long LastAppliedSequenceNumber { get; set; }   // REPLAY CHECKPOINT — always advances past every event processed, including a rejected late arrival (ADR-029); distinct from Version above
     public DateTimeOffset LastAppliedLogicalTime { get; set; } // high-water mark for fold ordering — compared against OccurredAt, not SequenceNumber (ADR-029)
     public bool LateArrivalFlag { get; set; }             // rolled up from contributing events (ADR-029)
-    public string? LastAppliedOriginId { get; set; }      // origin of the most recent fold (ADR-033)
+    public string? LastAppliedOriginId { get; set; }      // which site/peer's event this Entity Store row last folded (ADR-033) -- same "Origin" terminology collision as StoredEvent.OriginId; see that field's note in docs/data/event-log.md, not related to TelemetryChannel.Origin
     public DateTimeOffset UpdatedAt { get; set; }
 }
 ```

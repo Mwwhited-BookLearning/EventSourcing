@@ -19,7 +19,7 @@ public class TelemetryChannel
     public SampleType? SampleType { get; set; }           // Float64 | Int32 -- only for RawScalar
     public string? MimeType { get; set; }                 // e.g. "audio/opus", "video/h264" -- only for Media
     public long? SampleIntervalMicros { get; set; }        // fixed-rate channels only; also this channel's ExpectedInterArrivalInterval (ADR-031)
-    public ChannelOrigin Origin { get; set; }              // Origin | Derived
+    public ChannelOrigin Origin { get; set; }              // Origin | Derived -- is this channel a raw source or computed from others (ADR-031). NOT related to StoredEvent.OriginId/EntityStoreRow.LastAppliedOriginId (which peer/site a replicated event came from, ADR-033) -- both use the word "Origin" for unrelated concepts; disambiguated explicitly here per CLAUDE.md's terminology-collision convention, not renamed, since each name is already well-established at its own call sites
     public string? ThreadId { get; set; }                  // groups multiple simultaneous channels under one session/recording (e.g. a 32-electrode EEG montage) -- ADR-081; deliberately not named StreamId (ADR-021 retired that term)
     public List<string>? SourceChannelIds { get; set; }    // Derived channels only
     public string? TransformKind { get; set; }             // Resample | Filter | Aggregate | Transcode -- Derived channels only

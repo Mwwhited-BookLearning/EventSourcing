@@ -131,7 +131,7 @@ tdb --> read: interval samples
 read --> detector: streamed samples
 detector -> detector: apply grid-stress threshold logic\n(ADR-031 takes no position on the algorithm itself)
 alt observed load crosses the configured grid-stress threshold
-  detector -> inbox: POST /publish/DemandResponseTriggered\n{ payload: { MeterId: "m-482", ThresholdKw: 950, ObservedKw: 987.4 },\n  telemetryPointer: { channelId: "meter-482-kwh-interval",\n    fromTimestamp: "2026-07-30T14:15:00Z" },\n  reviewPending: true }
+  detector -> inbox: POST /publish/DemandResponseTriggered\n{ payload: { MeterId: "m-482", ThresholdKw: 950, ObservedKw: 987.4 },\n  telemetryPointer: [{ channelId: "meter-482-kwh-interval",\n    fromTimestamp: "2026-07-30T14:15:00Z" }],\n  reviewPending: true }
   inbox -> eventLog: INSERT StoredEvent\n(EventType: DemandResponseTriggered, TelemetryPointer set,\n AuthorityStatus: "pending_review" -- ADR-042's detector-output case,\n ActorId: detector's own verified service identity, ADR-064)
   inbox --> detector: 202 { correlationId, status: "received",\n  authorityStatus: "pending_review" }
   fold -> fold: resolve EntityId "gridops:Meter:m-482" via EntityIdField "$.MeterId"
@@ -354,7 +354,7 @@ Feature: Smart Meter Interval Data and Demand Response Event
     When the detector POSTs to "/publish/DemandResponseTriggered" with body:
       """
       { "payload": { "MeterId": "m-482", "ThresholdKw": 950, "ObservedKw": 987.4 },
-        "telemetryPointer": { "channelId": "meter-482-kwh-interval", "fromTimestamp": "2026-07-30T14:15:00Z" },
+        "telemetryPointer": [{ "channelId": "meter-482-kwh-interval", "fromTimestamp": "2026-07-30T14:15:00Z" }],
         "reviewPending": true }
       """
     Then the response status should be 202

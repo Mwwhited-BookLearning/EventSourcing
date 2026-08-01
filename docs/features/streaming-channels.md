@@ -92,7 +92,7 @@ tdb --> read: TelemetrySample rows
 read --> detector: streamed samples
 detector -> detector: apply domain-specific detection logic\n(an EEG anomaly rule, a voltage threshold, ... -- ADR-031 takes no position)
 alt something worth recording is found
-  detector -> publish: POST /publish/{event-type}\n{ payload, telemetryPointer: { channelId, fromTimestamp, toTimestamp? } }
+  detector -> publish: POST /publish/{event-type}\n{ payload, telemetryPointer: [{ channelId, fromTimestamp, toTimestamp? }] }
   publish -> validator: validate(payload, schema)
   validator --> publish: SchemaStatus (conformant | invalid | unknown -- ADR-023, never blocks the write)
   publish -> appender: append(StoredEvent { ..., TelemetryPointer })
@@ -237,7 +237,7 @@ Feature: Streaming channels (telemetry, audio/video ingestion)
     When the detector POSTs to "/publish/DizzinessReported" with body:
       """
       { "payload": { "Note": "patient reported dizziness" },
-        "telemetryPointer": { "channelId": "eeg-ch1", "fromTimestamp": "2026-07-29T10:00:04Z" } }
+        "telemetryPointer": [{ "channelId": "eeg-ch1", "fromTimestamp": "2026-07-29T10:00:04Z" }] }
       """
     Then the response status should be 202
     And the stored event's TelemetryPointer should reference channel "eeg-ch1" at "2026-07-29T10:00:04Z"

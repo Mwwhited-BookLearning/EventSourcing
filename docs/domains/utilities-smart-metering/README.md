@@ -105,12 +105,13 @@ domain still scores weak on masking, delegated access, and erasure.
   screens render through this framework's client the same as any other
   domain; WCAG 2.1 AA applies here too, most directly if this domain is
   ever extended to residential-customer-facing billing/usage portals.
-- **GDPR breach notification (Art. 33/34)** — this domain already lists
-  GDPR/CCPA for consumption data above (the same under-scored tension
-  named there); the 72-hour notification *workflow* itself remains an
-  open question (`docs/10-open-questions.md`) — `ADR-045`'s access audit
-  log supplies the forensic inputs, but the notification process itself
-  isn't designed yet.
+- **GDPR breach notification (Art. 33/34) — resolved, `ADR-045`'s
+  addendum.** This domain already lists GDPR/CCPA for consumption data
+  above (the same under-scored tension named there); the 72-hour
+  notification *workflow* itself is deliberately out of framework
+  scope — an external legal/business process. `ADR-045`'s access audit
+  log supplies the forensic inputs a compliance team's own process
+  would use.
 
 ## Feature docs
 

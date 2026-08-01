@@ -7,7 +7,17 @@
 > attachment retrieval URLs, resolved via an RFC 7662-shaped
 > introspection call, not shown below). The Follow-specific `QUERY` framing below is accurate for the
 > method itself but predates its GraphQL Subscription wrapping
-> (`ADR-037` — see `follow-subscribe.md`'s banner). Tracked as
+> (`ADR-037` — see `follow-subscribe.md`'s banner). Three more
+> authorization layers now sit on top of the scope check shown below,
+> none of them shown: **`ADR-046`** (RBAC — a token's scopes are
+> additionally checked against role-granted permissions, resolved at
+> issuance); **`ADR-047`** (claims augmentation — a federated external
+> IdP's token gets this platform's own verification-specific claims
+> merged in via a second Token Exchange call, never replacing the
+> original token); **`ADR-048`** (SPIFFE/SPIRE — internal service-to-
+> service and peer-sync callers, the `client_credentials` actors this
+> doc already shows, are increasingly issued SPIFFE SVIDs rather than a
+> shared static secret). Tracked as
 > outstanding propagation work (`CLAUDE.md`), not done in this pass.
 
 Context: scopes-to-endpoints table and OpenAPI/AsyncAPI security schemes in

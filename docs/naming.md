@@ -78,6 +78,39 @@ Alternates considered, not chosen:
 | Warrant | Double meaning: legal warrant/attestation, and "I can warrant this is true" | Strong meaning fit, but breaks the navigation-metaphor family |
 | Vouch | Most literal ("I vouch for this identity") | Highest collision risk of the set — existing identity-verification companies already use "Vouch"/"Vouched" |
 
+## License
+
+**MIT Non-AI** — confirmed as a deliberate choice, not reconsidered
+(`docs/10-open-questions.md`, formerly row 17, now resolved). No runtime
+license-key/entitlement mechanism exists or is wanted in this design.
+
+**Accepted consequence, named explicitly rather than left implicit**:
+"MIT Non-AI" (an MIT license modified with an AI-training-use
+restriction clause) has no registered [SPDX license
+identifier](https://spdx.org/licenses/) — SPDX's list covers only
+license *texts already submitted and accepted* into its catalog, and a
+modified MIT variant isn't automatically one of them regardless of how
+close the modification is. Concretely, this means:
+- `package.json`'s `"license"` field (npm) can't validly say `"MIT Non-
+  AI"` as a bare SPDX expression — it needs either a `SPDX-License-
+  Identifier: LicenseRef-MIT-Non-AI` custom-reference form, or the
+  `"license": "SEE LICENSE IN LICENSE.md"` fallback npm itself
+  documents for exactly this case.
+- A `.nuspec`'s `<license type="expression">` element (NuGet) has the
+  same constraint — `type="file"` pointing at the repo's own `LICENSE`
+  file is the correct fallback instead of an invalid SPDX expression.
+- Any future SBOM generation (`ADR-074`, `microsoft/sbom-tool`) will
+  emit a non-standard/`LicenseRef-` license field for this project's own
+  package, not a clean SPDX ID — worth knowing before an automated
+  compliance check somewhere downstream flags it as "unrecognized"
+  rather than treating it as the accepted, deliberate choice it is.
+
+This is friction accepted as a real cost of the license choice, not a
+gap to fix — there is no action item here beyond the `LicenseRef-`/
+`SEE LICENSE IN LICENSE.md` fallbacks already named above, which are
+themselves the standard, correct way every major package ecosystem
+already handles a non-catalog license.
+
 ## Not yet named
 
 The other 13 considered-but-not-chosen proving-ground domains

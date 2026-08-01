@@ -84,7 +84,7 @@ tstore --> ingest: 202
 detector -> tstore: GET /telemetry/veh-773-obd2/samples?mode=tail
 tstore --> detector: samples spanning the trip window
 detector -> detector: compute RiskScore, HarshBrakingCount,\nHardAccelerationCount, DistanceMiles\n(domain-specific scoring model, ADR-031 takes no position)
-detector -> inbox: POST /publish/TripScored\n{ payload: { TripId: "trip-482", PolicyId: "pol-55",\n  RiskScore: 72, HarshBrakingCount: 4, DistanceMiles: 18.3 },\n  telemetryPointer: { channelId: "veh-773-obd2",\n    fromTimestamp: tripStart, toTimestamp: tripEnd } }
+detector -> inbox: POST /publish/TripScored\n{ payload: { TripId: "trip-482", PolicyId: "pol-55",\n  RiskScore: 72, HarshBrakingCount: 4, DistanceMiles: 18.3 },\n  telemetryPointer: [{ channelId: "veh-773-obd2",\n    fromTimestamp: tripStart, toTimestamp: tripEnd }] }
 inbox -> eventLog: INSERT StoredEvent (EntityIdField "$.TripId" resolves EntityId "acme-ubi:Trip:trip-482")
 router -> fold: fold(TripScored)
 fold -> entityStore: UPSERT EntityStoreRow "acme-ubi:Trip:trip-482"
@@ -472,8 +472,8 @@ Feature: Usage-Based Insurance Trip Scoring and Claim
       """
       { "payload": { "TripId": "trip-482", "PolicyId": "pol-55", "VehicleId": "veh-773",
           "RiskScore": 72, "HarshBrakingCount": 4, "DistanceMiles": 18.3 },
-        "telemetryPointer": { "channelId": "veh-773-obd2",
-          "fromTimestamp": "2026-07-29T08:00:00Z", "toTimestamp": "2026-07-29T08:10:12Z" } }
+        "telemetryPointer": [{ "channelId": "veh-773-obd2",
+          "fromTimestamp": "2026-07-29T08:00:00Z", "toTimestamp": "2026-07-29T08:10:12Z" }] }
       """
     Then the response status should be 202
     And an EntityStoreRow for "acme-ubi:Trip:trip-482" should exist with RiskScore 72

@@ -81,7 +81,7 @@ database "Live View\n(LiveEntityStoreRow, ADR-042)" as liveView
 database "Entity Store\n(authoritative, ADR-042)" as entityStore
 
 alt device-linked AE, referencing an existing telemetry channel
-  device -> inbox: POST /publish/AdverseEventReported\n{ payload: { AeId: "ae-1042", SubjectId: "S-0091",\n  Severity: "Severe", SeriousAdverseEvent: true },\n  telemetryPointer: { ChannelId: "vitals-s0091", FromTimestamp: "2026-07-29T14:02:10Z" },\n  attestedClaims: { reviewPending: true, reason: "auto-detected desaturation event" } }
+  device -> inbox: POST /publish/AdverseEventReported\n{ payload: { AeId: "ae-1042", SubjectId: "S-0091",\n  Severity: "Severe", SeriousAdverseEvent: true },\n  telemetryPointer: [{ ChannelId: "vitals-s0091", FromTimestamp: "2026-07-29T14:02:10Z" }],\n  attestedClaims: { reviewPending: true, reason: "auto-detected desaturation event" } }
   note right of device
     TelemetryPointer links this event to the raw
     waveform (ADR-031) -- how that channel itself
