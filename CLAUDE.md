@@ -80,14 +80,15 @@ re-derive the process from scratch:
   decision already made, a comparison weighs a fork before deciding,
   this file is for a fork not yet weighed at all or a decision left
   deliberately partial. **Add a row here in the same pass you find one.**
-  Move a row to a real ADR (or delete it) once resolved — this file
-  should only ever hold things still actually open. **This is the
-  authoritative current list of open forks — do not restate its
-  contents elsewhere in this repo, including here in CLAUDE.md; a
-  restated count/list will just drift out of date.**
+  Once resolved, strike the row through in place with a pointer to the
+  resolving ADR/comparison — **never delete it** (several ADRs now cite
+  a specific row number directly; deleting would break that citation).
+  **This is the authoritative current list of open forks — do not
+  restate its contents elsewhere in this repo, including here in
+  CLAUDE.md; a restated count/list will just drift out of date.**
 - `docs/07-adrs.md` — **template + index only.** The ADRs themselves live
   one per file under `docs/adrs/adr-NNN-slug.md`, all currently Accepted
-  through `ADR-075`. Never write ADR content back into `07-adrs.md` — add
+  through `ADR-080`. Never write ADR content back into `07-adrs.md` — add
   a row to its index table (it already carries a one-line description per
   ADR — that index, not this file, is where to look for "what does ADR-NNN
   decide") and create the file under `adrs/`.
@@ -247,7 +248,7 @@ re-derive the process from scratch:
 
 ## Decision index
 
-All 79 ADRs (`ADR-001`–`ADR-079`) are Accepted. For what each one
+All 80 ADRs (`ADR-001`–`ADR-080`) are Accepted. For what each one
 decides, read `docs/07-adrs.md`'s index (one-line description per row)
 or the ADR file itself — not this section, which no longer narrates
 individual decisions. For the forks weighed before a decision, see

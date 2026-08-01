@@ -107,9 +107,21 @@ digital identity — it's broad rather than defining.
   SB21-169's testing requirement for external-data/AI models used in
   insurance, and NY DFS's AI-underwriting guidance), and telematics-driven
   pricing is exactly the kind of automated, data-driven decision those
-  rules target. Nothing in this framework's ADR set designs a
-  model-fairness-testing or bias-documentation mechanism — a candidate
-  for a future ADR, not yet decided.
+  rules target. **Domain-scoped, not tracked in `docs/10-open-
+  questions.md`** (moved here from that file's former row 3, since this
+  concern is specific to this domain, not a framework-wide fork) — a
+  candidate for a future ADR, not yet decided. **Leaning, not decided**:
+  likely a *confirming non-gap* rather than a new framework mechanism —
+  unlike a runtime screening call (`ADR-079`'s sanctions-screening seam),
+  a bias audit is a retrospective analysis over already-captured
+  history, which existing lineage (`ADR-005`), bitemporal playback
+  (`ADR-068`), masking (`ADR-009`), and GraphQL querying may already
+  fully support once this domain's own schema captures decision-basis
+  factors (model version, input features, confidence score) as ordinary
+  `Payload` fields — no new envelope-metadata field, no new interface.
+  The actual fairness *logic* (which test, which protected classes,
+  which threshold) is irreducibly jurisdiction-specific either way and
+  wouldn't belong in the framework regardless of how this resolves.
 
 ## Feature docs
 

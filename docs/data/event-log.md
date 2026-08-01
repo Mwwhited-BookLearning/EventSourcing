@@ -26,7 +26,7 @@ public class StoredEvent
     public string? AttestedClaims { get; set; }          // JSON — structured capability/delegation claims (e.g. a UCAN invocation, ADR-036); references the attestation schema-registry entry
     public string AuthorityStatus { get; set; } = "accepted"; // unattested | pending_review | accepted | rejected — advisory trust axis, independent of SchemaStatus (ADR-035). Defaults to "accepted" for an ordinary authenticated publish (ADR-006 already verified identity/permission); only starts unattested/pending_review when the publish itself declares AttestedClaims or an explicit review-pending marker (ADR-042)
     public Guid? AuthorityDecisionRef { get; set; }      // denormalized back-pointer to the authorityDecision event that last set AuthorityStatus, set by the fold step (ADR-035)
-    public string? TelemetryPointer { get; set; }        // position in a streaming channel this event is linked to/derived from — a distinct envelope field from parentEventIds/MaterializationOfEventId/AttachmentRef (ADR-031)
+    public string? TelemetryPointer { get; set; }        // JSON-serialized List<TelemetryPointerEntry> (ADR-081, generalized from a single object) -- {ChannelId, ThreadId?, FromTimestamp, ToTimestamp?} per entry; one entry for an ordinary single-channel detection, multiple for a correlated multi-channel one. A distinct envelope field from parentEventIds/MaterializationOfEventId/AttachmentRef (ADR-031)
     public Signature? Signature { get; set; }             // set only when EventTypeDefinition.RequiredSignature is configured -- a sixth distinct relationship-shaped envelope field (ADR-066)
 }
 

@@ -98,8 +98,13 @@ Decision:
   through the completely normal publish path** (`ADR-020`/`ADR-023`,
   full schema validation, full persist-everything posture, everything
   else in this design applies unchanged) carrying a new envelope field:
-  `TelemetryPointer: { ChannelId, FromTimestamp, ToTimestamp? }`
-  (`ToTimestamp` omitted for a single point, present for a window).
+  ~~`TelemetryPointer: { ChannelId, FromTimestamp, ToTimestamp? }`
+  (`ToTimestamp` omitted for a single point, present for a window).~~
+  **Superseded by `ADR-081`**: `TelemetryPointer` is now a *list* of such
+  entries (each also carrying an optional `ThreadId`), to support a
+  detection spanning multiple channels at once — the single-entry case
+  (this bullet's original shape) remains the common case, just expressed
+  as a one-element list rather than a distinct shape.
 - **`TelemetryPointer` is envelope metadata, kept out of `Payload`** —
   the exact same reasoning `ADR-005` already established for
   `parentEventIds`: it must never collide with JSON Schema validation or

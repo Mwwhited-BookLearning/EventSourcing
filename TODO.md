@@ -106,12 +106,28 @@ here instead of inlining.
   `ADR-078`'s `LeaderLease`, both added to `docs/data/schema-registry.md`
   this pass but not yet to this list) have no `DbSet` in
   `EventStoreContext`.
+- [ ] **A `docs/naming.md`-adjacent note naming the SPDX/package-metadata
+  friction as an accepted consequence of the MIT Non-AI license choice**
+  — confirmed as deliberate (`docs/10-open-questions.md`, formerly row
+  17), but the actual note was never written.
+- [ ] **`TelemetryPointer`'s shape changed (`ADR-081`, singular object →
+  list) — every existing example showing the old shape is now stale.**
+  At minimum: `docs/domains/clinical-trials-device-telemetry/features/
+  device-onboarding-and-continuous-monitoring.md` and `docs/domains/
+  industrial-iot-predictive-maintenance/features/sensor-driven-
+  maintenance-alert.md` both show a bare `"telemetryPointer": {...}`
+  object in their Gherkin/JSON — needs wrapping in a one-element array
+  (`"telemetryPointer": [{...}]`) to match. A mechanical sweep, not a
+  design question — grep for `telemetryPointer` across `docs/`.
 - [ ] **Domain-doc propagation for the four newest ADRs** (`076`–`079`):
   `docs/domains/digital-identity-kyc/README.md`'s Special Concerns note
   ("no existing ADR addresses OFAC sanctions screening... a candidate
-  for a future ADR") needs updating to point at `ADR-079` instead; both
-  `docs/domains/clinical-trials-device-telemetry/README.md`'s and
-  `digital-identity-kyc/README.md`'s Special Concerns notes on GDPR
-  breach notification need updating to reflect `ADR-045`'s addendum
-  (resolved: out of framework scope) rather than still listing it as
-  open.
+  for a future ADR") needs updating to point at `ADR-079` instead.
+- [ ] **Eight domain READMEs' GDPR breach-notification notes are stale**
+  — corrected count, this session (previously mis-tracked as just two):
+  `docs/domains/{digital-identity-kyc,clinical-trials-device-telemetry,
+  education-credentials,logistics-chain-of-custody,utilities-smart-
+  metering,insurance-telematics,pharmacovigilance,biobanking}/README.md`
+  all still describe the Art. 33/34 workflow as an open question; all
+  need updating to reflect `ADR-045`'s addendum (resolved: deliberately
+  out of framework scope) instead.

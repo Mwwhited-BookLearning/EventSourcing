@@ -20,6 +20,7 @@ public class TelemetryChannel
     public string? MimeType { get; set; }                 // e.g. "audio/opus", "video/h264" -- only for Media
     public long? SampleIntervalMicros { get; set; }        // fixed-rate channels only; also this channel's ExpectedInterArrivalInterval (ADR-031)
     public ChannelOrigin Origin { get; set; }              // Origin | Derived
+    public string? ThreadId { get; set; }                  // groups multiple simultaneous channels under one session/recording (e.g. a 32-electrode EEG montage) -- ADR-081; deliberately not named StreamId (ADR-021 retired that term)
     public List<string>? SourceChannelIds { get; set; }    // Derived channels only
     public string? TransformKind { get; set; }             // Resample | Filter | Aggregate | Transcode -- Derived channels only
     public string? RequiredReadClaim { get; set; }         // reuses ADR-008's "type:value" format, applied to a channel instead of an event type
@@ -33,6 +34,7 @@ public class TelemetrySample
 {
     public string ChannelId { get; set; } = default!;
     public DateTimeOffset Timestamp { get; set; }          // CLIENT-DECLARED, same discipline as StoredEvent.OccurredAt (ADR-029)
+    public long? MonotonicElapsedMicros { get; set; }       // optional -- elapsed time since the recording agent's session start, from a monotonic clock source immune to wall-clock adjustment (ADR-083) -- enables detecting a lying wall clock by comparing claimed Timestamp deltas against actual monotonic deltas
     public byte[] Value { get; set; } = default!;           // a scalar, an opaque blob, or a codec frame, per ContentKind
     public bool LateArrivalFlag { get; set; }               // ADR-029's mechanism, reused per-channel (ADR-031)
 }
