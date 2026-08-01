@@ -65,9 +65,13 @@ re-derive the process from scratch:
   `docs/changes/{date}.md`'s history of work already finished. See
   `.claude/protocols/todo-tracking.md` for the add/complete workflow.
 - `docs/01`–`09` — the core design, read in that order (C4 architecture →
-  data model → API contracts → OData pushdown → schema registry → solution
-  structure → ADRs → build plan → CQRS read side). `04-odata-filter-
-  pushdown.md` is partway through being superseded — see `TODO.md`.
+  data model → API contracts → GraphQL filter pushdown → schema registry
+  → solution structure → ADRs → build plan → CQRS read side). `04-odata-
+  filter-pushdown.md`'s filename is unchanged (stable numbering) but its
+  content was rewritten, this session, to describe the current GraphQL-
+  driven mechanism — the OData-era pipeline is preserved as a clearly
+  marked historical section within it, not deleted, per this file's own
+  additive-history convention.
 - `docs/02-data-model.md` — **classification overview + index only**, same
   split as the two below. The entity classes themselves live one group per
   file under `docs/data/` (`schema-registry.md`, `event-log.md`,
