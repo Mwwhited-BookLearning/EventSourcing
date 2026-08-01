@@ -35,17 +35,7 @@ in particular is sized for that. Nothing here is a priority ranking
 beyond the dependency ordering itself; pick whichever phase suits
 available time.
 
-### Phase 1 — Diagrams and library catalog
-
-Self-contained, no dependency on the API-contract cluster below.
-
-- [ ] **Streaming Channel, Attachment, and Live View component diagrams
-  in `01-c4-architecture.md`** — not drawn.
-- [ ] **`docs/libraries/README.md`'s SOUP-list entries need full
-  retrofitting** (known anomalies, fulfilled functional requirements per
-  IEC 62304) — currently just a catalog, not yet a complete SOUP list.
-
-### Phase 2 — GraphQL/API-contract rewrite cluster
+### Phase 1 — GraphQL/API-contract rewrite cluster
 
 Internally sequenced — do these roughly in this order, since each later
 item is easier to get right once the earlier ones exist to reference,
