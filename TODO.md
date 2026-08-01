@@ -30,7 +30,7 @@ phase's items reference or build on an earlier phase's (or an earlier
 item within the same phase's) output where a real dependency exists,
 not the other way around. Within a phase, items are otherwise
 independent of each other and can be done in any order, or dispatched
-in parallel (`.claude/protocols/parallel-batch-dispatch.md`) — Phase 4
+in parallel (`.claude/protocols/parallel-batch-dispatch.md`) — Phase 3
 in particular is sized for that. Nothing here is a priority ranking
 beyond the dependency ordering itself; pick whichever phase suits
 available time.
@@ -41,12 +41,6 @@ Internally sequenced — do these roughly in this order, since each later
 item is easier to get right once the earlier ones exist to reference,
 though none is strictly blocked from starting early.
 
-- [ ] **No dedicated GraphQL-pushdown doc exists to replace
-  `04-odata-filter-pushdown.md` outright** — `docs/comparisons/api-
-  query-layer.md` and `docs/patterns/graphql-query-language.md` narrow
-  the gap but aren't the contract-level rewrite itself. Do this first —
-  the next two items both need the corrected contract shape to
-  reference.
 - [ ] **`03-api-contracts.md`'s Follow/Lineage/Registry-listing sections
   still describe the OData contract in full detail**, not just a
   banner — rewriting them for the actual GraphQL contract shape is real,
@@ -69,9 +63,9 @@ though none is strictly blocked from starting early.
   doc/Gherkin coverage. Do last in this cluster — needs the corrected
   contract shape above to write accurate scenarios against.
 
-### Phase 3 — Build-plan restructuring
+### Phase 2 — Build-plan restructuring
 
-Benefits from Phase 2 (knowing what's actually built) being settled
+Benefits from Phase 1 (knowing what's actually built) being settled
 first, though it's a structural change to the tracking document itself,
 not new design content. The data-model accuracy this phase used to also
 wait on was settled this session.
@@ -89,7 +83,7 @@ wait on was settled this session.
   by topological sort — rather than more numbered phases tacked onto
   the end.
 
-### Phase 4 — Large content batch
+### Phase 3 — Large content batch
 
 Independent of every phase above; the single biggest item in this file,
 and the one best suited for parallel dispatch
