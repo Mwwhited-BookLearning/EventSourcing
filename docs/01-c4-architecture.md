@@ -203,7 +203,7 @@ rectangle "Inbox / Publish Endpoint" <<Boundary>> as inbox {
 
 rectangle "Router (background, advisory-only)" <<Boundary>> as router {
     rectangle "**Entity Resolver**\n<<Component>>\n//EF Core//\n--\nResolves/creates EntityId via EntityIdField (ADR-021)" <<Component>> as entityResolver
-    rectangle "**RequiredPublishClaim / AuthorityStatus check**\n<<Component>>\n//HasRequiredClaim(...)//\n--\nADR-008 (blocking, own-scope) + ADR-035 (advisory, never blocks)" <<Component>> as claimCheck
+    rectangle "**RequiredClaims (Publish direction) / AuthorityStatus check**\n<<Component>>\n//HasRequiredClaim(...), OR-matched//\n--\nADR-008/050 (blocking, own-scope) + ADR-035 (advisory, never blocks)" <<Component>> as claimCheck
     rectangle "**SchemaValidationService**\n<<Component>>\n//JsonSchema.Net wrapper//\n--\nValidates against declared schemaVersion (ADR-020) -- result is advisory (SchemaStatus), never blocking (ADR-023)" <<Component>> as validator
     rectangle "**ParentLinkService**\n<<Component>>\n//EF Core repository//\n--\nValidates parentEventIds per ParentValidationMode (ADR-005)" <<Component>> as parentLink
     rectangle "**UpcastChain (live validation)**\n<<Component>>\n//OData compute() executor//\n--\nADR-020 -- lagging schemaVersion? validate + materialize (ADR-027) or dead-letter (EventUpcastFailed)" <<Component>> as upcastValidate
@@ -382,13 +382,143 @@ A **full rebuild** is not a separate component or code path here — it's
 `checkpointStore` reset to `0` plus `readDb`'s tables truncated, then the
 exact same `runner` loop shown above runs again from scratch (`ADR-015`).
 
-## Not yet diagrammed at component level
+## Component diagram — Streaming Channel Service
 
-The Streaming Channel Service (`ADR-031`) and Attachment Service
-(`ADR-032`) exist at the Container level above but don't have their own
-component diagrams yet — flagged as remaining propagation work, not
-omitted on purpose. `docs/data/streaming-and-attachments.md` has the
-entity shapes in the meantime.
+```plantuml
+@startuml C4_Component_StreamingChannel
+skinparam shadowing false
+skinparam defaultTextAlignment center
+skinparam wrapWidth 220
+skinparam rectangle<<Component>> {
+  BackgroundColor #85BBF0
+  FontColor black
+}
+skinparam database<<Container>> {
+  BackgroundColor #438DD5
+  FontColor white
+}
+skinparam rectangle<<Boundary>> {
+  BackgroundColor transparent
+  BorderColor #666666
+  BorderStyle dashed
+}
+skinparam ArrowColor #666666
+
+rectangle "Streaming Channel Service" <<Boundary>> as streamingSvc {
+    rectangle "**Batch Ingest Endpoint**\n<<Component>>\n//Minimal API//\n--\nPOST /telemetry/{channelId}/samples -- no JSON Schema, no hash-chain, no fold (ADR-031)" <<Component>> as ingest
+    rectangle "**Late-Arrival / Lag Detector**\n<<Component>>\n//High-water-mark comparison//\n--\nADR-029's mechanism reused per-channel; publishes reserved ChannelLagDetected via the normal publish path" <<Component>> as lagDetector
+    rectangle "**Tail/Replay Reader**\n<<Component>>\n//mode=tail\\|replay//\n--\nADR-010's shape reused, applied to TelemetrySample instead of StoredEvent" <<Component>> as reader
+    rectangle "**ChannelDerivationWorker**\n<<Component>>\n//Background service, one per Derived channel//\n--\nTails source channel(s), applies Resample\\|Filter\\|Aggregate\\|Transcode, appends via the same ingest path (ADR-031)" <<Component>> as derivation
+    rectangle "**RedactedRange Enforcer**\n<<Component>>\n//Read-time substitution//\n--\nZero-fill\\|tone\\|blank-frame default (ADR-052); claims-gated, existence-flagged not hidden" <<Component>> as redaction
+}
+
+database "TelemetryChannel / TelemetrySample store" <<Container>> as telemetryDb
+rectangle "**Router**\n<<Container>>\n--\na detector reading via reader publishes ordinary events here (ADR-031)" <<Container>> as router
+
+ingest --> telemetryDb : append batch (durability: \"as good as possible\")
+ingest --> lagDetector : compare batch receive-gap vs ExpectedInterArrivalInterval
+lagDetector --> router : publish ChannelLagDetected (normal path, ADR-023)
+reader --> telemetryDb : tail (new) or replay (from fromTimestamp) then tail
+reader --> redaction : apply RedactedRange before returning, if caller lacks claim
+derivation --> reader : tail source channel(s)
+derivation --> ingest : append transformed samples to derived channel
+
+@enduml
+```
+
+## Component diagram — Attachment Service
+
+```plantuml
+@startuml C4_Component_Attachment
+skinparam shadowing false
+skinparam defaultTextAlignment center
+skinparam wrapWidth 220
+skinparam rectangle<<Component>> {
+  BackgroundColor #85BBF0
+  FontColor black
+}
+skinparam database<<Container>> {
+  BackgroundColor #438DD5
+  FontColor white
+}
+skinparam rectangle<<Boundary>> {
+  BackgroundColor transparent
+  BorderColor #666666
+  BorderStyle dashed
+}
+skinparam ArrowColor #666666
+
+rectangle "Attachment Service" <<Boundary>> as attachmentSvc {
+    rectangle "**Upload Endpoint**\n<<Component>>\n//Minimal API//\n--\nComputes ContentHash (SHA-256) -- the real PK, content-addressed (ADR-032)" <<Component>> as upload
+    rectangle "**Content-Defined Chunker**\n<<Component>>\n//Above a configurable size threshold//\n--\nIndependently-addressable ChunkRefs, each own ContentProviderKey/Ref -- enables partial sync (ADR-032)" <<Component>> as chunker
+    rectangle "**IAttachmentContentStore**\n<<Component>>\n//Pluggable, keyed by ContentProviderKey//\n--\nAzure Blob\\|S3\\|local dev store, multiple backends active simultaneously (ADR-032)" <<Component>> as contentStore
+    rectangle "**Retrieval Endpoint**\n<<Component>>\n//Plain GET + HTTP Range//\n--\nRFC 7233 byte-range seeking; browsable via GraphQL against the owning entity" <<Component>> as retrieval
+    rectangle "**Tiering Mover**\n<<Component>>\n//Background service//\n--\nAccess-pattern-driven hot/cool/cold, keyed on LastAccessedAt (ADR-032)" <<Component>> as tiering
+}
+
+database "Attachment / ChunkRef metadata" <<Container>> as attachmentDb
+
+upload --> attachmentDb : INSERT Attachment (or ChunkRef rows if chunked)
+upload --> chunker : if size above threshold
+chunker --> contentStore : PUT each chunk independently
+upload --> contentStore : PUT whole blob, if not chunked
+retrieval --> attachmentDb : resolve ContentHash -> ContentProviderKey/Ref (or ChunkIndex)
+retrieval --> contentStore : GET bytes (Range-aware)
+tiering --> attachmentDb : read LastAccessedAt per Attachment
+tiering --> contentStore : move blob to a colder/warmer backend tier
+
+@enduml
+```
+
+## Component diagram — Live View (gated authoritative fold)
+
+Details the fold-time split `ADR-042` decided, shown only as a single
+"materialization" arrow in the Publish-path diagram above — this
+diagram is that arrow's own internals, the composition already
+documented in `docs/patterns/interactions/gated-authoritative-
+publish.md`.
+
+```plantuml
+@startuml C4_Component_LiveView
+skinparam shadowing false
+skinparam defaultTextAlignment center
+skinparam wrapWidth 220
+skinparam rectangle<<Component>> {
+  BackgroundColor #85BBF0
+  FontColor black
+}
+skinparam database<<Container>> {
+  BackgroundColor #438DD5
+  FontColor white
+}
+skinparam rectangle<<Boundary>> {
+  BackgroundColor transparent
+  BorderColor #666666
+  BorderStyle dashed
+}
+skinparam ArrowColor #666666
+
+rectangle "Router — fold step" <<Boundary>> as foldStep {
+    rectangle "**LiveViewFolder**\n<<Component>>\n//Unconditional fold//\n--\nEvery routed event, regardless of AuthorityStatus -- wraps isAuthoritative: false (ADR-042)" <<Component>> as liveFolder
+    rectangle "**AuthorityStatus Gate**\n<<Component>>\n//accepted? proceed : hold//\n--\nADR-035/042 -- unattested/pending_review events stop here, never reach the authoritative fold" <<Component>> as gate
+    rectangle "**AuthoritativeFolder**\n<<Component>>\n//Gated fold//\n--\nOnly runs once AuthorityStatus reaches accepted, via publish-time default or a later authorityDecision (ADR-035/042)" <<Component>> as authFolder
+}
+
+database "Live View (LiveEntityStoreRow)" <<Container>> as liveDb
+database "Entity Store (EntityStoreRow, authoritative)" <<Container>> as authDb
+
+liveFolder --> liveDb : upsert, every event, no gate
+gate --> authFolder : accepted
+authFolder --> authDb : upsert, ExpectedVersion-checked (ADR-024)
+note right of liveDb
+  Same event, two independent folds --
+  a second CQRS materialized view
+  (docs/patterns/cqrs-and-materialized-views.md),
+  not a cache of authDb.
+end note
+
+@enduml
+```
 
 ## Suggested References
 
