@@ -41,9 +41,17 @@ Decision:
     "schemaStatus": null,
     "authorityStatus": "accepted",
     "reason": null,
-    "timestamp": "2026-07-29T14:32:00Z"
+    "timestamp": "2026-07-29T14:32:00Z",
+    "sequenceNumber": 48213,
+    "originId": null
   }
   ```
+
+  **`sequenceNumber`/`originId` added by `ADR-090`** — lets a caller
+  explicitly filter a later read for "has this site applied everything
+  up through this point," the mechanism this design uses instead of a
+  frontier-token abstraction. `originId` is `null` for a single-site
+  deployment; populated once `ADR-033`'s multi-site mesh is active.
 
   | `status` | Terminal? | Meaning |
   |---|---|---|

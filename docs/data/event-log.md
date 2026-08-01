@@ -6,6 +6,8 @@
 public class StoredEvent
 {
     public long SequenceNumber { get; set; }   // global monotonic order, identity column -- ARRIVAL order at this store, not logical order (ADR-029)
+    public string? OriginId { get; set; }       // which site/peer this event originated at, in a multi-site mesh -- null/local-site-implied for a single-site deployment (ADR-033; propagated to this file, ADR-090)
+    public string? LogicalClock { get; set; }   // hybrid logical clock value assigned at the origin site, for cross-site ordering (ADR-033; propagated to this file, ADR-090)
     public Guid EventId { get; set; }          // unique — client-supplied for idempotent retries, or server-generated (ADR-011); plays the "CorrelationId" role too
     public string EntityId { get; set; } = default!;   // {appId}:{entityType}:{uniqueId} — required (ADR-021); supersedes the old optional StreamId
     public string EventType { get; set; } = default!;  // normalized lowercase
@@ -36,6 +38,7 @@ public class Signature
     public DateTimeOffset SignedAt { get; set; }
     public string Meaning { get; set; } = default!;    // required -- e.g. "reviewed", "approved", "authorship" (21 CFR Part 11 §11.50)
     public string Acr { get; set; } = default!;         // the acr claim the signing token actually carried, for audit
+    public byte[]? RFC3161Timestamp { get; set; }        // optional -- a TSA's TimeStampToken over this event's ChainHash, independently verifiable proof this signature existed at or before a given time (ADR-086); enabled per event type alongside RequiredSignature, not global
 }
 
 public enum EventKind
