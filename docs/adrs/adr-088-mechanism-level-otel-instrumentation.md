@@ -26,7 +26,16 @@ Decision:
   — extending what's already wired, not a new observability stack:
   - **Router fold lag** — a `Histogram<double>` measuring elapsed time
     between an event's `SequenceNumber` assignment and its fold into the
-    Entity Store (`ADR-021`).
+    Entity Store (`ADR-021`) — **recorded only for events that fold
+    immediately** (`AuthorityStatus` already `accepted` at publish,
+    `ADR-042`'s default for an ordinary authenticated publish). An event
+    gated through `unattested`/`pending_review` waits on open-ended human
+    review, not processing time — mixing that into the same histogram
+    would conflate a mechanism latency with a review-workflow duration
+    that has nothing to do with fold performance. `AuthorityDecisionRef`
+    turnaround (self-attested/detector-triggered publishes specifically)
+    is a distinct, separate metric if a deployment wants it, not folded
+    into this one.
   - **Peer-sync outbox depth/age** — an `ObservableGauge<long>` per peer,
     reporting the outbox's current pending-item count and the age of its
     oldest pending item (`ADR-033`).

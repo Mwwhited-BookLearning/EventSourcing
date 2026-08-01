@@ -44,6 +44,16 @@ Event Log's own. Verifying `AccessLog`'s integrity means replaying
 *this* chain from `SequenceNumber = 1`, separately from verifying the
 Event Log's.
 
+## Archival
+
+Detaches the identical way the Event Log does (`ADR-089`) — the same
+`ChainCheckpoint` shape (`docs/data/event-log.md`), applied to this
+store's own independent chain: `SequenceNumberRangeStart/End`,
+`ChainHashAtRangeEnd`, and a `ContentProviderKey`/`ContentProviderRef`
+into the same pluggable `IAttachmentContentStore` (`ADR-032`) an
+archived `StoredEvent` segment uses. Not a second archival mechanism —
+one mechanism, applied to both of this design's hash-chained stores.
+
 ## Retention
 
 Never deleted by default, consistent with this design's governing

@@ -32,6 +32,19 @@ public class StoredEvent
     public Signature? Signature { get; set; }             // set only when EventTypeDefinition.RequiredSignature is configured -- a sixth distinct relationship-shaped envelope field (ADR-066)
 }
 
+// Left behind in the primary table when a segment of StoredEvent rows is
+// detached/archived to an externalized IAttachmentContentStore backend
+// (ADR-089) -- lets ongoing chain verification for events appended after
+// the archived segment proceed without ever touching archived data.
+public class ChainCheckpoint
+{
+    public long SequenceNumberRangeStart { get; set; }
+    public long SequenceNumberRangeEnd { get; set; }
+    public string ChainHashAtRangeEnd { get; set; } = default!;
+    public string ContentProviderKey { get; set; } = default!; // which registered IAttachmentContentStore backend holds the archived segment (ADR-032)
+    public string ContentProviderRef { get; set; } = default!; // opaque, provider-specific locator for the segment's NDJSON blob
+}
+
 public class Signature
 {
     public string SignerId { get; set; } = default!;  // denormalized copy of ActorId above, kept explicit rather than implied (ADR-066)

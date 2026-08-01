@@ -24,7 +24,7 @@ built for one industry.
 | GDPR | EU subject data, right to erasure |
 | eIDAS | EU cross-border electronic identification |
 | BSA/FinCEN KYC rules | US anti-money-laundering identity-verification requirements |
-| OFAC sanctions screening + BSA SAR filing | Screening verified identities against sanctions lists and filing Suspicious Activity Reports — a gap found this session, tracked as an open question (`docs/10-open-questions.md`), not yet resolved by any ADR |
+| OFAC sanctions screening + BSA SAR filing | Screening verified identities against sanctions lists and filing Suspicious Activity Reports — resolved, `ADR-079`: an extensibility seam (`ISanctionsScreeningProvider`) scoped to this application's own composition root |
 | SOC 2 | Relying-party trust/security expectations for an identity-verification service — a cross-cutting baseline for essentially any multi-tenant SaaS deployment of this framework, not unique to this domain |
 
 ## Applicable ADRs
@@ -90,8 +90,8 @@ follow one applicant's full lifecycle across all four docs.
      unconfirmed detector output (`ADR-042`), a compliance officer
      decides it (`ADR-046`/`ADR-050`), and a confirmed hit escalates to a
      digitally signed SAR filing record (`ADR-066`). Deliberately
-     demonstrates the *application-level* answer to this file's own
-     still-open OFAC/SAR question below, without closing it.
+     demonstrates the manual-decision flow `ADR-079`'s
+     `ISanctionsScreeningProvider` seam composes with, not replaces.
 
 ## Feature docs
 
@@ -100,7 +100,7 @@ All four docs the Workflows section above sequences:
 - [Document and Biometric Capture](features/document-and-biometric-capture.md) — the upstream half of onboarding: attachment upload/linking and biometric liveness capture, feeding the identity claim below.
 - [Customer Onboarding and Identity Verification](features/customer-onboarding-and-identity-verification.md) — an applicant's self-attested DID/UCAN identity claim (`ADR-036`) flows from non-authoritative capture (`ADR-035`/`ADR-042`) through analyst review to an accepted, claims-bearing identity record (`ADR-046`).
 - [Relying-Party Verification Request](features/relying-party-verification-request.md) — a delegated, entity-scoped, time-boxed access grant (`ADR-043`) lets a relying party pull a claims-gated confirmation of verification status, logged (`ADR-045`).
-- [Periodic Screening and SAR Escalation](features/periodic-screening-and-sar-escalation.md) — periodic re-screening, compliance review, and digitally signed SAR filing (`ADR-066`), demonstrating the application-level answer to this domain's own open OFAC/SAR question.
+- [Periodic Screening and SAR Escalation](features/periodic-screening-and-sar-escalation.md) — periodic re-screening, compliance review, and digitally signed SAR filing (`ADR-066`), demonstrating the manual-decision flow `ADR-079`'s sanctions-screening seam composes with.
 
 ## Special concerns
 
@@ -181,15 +181,14 @@ All four docs the Workflows section above sequences:
   Specially Designated Nationals, or SDN, list) of individuals and
   entities a regulated entity is prohibited from transacting with;
   screening against it is a standing KYC obligation, not optional — the
-  gap this file's Special concerns section already names as unaddressed
-  by any ADR.
+  extensibility seam `ADR-079` resolves for this domain.
 - **Suspicious Activity Report (SAR)** *(synonym: Suspicious Transaction
   Report (STR) — the term most non-US, FATF-aligned jurisdictions use
   for the same underlying filing obligation)* — A filing a US financial
   institution must submit to FinCEN when it knows, suspects, or has
   reason to suspect a transaction (generally $5,000 or more, or $2,000
   or more once a suspect has been identified) involves illicit activity
-  — the other half of the same unaddressed gap.
+  — the other half of the same `ADR-079`-resolved concern.
 - **Verifiable Credential (VC)** — A W3C-standardized, cryptographically
   signed digital credential (e.g. "this DID passed identity
   verification") that can be presented and checked without contacting

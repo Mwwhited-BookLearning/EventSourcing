@@ -33,8 +33,7 @@ stale numbers here are worse than none)*
   several times this session via commits not made by this conversation
   (an external process/terminal checkpointing the work; harmless, just
   don't assume HEAD is `0bd157d` anymore). Working tree still has
-  unstaged edits (citation fixes in `ADR-076`–`082`, plus new `ADR-084`/
-  `085` and `docs/changes/2026-07-31.md`, untracked) — see `git status`.
+  unstaged edits from this session's late review pass — see `git status`.
 - **`docs/10-open-questions.md` is now EMPTY** — worked down from 22
   rows to 0 this session, via twenty-two new ADRs (`ADR-076`–`093`) plus
   an `ADR-045` addendum. Full narrative in `docs/changes/2026-07-31.md`,
@@ -43,40 +42,57 @@ stale numbers here are worse than none)*
   framework fork at all — a new standing exclusion category in the
   file's own header now). **This is a milestone, not a steady state** —
   the file's whole purpose is to catch the *next* real fork the moment
-  it's found (`CLAUDE.md`'s "add a row in the same pass you find one"),
-  not to stay empty. Don't read an empty table as "nothing to weigh
-  going forward." Recurring lenses worth applying to whatever's found
-  next, established this session: **(1)** an ops/runbook concern can be
-  excluded entirely, not just deprioritized; **(2)** prefer a real RFC/
-  web standard over a custom mechanism when one's available; **(3)**
-  reuse an existing framework mechanism/interface before inventing a
-  new one — several rows this session resolved as "no new machinery
-  needed" once traced through what already exists.
-- **Standing policy, this file's own scope now**: a resolved
-  `docs/10-open-questions.md` row is **deleted outright**, not struck
-  through — the resolving ADR is its permanent record; that day's
-  `docs/changes/{date}.md` carries the one-line pointer instead. (This
-  reversed an earlier same-session correction that said the opposite —
-  see that file's own header for the reasoning, and don't re-derive
-  either policy from scratch.) Two recurring triage principles used to
-  get there, worth applying to the 8 rows still open rather than re-
-  deriving: **(1)** an ops/runbook concern can be deferred (rows 5, 7);
-  **(2)** a question resolvable with an existing mechanism (an ordinary
-  API call, an existing auth flow, existing lineage/masking/query
-  primitives) doesn't need new framework machinery invented for it.
-- Also created, this session: `TODO.md`, this file, and
-  `.claude/protocols/todo-tracking.md` + `context-handoff.md`.
-- **Read `TODO.md` for what's mechanically outstanding** — includes
-  propagation debt the new ADRs themselves created: stale
-  `telemetryPointer` JSON examples (`ADR-081`'s shape change), eight
-  domain READMEs' stale GDPR breach-notification notes, `FeatureFlagState`/
-  `LeaderLease` missing from the `DbSet` drift-table entry, and
-  `08-build-plan.md` having no phase for anything past `ADR-050`.
-- **Still open, not yet executed**: the `08-build-plan.md` dependency-
-  checklist restructuring, the missing GraphQL query/filter-pushdown doc
-  replacing `04-odata-filter-pushdown.md`, and a full repo-wide
-  staleness review pass — see "Working notes" below for the retained
-  detail on the first two.
+  it's found, not to stay empty. Standing policy, reversed once this
+  session (don't re-derive either version from scratch — see the file's
+  own header): a resolved row is **deleted outright**, not struck
+  through; the resolving ADR is its permanent record, and that day's
+  `docs/changes/{date}.md` carries the one-line pointer instead.
+  Recurring lenses worth applying to whatever's found next: **(1)** an
+  ops/runbook concern with no real architecture/dev decision embedded
+  can be excluded entirely, not just deferred; **(2)** prefer a real
+  RFC/web standard over a custom mechanism when one's available;
+  **(3)** reuse an existing framework mechanism/interface before
+  inventing a new one.
+- **A full review pass over all 22 new ADRs, this session, found and
+  fixed 8 real issues** (4 parallel review agents, each checking a
+  different axis — citation accuracy, data-model-propagation-claims-vs-
+  reality, index/tracker consistency, and references/domain-doc
+  consistency): `ADR-086` misnamed a hash ("root" → the correct
+  "manifest hash," matching `ADR-068`'s own term); `ADR-092`
+  mischaracterized both `ADR-035`'s actual scope (it's non-authoritative
+  capture of an *authenticated* claim, not "unauthenticated," since
+  `ADR-042` revised the default) and `ADR-058`'s (which already says
+  "hostile," contradicting the claim that it doesn't); `ADR-088`'s fold-
+  lag metric didn't account for `ADR-042`'s review-gating (would have
+  conflated processing latency with open-ended human-review time);
+  `ADR-077`/`ADR-078` claimed data-model propagation as "not yet done"
+  when it had actually already landed in the same session; a typo/count
+  error in `TODO.md` and a stale `75→85` (should be `93`) count in
+  `docs/changes/2026-07-31.md`; and `docs/domains/digital-identity-kyc/
+  README.md` had a real partial-edit bug — only its Special Concerns
+  bullet was updated to reflect `ADR-079`'s resolution, while five other
+  spots in the same file (the regulations table, a workflow description,
+  the feature-docs list, two glossary entries) still called the OFAC/SAR
+  question open. All fixed. **Lesson for next time**: verify propagation
+  claims against the actual files rather than trusting an ADR's own
+  Consequences section, and grep a whole file for a topic before
+  assuming one updated bullet means the whole file is consistent.
+- **`TODO.md` restructured into 6 dependency-ordered phases** this
+  session (was a flat 12-item list) — Phase 1 quick/independent fixes,
+  Phase 2 data-model correctness (foundational), Phase 3 diagrams/
+  library catalog, Phase 4 the GraphQL/API-contract rewrite cluster
+  (internally sequenced: pushdown doc → api-contracts → solution-
+  structure → Gherkin scenarios), Phase 5 the `08-build-plan.md`
+  dependency-checklist restructuring, Phase 6 the 13-domain Salt-mockup
+  rework (sized for parallel dispatch). Read `TODO.md` directly rather
+  than this summary for the actual items.
+- Also created, this session: `TODO.md`'s restructure aside, `.claude/
+  protocols/todo-tracking.md` + `context-handoff.md` (both created
+  earlier the same session).
+- **Still open, not yet executed**: everything in `TODO.md`'s 6 phases,
+  plus a full repo-wide staleness review pass beyond what this
+  session's ADR-focused review covered — see "Working notes" below for
+  retained detail on anything not fully captured by `TODO.md` itself.
 
 ## How to resume cold
 
