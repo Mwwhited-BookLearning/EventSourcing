@@ -40,7 +40,7 @@ else cache miss
       one shared representation, not two.
     end note
     alt building /asyncapi.json specifically
-      docBuilder -> maskTransform: Wrap(schema) -- rewrites x-masking\nnodes to oneOf[value,masked], unconditionally
+      docBuilder -> maskTransform: Wrap(schema) -- rewrites x-masking\nnodes to oneOf[value,masked,erased] (ADR-057), unconditionally
     end
   end
   docBuilder -> docBuilder: assemble full document\n(native Microsoft.OpenApi writer for OpenAPI;\nhand-built JsonObject envelope for AsyncAPI)
@@ -127,12 +127,12 @@ Feature: Dynamic OpenAPI/AsyncAPI generation
 
   Scenario: The same maskable property is documented wrapped on the follow side
     When I GET "/asyncapi.json"
-    Then the schema for "OrderPlaced" should declare "CustomerTaxId" as oneOf [ { value: string }, { masked: string } ]
+    Then the schema for "OrderPlaced" should declare "CustomerTaxId" as oneOf [ { value: string }, { masked: string }, { erased: boolean } ]
 
   Scenario: The wrapper appears in AsyncAPI even before masking's data enforcement is built
     Given IPayloadMasker (Phase 8) has not been implemented yet
     When I GET "/asyncapi.json"
-    Then "CustomerTaxId" should still be documented as oneOf [ { value: string }, { masked: string } ]
+    Then "CustomerTaxId" should still be documented as oneOf [ { value: string }, { masked: string }, { erased: boolean } ]
     # The schema half (MaskingSchemaTransformer) is independent of the data
     # half (IPayloadMasker) -- see ADR-002 and ADR-009.
 

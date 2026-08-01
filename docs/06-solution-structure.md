@@ -136,7 +136,7 @@ public static class HostCoreExtensions
         builder.Services.AddProblemDetails(); // ADR-013: one error shape, every endpoint
         builder.Services.AddMemoryCache(); // backs the ~60s spec-document cache, ADR-002
         builder.Services.AddSingleton<EventSchemaConverter>();      // JsonSchema text -> shared Microsoft.OpenApi OpenApiSchema
-        builder.Services.AddSingleton<MaskingSchemaTransformer>();  // schema-level x-masking -> oneOf[value,masked] wrapper
+        builder.Services.AddSingleton<MaskingSchemaTransformer>();  // schema-level x-masking -> oneOf[value,masked,erased] wrapper (ADR-057)
         builder.Services.AddSingleton<OpenApiDocumentBuilder>();
         builder.Services.AddSingleton<AsyncApiDocumentBuilder>();
 

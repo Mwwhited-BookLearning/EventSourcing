@@ -151,7 +151,7 @@ Schema Object dialect — there is one shared schema representation, not two.
 never wrapped by masking, per `ADR-009`) and serializes the whole document
 natively via `Microsoft.OpenApi`'s own writer. `AsyncApiDocumentBuilder`
 first runs it through `MaskingSchemaTransformer` — which rewrites any
-`x-masking`-carrying node into the `oneOf[value,masked]` wrapper described
+`x-masking`-carrying node into the `oneOf[value,masked,erased]` (`ADR-057`) wrapper described
 below — then hand-builds the surrounding channels/messages/operations
 envelope as JSON, since no mature .NET library fits AsyncAPI generation
 from a runtime registry. `MaskingSchemaTransformer` is schema-only and
@@ -376,7 +376,7 @@ before schema/parent-link validation — an idempotent replay skips both
   schedules — see `ADR-002` for the full mechanism. The **schema** half:
   any property carrying `x-masking` is documented in this AsyncAPI output,
   for every caller regardless of claims, as a wrapper —
-  `oneOf: [{value: <the property's real type>}, {masked: string}]`, never
+  `oneOf: [{value: <the property's real type>}, {masked: string}, {erased: boolean}]` (`ADR-057`), never
   the bare original type — because `MaskingSchemaTransformer` rewrites it
   unconditionally at document-build time. This half exists as soon as
   AsyncAPI generation does (design-accepted, not deprioritized). The

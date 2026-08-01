@@ -30,36 +30,14 @@ phase's items reference or build on an earlier phase's (or an earlier
 item within the same phase's) output where a real dependency exists,
 not the other way around. Within a phase, items are otherwise
 independent of each other and can be done in any order, or dispatched
-in parallel (`.claude/protocols/parallel-batch-dispatch.md`) — Phase 5
+in parallel (`.claude/protocols/parallel-batch-dispatch.md`) — Phase 4
 in particular is sized for that. Nothing here is a priority ranking
 beyond the dependency ordering itself; pick whichever phase suits
 available time.
 
-### Phase 1 — Data-model correctness
+### Phase 1 — Diagrams and library catalog
 
-Foundational: several later items (the build-plan restructuring in
-Phase 4, any future ADR touching these same entities) would silently
-inherit whichever of these gaps isn't fixed first, so this phase comes
-before structural/content work rather than after.
-
-- [ ] **Data-model drift table** (found by a design review, partially
-  fixed — `OriginId`/`LogicalClock` closed this session, `ADR-090`):
-  `RequiredClaims` still modeled as singular in the data model despite
-  `ADR-050` making it a list; `DeprecatedAt` (`ADR-038`) and
-  `ViewDefinition` fields (`ADR-039`) absent; `PeerSyncCursor`/
-  `WebhookOutbox` tables missing; the generated-spec `oneOf` wrapper
-  (`ADR-002`) still shows two branches, not three (`ADR-057`'s
-  `erased`); ten entities (`LiveEntityStoreRow`, `EntityErasureKey`,
-  `AppTrustRoot`, `Role`, `UserPermission`, `TrustedFederationIssuer`,
-  `AppDataResidencyPolicy`, `WebhookSubscription`, `ADR-077`'s
-  `FeatureFlagState`, and `ADR-078`'s `LeaderLease` — the last two
-  already defined in `docs/data/schema-registry.md`, just missing their
-  `DbSet`) have no `DbSet` in `EventStoreContext`.
-
-### Phase 2 — Diagrams and library catalog
-
-Self-contained, no dependency on Phase 1 or the API-contract cluster
-below.
+Self-contained, no dependency on the API-contract cluster below.
 
 - [ ] **Streaming Channel, Attachment, and Live View component diagrams
   in `01-c4-architecture.md`** — not drawn.
@@ -67,7 +45,7 @@ below.
   retrofitting** (known anomalies, fulfilled functional requirements per
   IEC 62304) — currently just a catalog, not yet a complete SOUP list.
 
-### Phase 3 — GraphQL/API-contract rewrite cluster
+### Phase 2 — GraphQL/API-contract rewrite cluster
 
 Internally sequenced — do these roughly in this order, since each later
 item is easier to get right once the earlier ones exist to reference,
@@ -91,8 +69,8 @@ though none is strictly blocked from starting early.
   `ADR-054` onward's new projects (a webhook dispatcher, a rate limiter,
   an SDK-generation step, device-input client packages) — flagged stale
   in the file's own banner, not silently wrong, but not rewritten either.
-  Easier once Phase 1's entities have settled homes and the contract
-  above is current.
+  Not blocked on anything else in this file — the entity homes this
+  item used to wait on were settled this session.
 - [ ] **Every banner'd `docs/features/*.md` file's Gherkin scenarios are
   themselves still unchanged** (`400`→`202`+`SchemaStatus`, OData→GraphQL
   syntax) — the banners say what's stale, they don't fix the scenarios.
@@ -101,12 +79,12 @@ though none is strictly blocked from starting early.
   doc/Gherkin coverage. Do last in this cluster — needs the corrected
   contract shape above to write accurate scenarios against.
 
-### Phase 4 — Build-plan restructuring
+### Phase 3 — Build-plan restructuring
 
-Benefits from Phase 1 (accurate entities to reference) and Phase 3
-(knowing what's actually built) being settled first, though it's a
-structural change to the tracking document itself, not new design
-content.
+Benefits from Phase 2 (knowing what's actually built) being settled
+first, though it's a structural change to the tracking document itself,
+not new design content. The data-model accuracy this phase used to also
+wait on was settled this session.
 
 - [ ] **`08-build-plan.md` has no phases for `ADR-050`–`ADR-093`** —
   every capability from per-tenant rate limiting through this session's
@@ -121,7 +99,7 @@ content.
   by topological sort — rather than more numbered phases tacked onto
   the end.
 
-### Phase 5 — Large content batch
+### Phase 4 — Large content batch
 
 Independent of every phase above; the single biggest item in this file,
 and the one best suited for parallel dispatch
