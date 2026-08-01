@@ -12,17 +12,25 @@ public class EventTypeDefinition
     public DateTimeOffset RegisteredAt { get; set; }
     public bool IsActive { get; set; }                 // latest version flag
     public ParentValidationMode ParentValidationMode { get; set; } = ParentValidationMode.Strict;
-    public string? RequiredPublishClaim { get; set; }  // "type:value", e.g. "clearance:secret" — null = no extra restriction
-    public string? RequiredReadClaim { get; set; }     // gates Follow + Lineage; null = no extra restriction
+    public List<RequiredClaim> RequiredClaims { get; set; } = new(); // generalizes RequiredPublishClaim/RequiredReadClaim from one fixed claim per direction to a list (ADR-050); OR semantics within one Direction by default -- any one listed claim for that direction satisfies the gate
     public ChangeKind ChangeKind { get; set; }          // Full | Partial — required, no default (ADR-016); Partial payloads are Optional<T>-wrapped per-property (ADR-022)
     public string EntityIdField { get; set; } = default!; // JSON path into Payload that yields this type's uniqueId (ADR-021) — required, no default
     public string? UpcastFromPrevious { get; set; }     // originally an OData compute() expression list, this version <- previous (ADR-018); materialized on success (ADR-027); evaluated via a pluggable IUpcastExpressionEvaluator, CEL by default (ADR-053), since ADR-037 moved this off OData entirely
     public string? DowncastToPrevious { get; set; }     // previous <- this version (ADR-028); read-time only, never materialized; same pluggable-evaluator move as UpcastFromPrevious above (ADR-037/ADR-053)
     public RejectionBehavior RejectionBehavior { get; set; } = RejectionBehavior.Annotate; // Annotate | Compensate — how an authorityDecision:rejected is handled for this type (ADR-035, comparisons/authority-rejection-behavior.md)
     public RequiredSignature? RequiredSignature { get; set; } // null = no sign-off required; set = publish must satisfy an RFC 9470 step-up challenge first (ADR-066)
+    public DateTimeOffset? DeprecatedAt { get; set; }   // set, not removed, when a field/version is marked deprecated-but-still-emitted for at least one full deprecation window (ADR-038); null = not deprecated
 
     public List<FilterableField> FilterableFields { get; set; } = new();
 }
+
+public class RequiredClaim
+{
+    public ClaimDirection Direction { get; set; }        // Publish | Read
+    public string Claim { get; set; } = default!;         // "type:value" format, ADR-008
+}
+
+public enum ClaimDirection { Publish, Read }
 
 public enum ChangeKind
 {
@@ -93,19 +101,31 @@ public class Role
     public string RoleName { get; set; } = default!;
     public List<string> Permissions { get; set; } = new(); // opaque claim/scope strings -- the framework never validates what one means
 }
+
+public class UserPermission
+{
+    public string ActorId { get; set; } = default!;       // part of the composite key
+    public string AppId { get; set; } = default!;         // part of the composite key (ADR-030)
+    public string Permission { get; set; } = default!;    // opaque claim/scope string, additive-only -- no explicit-deny concept exists (ADR-046)
+}
 ```
 
 A named, `AppId`-scoped bundle of the same opaque permission strings
-used everywhere else in this design (`RequiredPublishClaim`/
-`RequiredReadClaim` values, `ADR-008`; `ADR-044`'s application-defined
-permission types). **Role assignment (which user has which role) and
-direct per-user permission grants (`UserPermission`, additive-only —
-`ADR-046`) are both identity-provider state, not core-engine data** —
-the same scoping `ADR-006` already drew around dev-mode seeded clients.
-The IdP expands a user's roles plus any direct grants into one
-flattened claim set at token issuance; every claim check in this design
-(`ADR-008`, `ADR-043`, `ADR-044`) is unchanged and unaware whether a
-claim arrived via a role, a direct grant, or neither.
+used everywhere else in this design (`RequiredClaims`' claim values,
+`ADR-008`/`ADR-050`; `ADR-044`'s application-defined permission types).
+**`Role` and `UserPermission` are both core-engine entities, folded from
+reserved control-plane events** — `RoleGranted`/`RoleRevoked` and
+`PermissionGranted` respectively (`ADR-067`'s control-plane-actions-as-
+reserved-events pattern). **Corrected here**: an earlier version of this
+section said role assignment and direct per-user grants were identity-
+provider state, not core-engine data — `ADR-046` originally took that
+position but `ADR-067` (written later) explicitly superseded it, and
+this file was never updated to match until now. The IdP still expands a
+user's roles plus any direct grants into one flattened claim set at
+token issuance; every claim check in this design (`ADR-008`, `ADR-043`,
+`ADR-044`) is unchanged and unaware whether a claim arrived via a role,
+a direct grant, or neither — only *where the grant itself is recorded*
+changed, not how it's consumed.
 
 ## Trusted federation issuers (`ADR-047`)
 
@@ -169,6 +189,74 @@ subscription cursor) are a separate concern from this registration
 record — not yet placed in this file, still flagged as remaining
 propagation work per `ADR-060`'s own Consequences.
 
+## Entity view definitions (`ADR-039`)
+
+```csharp
+public class ViewDefinition
+{
+    public string EntityType { get; set; } = default!;
+    public int Version { get; set; }
+    public ViewKind ViewKind { get; set; }               // List | Detail | Edit | Custom
+    public List<int> CompatibleSchemaVersions { get; set; } = new(); // which EventTypeDefinition.Version(s) this view can render
+    public string TemplateContent { get; set; } = default!; // raw HTML+JS, interpreted by the generic renderer -- never precompiled
+    public string Hash { get; set; } = default!;          // content-addressed, same pattern docs/data/schema-registry.md already uses for schemas
+    public DateTimeOffset EffectiveFrom { get; set; }
+    public DateTimeOffset? DeprecatedAt { get; set; }      // same deprecated-but-still-served discipline as EventTypeDefinition.DeprecatedAt (ADR-038)
+}
+
+public enum ViewKind { List, Detail, Edit, Custom }
+```
+
+Follows the exact same content-addressed, versioned, hashed shape
+`EventTypeDefinition` already established for schemas — a second
+application of that pattern, not a bespoke third shape (`ADR-039`).
+
+## Peer-sync cursor (`ADR-033`)
+
+```csharp
+public class PeerSyncCursor
+{
+    public string PeerId { get; set; } = default!;        // composite key with AppId in a real deployment; simplified here
+    public long LastReceivedSequenceNumber { get; set; }
+    public long LastAckedSequenceNumber { get; set; }
+    public DateTimeOffset LastSyncAttemptAt { get; set; }
+    public DateTimeOffset? LastSyncSuccessAt { get; set; }
+}
+```
+
+The durable, per-peer resumption point after a restart — sync picks up
+exactly where it left off, the same "durable checkpoint, not memory"
+discipline `ADR-015`'s `ProjectionCheckpoint` already established for a
+different consumer. A durable table, not an in-memory queue — an
+unclean process termination loses nothing queued (`ADR-033`).
+
+## Webhook outbox and delivery cursor (`ADR-060`)
+
+```csharp
+public class WebhookOutbox
+{
+    public long SequenceNumber { get; set; }               // own append-only sequence, matched against StoredEvent's for resumption
+    public Guid SubscriptionId { get; set; }               // FK -> WebhookSubscription
+    public string EventPayloadSnapshot { get; set; } = default!; // masked (ADR-009) against FixedClaimsSnapshot at enqueue time
+    public DateTimeOffset EnqueuedAt { get; set; }
+}
+
+public class WebhookDeliveryCursor
+{
+    public Guid SubscriptionId { get; set; }               // PK, FK -> WebhookSubscription
+    public long LastDeliveredSequenceNumber { get; set; }
+    public DateTimeOffset LastAttemptAt { get; set; }
+    public DateTimeOffset? LastSuccessAt { get; set; }
+}
+```
+
+Reuses the exact same durable outbox/inbox primitive `ADR-023`'s client
+Inbox, `ADR-033`'s peer sync, and `ADR-039`'s client outbox already
+share — `WebhookOutbox` is a durable table (never an in-memory queue),
+and `WebhookDeliveryCursor` is structurally identical to
+`PeerSyncCursor` above, confirming this really does inherit the
+primitive rather than merely resembling it.
+
 ## Feature flag state (`ADR-077`)
 
 ```csharp
@@ -222,17 +310,21 @@ time, not part of the baseline EF model — see
 
 ## Event-type security (required claims)
 
-`RequiredPublishClaim` and `RequiredReadClaim` are a second, orthogonal
-authorization dimension from the operation-level scopes in `ADR-006`:
-scopes (`events:publish`, `events:follow`, `events:lineage:read`,
-`registry:admin`) gate *whether you can call the operation at all*;
-these two fields gate *whether you may touch a specific event type*, per
-`ADR-008`. Both are optional, single `"type:value"` claim strings (e.g.
-`"clearance:secret"`), checked with `ClaimsPrincipal.HasClaim(type, value)`
-— v1 supports exactly one required claim per direction, not an AND/OR set.
+`RequiredClaims` is a second, orthogonal authorization dimension from
+the operation-level scopes in `ADR-006`: scopes (`events:publish`,
+`events:follow`, `events:lineage:read`, `registry:admin`) gate *whether
+you can call the operation at all*; this field gates *whether you may
+touch a specific event type*, per `ADR-008`, generalized to a list by
+`ADR-050`. Each entry is a `{Direction, Claim}` pair — `Claim` an opaque
+`"type:value"` string (e.g. `"clearance:secret"`), checked with
+`ClaimsPrincipal.HasClaim(type, value)`. **Multiple entries for the same
+`Direction` are `OR`ed by default** (`ADR-050`) — holding *any one* of
+them satisfies the gate; `ADR-008`'s original "exactly one claim per
+direction" limitation no longer applies.
 
-- `RequiredPublishClaim` gates `POST /publish/{event-type}` for this type.
-- `RequiredReadClaim` gates `QUERY /follow/{event-type}` (`ADR-012`; checked at connect
+- A `Publish`-direction entry gates `POST /publish/{event-type}` for
+  this type.
+- A `Read`-direction entry gates `QUERY /follow/{event-type}` (`ADR-012`; checked at connect
   time) **and** the Lineage API — see `../03-api-contracts.md`, "Lineage API",
   for why a restricted node anywhere in an ancestors/descendants traversal
   fails the whole request rather than being stubbed out.

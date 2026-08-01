@@ -284,7 +284,7 @@ expose `/asyncapi.json` now that the follow contract exists:
 `OpenApiSchema` from `EventSchemaConverter`) **and**
 `MaskingSchemaTransformer` — even though masking's runtime enforcement
 (`IPayloadMasker`) doesn't land until Phase 8, the schema-level `x-masking`
-→ `oneOf[value,masked]` wrapper is claims-independent and must exist now so
+→ `oneOf[value,masked,erased]` (`ADR-057`) wrapper is claims-independent and must exist now so
 `/asyncapi.json` never documents a maskable property's bare, unwrapped type
 (`ADR-002`, `ADR-009`).
 
@@ -299,7 +299,7 @@ identically across SQLite/Postgres/SQL Server, and the 400-before-any-SQL
 rejection for an undeclared filter field; `/asyncapi.json` includes the
 follow channel, served anonymously, cache-invalidated on the next
 registration; a maskable property (registered ahead of Phase 8) already
-appears wrapped as `oneOf[value,masked]` in the generated document, even
+appears wrapped as `oneOf[value,masked,erased]` in the generated document, even
 though every event still streams it unconditionally as `{"value": ...}`
 until Phase 8's enforcement lands (`features/masking.md`); `mode=replay`
 delivers matching history then tails with no gap or duplicate,

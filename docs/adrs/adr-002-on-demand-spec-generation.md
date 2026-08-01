@@ -54,7 +54,10 @@ grows large enough that generation cost becomes measurable.
 - **`MaskingSchemaTransformer`** (schema-level, not data-level — distinct
   from `IPayloadMasker` in `ADR-009`) walks an `OpenApiSchema` recursively
   and, wherever it finds an `x-masking` extension, rewrites that node into
-  the `oneOf: [{value: original}, {masked: string}]` wrapper. It is a pure
+  the `oneOf: [{value: original}, {masked: string}, {erased: boolean}]`
+  wrapper — the third branch added by `ADR-057`'s crypto-shredding
+  erasure, propagated here (this file previously showed only the
+  original two-branch form). It is a pure
   function of the schema alone (the wire *shape* is uniform for every
   caller per `ADR-009`, so there is no claims parameter here) and runs once
   per document build, not per caller, not per event. It must exist as soon
