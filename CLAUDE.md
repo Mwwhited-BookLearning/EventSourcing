@@ -202,6 +202,18 @@ re-derive the process from scratch:
   `ADR-010`; "projection" as a CQRS read model vs. design-docs' schema-
   mapping sense, `ADR-018`; `ChannelOrigin.Origin` vs. `OriginId`,
   tracked in `TODO.md`).
+- **The ADR that adds or changes a persisted field/entity/table is that
+  field's naming/shape authority — and must land the matching
+  `docs/data/*.md` edit and `DbSet` registration in the *same pass*, not
+  defer it to a later sweep.** `TODO.md`'s data-model drift table
+  (`OriginId`/`LogicalClock` described in `ADR-033` but never added to
+  `docs/data/event-log.md`; `RequiredClaims` singular vs. `ADR-050`'s
+  list; missing `DeprecatedAt`/`ViewDefinition`/`PeerSyncCursor`/
+  `WebhookOutbox`; seven entities with no `DbSet`) happened because this
+  step got skipped repeatedly, not because anyone disagreed about the
+  field — the ADR's prose was never actually wrong. This bullet is the
+  rule that stops it recurring; the drift table itself is still the
+  cleanup item in `TODO.md`.
 - **A repeated relationship gets its own envelope-metadata field, never
   conflated with an existing one just because the shape looks similar.**
   This design has seven now: `parentEventIds` (causal derivation,
