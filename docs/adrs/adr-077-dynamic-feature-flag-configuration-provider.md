@@ -68,11 +68,12 @@ Decision:
   detail" framing stands.
 
 Consequences:
-- A new `FeatureFlagSet` reserved event type and `FeatureFlagState`
-  table — propagation work for `docs/data/schema-registry.md` (or
-  wherever `ADR-067`'s other reserved-event current-state tables land)
-  plus a `DbSet` registration, per this project's data-model-ownership
-  convention (`CLAUDE.md`).
+- **`FeatureFlagState` is defined in `docs/data/schema-registry.md`,
+  landed in this same pass** per this project's data-model-ownership
+  convention. The `FeatureFlagSet` reserved event type itself, and a
+  `DbSet<FeatureFlagState>` registration in `docs/data/dbcontext-and-
+  conventions.md`, remain not yet done — tracked in `TODO.md`'s existing
+  data-model drift-table item.
 - A new, small `EventLogFeatureFlagConfigurationProvider` component —
   not yet built.
 - `ADR-058` is unaffected, not revised — this ADR only adds an available

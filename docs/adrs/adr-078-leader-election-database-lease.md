@@ -74,12 +74,15 @@ Decision:
   decision.
 
 Consequences:
-- A new `LeaderLease` table and a small `LeaderElectionService`
+- **`LeaderLease` is defined in `docs/data/schema-registry.md`, landed
+  in this same pass** per this project's data-model-ownership
+  convention — only the actual `LeaderElectionService` implementation
   (a `BackgroundService`/hosted-service wrapper each singleton worker
-  composes with) — not yet built. Propagation work per this project's
-  data-model-ownership convention (`CLAUDE.md`): `docs/data/`'s relevant
-  group file and a `DbSet` registration land in the same pass as any
-  future implementation.
+  composes with) remains not built, consistent with this repo being a
+  design package with no `src/` yet. A `DbSet<LeaderLease>` registration
+  is still missing from `docs/data/dbcontext-and-conventions.md` —
+  tracked in `TODO.md`'s existing data-model drift-table item, not a new
+  gap this ADR introduces.
 - Clarifies `ADR-024`'s actual scope (write-time conflict flagging only)
   — worth a cross-reference wherever `ADR-024`/`ADR-029` could otherwise
   be misread as already covering concurrent-fold safety.

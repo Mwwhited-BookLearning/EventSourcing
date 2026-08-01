@@ -35,12 +35,14 @@ Decision:
   configuration surface `RequiredSignature` already uses, not a global
   switch.
 - **`ADR-068`'s litigation export bundle gains an RFC 3161 timestamp over
-  its own root hash** — the export mechanism already computes a root
-  hash "proving the export is a complete, unaltered copy of that chain";
-  timestamping that root hash at export time proves *when* the export
-  was made, independent of trusting the exporting party's own system
-  clock — directly strengthening exactly the "independent of trusting
-  the exporting party" property `ADR-068` already states as its goal.
+  its own manifest hash** — the export mechanism already computes a
+  manifest hash (`ADR-068`'s own term: "a `SHA-256` over the ordered
+  `ChainHash` values plus export metadata") "proving the export is a
+  complete, unaltered copy of that chain"; timestamping that manifest
+  hash at export time proves *when* the export was made, independent of
+  trusting the exporting party's own system clock — directly
+  strengthening exactly the "independent of trusting the exporting
+  party" property `ADR-068` already states as its goal.
 - **A TSA is a pluggable dependency, not a hardcoded vendor** — this
   design already treats external trust infrastructure as swappable
   (`ADR-057`'s `IErasureKeyStore`, `ADR-041`'s configuration-sourced
