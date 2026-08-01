@@ -127,7 +127,7 @@ entity "TelemetryChannel" as channel {
   Origin : enum {Origin, Derived}
   SourceChannelIds : string[]?
   TransformKind : enum {Resample, Filter, Aggregate, Transcode}?
-  RequiredReadClaim : string?
+  RequiredClaims : {Direction, Claim}[]?
 }
 
 entity "TelemetrySample" as sample {

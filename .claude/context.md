@@ -29,11 +29,28 @@ here than in most repos.
 *(update this section's content, not just its presence, every session —
 stale numbers here are worse than none)*
 
-- As of **2026-07-31**: HEAD is `a602317` ("updating design") — moved
-  several times this session via commits not made by this conversation
-  (an external process/terminal checkpointing the work; harmless, just
-  don't assume HEAD is `0bd157d` anymore). Working tree still has
-  unstaged edits from this session's late review pass — see `git status`.
+- As of **2026-08-01** (continuing the same working session that started
+  2026-07-31): HEAD was `a602317` ("updating design") as of the last check,
+  moved several times via commits not made by this conversation (an
+  external process/terminal checkpointing the work; harmless, just don't
+  assume it's still current — re-check `git log`/`git status`). Working
+  tree has further unstaged edits from this session's TODO-list work-
+  through — see `git status`.
+- **Phase 4 (GraphQL/API-contract rewrite cluster) is 3 of 4 items done.**
+  `04-odata-filter-pushdown.md` (retitled/rewritten to the GraphQL
+  pushdown design), `03-api-contracts.md` (full GraphQL/OpenAPI-split
+  rewrite), and `06-solution-structure.md` (DI-wiring sketches brought
+  current — `FollowEndpoint`/`LineageEndpoint` renamed to their GraphQL
+  resolver identities, `MapMethods` QUERY-per-surface routing replaced,
+  `RequiredPublishClaim`/`RequiredReadClaim` → `RequiredClaims`,
+  `AsyncApiDocumentBuilder` marked superseded inline, and the `ADR-054`+
+  projects — `EventStore.Gateway`, `EventStore.Webhooks`,
+  `EventStore.Client.DeviceInput` — added to the project layout, including
+  a real gap found beyond the tracked TODO item: no YARP Gateway project
+  existed anywhere in this file despite `ADR-049` requiring one) are all
+  done — see `docs/changes/2026-08-01.md` for the full narrative. **Only
+  the `docs/features/*.md` Gherkin rewrite (400→202+SchemaStatus, OData→
+  GraphQL syntax, `ADR-054`–`074` coverage) is left in Phase 4**, next up.
 - **`docs/10-open-questions.md` is now EMPTY** — worked down from 22
   rows to 0 this session, via twenty-two new ADRs (`ADR-076`–`093`) plus
   an `ADR-045` addendum. Full narrative in `docs/changes/2026-07-31.md`,
