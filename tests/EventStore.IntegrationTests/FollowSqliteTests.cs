@@ -47,7 +47,7 @@ public class FollowSqliteTests
         var cache = new MemoryCache(new MemoryCacheOptions());
         var registry = new SchemaRegistryService(db, new SqliteFilterableFieldIndexDdlGenerator(), cache);
         var publish = new PublishService(db, registry, new SqliteUniqueConstraintViolationDetector());
-        var follow = new FollowService(db, new EventTailReader(db));
+        var follow = new FollowService(db, new EventTailReader(db, registry));
         var specBuilder = new AsyncApiDocumentBuilder(db, new EventSchemaConverter(), new MaskingSchemaTransformer(), cache);
 
         await FollowScenarioAssertions.ConnectingWithNoFilterInReplayModeStreamsEveryEventOfTheType(registry, publish, follow);
@@ -59,6 +59,8 @@ public class FollowSqliteTests
         await FollowScenarioAssertions.TheDefaultModeTailNeverDeliversPreExistingEvents(registry, publish, follow);
         await FollowScenarioAssertions.SupplyingFromSequenceNumberWithoutModeReplayIsRejected(registry, publish, follow);
         await FollowScenarioAssertions.ConnectingToAnUnregisteredEventTypeIsRejected(follow);
+        await FollowScenarioAssertions.ConnectingWithoutTheRequiredReadClaimIsRejectedWith403(registry, publish, follow);
+        await FollowScenarioAssertions.ARestrictedParentsIdIsOmittedFromParentEventIdsWithoutBlockingTheEventItself(registry, publish, follow);
 
         await AsyncApiScenarioAssertions.AsyncApiDocumentIncludesTheFollowChannelForARegisteredType(registry, specBuilder);
         await AsyncApiScenarioAssertions.RegisteringANewTypeInvalidatesTheCachedAsyncApiDocument(registry, specBuilder);

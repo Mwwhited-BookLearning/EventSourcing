@@ -21,16 +21,23 @@ internal static class LineageScenarioAssertions
             ChangeKind: "Full", EntityIdField: "$.Id",
             ParentValidationMode: parentValidationMode, RequiredClaims: null, UpcastFromPrevious: null, DowncastToPrevious: null));
 
+    private static async Task RegisterReadClaimGatedType(SchemaRegistryService registry, string appId, string typeName) =>
+        await registry.RegisterAsync(typeName, new RegisterEventTypeRequest(
+            AppId: appId, JsonSchema: SimpleSchema, FilterableFields: [],
+            ChangeKind: "Full", EntityIdField: "$.Id", ParentValidationMode: "Strict",
+            RequiredClaims: [new RequiredClaimRequest("Read", "clearance:phi")],
+            UpcastFromPrevious: null, DowncastToPrevious: null));
+
     public static async Task PublishingAnOriginEventShowsNoParents(SchemaRegistryService registry, PublishService publish, LineageService lineage)
     {
         const string appId = "lineage-demo-1";
         await RegisterSimpleType(registry, appId, "OrderPlaced");
 
         var result = await publish.PublishAsync("OrderPlaced", new PublishEventRequest(
-            appId, 1, """{ "Amount": 1 }""", null, null));
+            appId, 1, """{ "Amount": 1 }""", null, null), TestClaimsPrincipal.None);
         var eventId = ((PublishResult.Created)result).EventId;
 
-        var parents = await lineage.GetParentsAsync(eventId, null, null);
+        var parents = await lineage.GetParentsAsync(eventId, TestClaimsPrincipal.None, null, null);
         Assert.IsEmpty(parents);
     }
 
@@ -40,18 +47,18 @@ internal static class LineageScenarioAssertions
         await RegisterSimpleType(registry, appId, "OrderPlaced");
         await RegisterSimpleType(registry, appId, "OrderShipped");
 
-        var parentResult = await publish.PublishAsync("OrderPlaced", new PublishEventRequest(appId, 1, """{ "Amount": 1 }""", null, null));
+        var parentResult = await publish.PublishAsync("OrderPlaced", new PublishEventRequest(appId, 1, """{ "Amount": 1 }""", null, null), TestClaimsPrincipal.None);
         var parentId = ((PublishResult.Created)parentResult).EventId;
 
-        var childResult = await publish.PublishAsync("OrderShipped", new PublishEventRequest(appId, 1, """{ "Amount": 1 }""", [parentId], null));
+        var childResult = await publish.PublishAsync("OrderShipped", new PublishEventRequest(appId, 1, """{ "Amount": 1 }""", [parentId], null), TestClaimsPrincipal.None);
         var childId = ((PublishResult.Created)childResult).EventId;
 
-        var children = await lineage.GetChildrenAsync(parentId, null, null);
+        var children = await lineage.GetChildrenAsync(parentId, TestClaimsPrincipal.None, null, null);
         Assert.HasCount(1, children);
         Assert.AreEqual(childId, children[0].EventId);
         Assert.IsTrue(children[0].Resolved);
 
-        var parents = await lineage.GetParentsAsync(childId, null, null);
+        var parents = await lineage.GetParentsAsync(childId, TestClaimsPrincipal.None, null, null);
         Assert.HasCount(1, parents);
         Assert.AreEqual(parentId, parents[0].EventId);
     }
@@ -63,10 +70,10 @@ internal static class LineageScenarioAssertions
         var danglingParentId = Guid.NewGuid();
 
         var result = await publish.PublishAsync("OrderShipped", new PublishEventRequest(
-            appId, 1, """{ "Amount": 1 }""", [danglingParentId], null));
+            appId, 1, """{ "Amount": 1 }""", [danglingParentId], null), TestClaimsPrincipal.None);
         var eventId = ((PublishResult.Created)result).EventId;
 
-        var parents = await lineage.GetParentsAsync(eventId, null, null);
+        var parents = await lineage.GetParentsAsync(eventId, TestClaimsPrincipal.None, null, null);
         Assert.HasCount(1, parents);
         Assert.AreEqual(danglingParentId, parents[0].EventId);
         Assert.IsFalse(parents[0].Resolved);
@@ -82,14 +89,14 @@ internal static class LineageScenarioAssertions
         var paymentId = Guid.NewGuid();
 
         // order-1 published first, dangling parentEventId payment-1 (doesn't exist yet)
-        await publish.PublishAsync("OrderPlaced", new PublishEventRequest(appId, 1, """{ "Amount": 1 }""", [paymentId], orderId));
+        await publish.PublishAsync("OrderPlaced", new PublishEventRequest(appId, 1, """{ "Amount": 1 }""", [paymentId], orderId), TestClaimsPrincipal.None);
         // payment-1 published, parented off order-1 (which now exists) -- closes the 2-cycle
-        await publish.PublishAsync("PaymentReceived", new PublishEventRequest(appId, 1, """{ "Amount": 1 }""", [orderId], paymentId));
+        await publish.PublishAsync("PaymentReceived", new PublishEventRequest(appId, 1, """{ "Amount": 1 }""", [orderId], paymentId), TestClaimsPrincipal.None);
 
-        var ancestors = await lineage.GetAncestorsAsync(orderId, null, null);
+        var ancestors = await lineage.GetAncestorsAsync(orderId, TestClaimsPrincipal.None, null, null);
         Assert.AreEqual(1, ancestors.Count(a => a.EventId == paymentId));
 
-        var descendants = await lineage.GetDescendantsAsync(orderId, null, null);
+        var descendants = await lineage.GetDescendantsAsync(orderId, TestClaimsPrincipal.None, null, null);
         Assert.AreEqual(1, descendants.Count(d => d.EventId == paymentId));
     }
 
@@ -100,23 +107,23 @@ internal static class LineageScenarioAssertions
         await RegisterSimpleType(registry, appId, "PaymentReceived");
         await RegisterSimpleType(registry, appId, "OrderShipped");
 
-        var orderResult = await publish.PublishAsync("OrderPlaced", new PublishEventRequest(appId, 1, """{ "Amount": 1 }""", null, null));
+        var orderResult = await publish.PublishAsync("OrderPlaced", new PublishEventRequest(appId, 1, """{ "Amount": 1 }""", null, null), TestClaimsPrincipal.None);
         var orderId = ((PublishResult.Created)orderResult).EventId;
 
-        var paymentResult = await publish.PublishAsync("PaymentReceived", new PublishEventRequest(appId, 1, """{ "Amount": 1 }""", [orderId], null));
+        var paymentResult = await publish.PublishAsync("PaymentReceived", new PublishEventRequest(appId, 1, """{ "Amount": 1 }""", [orderId], null), TestClaimsPrincipal.None);
         var paymentId = ((PublishResult.Created)paymentResult).EventId;
 
-        var shipResult = await publish.PublishAsync("OrderShipped", new PublishEventRequest(appId, 1, """{ "Amount": 1 }""", [paymentId], null));
+        var shipResult = await publish.PublishAsync("OrderShipped", new PublishEventRequest(appId, 1, """{ "Amount": 1 }""", [paymentId], null), TestClaimsPrincipal.None);
         var shipId = ((PublishResult.Created)shipResult).EventId;
 
-        var ancestors = await lineage.GetAncestorsAsync(shipId, null, null);
+        var ancestors = await lineage.GetAncestorsAsync(shipId, TestClaimsPrincipal.None, null, null);
         Assert.AreEqual(1, ancestors.Count(a => a.EventId == paymentId));
         Assert.AreEqual(1, ancestors.Count(a => a.EventId == orderId));
     }
 
     public static async Task FetchingLineageForAnUnknownEventIsRejected(LineageService lineage)
     {
-        Assert.IsFalse(await lineage.EventExistsAsync(Guid.NewGuid()));
+        Assert.AreEqual(LineageRootCheck.NotFound, await lineage.CheckRootAsync(Guid.NewGuid(), TestClaimsPrincipal.None));
     }
 
     public static async Task TopAndSkipCorrectlySliceAResultAndOmittingBothReturnsEverything(SchemaRegistryService registry, PublishService publish, LineageService lineage)
@@ -125,16 +132,97 @@ internal static class LineageScenarioAssertions
         await RegisterSimpleType(registry, appId, "OrderPlaced");
         await RegisterSimpleType(registry, appId, "OrderShipped");
 
-        var orderResult = await publish.PublishAsync("OrderPlaced", new PublishEventRequest(appId, 1, """{ "Amount": 1 }""", null, null));
+        var orderResult = await publish.PublishAsync("OrderPlaced", new PublishEventRequest(appId, 1, """{ "Amount": 1 }""", null, null), TestClaimsPrincipal.None);
         var orderId = ((PublishResult.Created)orderResult).EventId;
 
         for (var i = 0; i < 5; i++)
-            await publish.PublishAsync("OrderShipped", new PublishEventRequest(appId, 1, """{ "Amount": 1 }""", [orderId], null));
+            await publish.PublishAsync("OrderShipped", new PublishEventRequest(appId, 1, """{ "Amount": 1 }""", [orderId], null), TestClaimsPrincipal.None);
 
-        var page = await lineage.GetChildrenAsync(orderId, top: 2, skip: 0);
+        var page = await lineage.GetChildrenAsync(orderId, TestClaimsPrincipal.None, top: 2, skip: 0);
         Assert.HasCount(2, page);
 
-        var all = await lineage.GetChildrenAsync(orderId, top: null, skip: null);
+        var all = await lineage.GetChildrenAsync(orderId, TestClaimsPrincipal.None, top: null, skip: null);
         Assert.HasCount(5, all);
+    }
+
+    public static async Task ARestrictedRootIsRejectedWith403DistinctFromAnUnknownRootsNotFound(SchemaRegistryService registry, PublishService publish, LineageService lineage)
+    {
+        const string appId = "lineage-demo-7";
+        const string typeName = "PatientAdmitted";
+        await RegisterReadClaimGatedType(registry, appId, typeName);
+
+        var result = await publish.PublishAsync(typeName, new PublishEventRequest(appId, 1, """{ "Amount": 1 }""", null, null), TestClaimsPrincipal.None);
+        var eventId = ((PublishResult.Created)result).EventId;
+
+        Assert.AreEqual(LineageRootCheck.Forbidden, await lineage.CheckRootAsync(eventId, TestClaimsPrincipal.None));
+        Assert.AreEqual(LineageRootCheck.Ok, await lineage.CheckRootAsync(eventId, TestClaimsPrincipal.With("clearance:phi")));
+        Assert.AreEqual(LineageRootCheck.NotFound, await lineage.CheckRootAsync(Guid.NewGuid(), TestClaimsPrincipal.None));
+    }
+
+    // ADR-008: "traversal does not recurse past a node the caller can't see."
+    // Chain: OrderPlaced (visible) <- RestrictedPayment (restricted) <- OrderShipped
+    // (visible, the query root). From the root's ancestors, RestrictedPayment must
+    // appear as a stub, but OrderPlaced -- itself unrestricted -- must NOT appear
+    // at all, since the only path to it runs through the restricted node.
+    public static async Task AncestorTraversalStopsAtARestrictedNodeInsteadOfJustRedactingItsFields(SchemaRegistryService registry, PublishService publish, LineageService lineage)
+    {
+        const string appId = "lineage-demo-8";
+        await RegisterSimpleType(registry, appId, "OrderPlaced");
+        await RegisterReadClaimGatedType(registry, appId, "RestrictedPayment");
+        await RegisterSimpleType(registry, appId, "OrderShipped");
+
+        var orderResult = await publish.PublishAsync("OrderPlaced", new PublishEventRequest(appId, 1, """{ "Amount": 1 }""", null, null), TestClaimsPrincipal.None);
+        var orderId = ((PublishResult.Created)orderResult).EventId;
+
+        var paymentResult = await publish.PublishAsync("RestrictedPayment", new PublishEventRequest(appId, 1, """{ "Amount": 1 }""", [orderId], null), TestClaimsPrincipal.None);
+        var paymentId = ((PublishResult.Created)paymentResult).EventId;
+
+        var shipResult = await publish.PublishAsync("OrderShipped", new PublishEventRequest(appId, 1, """{ "Amount": 1 }""", [paymentId], null), TestClaimsPrincipal.None);
+        var shipId = ((PublishResult.Created)shipResult).EventId;
+
+        var ancestors = await lineage.GetAncestorsAsync(shipId, TestClaimsPrincipal.None, null, null);
+
+        var paymentNode = ancestors.Single(a => a.EventId == paymentId);
+        Assert.IsTrue(paymentNode.Resolved);
+        Assert.IsTrue(paymentNode.Restricted);
+        Assert.IsNull(paymentNode.EventType);
+        Assert.IsFalse(ancestors.Any(a => a.EventId == orderId), "traversal must not recurse past the restricted node to reach its own visible ancestor");
+
+        // With the claim, the restricted node opens up and its own ancestor becomes reachable again.
+        var ancestorsWithClaim = await lineage.GetAncestorsAsync(shipId, TestClaimsPrincipal.With("clearance:phi"), null, null);
+        Assert.IsTrue(ancestorsWithClaim.Any(a => a.EventId == paymentId && !a.Restricted));
+        Assert.IsTrue(ancestorsWithClaim.Any(a => a.EventId == orderId));
+    }
+
+    // Two children of the same parent: one restricted, one not. Fetching the
+    // parent's children must stub the restricted one without omitting or
+    // otherwise affecting the sibling -- the two are evaluated independently.
+    public static async Task ARestrictedSiblingNeverAffectsAnOtherwiseVisibleSibling(SchemaRegistryService registry, PublishService publish, LineageService lineage)
+    {
+        const string appId = "lineage-demo-9";
+        await RegisterSimpleType(registry, appId, "OrderPlaced");
+        await RegisterSimpleType(registry, appId, "OrderShipped");
+        await RegisterReadClaimGatedType(registry, appId, "RestrictedPayment");
+
+        var orderResult = await publish.PublishAsync("OrderPlaced", new PublishEventRequest(appId, 1, """{ "Amount": 1 }""", null, null), TestClaimsPrincipal.None);
+        var orderId = ((PublishResult.Created)orderResult).EventId;
+
+        var shipResult = await publish.PublishAsync("OrderShipped", new PublishEventRequest(appId, 1, """{ "Amount": 1 }""", [orderId], null), TestClaimsPrincipal.None);
+        var shipId = ((PublishResult.Created)shipResult).EventId;
+
+        var paymentResult = await publish.PublishAsync("RestrictedPayment", new PublishEventRequest(appId, 1, """{ "Amount": 1 }""", [orderId], null), TestClaimsPrincipal.None);
+        var paymentId = ((PublishResult.Created)paymentResult).EventId;
+
+        var children = await lineage.GetChildrenAsync(orderId, TestClaimsPrincipal.None, null, null);
+        Assert.HasCount(2, children);
+
+        var shipNode = children.Single(c => c.EventId == shipId);
+        Assert.IsTrue(shipNode.Resolved);
+        Assert.IsFalse(shipNode.Restricted);
+        Assert.AreEqual("ordershipped", shipNode.EventType);
+
+        var paymentNode = children.Single(c => c.EventId == paymentId);
+        Assert.IsTrue(paymentNode.Resolved);
+        Assert.IsTrue(paymentNode.Restricted);
     }
 }

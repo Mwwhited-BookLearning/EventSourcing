@@ -44,7 +44,7 @@ public class LineageSqlServerTests
         using var db = CreateContext();
         var registry = new SchemaRegistryService(db, new SqlServerFilterableFieldIndexDdlGenerator(), new MemoryCache(new MemoryCacheOptions()));
         var publish = new PublishService(db, registry, new SqlServerUniqueConstraintViolationDetector());
-        var lineage = new LineageService(db, new SqlServerEventLineageQueryProvider());
+        var lineage = new LineageService(db, new SqlServerEventLineageQueryProvider(), registry);
 
         await LineageScenarioAssertions.PublishingAnOriginEventShowsNoParents(registry, publish, lineage);
         await LineageScenarioAssertions.FetchingImmediateParentsAndChildrenReturnsExactlyThoseRelationships(registry, publish, lineage);
@@ -53,5 +53,8 @@ public class LineageSqlServerTests
         await LineageScenarioAssertions.MultiHopAncestorChainReturnsEveryAncestor(registry, publish, lineage);
         await LineageScenarioAssertions.FetchingLineageForAnUnknownEventIsRejected(lineage);
         await LineageScenarioAssertions.TopAndSkipCorrectlySliceAResultAndOmittingBothReturnsEverything(registry, publish, lineage);
+        await LineageScenarioAssertions.ARestrictedRootIsRejectedWith403DistinctFromAnUnknownRootsNotFound(registry, publish, lineage);
+        await LineageScenarioAssertions.AncestorTraversalStopsAtARestrictedNodeInsteadOfJustRedactingItsFields(registry, publish, lineage);
+        await LineageScenarioAssertions.ARestrictedSiblingNeverAffectsAnOtherwiseVisibleSibling(registry, publish, lineage);
     }
 }

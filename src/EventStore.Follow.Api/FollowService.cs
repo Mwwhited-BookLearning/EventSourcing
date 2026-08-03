@@ -1,5 +1,7 @@
 using System.Diagnostics;
 using System.Linq.Expressions;
+using System.Security.Claims;
+using EventStore.Domain.SchemaRegistry;
 using EventStore.Persistence;
 using Microsoft.EntityFrameworkCore;
 
@@ -9,7 +11,7 @@ public class FollowService(EventStoreContext db, EventTailReader tailReader)
 {
     private static readonly TimeSpan PollInterval = TimeSpan.FromMilliseconds(200);
 
-    public async Task<FollowResult> ConnectAsync(string eventTypeName, FollowRequest request, CancellationToken ct = default)
+    public async Task<FollowResult> ConnectAsync(string eventTypeName, FollowRequest request, ClaimsPrincipal user, CancellationToken ct = default)
     {
         var normalizedName = eventTypeName.ToLowerInvariant();
 
@@ -19,6 +21,10 @@ public class FollowService(EventStoreContext db, EventTailReader tailReader)
             .SingleOrDefaultAsync(e => e.AppId == request.AppId && e.Name == normalizedName && e.IsActive, ct);
         if (definition is null)
             return new FollowResult.UnregisteredEventType();
+
+        // ADR-008/050 -- checked once, at connect time, per that ADR's own text.
+        if (!RequiredClaimEvaluator.HasAny(definition.RequiredClaims, ClaimDirection.Read, user))
+            return new FollowResult.Forbidden();
 
         var mode = FollowMode.Tail;
         if (request.Mode is { } modeText && !Enum.TryParse(modeText, ignoreCase: true, out mode))
@@ -47,7 +53,7 @@ public class FollowService(EventStoreContext db, EventTailReader tailReader)
             _ => throw new UnreachableException(),
         };
 
-        var events = tailReader.TailAsync(normalizedName, predicate, lastSeen, PollInterval, ct);
+        var events = tailReader.TailAsync(normalizedName, predicate, lastSeen, PollInterval, user, ct);
         return new FollowResult.Connected(events);
     }
 }

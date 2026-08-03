@@ -13,6 +13,9 @@ public abstract record PublishResult
 
     public sealed record UnregisteredEventType : PublishResult;
 
+    // ADR-008/050 -- caller lacks any Publish-direction RequiredClaims entry.
+    public sealed record Forbidden : PublishResult;
+
     public sealed record ValidationFailed(IReadOnlyList<string> Errors) : PublishResult;
 
     public sealed record UnresolvedParent(IReadOnlyList<Guid> MissingParentEventIds) : PublishResult;

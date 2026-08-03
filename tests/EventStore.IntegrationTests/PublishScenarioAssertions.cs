@@ -29,7 +29,7 @@ internal static class PublishScenarioAssertions
 
         var result = await publish.PublishAsync("OrderPlaced", new PublishEventRequest(
             AppId: "publish-demo-1", SchemaVersion: 1, Payload: """{ "Amount": 150.00, "Status": "Paid" }""",
-            ParentEventIds: null, EventId: null));
+            ParentEventIds: null, EventId: null), TestClaimsPrincipal.None);
 
         AssertCreated(result, out var created);
         Assert.AreEqual(1, created.SchemaVersion);
@@ -42,7 +42,7 @@ internal static class PublishScenarioAssertions
 
         var result = await publish.PublishAsync("OrderPlaced", new PublishEventRequest(
             AppId: "publish-demo-2", SchemaVersion: 1, Payload: """{ "Amount": 150.00 }""",
-            ParentEventIds: null, EventId: null));
+            ParentEventIds: null, EventId: null), TestClaimsPrincipal.None);
 
         Assert.IsInstanceOfType<PublishResult.ValidationFailed>(result);
     }
@@ -53,7 +53,7 @@ internal static class PublishScenarioAssertions
 
         var result = await publish.PublishAsync("OrderPlaced", new PublishEventRequest(
             AppId: "publish-demo-3", SchemaVersion: 1, Payload: """{ "Amount": "not-a-number", "Status": "Paid" }""",
-            ParentEventIds: null, EventId: null));
+            ParentEventIds: null, EventId: null), TestClaimsPrincipal.None);
 
         Assert.IsInstanceOfType<PublishResult.ValidationFailed>(result);
     }
@@ -62,7 +62,7 @@ internal static class PublishScenarioAssertions
     {
         var result = await publish.PublishAsync("NonExistentType", new PublishEventRequest(
             AppId: "publish-demo-4", SchemaVersion: 1, Payload: """{ "foo": "bar" }""",
-            ParentEventIds: null, EventId: null));
+            ParentEventIds: null, EventId: null), TestClaimsPrincipal.None);
 
         Assert.IsInstanceOfType<PublishResult.UnregisteredEventType>(result);
     }
@@ -83,7 +83,7 @@ internal static class PublishScenarioAssertions
 
         var result = await publish.PublishAsync("OrderPlaced", new PublishEventRequest(
             AppId: appId, SchemaVersion: 1, Payload: """{ "Amount": 150.00, "Status": "Paid" }""",
-            ParentEventIds: null, EventId: null));
+            ParentEventIds: null, EventId: null), TestClaimsPrincipal.None);
 
         AssertCreated(result, out var created);
         Assert.AreEqual(1, created.SchemaVersion);
@@ -98,10 +98,10 @@ internal static class PublishScenarioAssertions
             AppId: appId, SchemaVersion: 1, Payload: """{ "Amount": 150.00, "Status": "Paid" }""",
             ParentEventIds: null, EventId: eventId);
 
-        var first = await publish.PublishAsync("OrderPlaced", request, CancellationToken.None);
+        var first = await publish.PublishAsync("OrderPlaced", request, TestClaimsPrincipal.None, CancellationToken.None);
         AssertCreated(first, out var firstCreated);
 
-        var second = await publish.PublishAsync("OrderPlaced", request, CancellationToken.None);
+        var second = await publish.PublishAsync("OrderPlaced", request, TestClaimsPrincipal.None, CancellationToken.None);
         Assert.IsInstanceOfType<PublishResult.IdempotentReplay>(second);
         var replay = (PublishResult.IdempotentReplay)second;
         Assert.AreEqual(firstCreated.EventId, replay.EventId);
@@ -116,12 +116,12 @@ internal static class PublishScenarioAssertions
 
         var first = await publish.PublishAsync("OrderPlaced", new PublishEventRequest(
             AppId: appId, SchemaVersion: 1, Payload: """{ "Amount": 150.00, "Status": "Paid" }""",
-            ParentEventIds: null, EventId: eventId), CancellationToken.None);
+            ParentEventIds: null, EventId: eventId), TestClaimsPrincipal.None, CancellationToken.None);
         AssertCreated(first, out _);
 
         var second = await publish.PublishAsync("OrderPlaced", new PublishEventRequest(
             AppId: appId, SchemaVersion: 1, Payload: """{ "Amount": 999.00, "Status": "Paid" }""",
-            ParentEventIds: null, EventId: eventId), CancellationToken.None);
+            ParentEventIds: null, EventId: eventId), TestClaimsPrincipal.None, CancellationToken.None);
 
         Assert.IsInstanceOfType<PublishResult.Conflict>(second);
     }
@@ -134,8 +134,8 @@ internal static class PublishScenarioAssertions
             AppId: appId, SchemaVersion: 1, Payload: """{ "Amount": 150.00, "Status": "Paid" }""",
             ParentEventIds: null, EventId: null);
 
-        var first = await publish.PublishAsync("OrderPlaced", request, CancellationToken.None);
-        var second = await publish.PublishAsync("OrderPlaced", request, CancellationToken.None);
+        var first = await publish.PublishAsync("OrderPlaced", request, TestClaimsPrincipal.None, CancellationToken.None);
+        var second = await publish.PublishAsync("OrderPlaced", request, TestClaimsPrincipal.None, CancellationToken.None);
         AssertCreated(first, out var firstCreated);
         AssertCreated(second, out var secondCreated);
 
@@ -149,7 +149,7 @@ internal static class PublishScenarioAssertions
 
         var result = await publish.PublishAsync("OrderPlaced", new PublishEventRequest(
             AppId: appId, SchemaVersion: 1, Payload: """{ "Amount": 150.00, "Status": "Paid" }""",
-            ParentEventIds: null, EventId: null));
+            ParentEventIds: null, EventId: null), TestClaimsPrincipal.None);
 
         AssertCreated(result, out _);
     }
@@ -161,12 +161,12 @@ internal static class PublishScenarioAssertions
 
         var parent = await publish.PublishAsync("OrderPlaced", new PublishEventRequest(
             AppId: appId, SchemaVersion: 1, Payload: """{ "Amount": 150.00, "Status": "Paid" }""",
-            ParentEventIds: null, EventId: null));
+            ParentEventIds: null, EventId: null), TestClaimsPrincipal.None);
         AssertCreated(parent, out var parentCreated);
 
         var child = await publish.PublishAsync("OrderPlaced", new PublishEventRequest(
             AppId: appId, SchemaVersion: 1, Payload: """{ "Amount": 150.00, "Status": "Shipped" }""",
-            ParentEventIds: [parentCreated.EventId], EventId: null));
+            ParentEventIds: [parentCreated.EventId], EventId: null), TestClaimsPrincipal.None);
         AssertCreated(child, out _);
     }
 
@@ -180,7 +180,7 @@ internal static class PublishScenarioAssertions
 
         var result = await publish.PublishAsync("OrderShipped", new PublishEventRequest(
             AppId: appId, SchemaVersion: 1, Payload: """{ "Carrier": "UPS" }""",
-            ParentEventIds: [Guid.Empty], EventId: null));
+            ParentEventIds: [Guid.Empty], EventId: null), TestClaimsPrincipal.None);
 
         Assert.IsInstanceOfType<PublishResult.UnresolvedParent>(result);
     }
@@ -195,9 +195,53 @@ internal static class PublishScenarioAssertions
 
         var result = await publish.PublishAsync("OrderShipped", new PublishEventRequest(
             AppId: appId, SchemaVersion: 1, Payload: """{ "Carrier": "UPS" }""",
-            ParentEventIds: [Guid.Empty], EventId: null));
+            ParentEventIds: [Guid.Empty], EventId: null), TestClaimsPrincipal.None);
 
         AssertCreated(result, out _);
+    }
+
+    public static async Task PublishingAClaimGatedTypeWithoutTheClaimIsRejectedWith403AndWithItSucceeds(SchemaRegistryService registry, PublishService publish)
+    {
+        const string appId = "publish-demo-13";
+        await registry.RegisterAsync("PatientAdmitted", new RegisterEventTypeRequest(
+            AppId: appId, JsonSchema: """{ "type": "object", "properties": { "Amount": { "type": "number" } }, "required": ["Amount"] }""",
+            FilterableFields: [], ChangeKind: "Full", EntityIdField: "$.Id", ParentValidationMode: "Permissive",
+            RequiredClaims: [new RequiredClaimRequest("Publish", "clearance:phi")],
+            UpcastFromPrevious: null, DowncastToPrevious: null));
+
+        var withoutClaim = await publish.PublishAsync("PatientAdmitted", new PublishEventRequest(
+            AppId: appId, SchemaVersion: 1, Payload: """{ "Amount": 1 }""", ParentEventIds: null, EventId: null), TestClaimsPrincipal.None);
+        Assert.IsInstanceOfType<PublishResult.Forbidden>(withoutClaim);
+
+        var withClaim = await publish.PublishAsync("PatientAdmitted", new PublishEventRequest(
+            AppId: appId, SchemaVersion: 1, Payload: """{ "Amount": 1 }""", ParentEventIds: null, EventId: null), TestClaimsPrincipal.With("clearance:phi"));
+        AssertCreated(withClaim, out _);
+    }
+
+    // Publish- and Read-direction claims for the same event type are independent
+    // -- a caller with only one of the two must be gated on exactly that one.
+    public static async Task PublishAndReadClaimsAreEnforcedFullyIndependentlyForTheSameType(SchemaRegistryService registry, PublishService publish)
+    {
+        const string appId = "publish-demo-14";
+        await registry.RegisterAsync("LabResultRecorded", new RegisterEventTypeRequest(
+            AppId: appId, JsonSchema: """{ "type": "object", "properties": { "Amount": { "type": "number" } }, "required": ["Amount"] }""",
+            FilterableFields: [], ChangeKind: "Full", EntityIdField: "$.Id", ParentValidationMode: "Permissive",
+            RequiredClaims:
+            [
+                new RequiredClaimRequest("Publish", "role:lab-tech"),
+                new RequiredClaimRequest("Read", "clearance:phi"),
+            ],
+            UpcastFromPrevious: null, DowncastToPrevious: null));
+
+        // Holds the Read claim but not the Publish claim -- publish must still be rejected.
+        var result = await publish.PublishAsync("LabResultRecorded", new PublishEventRequest(
+            AppId: appId, SchemaVersion: 1, Payload: """{ "Amount": 1 }""", ParentEventIds: null, EventId: null), TestClaimsPrincipal.With("clearance:phi"));
+        Assert.IsInstanceOfType<PublishResult.Forbidden>(result);
+
+        // Holds the Publish claim (and only that) -- publish must succeed.
+        var withPublishClaim = await publish.PublishAsync("LabResultRecorded", new PublishEventRequest(
+            AppId: appId, SchemaVersion: 1, Payload: """{ "Amount": 1 }""", ParentEventIds: null, EventId: null), TestClaimsPrincipal.With("role:lab-tech"));
+        AssertCreated(withPublishClaim, out _);
     }
 
     private static void AssertCreated(PublishResult result, out PublishResult.Created created)

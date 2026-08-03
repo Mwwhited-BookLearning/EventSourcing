@@ -25,7 +25,7 @@ internal static class FollowScenarioAssertions
 
     private static async Task<PublishResult.Created> Publish(PublishService publish, string appId, string typeName, decimal amount) =>
         (PublishResult.Created)await publish.PublishAsync(typeName, new PublishEventRequest(
-            appId, 1, $$"""{ "Amount": {{amount}}, "Name": "n" }""", null, null));
+            appId, 1, $$"""{ "Amount": {{amount}}, "Name": "n" }""", null, null), TestClaimsPrincipal.None);
 
     // Pulls exactly `count` items from a live poll loop, failing fast (rather than
     // hanging forever) if the loop doesn't produce one within PerItemTimeout --
@@ -34,9 +34,12 @@ internal static class FollowScenarioAssertions
     // can pull history and then, later, the tail from the SAME live loop --
     // re-enumerating the IAsyncEnumerable would restart EventTailReader's poll
     // loop from its original lastSeen, not continue it.
-    private static async Task<List<StoredEvent>> Collect(IAsyncEnumerator<StoredEvent> enumerator, int count, CancellationTokenSource cts)
+    private static async Task<List<StoredEvent>> Collect(IAsyncEnumerator<FollowedEvent> enumerator, int count, CancellationTokenSource cts) =>
+        (await CollectFollowed(enumerator, count, cts)).Select(f => f.Event).ToList();
+
+    private static async Task<List<FollowedEvent>> CollectFollowed(IAsyncEnumerator<FollowedEvent> enumerator, int count, CancellationTokenSource cts)
     {
-        var results = new List<StoredEvent>();
+        var results = new List<FollowedEvent>();
         for (var i = 0; i < count; i++)
         {
             var moveNext = enumerator.MoveNextAsync().AsTask();
@@ -62,7 +65,7 @@ internal static class FollowScenarioAssertions
 
         using var cts = new CancellationTokenSource();
         var connected = (FollowResult.Connected)await follow.ConnectAsync(
-            typeName, new FollowRequest(appId, Filter: null, Mode: "Replay", FromSequenceNumber: 0), cts.Token);
+            typeName, new FollowRequest(appId, Filter: null, Mode: "Replay", FromSequenceNumber: 0), TestClaimsPrincipal.None, cts.Token);
         await using var enumerator = connected.Events.GetAsyncEnumerator(cts.Token);
         var events = await Collect(enumerator, 2, cts);
         cts.Cancel();
@@ -82,7 +85,7 @@ internal static class FollowScenarioAssertions
         using (var cts = new CancellationTokenSource())
         {
             var connected = (FollowResult.Connected)await follow.ConnectAsync(
-                typeName, new FollowRequest(appId, Filter: "Amount gt 100", Mode: "Replay", FromSequenceNumber: 0), cts.Token);
+                typeName, new FollowRequest(appId, Filter: "Amount gt 100", Mode: "Replay", FromSequenceNumber: 0), TestClaimsPrincipal.None, cts.Token);
             await using var enumerator = connected.Events.GetAsyncEnumerator(cts.Token);
             var events = await Collect(enumerator, 2, cts);
             cts.Cancel();
@@ -92,7 +95,7 @@ internal static class FollowScenarioAssertions
         using (var cts = new CancellationTokenSource())
         {
             var connected = (FollowResult.Connected)await follow.ConnectAsync(
-                typeName, new FollowRequest(appId, Filter: "Amount gt 100 and Amount lt 200", Mode: "Replay", FromSequenceNumber: 0), cts.Token);
+                typeName, new FollowRequest(appId, Filter: "Amount gt 100 and Amount lt 200", Mode: "Replay", FromSequenceNumber: 0), TestClaimsPrincipal.None, cts.Token);
             await using var enumerator = connected.Events.GetAsyncEnumerator(cts.Token);
             var events = await Collect(enumerator, 1, cts);
             cts.Cancel();
@@ -107,7 +110,7 @@ internal static class FollowScenarioAssertions
         await RegisterType(registry, appId, typeName); // no FilterableFields registered at all
         await Publish(publish, appId, typeName, 999);
 
-        var result = await follow.ConnectAsync(typeName, new FollowRequest(appId, Filter: "Amount gt 1", Mode: "Replay", FromSequenceNumber: 0));
+        var result = await follow.ConnectAsync(typeName, new FollowRequest(appId, Filter: "Amount gt 1", Mode: "Replay", FromSequenceNumber: 0), TestClaimsPrincipal.None);
 
         Assert.IsInstanceOfType<FollowResult.ValidationFailed>(result);
     }
@@ -122,7 +125,7 @@ internal static class FollowScenarioAssertions
 
         using var cts = new CancellationTokenSource();
         var connected = (FollowResult.Connected)await follow.ConnectAsync(
-            typeName, new FollowRequest(appId, Filter: null, Mode: "Replay", FromSequenceNumber: null), cts.Token);
+            typeName, new FollowRequest(appId, Filter: null, Mode: "Replay", FromSequenceNumber: null), TestClaimsPrincipal.None, cts.Token);
         await using var enumerator = connected.Events.GetAsyncEnumerator(cts.Token);
 
         var history = await Collect(enumerator, 2, cts);
@@ -147,7 +150,7 @@ internal static class FollowScenarioAssertions
 
         using var cts = new CancellationTokenSource();
         var connected = (FollowResult.Connected)await follow.ConnectAsync(
-            typeName, new FollowRequest(appId, Filter: null, Mode: "Replay", FromSequenceNumber: e1.SequenceNumber), cts.Token);
+            typeName, new FollowRequest(appId, Filter: null, Mode: "Replay", FromSequenceNumber: e1.SequenceNumber), TestClaimsPrincipal.None, cts.Token);
         await using var enumerator = connected.Events.GetAsyncEnumerator(cts.Token);
         var events = await Collect(enumerator, 2, cts);
         cts.Cancel();
@@ -166,7 +169,7 @@ internal static class FollowScenarioAssertions
 
         using var cts = new CancellationTokenSource();
         var connected = (FollowResult.Connected)await follow.ConnectAsync(
-            typeName, new FollowRequest(appId, Filter: "Amount gt 100", Mode: "Replay", FromSequenceNumber: 0), cts.Token);
+            typeName, new FollowRequest(appId, Filter: "Amount gt 100", Mode: "Replay", FromSequenceNumber: 0), TestClaimsPrincipal.None, cts.Token);
         await using var enumerator = connected.Events.GetAsyncEnumerator(cts.Token);
         var events = await Collect(enumerator, 2, cts);
         cts.Cancel();
@@ -183,7 +186,7 @@ internal static class FollowScenarioAssertions
 
         using var cts = new CancellationTokenSource();
         var connected = (FollowResult.Connected)await follow.ConnectAsync(
-            typeName, new FollowRequest(appId, Filter: null, Mode: null, FromSequenceNumber: null), cts.Token);
+            typeName, new FollowRequest(appId, Filter: null, Mode: null, FromSequenceNumber: null), TestClaimsPrincipal.None, cts.Token);
         await using var enumerator = connected.Events.GetAsyncEnumerator(cts.Token);
 
         var e2 = await Publish(publish, appId, typeName, 2);
@@ -200,14 +203,58 @@ internal static class FollowScenarioAssertions
         await RegisterType(registry, appId, typeName);
         await Publish(publish, appId, typeName, 1);
 
-        var result = await follow.ConnectAsync(typeName, new FollowRequest(appId, Filter: null, Mode: null, FromSequenceNumber: 1));
+        var result = await follow.ConnectAsync(typeName, new FollowRequest(appId, Filter: null, Mode: null, FromSequenceNumber: 1), TestClaimsPrincipal.None);
 
         Assert.IsInstanceOfType<FollowResult.ValidationFailed>(result);
     }
 
     public static async Task ConnectingToAnUnregisteredEventTypeIsRejected(FollowService follow)
     {
-        var result = await follow.ConnectAsync("NoSuchType", new FollowRequest("no-such-app", null, null, null));
+        var result = await follow.ConnectAsync("NoSuchType", new FollowRequest("no-such-app", null, null, null), TestClaimsPrincipal.None);
         Assert.IsInstanceOfType<FollowResult.UnregisteredEventType>(result);
+    }
+
+    public static async Task ConnectingWithoutTheRequiredReadClaimIsRejectedWith403(SchemaRegistryService registry, PublishService publish, FollowService follow)
+    {
+        const string appId = "follow-demo-9";
+        const string typeName = "PatientAdmitted";
+        await registry.RegisterAsync(typeName, new RegisterEventTypeRequest(
+            AppId: appId, JsonSchema: SimpleSchema, FilterableFields: [],
+            ChangeKind: "Full", EntityIdField: "$.Id", ParentValidationMode: "Permissive",
+            RequiredClaims: [new RequiredClaimRequest("Read", "clearance:phi")],
+            UpcastFromPrevious: null, DowncastToPrevious: null));
+        await Publish(publish, appId, typeName, 1);
+
+        var withoutClaim = await follow.ConnectAsync(typeName, new FollowRequest(appId, null, "Replay", 0), TestClaimsPrincipal.None);
+        Assert.IsInstanceOfType<FollowResult.Forbidden>(withoutClaim);
+
+        var withClaim = await follow.ConnectAsync(typeName, new FollowRequest(appId, null, "Replay", 0), TestClaimsPrincipal.With("clearance:phi"));
+        Assert.IsInstanceOfType<FollowResult.Connected>(withClaim);
+    }
+
+    public static async Task ARestrictedParentsIdIsOmittedFromParentEventIdsWithoutBlockingTheEventItself(SchemaRegistryService registry, PublishService publish, FollowService follow)
+    {
+        const string appId = "follow-demo-10";
+        const string parentTypeName = "PaymentReceived";
+        const string childTypeName = "OrderShipped";
+        await registry.RegisterAsync(parentTypeName, new RegisterEventTypeRequest(
+            AppId: appId, JsonSchema: SimpleSchema, FilterableFields: [],
+            ChangeKind: "Full", EntityIdField: "$.Id", ParentValidationMode: "Permissive",
+            RequiredClaims: [new RequiredClaimRequest("Read", "clearance:phi")],
+            UpcastFromPrevious: null, DowncastToPrevious: null));
+        await RegisterType(registry, appId, childTypeName); // no RequiredClaims -- visible to anyone with events:follow
+
+        var parent = await Publish(publish, appId, parentTypeName, 1);
+        var child = (PublishResult.Created)await publish.PublishAsync(childTypeName, new PublishEventRequest(
+            appId, 1, $$"""{ "Amount": 1, "Name": "n" }""", [parent.EventId], null), TestClaimsPrincipal.None);
+
+        var connected = (FollowResult.Connected)await follow.ConnectAsync(
+            childTypeName, new FollowRequest(appId, Filter: null, Mode: "Replay", FromSequenceNumber: 0), TestClaimsPrincipal.None);
+        await using var enumerator = connected.Events.GetAsyncEnumerator(CancellationToken.None);
+        using var cts = new CancellationTokenSource();
+        var followed = (await CollectFollowed(enumerator, 1, cts)).Single();
+
+        Assert.AreEqual(child.EventId, followed.Event.EventId, "the event itself must still stream despite the restricted parent");
+        Assert.IsEmpty(followed.VisibleParentEventIds, "a parent the caller lacks the Read claim for must be omitted, not just redacted");
     }
 }

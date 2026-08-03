@@ -65,7 +65,7 @@ provider they apply to — not "code written."
 | 4 | [Lineage API (read side)](#lineage-api-read-side) | Publish API | Done |
 | 5 | [Follow API + Filter Pushdown](#follow-api--filter-pushdown) | Publish API | Done |
 | 6 | [Auth (OIDC/OpenIddict) + Orchestration](#auth-oidcopeniddict--orchestration) | Lineage API, Follow API + Filter Pushdown | Done |
-| 7 | [Event-Type Security](#event-type-security) | Auth + Orchestration | Not started |
+| 7 | [Event-Type Security](#event-type-security) | Auth + Orchestration | Done |
 | 8 | [Derived/Materialized Event Types (deferred)](#derivedmaterialized-event-types-deferred) | Event-Type Security | Not started |
 | 9 | [Property-Level Masking](#property-level-masking-data-enforcement) | Event-Type Security, Follow API + Filter Pushdown | Not started |
 | 10 | [CQRS Read-Model Projections](#cqrs-read-model-projections-worked-example) | Follow API + Filter Pushdown, Auth + Orchestration | Not started |
@@ -161,7 +161,7 @@ state "Publish API" as p2 #palegreen
 state "Lineage API" as p3 #palegreen
 state "Follow API + Filter Pushdown" as p4 #palegreen
 state "Auth + Orchestration" as p5 #palegreen
-state "Event-Type Security" as p6
+state "Event-Type Security" as p6 #palegreen #palegoldenrod
 state "Derived Event Types (deferred)" as p7
 state "Property-Level Masking" as p8
 state "CQRS Projections" as p9
@@ -803,13 +803,18 @@ silently claimed fixed.
 
 ## Event-Type Security
 
-**Scope**: per `ADR-008` **as originally decided** — a single
-`RequiredPublishClaim`/`RequiredReadClaim` string per direction on
-`EventTypeDefinition` (`ADR-050`'s later generalization to an
-`OR`-matched list is a documented forward revision, not built here).
-`RequiredPublishClaim` gates `POST /publish/{event-type}`.
-`RequiredReadClaim` gates `QUERY /follow/{event-type}` (checked once, at
-connect time) **and** all four Lineage API endpoints, per "you can only
+**Scope**: per `ADR-008`, generalized by `ADR-050` — and that generalized
+shape is **already built**, not something this item introduces:
+`EventTypeDefinition.RequiredClaims: List<RequiredClaim>` (`Direction`-
+qualified, `OR`-matched within one direction) was accepted, format-
+validated, and persisted by "Schema Registry" already, per that item's
+own explicit scope text ("accepted, not yet enforced"). This item is
+purely that enforcement — no new field, no data-model change. A
+`Publish`-direction `RequiredClaims` entry gates `POST /publish/
+{event-type}` (satisfied if the caller holds *any* listed `Publish`
+claim). A `Read`-direction entry gates `QUERY /follow/{event-type}`
+(checked once, at connect time) **and** all four Lineage API endpoints,
+per "you can only
 see what you can see": the **root** `{eventId}` a Lineage call names
 directly must be visible to the caller or the whole request is rejected
 `403` (deliberately distinguishable from a genuinely unknown `eventId`'s
@@ -818,9 +823,10 @@ visibility-checked per node, independently of the root's own check and of
 each other, and traversal does not recurse past a node the caller can't
 see — this requires the recursive CTE to stop expanding *during*
 recursion at a restricted node, not merely redact fields in the final
-output. Publish never checks `RequiredReadClaim` on a referenced parent —
-`ParentLinkService` only ever checks existence; read visibility is
-entirely a per-viewer, read-time decision. Enforced in application code
+output. Publish never checks the `Read`-direction `RequiredClaims` on a
+referenced parent — `ParentLinkService` only ever checks existence;
+read visibility is entirely a per-viewer, read-time decision. Enforced
+in application code
 after the event type is resolved from the registry, not a static
 `AddPolicy` (needs a per-request data lookup a static policy can't
 express). Registering/changing these claims still only needs
