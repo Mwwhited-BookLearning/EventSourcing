@@ -24,12 +24,12 @@ Anything beyond that is carried in Problem Details' standard
 |---|---|---|---|
 | ~~Payload fails schema validation~~ | ~~`400`~~ | ~~`validation-failed`~~ | **Superseded by `ADR-023`**: a schema-invalid payload is now persisted with `202 Accepted` and `SchemaStatus: invalid`, never rejected — this row no longer occurs. |
 | Strict-mode parent event(s) not found | `400` | `parent-not-found` | `missingParentEventIds: [...]` |
-| `$filter` references an undeclared field | `400` | `filter-field-not-filterable` | `field: "InternalNotes"` |
+| ~~`$filter` references an undeclared field~~ | ~~`400`~~ | ~~`filter-field-not-filterable`~~ | **Superseded by `ADR-037`**: `$filter` and the OData query surface it belonged to are gone. A GraphQL `where` argument referencing a field not declared `FilterableField` can't even be constructed — the per-`AppId` schema only exposes declared fields — so this is now a GraphQL validation error rejected before any resolver runs, not a server-emitted `400`; see `04-odata-filter-pushdown.md` (retitled "GraphQL Filter Pushdown Design") and `docs/features/filter-pushdown.md`. This row no longer occurs. |
 | `fromSequenceNumber` supplied with `mode=tail` | `400` | `invalid-replay-parameters` | — |
 | Missing/invalid Bearer token | `401` | `unauthenticated` | — |
 | Missing/invalid DPoP proof, or proof doesn't match the token's `cnf.jkt` (`ADR-017`) | `401` | `dpop-proof-invalid` | `reason: "..."` |
 | ~~`schemaVersion` on publish names a version that doesn't exist (`ADR-020`)~~ | ~~`400`~~ | ~~`unknown-schema-version`~~ | **Superseded by `ADR-023`**: same as above — this now persists as `202 Accepted` with `SchemaStatus: invalid` rather than being rejected. |
-| Missing scope, or missing `RequiredPublishClaim`/`RequiredReadClaim` | `403` | `forbidden` | `reason: "missing_scope"` \| `"missing_required_claim"` — this is exactly the "response detail, not the status code" distinction `ADR-008` already promised |
+| Missing scope, or a Publish-/Read-direction `RequiredClaims` entry not satisfied (`ADR-050` — correction, verified against `docs/data/schema-registry.md`: generalized from the single `RequiredPublishClaim`/`RequiredReadClaim` fields this row originally named) | `403` | `forbidden` | `reason: "missing_scope"` \| `"missing_required_claim"` — this is exactly the "response detail, not the status code" distinction `ADR-008` already promised |
 | Unknown event-type / unknown `eventId` | `404` | `not-found` | — |
 | `eventId` reused with different content | `409` | `event-id-conflict` | `eventId: "..."` |
 | `x-masking` malformed at registration (`ADR-009`) | `400` | `masking-invalid` | `path: "<property path>"`, `reason: "..."` |
@@ -69,6 +69,17 @@ Consequences:
 - **Two publish-time `400` rows above are struck through, superseded by
   `ADR-023`'s persist-everything posture** — publish never rejects on
   shape/version problems anymore, so those specific `400`s can no longer
-  occur; every other row here (auth, scope/claim, lineage/filter
-  parameter errors — none of them shape/version problems on the payload
-  itself) is unaffected by `ADR-023` and still applies as written.
+  occur; every other row here (auth, scope/claim, lineage/replay-parameter
+  errors — none of them shape/version problems on the payload itself) is
+  unaffected by `ADR-023` and still applies as written.
+- **A third row is struck through for a different reason, `ADR-037`
+  superseding the OData query surface entirely** — the undeclared-`$filter`-
+  field `400` doesn't reach this table's error path anymore because the
+  request that would have triggered it can no longer be constructed at
+  all (GraphQL schema composition, not a runtime check). Unlike the two
+  `ADR-023` rows, this isn't "the same request now persists instead of
+  rejecting" — it's "the whole surface that used to reject this way is
+  gone." The scope/claim `403` row is unaffected by either change and
+  still applies as written; only its field-name citation was stale
+  (`ADR-050`), corrected in place rather than struck through, since the
+  row's own decision (a `403` with a `reason` extension) never changed.

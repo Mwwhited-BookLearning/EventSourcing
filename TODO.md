@@ -25,17 +25,9 @@ here instead of inlining.
 
 ## Active
 
-The large, dependency-ordered phase structure this file used earlier in
-the session (GraphQL/API-contract cluster → build-plan restructuring →
-13-domain Salt-mockup batch) is now fully worked through — see
-`docs/changes/2026-08-01.md` and `docs/changes/2026-08-03.md`. What's left
-is one small item found mid-session.
-
-- [ ] **`docs/adrs/adr-013-problem-details.md`'s error-response table is
-  stale** — still says "missing `RequiredPublishClaim`/`RequiredReadClaim`"
-  (pre-`ADR-050` naming) and has a `$filter`-undeclared-field row that's
-  also stale per `ADR-037`. Split out from the now-completed
-  `RequiredClaims`-naming sweep because ADRs are additive-history
-  (`.claude/protocols/additive-history-editing.md`) — this needs a
-  superseding note added, not a silent rewrite, and deserves its own
-  small pass rather than being bundled with an ordinary doc fix.
+Empty — every tracked item from this session's work-through is done,
+including the last one (`docs/adrs/adr-013-problem-details.md`'s stale
+error-response table, fixed additive-history-style). See
+`docs/changes/2026-08-01.md` and `docs/changes/2026-08-03.md` for the full
+narrative. Add the next item here the same pass it's found, per this
+file's own workflow above.
