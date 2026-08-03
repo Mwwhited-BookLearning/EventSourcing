@@ -253,7 +253,7 @@ skinparam ArrowColor #666666
 rectangle "GraphQL Gateway" <<Boundary>> as graphql {
     rectangle "**GraphQL Handler**\n<<Component>>\n//QUERY method (queries/subscriptions), POST (mutations, unused here)//\n--\nADR-037 -- one schema per AppId (ADR-030)" <<Component>> as handler
     rectangle "**events:follow / events:lineage:read scope check**\n<<Component>>\n//ScopeRequirement//\n--\nADR-006" <<Component>> as scopeCheck
-    rectangle "**RequiredReadClaim / per-node visibility check**\n<<Component>>\n//HasRequiredClaim(...)//\n--\nADR-008 -- per-node for history/lineage traversal, once at connect time for a live subscription" <<Component>> as claimCheck
+    rectangle "**RequiredClaims (Read direction) / per-node visibility check**\n<<Component>>\n//HasAnyRequiredClaim(...)//\n--\nADR-008/ADR-050 -- per-node for history/lineage traversal, once at connect time for a live subscription" <<Component>> as claimCheck
     rectangle "**Entity Resolver**\n<<Component>>\n//Reads Entity Store (shard-aware, ADR-034)//\n--\nCurrent-state queries" <<Component>> as entityResolver
     rectangle "**History Resolver**\n<<Component>>\n//Reads Event Log by EntityId//\n--\nADR-024 §8.4 -- entityHistory(entityId, property)" <<Component>> as historyResolver
     rectangle "**Subscription Resolver**\n<<Component>>\n//Bridges the same tail/replay poll loop ADR-010 established//\n--\nLive changes -- GraphQL's transport, not a new polling mechanism" <<Component>> as subResolver
@@ -268,7 +268,7 @@ database "Event Log" <<Container>> as eventLog
 
 handler --> scopeCheck : validate scope
 handler --> depthLimiter : validate before execution
-handler --> claimCheck : validate RequiredReadClaim
+handler --> claimCheck : validate RequiredClaims (Read direction)
 handler --> entityResolver : Query: current state
 handler --> historyResolver : Query: entityHistory
 handler --> subResolver : Subscription: live changes
@@ -415,7 +415,7 @@ rectangle "Streaming Channel Service" <<Boundary>> as streamingSvc {
 database "TelemetryChannel / TelemetrySample store" <<Container>> as telemetryDb
 rectangle "**Router**\n<<Container>>\n--\na detector reading via reader publishes ordinary events here (ADR-031)" <<Container>> as router
 
-ingest --> telemetryDb : append batch (durability: \"as good as possible\")
+ingest --> telemetryDb : append batch (durability: "as good as possible")
 ingest --> lagDetector : compare batch receive-gap vs ExpectedInterArrivalInterval
 lagDetector --> router : publish ChannelLagDetected (normal path, ADR-023)
 reader --> telemetryDb : tail (new) or replay (from fromTimestamp) then tail

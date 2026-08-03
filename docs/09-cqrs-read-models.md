@@ -185,9 +185,10 @@ choice this design doesn't need to make for you.
 needs its own OAuth2 client — a fourth seeded client alongside the three
 in `ADR-006` (e.g. `projections-client`, scope `events:follow`) — see
 [`features/auth.md`](features/auth.md)'s seeded-clients table, which must
-be extended to include it. If a projection consumes an event type gated by
-`RequiredReadClaim` (`ADR-008`), `projections-client`'s token needs that
-claim too, exactly as any other follower would.
+be extended to include it. If a projection consumes an event type gated by a
+Read-direction `RequiredClaims` entry (`ADR-008`/`ADR-050`),
+`projections-client`'s token needs one of those claims too, exactly as
+any other follower would.
 
 ## Worked example
 
@@ -195,8 +196,8 @@ See [`features/cqrs-projections.md`](features/cqrs-projections.md) for a
 concrete Orders domain carried end-to-end through this design: `Full` and
 `Partial` event types, an `OrderSummary` read model, the sequence diagram
 for one event's trip from Follow through the snapshot merge to the
-upserted row, and the Gherkin scenarios a `Phase 9` implementation
-(`08-build-plan.md`) is built against.
+upserted row, and the Gherkin scenarios `08-build-plan.md`'s "CQRS
+Read-Model Projections" item is built against.
 
 ## Suggested References
 

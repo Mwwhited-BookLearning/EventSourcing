@@ -23,7 +23,7 @@ public class TelemetryChannel
     public string? ThreadId { get; set; }                  // groups multiple simultaneous channels under one session/recording (e.g. a 32-electrode EEG montage) -- ADR-081; deliberately not named StreamId (ADR-021 retired that term)
     public List<string>? SourceChannelIds { get; set; }    // Derived channels only
     public string? TransformKind { get; set; }             // Resample | Filter | Aggregate | Transcode -- Derived channels only
-    public string? RequiredReadClaim { get; set; }         // reuses ADR-008's "type:value" format, applied to a channel instead of an event type
+    public string? RequiredReadClaim { get; set; }         // reuses ADR-008's "type:value" format, applied to a channel instead of an event type. Deliberately NOT generalized to EventTypeDefinition.RequiredClaims's list/Direction shape (ADR-050): a channel is read-only ingest (ADR-031, never gated by a Publish-direction claim), so there is no second direction to distinguish, and nothing has asked for OR-multiple-claims on one channel yet. Revisit as its own ADR if that need ever shows up -- not silently widened here.
 }
 
 public enum ContentKind { RawScalar, RawBinary, Media }

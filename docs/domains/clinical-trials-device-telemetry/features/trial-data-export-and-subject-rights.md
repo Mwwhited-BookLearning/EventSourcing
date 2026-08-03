@@ -100,7 +100,7 @@ participant "GraphQL Gateway" as gateway
 participant "SystemTimePlaybackResolver" as playback
 database "Event Log" as eventLog
 
-auditor -> gateway: QUERY systemTimePlayback(entityId: "trial1:Patient:S-0091",\n  asOfSequenceNumber: 48812)\nBearer <JWT, claim "export:playback">
+auditor -> gateway: QUERY playbackAsOf(entityId: "trial1:Patient:S-0091",\n  asOfSequenceNumber: 48812)\nBearer <JWT, claim "export:playback">
 gateway -> playback: reconstruct("trial1:Patient:S-0091", 48812)
 playback -> eventLog: SELECT StoredEvent\nWHERE (EntityId = "trial1:Patient:S-0091"\n  OR TelemetryPointer.ChannelId's linked patient EntityId matches)\n  AND SequenceNumber <= 48812\nORDER BY SequenceNumber ASC
 eventLog --> playback: events, in ARRIVAL order (not OccurredAt order --\nthe literal opposite of the authoritative fold's rule, ADR-068)
@@ -401,8 +401,8 @@ for `trial1:Patient:S-0077` and irreversibly destroys its `DEK`
   ..
   { "SubjectId" | "S-0077" } | { "SiteId" | "04-221" }
   { "EnrollmentStatus" | "Withdrawn" }
-  { "LegalName" | "{ \"erased\": true }" }
-  { "DateOfBirth" | "{ \"erased\": true }" }
+  { "LegalName" | "{ erased: true }" }
+  { "DateOfBirth" | "{ erased: true }" }
 }
 @endsalt
 ```
@@ -455,7 +455,7 @@ Feature: Trial Data Export and Subject Rights
 
   Scenario: An auditor scrubs system-time playback and sees a late-arriving correction recovered in place
     Given a TelemetrySample-linked event for "trial1:Patient:S-0091" arrived out of order and was recorded with LateArrivalFlag true at SequenceNumber 48810
-    When "auditor-3" queries "systemTimePlayback(entityId: \"trial1:Patient:S-0091\", asOfSequenceNumber: 48812)"
+    When "auditor-3" queries "playbackAsOf(entityId: \"trial1:Patient:S-0091\", asOfSequenceNumber: 48812)"
     Then the reconstruction should show the correction landing exactly at SequenceNumber 48810, not smoothed away
     And the same query with asOfSequenceNumber 48809 should NOT yet show that correction
     # The literal opposite of EntityStoreRow's valid-time-corrected fold

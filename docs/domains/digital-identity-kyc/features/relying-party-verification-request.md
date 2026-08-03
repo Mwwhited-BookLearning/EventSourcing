@@ -12,7 +12,7 @@ applied to a new use case, not a new one**, exactly the way `ADR-043`
 itself is already reused a second time as "peer-granted" break-glass
 access. The relying party's read is logged (`ADR-045`), and its response
 is claims-gated (`ADR-046`'s flattened-claim-set check, `ADR-008`'s
-`RequiredReadClaim`/entity-scope extension).
+`RequiredClaims`/entity-scope extension).
 
 The customer here is the same accepted identity record the other three
 docs in this domain all converge on: `kyc:ApplicantIdentity:applicant-1001`
@@ -42,7 +42,7 @@ This doc deliberately does **not** re-derive:
 - The general entity-scoped-claim check mechanics (`entityScope` on a
   claim, "does the caller have this claim *and* does it apply to this
   `EntityId`") — that's `ADR-043` itself and
-  `docs/data/schema-registry.md`'s `RequiredReadClaim` note; this doc only
+  `docs/data/schema-registry.md`'s `RequiredClaims` note; this doc only
   shows one concrete grant/read/log sequence, not the general mechanism.
 - The full `x-masking` wrapper mechanics — that's `ADR-009`/`ADR-050` and
   [`masking.md`](../../../features/masking.md); this doc only shows which
@@ -102,7 +102,7 @@ idp -> idp: validate UCAN delegation chain, rooted in customer's own DID\n(self-
 alt delegation chain valid, not expired, not revoked
   idp --> bank: 200 { access_token (JWT) }\nclaims: "identity:verification-status:read",\nentityScope: "kyc:ApplicantIdentity:applicant-1001"
   bank -> graphql: QUERY { entity(id: "kyc:ApplicantIdentity:applicant-1001") {\n  verificationStatus, did, claimedLegalName, dateOfBirth } }\nBearer <JWT>
-  graphql -> graphql: check RequiredReadClaim + entityScope match\n(caller's claim applies to exactly this EntityId -- ADR-043/ADR-008)
+  graphql -> graphql: check RequiredClaims (Read direction) + entityScope match\n(caller's claim applies to exactly this EntityId -- ADR-043/ADR-008/ADR-050)
   graphql -> entityStore: SELECT EntityStoreRow WHERE EntityId = "kyc:ApplicantIdentity:applicant-1001"
   entityStore --> graphql: Data { VerificationStatus: "accepted", Did, ClaimedLegalName, DateOfBirth }
   graphql -> masker: Mask(schema, data, hasClaim)

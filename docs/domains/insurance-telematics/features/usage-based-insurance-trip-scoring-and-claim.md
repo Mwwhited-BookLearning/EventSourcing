@@ -150,7 +150,7 @@ officer -> gateway: lineageExport(entityId: "acme-ubi:Claim:claim-9911")
 gateway -> lineage: walk ancestors of "acme-ubi:Claim:claim-9911"\n(ClaimFiled -> TripScored -> TelemetryPointer window on veh-773-obd2)
 lineage -> eventLog: recursive CTE, cycle-safe (event-chains.md)
 lineage --> gateway: full causally-connected event set
-gateway -> gateway: apply RequiredReadClaim + masking (ADR-008/009/057) --\nsame read-path enforcement as any other query, no bypass (ADR-068)
+gateway -> gateway: apply RequiredClaims (Read direction) + masking (ADR-008/009/050/057) --\nsame read-path enforcement as any other query, no bypass (ADR-068)
 alt every field in the export set is unmasked for this officer's claims
   gateway -> manifest: build NDJSON + manifest\n(SHA-256 over ordered original ChainHash values +\nexported-by ActorId, exported-at)
   manifest --> officer: portable bundle
@@ -176,7 +176,7 @@ else the officer lacks a claim for one exported field\n(e.g. the driver's precis
   end note
 end
 == reconstructing "what did the carrier know, and when" ==
-officer -> gateway: systemTimePlayback(entityId: "acme-ubi:Claim:claim-9911", asOfSequenceNumber: T)
+officer -> gateway: playbackAsOf(entityId: "acme-ubi:Claim:claim-9911", asOfSequenceNumber: T)
 gateway -> eventLog: fold events WHERE SequenceNumber <= T,\nIN ARRIVAL ORDER (SequenceNumber order) -- no logical-time correction
 note right of gateway
   The literal opposite of ADR-029's valid-time-corrected
@@ -633,7 +633,7 @@ Feature: Usage-Based Insurance Trip Scoring and Claim
   Scenario: System-time playback shows a late-arriving telemetry correction landing in place
     Given "TripScored" for trip "trip-482" originally folded with RiskScore 72 at SequenceNumber 500
     And a delayed telemetry batch later causes a corrected "TripScored" event at SequenceNumber 640, flagged LateArrivalFlag true, revising RiskScore to 81
-    When the compliance officer requests systemTimePlayback for claim "claim-9911" asOfSequenceNumber 501
+    When the compliance officer requests playbackAsOf for claim "claim-9911" asOfSequenceNumber 501
     Then the reconstruction at that point should show RiskScore 72, exactly as originally shown
     When the compliance officer advances playback to asOfSequenceNumber 641
     Then the reconstruction should show RiskScore 81, with the correction visibly landing at that exact step

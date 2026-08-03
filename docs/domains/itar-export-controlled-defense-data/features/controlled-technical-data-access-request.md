@@ -131,7 +131,7 @@ alt Cleared US engineer, ordinary RBAC-gated read (ADR-046)
   gateway --> usEngineer: response
 else TAA-scoped foreign partner, delegated UCAN-exchanged read, within granted entityScope (ADR-043)
   foreignPartner -> idp: POST /oauth/token\n{ grant_type: "urn:ietf:params:oauth:grant-type:token-exchange",\n  subject_token: "<UCAN: claim itar:read,\n  entityScope defco:TechnicalDataAsset:td-4471, exp 2026-12-31>" }\n(ADR-036)
-  idp --> foreignPartner: 200 { access_token: "<JWT, claims: [\"itar:read\"],\n  entityScope: \"defco:TechnicalDataAsset:td-4471\">" }
+  idp --> foreignPartner: 200 { access_token: <JWT, claims: [itar:read],\n  entityScope: defco:TechnicalDataAsset:td-4471> }
   foreignPartner -> gateway: QUERY { technicalDataAsset(entityId: "defco:TechnicalDataAsset:td-4471") {\n  usmlCategory classification } }\nAuthorization: Bearer <JWT>
   gateway -> resolver: resolve(entityId, callerClaims, entityScope)
   resolver -> resolver: HasClaim("itar:read") AND entityScope == entityId? -- yes (ADR-043)
@@ -189,7 +189,7 @@ entity "AppDataResidencyPolicy\n(schema-registry.md, ADR-061 -- already exists,\
   AllowedRegions : string[]
 }
 
-entity "AccessGrant\n(EntityStoreRow.Data shape,\nEntityType \"AccessGrant\", ADR-043)" as grant {
+entity "AccessGrant\n(EntityStoreRow.Data shape,\nEntityType AccessGrant, ADR-043)" as grant {
   * EntityId : string <<PK>>
   --
   GranterActorId : string
@@ -337,7 +337,7 @@ access, and never reaches Screen 3.
   { "USML Category" | "USML Category XII" }
   { "Classification" | "ITAR-Controlled" }
   ..
-  "200 OK -- AccessLogEntry written: ReaderTrustBasis \"Attested\", GrantRef ar-2201 (ADR-045)"
+  "200 OK -- AccessLogEntry written: ReaderTrustBasis 'Attested', GrantRef ar-2201 (ADR-045)"
 }
 @endsalt
 ```
@@ -360,7 +360,7 @@ Feature: Controlled Technical Data Access Request
   So that ITAR/EAR's US-persons/US-soil restriction (22 CFR 120-130 / 15 CFR 730-774) is enforced structurally, not just by policy
 
   Background:
-    Given the event type "TechnicalDataAssetPublished" version 1 is registered with ChangeKind "Full", EntityIdField "$.AssetId", and RequiredReadClaim "itar:read":
+    Given the event type "TechnicalDataAssetPublished" version 1 is registered with ChangeKind "Full", EntityIdField "$.AssetId", and RequiredClaims [{ "Direction": "Read", "Claim": "itar:read" }] (denormalized as RequiredReadClaim on the folded entity, see the ER diagram note below):
       """
       {
         "type": "object",

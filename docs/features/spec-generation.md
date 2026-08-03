@@ -105,6 +105,59 @@ end note
 @enduml
 ```
 
+## Client SDK generation (ADR-054)
+
+`ADR-054` adds no new server-side surface at all — it names a **consumer-
+side** tooling story on top of the two contracts this doc already
+diagrams above: **Kiota** generates the OpenAPI-side (publish) client, for
+both C# and TypeScript, from one `openapi.json`; **GraphQL Code
+Generator** (TypeScript) and **Strawberry Shake** (.NET, the same
+ChilliCream vendor as the server's own `HotChocolate`) generate the
+GraphQL-side (query/subscribe) client from the SDL HotChocolate's
+introspection endpoint serves. All three run as part of a *consuming*
+application's own build — never committed generated code in this
+repository. The framework's only job, already fully covered by the two
+sequence diagrams above, is keeping `/openapi.json` and the GraphQL SDL
+anonymously fetchable and always current; generation itself happens
+entirely outside this system's process boundary.
+
+```plantuml
+@startuml SpecGeneration_ClientCodegen_Sequence
+autonumber
+participant "Consumer's own build\n(CLI or CI step)" as consumerBuild
+participant "EventStore.Host.Core\n(GET /openapi.json)" as endpoint
+participant "OpenApiDocumentBuilder" as docBuilder
+participant "EventStore.GraphQL\n(HotChocolate introspection)" as graphql
+participant "Kiota" as kiota
+participant "GraphQL Code Generator /\nStrawberry Shake" as gqlCodegen
+
+consumerBuild -> endpoint: GET /openapi.json (no Authorization header needed)
+endpoint -> docBuilder: GetOrBuildJsonAsync() (see diagram above)
+docBuilder --> consumerBuild: current openapi.json
+consumerBuild -> kiota: generate(openapi.json) -> C# and/or TypeScript client
+kiota --> consumerBuild: generated request builders + models\n(not committed to this repo)
+
+consumerBuild -> graphql: introspect SDL
+graphql --> consumerBuild: current schema
+consumerBuild -> gqlCodegen: generate(SDL) -> typed operations/client\n(GraphQL Code Generator for TypeScript,\nStrawberry Shake for .NET)
+gqlCodegen --> consumerBuild: generated client code\n(not committed to this repo)
+note over consumerBuild
+  A schema/spec change is discovered at the
+  consumer's *next* build, the same on-demand-
+  plus-short-cache freshness this doc's two
+  diagrams above already guarantee (ADR-054) --
+  no new freshness mechanism needed.
+end note
+@enduml
+```
+
+No new Gherkin scenario is added for this section: every behavior `ADR-
+054` depends on (anonymous, always-current `/openapi.json` and GraphQL
+SDL) is already covered by this file's existing scenarios above — the
+generation step itself runs inside a *consumer's* build, not this
+framework's own testable surface, so there is no new behavior of this
+framework's own to assert here.
+
 ## Data model (ER diagram)
 
 Not applicable as a new diagram — this feature reads `EventTypeDefinition`

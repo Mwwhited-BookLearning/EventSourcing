@@ -64,7 +64,7 @@ secondary option) as the sole query surface over the Entity Store
 - **Travels over the HTTP `QUERY` method (`ADR-012`), never `POST`,
   never `GET`.** The specific, stated reason: a query document's
   arguments can carry PII/PHI (filtering by a patient name, an SSN,
-  anything a `RequiredReadClaim`-gated field might hold) — `QUERY`'s
+  anything a `RequiredClaims`-gated field might hold) — `QUERY`'s
   body-carrying, still-safe-and-cacheable semantics keep that content out
   of URLs, access logs, and proxy caches the way `GET` never could, and
   out of the convention of logging full request bodies the way `POST`'s
@@ -96,7 +96,7 @@ secondary option) as the sole query surface over the Entity Store
   API surface**: `ADR-068`'s lineage-scoped event export and bitemporal
   system-time playback (VCR-style play/rewind/fast-forward for
   litigation review) are both new *read* shapes over history, enforced
-  through the identical `RequiredReadClaim`/masking/access-audit pipeline
+  through the identical `RequiredClaims`/masking/access-audit pipeline
   every other GraphQL query already goes through — an export or a
   playback position is a read, never a privileged bypass of this design's
   existing authorization pipeline. Not yet drawn into `01-c4-

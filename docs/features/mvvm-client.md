@@ -81,6 +81,78 @@ what makes it real, exactly as `ADR-039` states. `CommandId` doubling as the
 why redelivering the same queued command after reconnect never applies
 twice — no second dedup mechanism was introduced for the client.
 
+## Pluggable outbox flush triggers (ADR-069)
+
+The offline-command diagram above shows exactly one trigger for
+`ClientOutbox`'s flush: Background Sync firing on reconnect (with the
+open/focus fallback `pwa-offline-outbox.md` already documents). `ADR-069`
+generalizes this: the durable outbox exposes one idempotent `Flush`
+operation, and **any** trigger may invoke it, any number of times, safely
+— `ADR-011`'s publish idempotency (the same `CommandId`-as-`EventId`
+dedup this doc's diagram already relies on) is what makes a redundant
+`Flush` always safe, so the client never needs to reason about *which*
+trigger fired, only that `Flush` ran. Three trigger categories exist, not
+just the opportunistic one diagrammed above:
+
+1. **Opportunistic** (already diagrammed above, unchanged) — Background
+   Sync / open-focus fallback.
+2. **Scheduled ("phone home")** — the [Web Periodic Background Sync
+   API](https://developer.mozilla.org/en-US/docs/Web/API/Web_Periodic_Background_Synchronization_API)
+   where available (checked, not assumed: Chromium-only, experimental,
+   unsupported in Firefox/Safari as of this writing — the same kind of
+   honest caveat `ADR-039`'s own Background Sync note already states);
+   otherwise an OS/device-level scheduled task calling `Flush` on a timer
+   for a non-browser/native device client. This framework doesn't build
+   a scheduler — it only needs `Flush` to be safely callable by one.
+3. **Explicit/manual** — a user/operator-initiated "sync now" action, or,
+   for a genuinely air-gapped device with no network path at all, ever,
+   exporting the outbox's queued commands to a portable bundle for
+   physical transport and later import at a connected system — **reusing
+   `ADR-068`'s portable bundle format directly** (NDJSON + manifest +
+   chain-of-custody hash) rather than inventing a second shape; see
+   `docs/features/lineage-export-and-playback.md` for that bundle format
+   itself, not re-derived here. The receiving system verifies the
+   transferred bundle is complete and unaltered before importing it, the
+   same story as any other use of that format.
+
+No change to `ClientOutboxEntry`'s shape (below) or to the diagram
+above's durability guarantee — this is purely additive: two more ways to
+invoke the same `Flush` operation, none of which the client needs to
+distinguish once invoked.
+
+## Local/edge active-scope caching and erasure invalidation (ADR-065)
+
+`ClientEntityCacheEntry` (below) already holds decrypted, reviewable
+plaintext, not ciphertext — a deliberate, accepted trade-off: genuine
+offline review requires locally-usable data with no network present.
+`ADR-065` states the two rules that bound that trade-off:
+
+- **Scope is explicit, not "everything this client has ever seen."** A
+  local/edge client subscribes with an explicit scope filter — the same
+  `FilterableFields`-backed argument shape any GraphQL Subscription
+  already supports (`ADR-037`), e.g. "entities assigned to this site/
+  device AND still open." Falling out of scope (closed, completed,
+  reassigned) proactively evicts the local cached copy — the
+  subscription's own filter *is* the retention policy, not an unrelated
+  TTL.
+- **Receiving an `EntityErasureRequested` event for a subscribed entity
+  is a mandatory, immediate local purge**, not deferred to the next
+  scope-eviction cycle. `ADR-057`'s erasure event reaches a subscribed
+  local client through the exact same subscription channel as any other
+  update; the client treats it as an instruction to delete its own local
+  cached copy right away. This is the piece that reaches what server-side
+  crypto-shredding alone can't: destroying the server-side DEK makes
+  every *ciphertext* copy unreadable everywhere at once, but a device
+  that already decrypted and cached plaintext holds a copy independent
+  of that key — the erasure event's delivery, not the key destruction, is
+  what reaches it.
+
+**Honest, named limitation**: a device offline at the moment erasure
+fires won't purge until it reconnects and receives the event — nothing in
+this design can reach a device that never reconnects; that's an
+operational disposal concern (wipe the device), not a gap this ADR's own
+mechanism silently introduces.
+
 ## Sequence diagram — rendering a `ViewDefinition`, with generic fallback
 
 ```plantuml
@@ -233,6 +305,24 @@ filled/exclaimed here only because it's `true` in this example,
 `LateArrivalFlag` shown unset, `AuthorityStatus` shown with its current
 value) — not three bespoke indicators.
 
+## Accessibility standard (ADR-073)
+
+Both the `ViewDefinition`-rendered template above and the generic
+property-list fallback mockup are screens this framework's client
+renders, and `ADR-073` sets **WCAG 2.1 AA as the baseline accessibility
+standard for every one of them** (WCAG 2.2 AA where practical), regardless
+of which UI pattern implements a given screen — MVVM (this doc's own
+subject) or a named fallback (`docs/comparisons/ui-architecture-
+patterns.md`'s MVP/MVC/code-behind chain). `ADR-073` states the
+requirement; this doc's own mechanism (the native/JS bridge, the
+`ViewDefinition` template model, the generic fallback) governs how a
+given screen actually satisfies it — a deliberate separation, not a
+redundant one. Nothing about the generic fallback's flag-rendering
+convention (`ConflictFlag`/`LateArrivalFlag`/`AuthorityStatus`, shown in
+the mockup above) or a template-backed `ViewDefinition`'s own markup is
+exempt merely for being a fallback or being content-addressed — both are
+screens a real user reads.
+
 ## Gherkin
 
 ```gherkin
@@ -285,6 +375,47 @@ Feature: MVVM client (entity views, client-local outbox, native/JS bridge)
     When client instance "B" enqueues a command for Shipment "s-1" while online
     Then client instance "B"'s command should deliver independently of client instance "A"'s connectivity state
     And client instance "A"'s queued command should remain in its own outbox, unaffected by instance "B"
+
+  Scenario: A scheduled phone-home trigger flushes the outbox with no user present (ADR-069)
+    Given a command for Order "o-1" is queued in client instance "A"'s outbox
+    And client instance "A" is running on a device using an OS-level scheduled task to call Flush periodically
+    When that scheduled task invokes Flush while connectivity is available
+    Then the queued command should be delivered to the Entity Store
+    And no user interaction should have been required to trigger the flush
+
+  Scenario: An air-gapped device exports queued outbox commands to a portable bundle for physical transport (ADR-069)
+    Given client instance "A" is running on a device with no network path at all, ever
+    And a command for Order "o-1" is queued in client instance "A"'s outbox
+    When an operator explicitly exports the outbox to a portable bundle
+    Then the exported bundle should use the same NDJSON + manifest + chain-of-custody hash format ADR-068 defines for history export
+    When that bundle is later imported at a connected system
+    Then the receiving system should verify the bundle is complete and unaltered before importing it
+    And the queued command should then be delivered to the Entity Store from the connected system
+
+  Scenario: Falling out of active scope proactively evicts the local cached copy (ADR-065)
+    Given client instance "A" subscribed with a scope filter for "entities assigned to this site AND still open"
+    And Order "o-1" is currently within that scope and cached locally
+    When Order "o-1" is closed, and no longer matches client instance "A"'s subscription filter
+    Then client instance "A" should proactively purge its local cached copy of Order "o-1"
+    And the eviction should happen without waiting for any unrelated TTL
+
+  Scenario: Receiving an erasure event for a subscribed entity triggers an immediate, mandatory local purge (ADR-065)
+    Given client instance "A" is subscribed to and has a locally cached, decrypted copy of Order "o-1"
+    When client instance "A" receives an "EntityErasureRequested" event for Order "o-1" through its existing subscription
+    Then client instance "A" should immediately delete its own local cached copy of Order "o-1"
+    And this purge should not wait for the next scope-eviction cycle
+    # Honest limitation (ADR-065): a device offline at the moment erasure
+    # fires won't purge until it reconnects and receives the event.
+
+  Scenario: Every screen the client renders meets the WCAG 2.1 AA baseline, in either template-backed or fallback form (ADR-073)
+    Given Order "o-1" has a registered ViewDefinition and Shipment "s-1" has none
+    When client instance "A" renders Order "o-1" via its ViewDefinition template
+    And client instance "B" renders Shipment "s-1" via the generic property-list fallback
+    Then both rendered screens should conform to WCAG 2.1 AA
+    # ADR-073 governs the requirement; this doc's own rendering mechanism
+    # (native/JS bridge, ViewDefinition template, generic fallback) governs
+    # how each screen satisfies it -- neither screen is exempt for being a
+    # fallback or being content-addressed.
 
   Scenario: The web client is installable
     When the web client is opened in a browser that supports installation

@@ -54,7 +54,8 @@ Authorization is scope-based, one policy per scope, mapped to endpoints as:
 | GraphQL `Subscription` (Follow, `ADR-037`) | `events:follow` |
 | GraphQL `Query` — lineage fields (`ancestors`/`descendants`/`parents`/`children`) | `events:lineage:read` |
 | GraphQL `Query` — registry listing | `registry:admin` |
-| GraphQL `Mutation` — `revealField`, `registerWebhookSubscription`, `exportLineage`, `playbackAsOf` | scope per mutation, named in each section below |
+| GraphQL `Query` — `exportLineage`, `playbackAsOf` (`ADR-068` — reads, never mutations, since neither changes stored state) | `events:lineage:read` |
+| GraphQL `Mutation` — `revealField`, `registerWebhookSubscription` | scope per mutation, named in each section below |
 | `PUT /registry/{event-type}` | `registry:admin` |
 | `POST /oauth/token` (ticket issuance, `ADR-040`) | requires an existing valid bearer token as the Token Exchange subject |
 | `GET /openapi.json`, GraphQL schema introspection | none (anonymous — contract shape only, no event data) |
@@ -270,27 +271,39 @@ other query, never a privileged bypass:
 
 ```graphql
 query {
-  exportLineage(rootEventId: "3fa8...afa6", direction: DESCENDANTS) {
+  exportLineage(entityId: "trial1:Patient:S-0091") {
     bundleUrl   # NDJSON bundle + manifest hash + RFC 3161 timestamp (ADR-086) over that hash
   }
 }
 
 query {
-  playbackAsOf(entityId: "trial1:Patient:S-0091", systemTime: "2026-06-01T00:00:00Z") {
-    data        # reconstructed state as this design's own record stood as of systemTime
+  playbackAsOf(entityId: "trial1:Patient:S-0091", asOfSequenceNumber: 48810) {
+    data        # reconstructed state as this design's own record stood at that SequenceNumber, in arrival order
     extensions
   }
 }
 ```
 
-`exportLineage`'s NDJSON bundle is the same portable format `04-odata-
-filter-pushdown.md`'s (now `04-*.md`'s) archival mechanism (`ADR-089`)
-also uses for a detached Event Log segment — one serialization
-convention, reused, not two. `playbackAsOf` reconstructs *system-time*
-state (what this design knew as of a point in time), a different axis
-from `mode=replay`'s event-arrival-order replay — see `ADR-068` for the
-full distinction and the offline-player export target these same fields
-also feed.
+**`entityId`, not a root event, is the correct starting point for
+`exportLineage`** — corrected against `ADR-068`'s own text ("given a
+starting `EntityId`... gathers every causally-connected event"), matching
+`docs/features/lineage-export-and-playback.md` and the domain docs that
+already used it this way; an earlier version of this section used
+`rootEventId`/`direction`, conflating this with the unrelated per-event
+Lineage API (`ancestors`/`descendants` above) rather than `ADR-068`'s own
+entity-scoped export. `exportLineage`'s NDJSON bundle is the same portable
+format `04-odata-filter-pushdown.md`'s (now `04-*.md`'s) archival
+mechanism (`ADR-089`) also uses for a detached Event Log segment — one
+serialization convention, reused, not two. `playbackAsOf` reconstructs
+*system-time* state (what this design knew as of a point in time, folded
+in arrival order rather than logical order) — a different axis from
+`mode=replay`'s event-arrival-order replay of *new* events, and a
+different parameter shape from an ordinary timestamp: `asOfSequenceNumber`
+directly matches `ADR-068`'s own "fold only events with `SequenceNumber
+<= T`" mechanism, and is what the VCR-style play/rewind/fast-forward
+controls step through one position at a time — see `ADR-068` for the full
+distinction and the offline-player export target these same fields also
+feed.
 
 ## Webhook subscription registration (`ADR-060`)
 

@@ -143,7 +143,7 @@ enforcement, the wrapper shape, or the `FixedValue` strategy reads them.
 6. Determine version number: increment from the current active version for
    this event type name (or `1` if new).
 7. Persist `EventTypeDefinition` (including `ParentValidationMode`,
-   `RequiredPublishClaim`, `RequiredReadClaim`, `ChangeKind`) + `FilterableField`
+   `RequiredClaims`, `ChangeKind`) + `FilterableField`
    rows in a single transaction. `x-masking` extensions are not extracted
    into their own columns — they persist as part of the `JsonSchema` text
    itself.
@@ -178,21 +178,21 @@ actually satisfies the schema is **not** checked at registration — see
 `ADR-018`'s consequences for why this only narrows, not closes, the
 open compatibility-enforcement question.
 
-Changing `RequiredPublishClaim`/`RequiredReadClaim` on a new version takes
+Changing `RequiredClaims` on a new version takes
 effect immediately for that event type — unlike `SchemaVersion`, there is no
 "claim required as of version N" history to preserve; the check always uses
-whichever version is currently active. Tightening either claim doesn't
-retroactively change what a caller could already see in a live Follow
-connection opened before the change — it only affects new connection
-attempts and new lineage queries, since the check runs once at connect time
-(Follow) or once per request (Lineage), not continuously against an open
-stream.
+whichever version is currently active. Tightening the Publish- or
+Read-direction entries doesn't retroactively change what a caller could
+already see in a live Follow connection opened before the change — it only
+affects new connection attempts and new lineage queries, since the check
+runs once at connect time (Follow) or once per request (Lineage), not
+continuously against an open stream.
 
 Adding, removing, or changing `x-masking` on a property likewise takes
 effect for the version it's registered on, applied against whichever
 version is currently active — same "no retroactive effect on an already-open
 Follow connection" caveat as above, since masking is computed once at
-connect time alongside `RequiredReadClaim`.
+connect time alongside the Read-direction `RequiredClaims` check.
 
 ## Validation at publish time
 
@@ -248,8 +248,8 @@ failure and a Strict-mode missing-parent failure both produce `400` with no
 partial write, same as today's payload-only validation.
 
 If the request supplied `eventId` (`ADR-011`), an idempotency check runs
-**before** either of the above, right after `RequiredPublishClaim`
-(`ADR-008`): look up `StoredEvent` by `EventId`. Found + matching
+**before** either of the above, right after the Publish-direction
+`RequiredClaims` check (`ADR-008`/`ADR-050`): look up `StoredEvent` by `EventId`. Found + matching
 `PayloadHash` → replay the original response, skip
 `SchemaValidationService`/`ParentLinkService`/`EventAppender` entirely, no
 write. Found + different `PayloadHash` → `409`, likewise skipping further

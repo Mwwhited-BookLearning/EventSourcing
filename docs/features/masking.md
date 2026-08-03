@@ -1,58 +1,94 @@
-# Feature: Property-level masking (value/masked wrapper)
+# Feature: Property-level masking (value/masked/erased wrapper)
 
-> **Corrected and partially updated this pass.** The registration-
-> rejection scenarios below do **not** predate `ADR-023` the way an
-> earlier version of this banner claimed — `ADR-013`'s Problem Details
-> table strikes through only the *publish*-time `validation-failed` and
-> `unknown-schema-version` `400` rows; the `masking-invalid` and
-> `change-kind-required` *registration*-time rows are never struck
-> through, so `PUT /registry/{event-type}` still rejects a malformed
-> `x-masking` placement or an unsupported strategy with a real `400`,
-> exactly as the scenarios below already show — registering an event
-> type is an admin/control-plane action, not a publish, and `ADR-023`'s
-> persist-everything posture never applied to it. What genuinely *was*
-> stale, now fixed: the one publish scenario asserting `201` now asserts
-> `202` (`ADR-023`); every `RequiredReadClaim` reference is now
-> `RequiredClaims` (`ADR-050`); and the Follow step in the sequence
-> diagram now shows a GraphQL Subscription over SSE (`ADR-037`) instead
-> of a bare `GET`. **Still genuinely unresolved, left out of this pass**:
-> this doc's wrapper is v1's original two-branch `FixedValue`-only shape
-> (`{value}`/`{masked}`); `ADR-057` later added a third `erased` branch
-> (crypto-shredding) to the same wrapper, already reflected in
-> `03-api-contracts.md`'s GraphQL schema (`{ value masked erased }`) but
-> not propagated into this doc's scenarios or ER diagram — tracked as
-> outstanding propagation work (`CLAUDE.md`), a bigger lift than this
-> pass's three named fixes.
+> **Fully corrected this pass.** Registration-rejection scenarios were
+> never actually stale (`ADR-013`'s Problem Details table strikes through
+> only the *publish*-time `400` rows; registration-time rejection for a
+> malformed `x-masking` placement or a genuinely unsupported strategy is
+> unaffected by `ADR-023`) — a prior version of this banner claimed
+> otherwise and was corrected. The one publish scenario asserting `201`
+> now asserts `202` (`ADR-023`); every `RequiredReadClaim` reference is
+> now `RequiredClaims` (`ADR-050`); Follow is shown as a GraphQL
+> Subscription over SSE (`ADR-037`). **The real gap, found and fixed this
+> pass**: this doc described v1 as `FixedValue`-only with a `{value}`/
+> `{masked}` two-branch wrapper — both wrong, not because of a design
+> change nobody documented, but because `ADR-009` was already amended (in
+> an earlier session pass) to promote `PartialReveal` and `Hash` into the
+> real decision, and `ADR-057` already added the wrapper's third `erased`
+> branch — neither ever made it into this doc. `06-solution-structure.md`'s
+> three registered `IMaskingStrategy` implementations were correct all
+> along; this doc was the one that hadn't caught up. No new ADR needed —
+> resolved by reading `ADR-009`'s own current text, not by deciding
+> anything new.
 
 Context: data model note in `../02-data-model.md` ("Event-type security",
 masking paragraph); contract in `../03-api-contracts.md` ("Masking" note
 under "AsyncAPI (follow side)"); registration validation in
 `../05-schema-registry-and-spec-generation.md`; implementation shape in
 `../06-solution-structure.md` ("Masking — a pure, schema-plus-data
-transform"); decision record `ADR-009` in `../07-adrs.md` (including the
-"Future: definable masking strategies" proposal — not built, sketched
-only). Depends on [`event-security.md`](event-security.md) — masking only
+transform"); decision record `ADR-009` in `../07-adrs.md`, including its
+"Future: declined masking strategies" section (tokenization,
+generalization/bucketing, format-preserving encryption, whole-object/
+array masking — explicitly declined, not just unbuilt; `FixedValue`/
+`PartialReveal`/`Hash` below are all decided and in scope). Depends on
+[`event-security.md`](event-security.md) — masking only
 ever applies to callers who already cleared a `Read`-direction entry in
 `RequiredClaims` (`ADR-050`) for the event type (or the type has none).
-Design is complete; per `08-build-plan.md`
-Phase 8, building it is a lower priority than everything else, not blocked
+Design is complete; per `08-build-plan.md`'s "Property-Level Masking"
+item, building it is a lower priority than everything else, not blocked
 on anything technical. Follow is a GraphQL Subscription over SSE
 (`ADR-037`; see `../03-api-contracts.md`'s "Follow — GraphQL Subscription
 over SSE") — the sequence diagram below shows the real
 `subscription { ... }` document, not `GET`/OData shorthand.
 
-v1 supports exactly one masking strategy, `"FixedValue"`: a maskable
-property's value is wrapped as `{"value": <real value>}` for a caller
-holding its `requiredClaim`, or `{"masked": "<maskedValue>"}` (default
-`"***"`) for one who doesn't — for **every** scalar-typed field, including
-required, non-nullable ones. This wrapper shape is what "works on all
-fields": it doesn't reuse the field's own type slot (which is what forced
-an earlier, since-replaced `null`-out design to require nullability), it
-introduces a new type at that position. `x-masking` also carries three
-optional, schema-only documentation fields —
-`regulatoryClassification`/`governanceBody`/`regulationReference` — that
-carry no runtime behavior at all and never appear on the wire (see the ER
-diagram note below, and `ADR-009`).
+A maskable property's effective wire type becomes a three-way `oneOf`
+wrapper: `{"value": <real value>}` for a caller holding its
+`requiredClaim`, `{"masked": <masked content>}` for one who doesn't, or
+`{"erased": true}` for a field whose crypto-shredding key has been
+destroyed (`ADR-057`) — permanent and unconditional, shown even to a
+caller who holds the claim, since `erased` means "gone," not "you lack
+permission." This applies for **every** scalar-typed field, including
+required, non-nullable ones — the wrapper is what "works on all fields":
+it doesn't reuse the field's own type slot (which is what forced an
+earlier, since-replaced `null`-out design to require nullability), it
+introduces a new type at that position.
+
+**v1 supports three masking strategies** (`FixedValue`/`PartialReveal`/
+`Hash`; a fourth, format-preserving encryption, plus tokenization,
+generalization/bucketing, and whole-object/array masking, are explicitly
+declined for now — `ADR-009`'s "Future: declined masking strategies"):
+- **`FixedValue`**: `masked` is a configured literal string
+  (`maskedValue`, default `"***"`).
+- **`PartialReveal`**: `masked` is `{ showFirst, showLast, maskChar,
+  preserveSeparators }` applied to the real value — named,
+  human-readable fields (not a symbolic mask-template string), modeled on
+  PCI-DSS Requirement 3.3's own plain-language card-PAN masking ("only
+  the first six and last four digits displayed"). Format-preserving,
+  meaningful only for an originally-string property.
+- **`Hash`**: `masked` carries a *keyed* HMAC of the real value (`{
+  keyId }`), reusing `ADR-050`'s already-adopted `Microsoft.Extensions.
+  Compliance.Redaction`'s `HmacRedactor` — not a bare unsalted hash, so a
+  caller lacking the claim can tell two masked events share the same
+  underlying value (correlation) without ever learning the value itself
+  or being able to brute-force a small value space.
+
+All three strategies are an explicit Strategy-pattern seam
+(`IMaskingStrategy`, one class + one keyed-DI registration line per
+strategy, `06-solution-structure.md`) — `IPayloadMasker` never branches on
+the strategy name itself. Registering any other `strategy` value is
+rejected `400` at registration (see Gherkin below) — including a
+plausible-sounding but still-declined one like `"Tokenization"` or
+`"Bucketing"`, not just an obviously-invalid string.
+
+`x-masking` also carries three optional, schema-only documentation
+fields — `regulatoryClassification`/`governanceBody`/`regulationReference`
+— that carry no runtime behavior at all and never appear on the wire (see
+the ER diagram note below, and `ADR-009`). A field may also declare
+`erasureScope` (a JSON Pointer to another property naming the `EntityId`
+whose crypto-shredding key actually protects it, when that differs from
+the event's own `EntityId` — `ADR-057`; defaults to the event's own
+`EntityId` when absent) — out of scope for this doc's own scenarios,
+which don't exercise the cross-entity case, but relevant to how `erased`
+gets triggered.
 
 ## Sequence diagram — connect-time setup and per-event masking
 
@@ -74,7 +110,14 @@ loop for each matching event, while connection open
   endpoint -> db: poll for new matching events (see follow-subscribe.md)
   endpoint -> masker: Mask(activeSchema, rawPayload, hasClaim)
   masker -> masker: walk schema recursively; wherever x-masking is found\n(a scalar property, a scalar array's items, or a property nested\ninside a complex-object items schema), wrap that node's value
-  masker --> endpoint: payload with masked nodes wrapped as\n{value:...} or {masked:"***"}, everything else untouched
+  alt caller holds requiredClaim and the field's DEK is still live\n(IErasureKeyStore, ADR-057)
+    masker -> masker: decrypt ciphertext -- {value: <real value>}
+  else caller holds requiredClaim but the field's DEK was destroyed
+    masker -> masker: {erased: true} -- unconditional, even for a claim holder
+  else caller lacks requiredClaim
+    masker -> masker: resolve the configured IMaskingStrategy\n(FixedValue | PartialReveal | Hash) -- {masked: ...}
+  end
+  masker --> endpoint: payload with masked nodes wrapped as\n{value:...} / {masked:...} / {erased:true}, everything else untouched
   endpoint -> follower: SSE "next" event: data{ selected fields, masked\nnodes resolved to whichever wrapper branch the query selected }
 end
 @enduml
@@ -116,10 +159,19 @@ note right of etd
     }
   }
 
+  strategy is "FixedValue" | "PartialReveal" | "Hash"
+  (ADR-009) -- PartialReveal/Hash take their own
+  config shape instead of maskedValue (showFirst/
+  showLast/maskChar/preserveSeparators, or keyId).
+  An optional erasureScope (JSON Pointer, ADR-057)
+  names a different EntityId whose crypto-shredding
+  key protects this field, when it isn't the event's
+  own -- absent means "this event's own EntityId."
+
   regulatoryClassification/governanceBody/
   regulationReference are optional, schema-
   only documentation -- read by nothing at
-  runtime, never in the value/masked wrapper.
+  runtime, never in the value/masked/erased wrapper.
 
   No constraint on the property's own type
   or required-ness -- CustomerTaxId may be
@@ -128,7 +180,8 @@ note right of etd
   or array-typed property (only a scalar
   node, or an array's scalar items, or a
   property nested inside a complex-object
-  items schema, is valid).
+  items schema, is valid), and rejects (400)
+  any strategy value other than the three above.
 end note
 @enduml
 ```
@@ -163,12 +216,14 @@ surface.
 ## Gherkin
 
 ```gherkin
-Feature: Property-level masking (value/masked wrapper)
+Feature: Property-level masking (value/masked/erased wrapper)
   As the event store
-  I want individual fields within an event wrapped as {value:...} or
-  {masked:"***"} depending on whether the caller holds a field-specific claim
+  I want individual fields within an event wrapped as {value:...}, {masked:...},
+  or {erased:true} depending on whether the caller holds a field-specific claim
+  and whether the field's crypto-shredding key still exists
   So that sensitive fields can be hidden -- on any scalar type, including
-  required ones -- without withholding the whole event
+  required ones -- without withholding the whole event, and permanently
+  destroyed on request without corrupting the append-only log
 
   Background:
     Given client "follower-client" has scope "events:follow"
@@ -181,6 +236,14 @@ Feature: Property-level masking (value/masked wrapper)
           "CustomerTaxId": {
             "type": "string",
             "x-masking": { "requiredClaim": "pii:view", "strategy": "FixedValue", "maskedValue": "***" }
+          },
+          "Ssn": {
+            "type": "string",
+            "x-masking": { "requiredClaim": "pii:view", "strategy": "PartialReveal", "showFirst": 0, "showLast": 4, "maskChar": "X", "preserveSeparators": true }
+          },
+          "CustomerEmail": {
+            "type": "string",
+            "x-masking": { "requiredClaim": "pii:view", "strategy": "Hash", "keyId": "email-hmac-2026" }
           },
           "Notes": {
             "type": "array",
@@ -229,14 +292,14 @@ Feature: Property-level masking (value/masked wrapper)
     Then the response status should be 400
     And the response should state "Contact" cannot be masked directly (only a scalar node, or array items, may carry x-masking)
 
-  Scenario: Registering a masking strategy other than FixedValue is rejected
+  Scenario: Registering a genuinely unsupported masking strategy is rejected
     When I PUT "/registry/PatientAdmitted" with body:
       """
       {
         "jsonSchema": {
           "type": "object",
           "properties": {
-            "Ssn": { "type": "string", "x-masking": { "requiredClaim": "pii:view", "strategy": "PartialReveal" } }
+            "Ssn": { "type": "string", "x-masking": { "requiredClaim": "pii:view", "strategy": "Bucketing" } }
           },
           "required": []
         },
@@ -244,7 +307,27 @@ Feature: Property-level masking (value/masked wrapper)
       }
       """
     Then the response status should be 400
-    And the response should state "PartialReveal" is not a supported masking strategy
+    And the response should state "Bucketing" is not a supported masking strategy
+    # Bucketing/generalization is a real, named, explicitly declined proposal
+    # (ADR-009's "Future: declined masking strategies") -- unlike
+    # FixedValue/PartialReveal/Hash, it was never promoted into the decision.
+
+  Scenario: Registering PartialReveal and Hash strategies succeeds -- both are decided, not proposed
+    When I PUT "/registry/PatientAdmitted" with body:
+      """
+      {
+        "jsonSchema": {
+          "type": "object",
+          "properties": {
+            "Ssn": { "type": "string", "x-masking": { "requiredClaim": "pii:view", "strategy": "PartialReveal", "showFirst": 0, "showLast": 4 } },
+            "Email": { "type": "string", "x-masking": { "requiredClaim": "pii:view", "strategy": "Hash", "keyId": "email-hmac-2026" } }
+          },
+          "required": []
+        },
+        "filterableFields": []
+      }
+      """
+    Then the response status should be 201
 
   Scenario: A follower without the field claim receives the masked wrapper
     Given I have a Bearer token for client "follower-client" with no additional claims
@@ -258,6 +341,35 @@ Feature: Property-level masking (value/masked wrapper)
     And I open an SSE connection to "/follow/OrderPlaced"
     When an "OrderPlaced" event with body {"Amount": 150.00, "CustomerTaxId": "123-45-6789"} is published
     Then I should receive that event on the SSE stream with CustomerTaxId equal to {"value": "123-45-6789"}
+
+  Scenario: PartialReveal shows only the configured first/last characters, masking the rest
+    Given I have a Bearer token for client "follower-client" with no additional claims
+    And I open an SSE connection to "/follow/OrderPlaced"
+    When an "OrderPlaced" event with body {"Amount": 150.00, "CustomerTaxId": "123-45-6789", "Ssn": "123-45-6789"} is published
+    Then I should receive that event on the SSE stream with Ssn equal to {"masked": "XXX-XX-6789"}
+    # showFirst: 0, showLast: 4, preserveSeparators: true (Background) -- the
+    # separators show through untouched; only the digit positions are masked.
+
+  Scenario: Hash masking is correlatable across events without revealing the value
+    Given I have a Bearer token for client "follower-client" with no additional claims
+    And I open an SSE connection to "/follow/OrderPlaced"
+    When an "OrderPlaced" event with body {"Amount": 150.00, "CustomerTaxId": "123-45-6789", "CustomerEmail": "same@example.com"} is published
+    And a second "OrderPlaced" event with body {"Amount": 75.00, "CustomerTaxId": "123-45-6789", "CustomerEmail": "same@example.com"} is published
+    Then both events' CustomerEmail masked HMAC values should be identical
+    And neither should reveal "same@example.com" or let it be recovered
+    # Keyed HMAC (ADR-050's HmacRedactor), not a bare hash -- correlatable,
+    # not brute-forceable the way an unsalted hash of a small value space is.
+
+  Scenario: A field whose crypto-shredding key has been destroyed renders erased, even for a claim holder
+    Given I have a Bearer token for client "follower-client" with claim "pii" value "view"
+    And an "OrderPlaced" event "order-1" with body {"Amount": 150.00, "CustomerTaxId": "123-45-6789"} was published
+    And entity "demo:Order:order-1" has since been erased (ADR-057 -- its DEK destroyed)
+    When I open an SSE connection to "/follow/OrderPlaced"
+    And "order-1" is redelivered (e.g. a mode: REPLAY connection)
+    Then I should receive that event on the SSE stream with CustomerTaxId equal to {"erased": true}
+    # erased is unconditional -- holding the claim no longer matters once the
+    # key is gone. Distinct from {"masked": ...}, which still means "someone
+    # with the right claim can see this."
 
   Scenario: A required maskable field is masked without any nullability workaround
     Given I have a Bearer token for client "follower-client" with no additional claims

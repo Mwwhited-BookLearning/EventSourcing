@@ -31,8 +31,11 @@ allowed to do" (this framework's claims/RBAC layers).
 Decision:
 - **`EventTypeDefinition` gains an optional `RequiredSignature`**
   (`schema-registry.md`): `{ AcrValues: ["urn:...:step-up"], MaxAge:
-  300 }` — registered per event type the same way `RequiredPublishClaim`
-  already is. An event type with no `RequiredSignature` is completely
+  300 }` — registered per event type the same way a `RequiredClaims`
+  entry already is (`ADR-050` — correction, verified against
+  `docs/data/schema-registry.md`: `RequiredPublishClaim` was already
+  generalized to the list-shaped `RequiredClaims` by the time this ADR
+  was written). An event type with no `RequiredSignature` is completely
   unaffected; this is purely additive.
 - **Publish-time enforcement via RFC 9470**: if a publish targets a
   `RequiredSignature`-configured event type and the caller's current

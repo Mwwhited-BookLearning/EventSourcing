@@ -42,7 +42,10 @@ Decision:
   `IEventLineageQueryProvider`/`CycleGuard` machinery the Lineage API
   already uses) into an export set.
 - **Goes through the exact same read-path enforcement as any other
-  query — no bypass.** `ADR-008`'s `RequiredReadClaim`, `ADR-009`'s
+  query — no bypass.** `ADR-008`'s `RequiredClaims` (Read direction,
+  `ADR-050` — correction, verified against `docs/data/schema-
+  registry.md`: already list-shaped by the time this ADR was written),
+  `ADR-009`'s
   masking (including `ADR-057`'s `erased` branch for anything crypto-
   shredded), and `ADR-045`'s read-access audit logging all apply
   unchanged. An export is a read, not a privileged escape hatch — a

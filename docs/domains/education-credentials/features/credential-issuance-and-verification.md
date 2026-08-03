@@ -411,7 +411,7 @@ Feature: Credential Issuance and Verification
 
   Background:
     Given institution "Sunridge University" publishes as AppId "sunridge" (ADR-030)
-    And the event type "DiplomaIssued" version 1 is registered with ChangeKind "Full", EntityIdField "$.CredentialId", RequiredReadClaim "credential:read", and schema:
+    And the event type "DiplomaIssued" version 1 is registered with ChangeKind "Full", EntityIdField "$.CredentialId", RequiredClaims [{ "Direction": "Read", "Claim": "credential:read" }], and schema:
       """
       {
         "type": "object",

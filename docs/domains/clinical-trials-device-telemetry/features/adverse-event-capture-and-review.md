@@ -18,7 +18,7 @@ are defined in [`../../../data/event-log.md`](../../../data/event-log.md)
 (`StoredEvent`, `Signature`), [`../../../data/entity-store.md`](../../../data/entity-store.md)
 (`EntityStoreRow`, `LiveEntityStoreRow`), and
 [`../../../data/schema-registry.md`](../../../data/schema-registry.md)
-(`EventTypeDefinition.RequiredSignature`, `RequiredReadClaim`'s
+(`EventTypeDefinition.RequiredSignature`, `RequiredClaims`'s
 entity-scope extension).
 
 This doc deliberately does **not** re-derive:
@@ -46,8 +46,8 @@ This doc deliberately does **not** re-derive:
   This doc only shows a device-linked AE event carrying an already-formed
   `TelemetryPointer`, never how the underlying channel itself is
   provisioned or ingested into.
-- **The general `RequiredPublishClaim`/`RequiredReadClaim` check and
-  ordinary bearer-token auth** (`ADR-006`/`ADR-008`) — see
+- **The general `RequiredClaims` check and
+  ordinary bearer-token auth** (`ADR-006`/`ADR-008`/`ADR-050`) — see
   [`../../../features/event-security.md`](../../../features/event-security.md)
   and [`../../../features/auth.md`](../../../features/auth.md). This doc
   only exercises `ADR-043`'s *entity-scope* extension to that check

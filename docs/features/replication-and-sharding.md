@@ -106,6 +106,55 @@ shard and merges results, rather than assuming a single-shard query plan
 always suffices. A single-shard query (both requested entities on the same
 `ShardKey`) skips the `par` branch entirely — one call, no merge step.
 
+## Data residency — region pinning (ADR-061)
+
+`ADR-061` layers one filtering rule onto the peer-sync outbox the first
+sequence diagram above already shows, rather than adding a new mechanism.
+Every configured peer gains a `Region` tag (e.g. `"eu-west"`, `"us-
+east"`), and a new per-`AppId` `AllowedRegions` list (`docs/data/schema-
+registry.md`) constrains which regions that `AppId`'s events may
+replicate to. Enforcement happens at the outbox, not at fold/query time:
+when an event belonging to a region-constrained `AppId` is queued for
+outbound gossip sync, the outbox filters candidate destination peers down
+to only those tagged with one of the `AppId`'s `AllowedRegions` — a
+disallowed-region peer simply never receives that event in a sync batch.
+`ADR-034`'s `ShardKey = EntityType` is completely unchanged by this;
+region constrains *where a shard's replicas may live*, not a new
+sharding dimension layered onto the key itself.
+
+```plantuml
+@startuml ReplicationAndSharding_RegionPinning_Sequence
+autonumber
+participant "Site A (eu-west)\nPeer Sync Outbox" as aOutbox
+participant "Site A\nPeer Sync Service" as aSync
+participant "Site B (eu-west)" as bSite
+participant "Site C (us-east)" as cSite
+
+note over aOutbox
+  AppId "eu-tenant" has AllowedRegions: ["eu-west"] (ADR-061).
+  Site A, Site B, and Site C are all configured gossip peers,
+  tagged eu-west/eu-west/us-east respectively.
+end note
+aSync -> aOutbox: read events queued for sync, for AppId "eu-tenant"
+aOutbox -> aOutbox: filter candidate peers to those tagged\nwith an AllowedRegions region ("eu-west")
+aSync -> bSite: push batch (Site B is tagged "eu-west" -- allowed)
+note over aSync, cSite
+  Site C is tagged "us-east", not in AllowedRegions --
+  "eu-tenant"'s events are never included in any batch
+  bound for Site C. This is a filtering rule at the
+  existing outbox, not a rejected/failed sync attempt.
+end note
+@enduml
+```
+
+This is a **named, honest tension with `ADR-033`'s minimum-replication-
+factor-of-2 requirement**, not silently resolved: a tenant restricted to
+a single region satisfies both requirements only if that region has ≥2
+live sites tagged with it. Where it doesn't, residency wins — it's a
+regulatory hard constraint, fault tolerance is a design preference — and
+the deployment is responsible for ensuring ≥2 sites exist in any region a
+tenant restricts to, or knowingly accepting single-site risk.
+
 ## Data model (ER diagram)
 
 ```plantuml
@@ -251,6 +300,16 @@ Feature: Multi-origin replication and application-level sharding
     Then "Site B" should continue to accept new "OrderPlaced" publishes
     And "Site B" should continue to serve reads against its own Entity Store
     And no event or entity already synced to "Site B" before the outage should be lost
+
+  Scenario: An AppId with a restricted AllowedRegions list never replicates to a peer tagged with a different region (ADR-061)
+    Given "Site A" and "Site B" are both tagged Region "eu-west"
+    And "Site C" is tagged Region "us-east" and is also a configured gossip peer of "Site A"
+    And AppId "eu-tenant" is configured with AllowedRegions ["eu-west"]
+    When an "OrderPlaced" event for "order-9" is published at "Site A" under AppId "eu-tenant"
+    Then eventually "Site B"'s Entity Store should show that "Order" entity "order-9"
+    And "Site C" should never receive that event in any peer-sync batch
+    # Enforced by a filtering rule at Site A's own Peer Sync Outbox (ADR-061),
+    # not a rejected sync attempt or a fold/query-time check.
 
   Scenario: The Peer Sync Outbox survives an unclean process restart
     Given "Site A" has events queued in its Peer Sync Outbox for "Site B" that have not yet been acknowledged

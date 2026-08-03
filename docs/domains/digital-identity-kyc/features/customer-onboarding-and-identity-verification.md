@@ -23,7 +23,7 @@ Entity/event shapes referenced below come from
 [`../../../data/entity-store.md`](../../../data/entity-store.md)
 (`EntityStoreRow`/`LiveEntityStoreRow`), and
 [`../../../data/schema-registry.md`](../../../data/schema-registry.md)
-(`EventTypeDefinition.RequiredPublishClaim`, `Role`,
+(`EventTypeDefinition.RequiredClaims`, `Role`,
 `WebhookSubscription`, `x-masking`).
 
 This doc deliberately does **not** re-derive:
@@ -123,12 +123,12 @@ participant "Relying Party\nwebhook receiver" as relyingParty
 
 analyst -> inbox: POST /publish/authorityDecision\n{ payload: { targetEventId: <IdentityClaimSubmitted's EventId>,\n  decision: "accepted"|"rejected", decidingActorId: analyst,\n  reason } }
 alt caller's flattened claim set lacks "identity:review"
-  inbox --> analyst: 403 (RequiredPublishClaim not satisfied, ADR-008/ADR-046)
+  inbox --> analyst: 403 (RequiredClaims (Publish direction) not satisfied, ADR-008/ADR-046/ADR-050)
   note right of inbox
     identity:review reached the analyst's JWT via a Role
     bundling that permission, flattened at token issuance
     (ADR-046) -- the check itself is the ordinary
-    RequiredPublishClaim mechanism, unaware it came from a role.
+    RequiredClaims mechanism, unaware it came from a role.
   end note
 else caller holds "identity:review"
   inbox -> eventLog: INSERT StoredEvent (authorityDecision)
@@ -238,7 +238,7 @@ entity "WebhookSubscription" as webhookSub {
 decisionEvent ..o| claimEvent : "targetEventId -- denormalized\nback-pointer, sets AuthorityDecisionRef\n(ADR-035), never a DB FK"
 claimEvent "*" --> "0..1" entityStore : "folds into, ONLY once\nAuthorityStatus = accepted (ADR-042)"
 claimEvent "*" --> "1" liveView : "folds into immediately,\nregardless of AuthorityStatus (ADR-042)"
-role ..> decisionEvent : "RoleName's Permissions must include\nidentity:review for the publisher's\nflattened claims to satisfy\nRequiredPublishClaim (ADR-046/ADR-008)"
+role ..> decisionEvent : "RoleName's Permissions must include\nidentity:review for the publisher's\nflattened claims to satisfy\nRequiredClaims (ADR-046/ADR-008/ADR-050)"
 webhookSub ..> decisionEvent : "EventTypes match triggers a\nmasked outbound notification (ADR-060)"
 
 note right of entityStore
@@ -270,7 +270,7 @@ public class IdentityClaimSubmittedPayload
 }
 
 // Registered event type "authorityDecision" v1 (already generic, ADR-035);
-// RequiredPublishClaim "identity:review" set on THIS AppId's registration (ADR-046/ADR-008)
+// RequiredClaims [{ Direction: "Publish", Claim: "identity:review" }] set on THIS AppId's registration (ADR-046/ADR-008/ADR-050)
 public class AuthorityDecisionPayload
 {
     public Guid TargetEventId { get; set; }        // the IdentityClaimSubmitted event's EventId
@@ -323,7 +323,7 @@ note right of Accepted
   claim (ADR-042). The applicant is now a real, claims-
   bearing identity record other reads and the relying
   party's webhook (ADR-060) can rely on -- gated by
-  RequiredReadClaim/the caller's flattened claim set
+  RequiredClaims (Read direction)/the caller's flattened claim set
   (ADR-046/ADR-050), same as any other classified data.
 end note
 
@@ -404,7 +404,7 @@ Feature: Customer Onboarding and Identity Verification
       }
       """
     And the event type "authorityDecision" version 1 is registered
-      with EntityIdField "$.targetEventId" and RequiredPublishClaim "identity:review"
+      with EntityIdField "$.targetEventId" and RequiredClaims [{ "Direction": "Publish", "Claim": "identity:review" }]
     And role "IdentityVerificationAnalyst" is registered for AppId "kyc" with Permissions ["identity:review"]
     And user "analyst-1" is assigned role "IdentityVerificationAnalyst", so their issued JWT carries claim "identity:review"
     And user "clerk-1" holds no role or direct grant carrying "identity:review"
@@ -448,7 +448,7 @@ Feature: Customer Onboarding and Identity Verification
       """
       { "payload": { "targetEventId": "claim-1002", "decision": "accepted", "decidingActorId": "clerk-1" } }
       """
-    Then the request should be rejected because RequiredPublishClaim "identity:review" is not satisfied
+    Then the request should be rejected because the Publish-direction RequiredClaims entry "identity:review" is not satisfied
     And the stored event "claim-1002"'s AuthorityStatus should remain "pending_review"
 
   Scenario: An analyst holding identity:review accepts the claim, and the authoritative Entity Store now folds it

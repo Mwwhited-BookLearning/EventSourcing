@@ -30,6 +30,9 @@ public class StoredEvent
     public Guid? AuthorityDecisionRef { get; set; }      // denormalized back-pointer to the authorityDecision event that last set AuthorityStatus, set by the fold step (ADR-035)
     public string? TelemetryPointer { get; set; }        // JSON-serialized List<TelemetryPointerEntry> (ADR-081, generalized from a single object) -- {ChannelId, ThreadId?, FromTimestamp, ToTimestamp?} per entry; one entry for an ordinary single-channel detection, multiple for a correlated multi-channel one. A distinct envelope field from parentEventIds/MaterializationOfEventId/AttachmentRef (ADR-031)
     public Signature? Signature { get; set; }             // set only when EventTypeDefinition.RequiredSignature is configured -- a sixth distinct relationship-shaped envelope field (ADR-066)
+    public long? OriginalSequenceNumber { get; set; }      // set only on an event imported via ADR-068's lineage-export bundle format -- this environment's own SequenceNumber/ChainHash above are freshly computed (it IS a new append here); these three fields record provenance, never presented as if organically published here (ADR-068)
+    public string? OriginalChainHash { get; set; }         // the exporting environment's own ChainHash for this event, at export time (ADR-068)
+    public string? ImportedFrom { get; set; }              // identifies the exporting environment (ADR-068) -- a seventh distinct relationship-shaped envelope field, answering "where did this event actually originate" as opposed to OriginId (ADR-033/090, which peer/site in THIS deployment's own multi-site mesh)
 }
 
 // Left behind in the primary table when a segment of StoredEvent rows is
