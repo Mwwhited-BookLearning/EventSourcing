@@ -801,6 +801,8 @@ endpoint round trip was not itself completed end-to-end, only DevIdp's
 own token issuance in isolation. Tracked in `TODO.md` rather than
 silently claimed fixed.
 
+## Event-Type Security
+
 **Scope**: per `ADR-008` **as originally decided** — a single
 `RequiredPublishClaim`/`RequiredReadClaim` string per direction on
 `EventTypeDefinition` (`ADR-050`'s later generalization to an
