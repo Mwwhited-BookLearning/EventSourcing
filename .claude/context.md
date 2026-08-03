@@ -29,64 +29,38 @@ here than in most repos.
 *(update this section's content, not just its presence, every session —
 stale numbers here are worse than none)*
 
-- As of **2026-08-03** (continuing one long working session that started
-  2026-07-31): HEAD was `a602317` ("updating design") as of the last
-  check, moved several times via commits not made by this conversation
-  (an external process/terminal checkpointing the work; harmless, just
-  don't assume it's still current — re-check `git log`/`git status`).
-  Working tree has further unstaged edits from this session's work-
-  through of `TODO.md` — see `git status`.
-- **`docs/10-open-questions.md` is EMPTY** and **`08-build-plan.md` no
-  longer uses fixed `Phase N` numbering** — cite its items by name only
-  (`` `08-build-plan.md`, "Event-Type Security" ``, never a number).
-  **All 93 ADRs are Accepted; the original 6-phase TODO.md restructuring
-  plan from earlier this session (quick fixes → data-model → diagrams →
-  GraphQL/API-contract cluster → build-plan restructuring → 13-domain
-  Salt-mockup rework) is fully complete.** Full narrative across
-  `docs/changes/2026-07-30.md` through `2026-08-03.md` — not repeated
-  here; skim the latest one or two for what actually happened, this
-  section only tracks what's still open.
-- **Two of the three small mid-session-found TODO items are now also
-  done** (user directed the order: 2, 3, 1). `docs/features/*.md` gained
-  7 new full feature docs and 9 sections covering `ADR-054`–`093`
-  (`rate-limiting.md`, `feature-flags.md`, `device-input.md`,
-  `webhooks.md`, `digital-signoff.md`, `bulk-ingestion-and-interchange-
-  adapters.md`, `lineage-export-and-playback.md`, plus sections in
-  `spec-generation.md`/`schema-registry.md`/`replication-and-
-  sharding.md`/`multi-tenancy.md`/`auth.md`/`mvvm-client.md`) — dispatched
-  as 4 parallel agents, consolidation caught and fixed a real cross-doc
-  bug `03-api-contracts.md` itself had (`exportLineage`/`playbackAsOf`
-  used the wrong parameter shape, checked against `ADR-068`'s actual text
-  and corrected) plus a pre-existing, never-propagated data-model gap
-  (`ADR-068`'s `OriginalSequenceNumber`/`OriginalChainHash`/`ImportedFrom`,
-  added to `docs/data/event-log.md`). The `RequiredPublishClaim`/
-  `RequiredReadClaim` naming sweep is also done — full repo grep,
-  classified every hit (pre-`ADR-050` ADRs correctly left as historical
-  narration, two post-`ADR-050` ADRs — `066`/`068` — had a genuine
-  citation error and got a correction marker), and one real undecided
-  case (`TelemetryChannel.RequiredReadClaim`) resolved by leaving it and
-  documenting why rather than guessing. Full narrative in `docs/changes/
-  2026-08-03.md`.
-- **All three mid-session-found TODO items are now done except one.**
-  `masking.md`'s "strategy contradiction" turned out not to be a real
-  contradiction at all — `ADR-009` already carries an in-place amendment
-  promoting `PartialReveal`/`Hash` out of its own "Future" proposal into
-  the real decision (struck-through text, easy to miss skimming instead
-  of reading closely); `06-solution-structure.md`'s three registered
-  `IMaskingStrategy` classes were right all along, `masking.md` was the
-  stale one. Rewrote it: three-way `value`/`masked`/`erased` wrapper
-  (`ADR-057`), all three strategies, a previously-wrong Gherkin scenario
-  fixed (asserted `PartialReveal` registration is rejected — it's
-  accepted), new scenarios for `PartialReveal`/`Hash` behavior and the
-  `erased` branch. No new ADR needed. **Lesson**: when a TODO item frames
-  something as "an unresolved contradiction," check whether the *ADR
-  itself* already resolved it via an in-place amendment before assuming a
-  new decision is needed — struck-through text reads easy to skip.
-  `TODO.md` is down to its last item: `ADR-013`'s stale error table
-  (needs additive-history treatment — a correction marker, not an
-  ordinary edit — not yet done). Full narrative in `docs/changes/
-  2026-08-03.md`.
-- **Lessons from this session worth carrying forward, not re-learning**:
+- As of **2026-08-03** (one long working session, started 2026-07-31):
+  HEAD was `a602317` ("updating design") as of the last check, moved
+  several times via commits not made by this conversation (an external
+  process/terminal checkpointing the work; harmless, just don't assume
+  it's still current — re-check `git log`/`git status`).
+- **`TODO.md`'s Active section is EMPTY. `docs/10-open-questions.md` is
+  also EMPTY.** Every item tracked anywhere in either file this session
+  has been resolved — the original 6-phase restructuring plan (quick
+  fixes → data-model → diagrams → GraphQL/API-contract cluster →
+  build-plan restructuring → 13-domain Salt-mockup rework) and every
+  smaller item found along the way, most recently `ADR-013`'s stale
+  error-response table. **This is a milestone, not a steady state** — the
+  next session's job is finding the next real item, not assuming there
+  isn't one. Full narrative across `docs/changes/2026-07-30.md` through
+  `2026-08-03.md`; skim the latest one or two, don't re-derive from this
+  summary.
+- **`08-build-plan.md` no longer uses fixed `Phase N` numbering** — cite
+  its items by name only (`` `08-build-plan.md`, "Event-Type Security" ``,
+  never a number). All 93 ADRs are Accepted.
+- **A real PlantUML syntax bug, found by the user (not caught by review),
+  turned out to be systemic**: backslash-escaped quotes (`\"`) inside a
+  quoted diagram-element name break PlantUML's parser (it terminates the
+  string at the first unescaped `"`) — present in 9 diagrams this
+  session's parallel agents wrote, across `docs/features/*.md` and
+  domain docs, every one of which had self-reported "verdict: complete."
+  All fixed (plain or single quotes instead). **Lesson, genuinely new,
+  worth remembering**: an agent's own "looks right" report on a diagram
+  it wrote is not the same as the diagram actually rendering — this class
+  of bug is invisible in a transcript read-through and needs an actual
+  render check to catch reliably; don't treat a clean-looking PlantUML
+  block as verified just because the prose around it is accurate.
+- **Other lessons from this session worth carrying forward**:
   **(1)** verify a propagation claim against the actual file, never trust
   an ADR's own Consequences section saying something "is done"; **(2)**
   grep a whole file for a topic before assuming one updated bullet means
@@ -100,7 +74,12 @@ stale numbers here are worse than none)*
   explicit choice before a large, effort-heavy rewrite (full-restructure-
   now vs. lighter-touch vs. defer) consistently got a clear, fast answer
   rather than stalling — keep doing this for the next large item, don't
-  assume silent authorization from an earlier "keep going."
+  assume silent authorization from an earlier "keep going"; **(6)** when a
+  TODO item frames something as "an unresolved contradiction," check
+  whether the ADR itself already resolved it via an in-place amendment
+  before assuming a new decision is needed — struck-through text reads
+  easy to skip (this is exactly how `masking.md`'s "strategy contradiction"
+  turned out not to be one at all).
 
 ## How to resume cold
 
