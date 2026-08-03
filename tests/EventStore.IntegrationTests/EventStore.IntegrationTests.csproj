@@ -30,6 +30,7 @@
     <ProjectReference Include="..\..\src\EventStore.Inbox\EventStore.Inbox.csproj" />
     <ProjectReference Include="..\..\src\EventStore.SpecGeneration\EventStore.SpecGeneration.csproj" />
     <ProjectReference Include="..\..\src\EventStore.Lineage.Api\EventStore.Lineage.Api.csproj" />
+    <ProjectReference Include="..\..\src\EventStore.Follow.Api\EventStore.Follow.Api.csproj" />
   </ItemGroup>
 
 </Project>

@@ -10,12 +10,14 @@ namespace EventStore.SchemaRegistry;
 
 public class SchemaRegistryService(EventStoreContext db, IFilterableFieldIndexDdlGenerator indexDdlGenerator, IMemoryCache cache)
 {
-    // Must equal EventStore.SpecGeneration.OpenApiDocumentBuilder.CacheKey --
-    // duplicated rather than referenced, since SchemaRegistry has no reason to
-    // depend on SpecGeneration just for one constant (docs/06-solution-
-    // structure.md: "SchemaRegistryService calls IMemoryCache.Remove(...) on
-    // both keys after a successful registration" -- only one key exists so far).
+    // Must equal EventStore.SpecGeneration.OpenApiDocumentBuilder.CacheKey /
+    // AsyncApiDocumentBuilder.CacheKey -- duplicated rather than referenced,
+    // since SchemaRegistry has no reason to depend on SpecGeneration just for
+    // two constants (docs/06-solution-structure.md: "SchemaRegistryService
+    // calls IMemoryCache.Remove(...) on both keys after a successful
+    // registration").
     private const string OpenApiDocumentCacheKey = "openapi-document";
+    private const string AsyncApiDocumentCacheKey = "asyncapi-document";
 
     public async Task<RegisterEventTypeResult> RegisterAsync(
         string eventTypeName, RegisterEventTypeRequest request, CancellationToken ct = default)
@@ -140,6 +142,7 @@ public class SchemaRegistryService(EventStoreContext db, IFilterableFieldIndexDd
         await transaction.CommitAsync(ct);
 
         cache.Remove(OpenApiDocumentCacheKey); // ADR-002 -- ~60s TTL otherwise; invalidate immediately on registration
+        cache.Remove(AsyncApiDocumentCacheKey);
 
         return new RegisterEventTypeResult.Success(newVersion);
     }

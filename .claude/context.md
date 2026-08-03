@@ -40,17 +40,23 @@ stale numbers here are worse than none)*
   08-build-plan.md`'s "Implementation status" table (near its top) is the
   authoritative tracker of which of the 48 items is Done/In progress/Not
   started — don't restate its contents here.
-- **Items 1–4 are Done**: "Scaffolding & Persistence," "Schema Registry,"
+- **Items 1–5 are Done**: "Scaffolding & Persistence," "Schema Registry,"
   "Publish API" (`EventStore.Inbox`, plus `/openapi.json` generation via
-  `EventStore.SpecGeneration`), and "Lineage API (read side)" — this
-  build stage's own pre-GraphQL `QUERY /events/{id}/parents|children|
+  `EventStore.SpecGeneration`), "Lineage API (read side)" — this build
+  stage's own pre-GraphQL `QUERY /events/{id}/parents|children|
   ancestors|descendants` surface (`EventStore.Lineage.Api`), **not**
   `features/event-chains.md`'s current GraphQL `event(eventId){...}`
-  shape, which belongs to "GraphQL-Only Query Layer" much later.
-  `EventStore.IntegrationTests` has 12 passing tests across SQLite/
+  shape, which belongs to "GraphQL-Only Query Layer" much later — and
+  "Follow API + Filter Pushdown" (`EventStore.Follow.Api`: real
+  `Microsoft.OData.UriParser`-based `$filter` → LINQ compilation via
+  `FilterPredicateBuilder`, `EventTailReader`'s one poll loop driving both
+  `mode=tail`/`mode=replay`, plus `AsyncApiDocumentBuilder`/
+  `MaskingSchemaTransformer` in `EventStore.SpecGeneration`).
+  `EventStore.IntegrationTests` has 15 passing tests across SQLite/
   PostgreSQL/SQL Server (Testcontainers for the latter two). Commits on
   `dev/build-framework`: `5c5fd6e` (item 1), `c30781e` (item 2), `0886194`
-  (item 3); item 4 not yet committed as of this snapshot.
+  (item 3), `9ecc7d2` (item 4); item 5 not yet committed as of this
+  snapshot.
 - **One real, provider-specific bug in item 4's recursive CTEs, caught
   only on SQL Server**: "Types don't match between the anchor and the
   recursive part" — SQL Server infers a fixed-length `NVARCHAR(n)` for
@@ -60,19 +66,33 @@ stale numbers here are worse than none)*
   `NVARCHAR(MAX)`. SQLite (dynamically typed) and PostgreSQL (`TEXT` has
   no length to mismatch) never hit this — a SQL-Server-only class of
   recursive-CTE bug worth remembering for any future recursive query.
-  `IEventLineageQueryProvider`'s three implementations otherwise needed
-  no further correction (`IJsonPathTranslator`'s stub, from item 1, is
-  still untouched/deferred to "Follow API + Filter Pushdown").
+- **One real, provider-specific bug in item 5's `IJsonPathTranslator`,
+  again only on SQL Server**: the Number/DateTimeOffset branches modeled
+  `TRY_CAST` as a plain `SqlFunctionExpression` ("FUNC(args)" call
+  syntax), but `TRY_CAST` needs the special `TRY_CAST(expr AS type)` cast
+  form — "Incorrect syntax near 'TRY_CAST', expected 'AS'," caught by the
+  real SQL Server test run, not by reading the code back. Fixed by
+  switching to a plain `SqlUnaryExpression(ExpressionType.Convert, ...)`
+  (which EF renders as `CAST(expr AS type)`), matching how SQLite/
+  Postgres and SQL Server's own Boolean branch already worked — no
+  provider actually needed the "try" (non-throwing) semantics once
+  matched to the others.
+  `IEventLineageQueryProvider`'s three implementations needed no further
+  correction. `IJsonPathTranslator`'s three implementations (stubbed in
+  item 1) are now fully real, used by both Follow's filter pushdown and
+  (already, since item 4) nothing else yet.
 - **`resolved` is implemented; `restricted` deliberately is not** — the
   GraphQL Lineage response shape names both, but `restricted` depends on
   `RequiredClaims` enforcement, which needs "Event-Type Security" (not
   yet built). This item's own scope/exit-criteria never mention
   `restricted` either, so this is confirmed in-scope-as-designed, not an
-  oversight to fix later without checking first.
-- **Next up**: item 5, "Follow API + Filter Pushdown" — now unblocked
-  (was already independently unblocked alongside item 4; both depend
-  only on Publish API). After that, item 6 "Auth (OIDC/OpenIddict) +
-  Orchestration" needs both item 4 and item 5 done first.
+  oversight to fix later without checking first. Item 5's own exit
+  criteria make the same point explicitly about `parentEventIds`: a
+  restricted parent's ID being omitted depends on the same not-yet-built
+  `RequiredClaims`, and is called out in the build-plan's own text as
+  *not* part of this item's exit bar.
+- **Next up**: item 6, "Auth (OIDC/OpenIddict) + Orchestration" — now
+  unblocked (needs both item 4 and item 5, both now Done).
 
 ## How to resume cold
 
@@ -87,7 +107,7 @@ stale numbers here are worse than none)*
    narrative.
 5. `dotnet build EventStore.slnx` and `dotnet test tests/EventStore.IntegrationTests` —
    confirm the build/test baseline the last session left still holds
-   before adding to it (12 tests should pass). Requires Docker running
+   before adding to it (15 tests should pass). Requires Docker running
    (Testcontainers for Postgres/SQL Server) and the SDK pinned in
    `global.json`.
 
@@ -108,7 +128,10 @@ stale numbers here are worse than none)*
   expires. **Commits happen only when the user actually says so** — this
   session did not commit unprompted between items 1 and 2; only started
   doing so once explicitly asked, and has kept committing after every
-  item since (items 2, 3; item 4 still pending as of this snapshot).
+  item since (items 2, 3, 4 all committed; item 5's commit is pending
+  as of this snapshot — "check off work as you go. then continue" is
+  the standing instruction currently in effect, so item 5 is being
+  committed and item 6 started without waiting for a fresh prompt).
 - **Always actually run new code against every provider it's built for
   before calling an item done.** Every real bug found this session (the
   `ExecuteSqlRawAsync` brace-parsing issue, an unquoted Postgres column,
@@ -139,3 +162,13 @@ stale numbers here are worse than none)*
   have covered is still genuinely open, unscheduled — now doubly relevant
   since code keeps surfacing more data-model drift as it's written
   against each doc for real.
+- **Test-authoring gotcha, not a production bug**: calling
+  `IAsyncEnumerable<T>.GetAsyncEnumerator()` more than once against the
+  same instance starts a fresh enumeration each time — for a live poll
+  loop like `EventTailReader.TailAsync` (a C# async-iterator method),
+  that means the loop restarts from its *original* `lastSeen`, not from
+  wherever a prior pull left off. Get the enumerator once per connection
+  and reuse that same `IAsyncEnumerator<T>` across every subsequent pull
+  in a test (or real caller) that needs to keep observing the same
+  stream — this cost one debugging round-trip in item 5's Follow tests
+  (`FollowScenarioAssertions.Collect`) before being caught.

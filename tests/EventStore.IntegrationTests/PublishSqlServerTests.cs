@@ -35,7 +35,7 @@ public class PublishSqlServerTests
         var options = new DbContextOptionsBuilder<EventStoreContext>()
             .UseSqlServer(_container.GetConnectionString(), x => x.MigrationsAssembly("EventStore.Persistence.Migrations.SqlServer"))
             .Options;
-        return new EventStoreContext(options);
+        return new EventStoreContext(options, new SqlServerJsonPathTranslator());
     }
 
     [TestMethod]

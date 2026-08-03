@@ -1,3 +1,4 @@
+using EventStore.Follow.Api;
 using EventStore.Host.Core;
 using EventStore.Inbox;
 using EventStore.Lineage.Api;
@@ -21,6 +22,7 @@ builder.Services.AddSchemaRegistry();
 builder.Services.AddInbox();
 builder.Services.AddSpecGeneration();
 builder.Services.AddLineageApi();
+builder.Services.AddFollowApi();
 
 var app = builder.Build();
 app.MapEventStoreCommonEndpoints();
@@ -28,4 +30,5 @@ app.MapSchemaRegistryEndpoints();
 app.MapPublishEndpoints();
 app.MapSpecGenerationEndpoints();
 app.MapLineageEndpoints();
+app.MapFollowEndpoints();
 app.Run();
