@@ -187,3 +187,47 @@ stale numbers here are worse than none)*
   in a test (or real caller) that needs to keep observing the same
   stream — this cost one debugging round-trip in item 5's Follow tests
   (`FollowScenarioAssertions.Collect`) before being caught.
+- **New testing pattern established for item 6, worth reusing for any
+  future auth-adjacent item**: two `WebApplicationFactory` TestServers
+  wired together via one's real HTTP client set as the other's
+  `JwtBearerOptions.ConfigurationManager` (a `StaticConfigurationManager`
+  built from a `ConfigurationManager<OpenIdConnectConfiguration>` that
+  used `HttpDocumentRetriever(theOtherFactory.CreateClient())`) — a real,
+  non-shortcut in-memory validation of one real issued token against
+  another real fetched discovery doc/JWKS, no live ports needed. Setting
+  `JwtBearerOptions.Configuration` directly (not `.ConfigurationManager`)
+  does **not** work for this: the framework's own internal
+  `PostConfigureOptions<JwtBearerOptions>` (added once, by `Program.cs`'s
+  own `.AddJwtBearer(...)` call) already converts whatever `.Configuration`
+  held into a real `ConfigurationManager` before a test's own later
+  `PostConfigure` can supply a better one — this cost a full debugging
+  cycle (repeated "issuer invalid" 401s with a *correct*-looking token)
+  before being traced to that ordering, not a config-value mistake.
+  Two projects sharing a top-level-statement `Program` class name (every
+  Minimal API entry point) need `<ProjectReference ... Aliases="X"/>` +
+  `extern alias X;` in the test file the first time a test references
+  more than one such project — first hit this item, will recur for any
+  future multi-service test.
+- **Actually running `aspire run` (not just `dotnet build`) against
+  `EventStore.AppHost` found 5 more real bugs no test could catch**,
+  each fixed: `AddDatabase("Postgres")` needed (the bare server resource
+  alone injects no `Database=...`); `.WaitFor(db)` needed (without it,
+  `eventstore` starts before Postgres finishes its own startup and
+  crashes on first migration attempt); `RequireHttpsMetadata` needed an
+  explicit `.WithEnvironment(...)` override (Aspire's plain-HTTP
+  `Authority` injection doesn't reliably get `appsettings.Development.
+  json`'s dev override applied); a migrate-on-startup step was missing
+  entirely (a brand-new container has no schema — affects `docker-
+  compose.yml` too, fixed identically in all 3 Hosts); and
+  `EventStore.DevIdp/Properties/launchSettings.json` (a stray scaffold
+  file an earlier `rm -rf` silently failed to delete, due to a `cd`-
+  relative-path mistake, not caught until Aspire's own endpoint-
+  reference resolution picked up its hardcoded port instead of the real
+  dynamically-assigned one). **One further, still-open issue**: the
+  Postgres database resource's own documented auto-creation doesn't
+  reliably finish before `eventstore`'s first connection in this
+  environment (`Aspire.Hosting.PostgreSql` 13.4.6) — tracked in
+  `TODO.md`, not silently claimed fixed. Lesson: `dotnet build` succeeding
+  is not the same bar as actually running the orchestration end to end —
+  this is the same "always actually run it" discipline already applied
+  to every provider, now extended to the orchestration layer itself.
