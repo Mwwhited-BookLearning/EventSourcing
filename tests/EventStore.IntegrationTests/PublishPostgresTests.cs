@@ -35,7 +35,7 @@ public class PublishPostgresTests
         var options = new DbContextOptionsBuilder<EventStoreContext>()
             .UseNpgsql(_container.GetConnectionString(), x => x.MigrationsAssembly("EventStore.Persistence.Migrations.Postgres"))
             .Options;
-        return new EventStoreContext(options);
+        return new EventStoreContext(options, new PostgresJsonPathTranslator());
     }
 
     [TestMethod]

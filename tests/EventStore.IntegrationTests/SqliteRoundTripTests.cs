@@ -31,7 +31,7 @@ public class SqliteRoundTripTests
         var options = new DbContextOptionsBuilder<EventStoreContext>()
             .UseSqlite($"Data Source={_dbPath}", x => x.MigrationsAssembly("EventStore.Persistence.Migrations.Sqlite"))
             .Options;
-        return new EventStoreContext(options);
+        return new EventStoreContext(options, new SqliteJsonPathTranslator());
     }
 
     [TestMethod]

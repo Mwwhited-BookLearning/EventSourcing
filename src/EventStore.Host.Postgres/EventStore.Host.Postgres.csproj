@@ -7,6 +7,7 @@
     <ProjectReference Include="..\EventStore.Inbox\EventStore.Inbox.csproj" />
     <ProjectReference Include="..\EventStore.SpecGeneration\EventStore.SpecGeneration.csproj" />
     <ProjectReference Include="..\EventStore.Lineage.Api\EventStore.Lineage.Api.csproj" />
+    <ProjectReference Include="..\EventStore.Follow.Api\EventStore.Follow.Api.csproj" />
   </ItemGroup>
 
   <ItemGroup>

@@ -63,7 +63,7 @@ provider they apply to — not "code written."
 | 2 | [Schema Registry](#schema-registry) | Scaffolding & Persistence | Done |
 | 3 | [Publish API](#publish-api) | Schema Registry | Done |
 | 4 | [Lineage API (read side)](#lineage-api-read-side) | Publish API | Done |
-| 5 | [Follow API + Filter Pushdown](#follow-api--filter-pushdown) | Publish API | Not started |
+| 5 | [Follow API + Filter Pushdown](#follow-api--filter-pushdown) | Publish API | Done |
 | 6 | [Auth (OIDC/OpenIddict) + Orchestration](#auth-oidcopeniddict--orchestration) | Lineage API, Follow API + Filter Pushdown | Not started |
 | 7 | [Event-Type Security](#event-type-security) | Auth + Orchestration | Not started |
 | 8 | [Derived/Materialized Event Types (deferred)](#derivedmaterialized-event-types-deferred) | Event-Type Security | Not started |
