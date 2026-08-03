@@ -2,6 +2,7 @@ using EventStore.Persistence;
 using EventStore.SchemaRegistry;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Caching.Memory;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace EventStore.IntegrationTests;
@@ -36,7 +37,7 @@ public class SchemaRegistrySqliteTests
     }
 
     private static SchemaRegistryService CreateService(EventStoreContext db) =>
-        new(db, new SqliteFilterableFieldIndexDdlGenerator());
+        new(db, new SqliteFilterableFieldIndexDdlGenerator(), new MemoryCache(new MemoryCacheOptions()));
 
     [TestMethod]
     public async Task AllSchemaRegistryScenarios()

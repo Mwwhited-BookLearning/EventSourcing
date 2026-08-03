@@ -4,11 +4,19 @@ using EventStore.Domain.SchemaRegistry;
 using EventStore.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
+using Microsoft.Extensions.Caching.Memory;
 
 namespace EventStore.SchemaRegistry;
 
-public class SchemaRegistryService(EventStoreContext db, IFilterableFieldIndexDdlGenerator indexDdlGenerator)
+public class SchemaRegistryService(EventStoreContext db, IFilterableFieldIndexDdlGenerator indexDdlGenerator, IMemoryCache cache)
 {
+    // Must equal EventStore.SpecGeneration.OpenApiDocumentBuilder.CacheKey --
+    // duplicated rather than referenced, since SchemaRegistry has no reason to
+    // depend on SpecGeneration just for one constant (docs/06-solution-
+    // structure.md: "SchemaRegistryService calls IMemoryCache.Remove(...) on
+    // both keys after a successful registration" -- only one key exists so far).
+    private const string OpenApiDocumentCacheKey = "openapi-document";
+
     public async Task<RegisterEventTypeResult> RegisterAsync(
         string eventTypeName, RegisterEventTypeRequest request, CancellationToken ct = default)
     {
@@ -130,6 +138,8 @@ public class SchemaRegistryService(EventStoreContext db, IFilterableFieldIndexDd
         }
 
         await transaction.CommitAsync(ct);
+
+        cache.Remove(OpenApiDocumentCacheKey); // ADR-002 -- ~60s TTL otherwise; invalidate immediately on registration
 
         return new RegisterEventTypeResult.Success(newVersion);
     }

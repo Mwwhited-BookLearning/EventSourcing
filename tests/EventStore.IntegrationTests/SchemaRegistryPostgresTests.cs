@@ -1,6 +1,7 @@
 using EventStore.Persistence;
 using EventStore.SchemaRegistry;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Caching.Memory;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using Testcontainers.PostgreSql;
 
@@ -35,7 +36,7 @@ public class SchemaRegistryPostgresTests
     }
 
     private static SchemaRegistryService CreateService(EventStoreContext db) =>
-        new(db, new PostgresFilterableFieldIndexDdlGenerator());
+        new(db, new PostgresFilterableFieldIndexDdlGenerator(), new MemoryCache(new MemoryCacheOptions()));
 
     [TestMethod]
     public async Task AllSchemaRegistryScenarios()

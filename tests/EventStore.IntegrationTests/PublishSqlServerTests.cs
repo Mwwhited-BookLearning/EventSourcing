@@ -1,0 +1,66 @@
+using EventStore.Inbox;
+using EventStore.Persistence;
+using EventStore.Persistence.Migrations.SqlServer;
+using EventStore.SchemaRegistry;
+using EventStore.SpecGeneration;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Caching.Memory;
+using Microsoft.VisualStudio.TestTools.UnitTesting;
+using Testcontainers.MsSql;
+
+namespace EventStore.IntegrationTests;
+
+[TestClass]
+public class PublishSqlServerTests
+{
+    private static MsSqlContainer _container = default!;
+
+    [ClassInitialize]
+    public static async Task ClassInit(TestContext _)
+    {
+        _container = new MsSqlBuilder("mcr.microsoft.com/mssql/server:2022-latest").Build();
+        await _container.StartAsync();
+        using var db = CreateContext();
+        await db.Database.MigrateAsync();
+    }
+
+    [ClassCleanup]
+    public static async Task ClassCleanup()
+    {
+        await _container.DisposeAsync();
+    }
+
+    private static EventStoreContext CreateContext()
+    {
+        var options = new DbContextOptionsBuilder<EventStoreContext>()
+            .UseSqlServer(_container.GetConnectionString(), x => x.MigrationsAssembly("EventStore.Persistence.Migrations.SqlServer"))
+            .Options;
+        return new EventStoreContext(options);
+    }
+
+    [TestMethod]
+    public async Task AllPublishScenarios()
+    {
+        using var db = CreateContext();
+        var cache = new MemoryCache(new MemoryCacheOptions());
+        var registry = new SchemaRegistryService(db, new SqlServerFilterableFieldIndexDdlGenerator(), cache);
+        var publish = new PublishService(db, registry, new SqlServerUniqueConstraintViolationDetector());
+        var specBuilder = new OpenApiDocumentBuilder(db, new EventSchemaConverter(), cache);
+
+        await PublishScenarioAssertions.PublishingAValidEventSucceeds(registry, publish);
+        await PublishScenarioAssertions.PublishingAnEventMissingARequiredFieldIsRejected(registry, publish);
+        await PublishScenarioAssertions.PublishingAnEventWithAWrongShapedFieldIsRejected(registry, publish);
+        await PublishScenarioAssertions.PublishingAgainstAnUnregisteredEventTypeIsRejected(publish);
+        await PublishScenarioAssertions.PublishingValidatesAgainstTheDeclaredVersionNotWhicheverIsActive(registry, publish);
+        await PublishScenarioAssertions.RetryingWithSameEventIdAndIdenticalContentReplaysWithNoNewWrite(registry, publish);
+        await PublishScenarioAssertions.RetryingWithSameEventIdButDifferentContentIsAConflict(registry, publish);
+        await PublishScenarioAssertions.PublishingWithoutEventIdGeneratesAFreshOneEachTime(registry, publish);
+        await PublishScenarioAssertions.PublishingAnOriginEventHasNoParents(registry, publish);
+        await PublishScenarioAssertions.PublishingAChildEventParentedOffAPriorEventSucceeds(registry, publish);
+        await PublishScenarioAssertions.StrictParentValidationRejectsAnUnresolvedParent(registry, publish);
+        await PublishScenarioAssertions.PermissiveParentValidationAcceptsADanglingParentReference(registry, publish);
+
+        await OpenApiScenarioAssertions.OpenApiDocumentIncludesRegisteredPublishPaths(registry, specBuilder);
+        await OpenApiScenarioAssertions.RegisteringANewTypeInvalidatesTheCachedDocument(registry, specBuilder);
+    }
+}
