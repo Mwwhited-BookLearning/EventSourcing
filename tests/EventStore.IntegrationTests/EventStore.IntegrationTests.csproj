@@ -1,0 +1,31 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.10">
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+      <PrivateAssets>all</PrivateAssets>
+    </PackageReference>
+    <PackageReference Include="MSTest" Version="4.0.2" />
+    <PackageReference Include="Testcontainers.MsSql" Version="4.13.0" />
+    <PackageReference Include="Testcontainers.PostgreSql" Version="4.13.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Using Include="Microsoft.VisualStudio.TestTools.UnitTesting" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\EventStore.Persistence\EventStore.Persistence.csproj" />
+    <ProjectReference Include="..\..\src\EventStore.Persistence.Migrations.Sqlite\EventStore.Persistence.Migrations.Sqlite.csproj" />
+    <ProjectReference Include="..\..\src\EventStore.Persistence.Migrations.Postgres\EventStore.Persistence.Migrations.Postgres.csproj" />
+    <ProjectReference Include="..\..\src\EventStore.Persistence.Migrations.SqlServer\EventStore.Persistence.Migrations.SqlServer.csproj" />
+  </ItemGroup>
+
+</Project>

@@ -45,6 +45,69 @@ the scenario applies to.
 > `features/compatibility-and-versioning.md`) and five feature-doc gaps
 > closed in place, each noted at its own point below.
 
+## Implementation status
+
+**Converted to the active work tracker, this session** (direct request:
+"start converting the build plan to your active TODO"). This table is
+the authoritative status of *implementation* — updated in place as items
+move `Not started` → `In progress` → `Done`, the same "living tracker,
+not a log" convention `TODO.md` already follows. Do not restate item
+status anywhere else (`.claude/context.md` may summarize *which* item is
+currently active, but this table is where the full list lives). `Done`
+means the item's own exit criteria below are actually passing, on every
+provider they apply to — not "code written."
+
+| # | Item | Depends on | Status |
+|---|---|---|---|
+| 1 | [Scaffolding & Persistence](#scaffolding--persistence) | nothing | Done |
+| 2 | [Schema Registry](#schema-registry) | Scaffolding & Persistence | Not started |
+| 3 | [Publish API](#publish-api) | Schema Registry | Not started |
+| 4 | [Lineage API (read side)](#lineage-api-read-side) | Publish API | Not started |
+| 5 | [Follow API + Filter Pushdown](#follow-api--filter-pushdown) | Publish API | Not started |
+| 6 | [Auth (OIDC/OpenIddict) + Orchestration](#auth-oidcopeniddict--orchestration) | Lineage API, Follow API + Filter Pushdown | Not started |
+| 7 | [Event-Type Security](#event-type-security) | Auth + Orchestration | Not started |
+| 8 | [Derived/Materialized Event Types (deferred)](#derivedmaterialized-event-types-deferred) | Event-Type Security | Not started |
+| 9 | [Property-Level Masking](#property-level-masking-data-enforcement) | Event-Type Security, Follow API + Filter Pushdown | Not started |
+| 10 | [CQRS Read-Model Projections](#cqrs-read-model-projections-worked-example) | Follow API + Filter Pushdown, Auth + Orchestration | Not started |
+| 11 | [Hardening & Evolution](#hardening--evolution-dpop-event-upcasting-hash-chained-tamper-evidence) | Auth + Orchestration, Publish API, Follow API + Filter Pushdown, CQRS Read-Model Projections | Not started |
+| 12 | [Entity-Centric Core Rebuild](#entity-centric-core-rebuild) | Event-Type Security | Not started |
+| 13 | [Multi-Tenancy](#multi-tenancy) | Schema Registry, Entity-Centric Core Rebuild | Not started |
+| 14 | [Upcast Materialization + Downcast](#upcast-materialization--downcast) | Hardening & Evolution, Entity-Centric Core Rebuild | Not started |
+| 15 | [Streaming Channels](#streaming-channels) | Auth + Orchestration, Entity-Centric Core Rebuild, Property-Level Masking | Not started |
+| 16 | [Binary Attachments](#binary-attachments) | Auth + Orchestration, Entity-Centric Core Rebuild | Not started |
+| 17 | [Sharding & Replication](#sharding--replication) | Entity-Centric Core Rebuild | Not started |
+| 18 | [Non-Authoritative Capture](#non-authoritative-capture) | Entity-Centric Core Rebuild, Auth + Orchestration, Binary Attachments | Not started |
+| 19 | [GraphQL-Only Query Layer](#graphql-only-query-layer) | Entity-Centric Core Rebuild, Multi-Tenancy, Hardening & Evolution | Not started |
+| 20 | [Compatibility & Deployment Discipline](#compatibility--deployment-discipline) | GraphQL-Only Query Layer | Not started |
+| 21 | [MVVM Client](#mvvm-client) | Multi-Tenancy, Sharding & Replication | Not started |
+| 22 | [Ticket Exchange for Header-Incapable Clients](#ticket-exchange-for-header-incapable-clients) | Streaming Channels, Binary Attachments, Non-Authoritative Capture | Not started |
+| 23 | [Delegated Grants, RBAC, Federated Claims & Read Audit Logging](#delegated-grants-rbac-federated-claims--read-audit-logging) | Non-Authoritative Capture, Event-Type Security, Multi-Tenancy, Hardening & Evolution | Not started |
+| 24 | [SPIFFE/SPIRE Service Identity & API Gateway](#spiffespire-service-identity--api-gateway) | Auth + Orchestration, Sharding & Replication, Streaming Channels, Binary Attachments, GraphQL-Only Query Layer, Ticket Exchange | Not started |
+| 25 | [Data Lifecycle & Backup/Restore Classification](#data-lifecycle--backuprestore-classification) | Scaffolding & Persistence | Not started |
+| 26 | [GDPR/CCPA Erasure via Crypto-Shredding](#gdprccpa-erasure-via-crypto-shredding) | Property-Level Masking, Entity-Centric Core Rebuild | Not started |
+| 27 | [PCI-DSS Sensitive Authentication Data Registration Boundary](#pci-dss-sensitive-authentication-data-registration-boundary) | Schema Registry, Property-Level Masking | Not started |
+| 28 | [Local/Edge Active-Scope Caching & Erasure Invalidation](#localedge-active-scope-caching--erasure-invalidation) | MVVM Client, GDPR/CCPA Erasure | Not started |
+| 29 | [Digital Sign-Off for Regulated Actions](#digital-sign-off-for-regulated-actions-step-up-authentication) | Auth + Orchestration, ActorId on Every Event | Not started |
+| 30 | [Control-Plane Actions as Reserved Events](#control-plane-actions-as-reserved-events) | Schema Registry, Entity-Centric Core Rebuild | Not started |
+| 31 | [Dynamic Feature-Flag Configuration Provider](#dynamic-feature-flag-configuration-provider) | Scaffolding & Persistence, Control-Plane Actions as Reserved Events | Not started |
+| 32 | [Leader Election via Database-Backed Lease](#leader-election-via-database-backed-lease) | Entity-Centric Core Rebuild, Sharding & Replication | Not started |
+| 33 | [Per-Tenant Rate Limiting](#per-tenant-rate-limiting) | Auth + Orchestration, SPIFFE/SPIRE Service Identity & API Gateway | Not started |
+| 34 | [Outbound Webhooks](#outbound-webhooks) | Publish API, Auth + Orchestration, Property-Level Masking, Leader Election | Not started |
+| 35 | [Data Residency (Region Pinning)](#data-residency-region-pinning) | Sharding & Replication, Multi-Tenancy | Not started |
+| 36 | [Bulk Ingestion & External Interchange-Format Adapters](#bulk-ingestion--external-interchange-format-adapters) | Publish API, Non-Authoritative Capture, Outbound Webhooks | Not started |
+| 37 | [Tenant-to-Tenant Federation Mapping](#tenant-to-tenant-federation-mapping) | Multi-Tenancy, Auth + Orchestration, Bulk Ingestion & Interchange Adapters | Not started |
+| 38 | [Sanctions/Watchlist Screening Extensibility Seam](#sanctionswatchlist-screening-extensibility-seam) | Scaffolding & Persistence, Non-Authoritative Capture | Not started |
+| 39 | [Release Engineering, Packaging & Supply Chain](#release-engineering-packaging--supply-chain) | Scaffolding & Persistence, Compatibility & Deployment Discipline | Not started |
+| 40 | [Signing Secret Rotation, Dual Signature](#signing-secret-rotation-dual-signature) | Outbound Webhooks, Auth + Orchestration | Not started |
+| 41 | [Lineage Export & Bitemporal Playback](#lineage-export--bitemporal-playback) | Lineage API, Entity-Centric Core Rebuild, MVVM Client, GraphQL-Only Query Layer, Property-Level Masking, GDPR/CCPA Erasure, Delegated Grants/RBAC/Read Audit Logging | Not started |
+| 42 | [RFC 3161 Trusted Timestamping](#rfc-3161-trusted-timestamping) | Digital Sign-Off, Lineage Export & Bitemporal Playback | Not started |
+| 43 | [Pluggable Outbox Flush Triggers](#pluggable-outbox-flush-triggers) | MVVM Client, Lineage Export & Bitemporal Playback | Not started |
+| 44 | [Device Input Integration](#device-input-integration) | MVVM Client, Pluggable Outbox Flush Triggers, Non-Authoritative Capture | Not started |
+| 45 | [Accessibility Standard](#accessibility-standard) | MVVM Client | Not started |
+| 46 | [i18n/l10n Architectural Scope](#i18nl10n-architectural-scope) | MVVM Client | Not started |
+| 47 | [Mechanism-Level OpenTelemetry Instrumentation](#mechanism-level-opentelemetry-instrumentation) | Hardening & Evolution, Sharding & Replication, Entity-Centric Core Rebuild, Outbound Webhooks | Not started |
+| 48 | [Event Log/AccessLog Archival Segment Detachment](#event-logaccesslog-archival-segment-detachment) | Binary Attachments, Delegated Grants/RBAC/Read Audit Logging, Hardening & Evolution, Lineage Export & Bitemporal Playback | Not started |
+
 Two groups worth naming up front, since they explain most of the
 ordering below:
 

@@ -1,11 +1,19 @@
 # CLAUDE.md
 
-This repo is a **design package**, not an implemented codebase — there is no
-`src/` yet. Every file under `docs/` is architecture/decision documentation
-for an event-sourcing store, meant to be built from later. Treat doc edits
-with the same care as code edits: internal consistency across files matters
-more here than almost anything else, because there's no compiler to catch
-drift.
+This repo started as a **design package** and, this session, began actual
+implementation (direct request: "start converting the build plan to your
+active TODO... let's do this"). `src/`/`tests/` now exist, built strictly in
+`docs/08-build-plan.md`'s dependency order — that file's "Implementation
+status" table (near its top) is the authoritative tracker of which item is
+done/in progress/not started; check it before assuming any capability
+exists in code. Every file under `docs/` is still the architecture/decision
+documentation the implementation is built *from* — when code and docs
+disagree, a doc is wrong and gets fixed (the data-model docs remain the
+shape authority per the standing rule below), not silently overridden by
+whatever the code happened to do. Treat doc edits with the same care as
+code edits: internal consistency across files matters more here than
+almost anywhere else, because a design decision left inconsistent
+propagates into real code, not just prose.
 
 Note: the folder/repo name itself is a typo (`EventSouring` → should be
 `EventSourcing`). Known, deliberately not yet fixed — renaming the directory
