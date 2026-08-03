@@ -3,6 +3,7 @@
   <ItemGroup>
     <ProjectReference Include="..\EventStore.Host.Core\EventStore.Host.Core.csproj" />
     <ProjectReference Include="..\EventStore.Persistence.Migrations.SqlServer\EventStore.Persistence.Migrations.SqlServer.csproj" />
+    <ProjectReference Include="..\EventStore.SchemaRegistry\EventStore.SchemaRegistry.csproj" />
   </ItemGroup>
 
   <ItemGroup>

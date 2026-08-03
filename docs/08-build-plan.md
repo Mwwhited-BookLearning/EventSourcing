@@ -60,7 +60,7 @@ provider they apply to — not "code written."
 | # | Item | Depends on | Status |
 |---|---|---|---|
 | 1 | [Scaffolding & Persistence](#scaffolding--persistence) | nothing | Done |
-| 2 | [Schema Registry](#schema-registry) | Scaffolding & Persistence | Not started |
+| 2 | [Schema Registry](#schema-registry) | Scaffolding & Persistence | Done |
 | 3 | [Publish API](#publish-api) | Schema Registry | Not started |
 | 4 | [Lineage API (read side)](#lineage-api-read-side) | Publish API | Not started |
 | 5 | [Follow API + Filter Pushdown](#follow-api--filter-pushdown) | Publish API | Not started |
@@ -527,10 +527,24 @@ is still "Property-Level Masking".
 **Depends on**: Scaffolding & Persistence (needs the
 `EventTypeDefinition`/`FilterableField` tables to exist).
 
+**Correction, found while implementing**: `features/schema-registry.md`'s
+own Gherkin was rewritten to the GraphQL-only end state this session
+(`eventTypes(first, after)`, `ADR-037`) with no preserved historical
+scenario for the plain `QUERY /registry` `$top`/`$skip` listing this item
+still builds first — unlike an ADR's own struck-through-history
+convention, a feature doc's Gherkin section doesn't retain a superseded
+scenario once rewritten. This item's own listing endpoint is real, tested
+directly (`EventStore.IntegrationTests`, not a `features/*.md` scenario),
+and is explicitly temporary — "GraphQL-Only Query Layer" supersedes it
+with the GraphQL `eventTypes(...)` resolver `features/schema-registry.md`
+already documents as current.
+
 **Exit criteria**: every scenario in
-[`features/schema-registry.md`](features/schema-registry.md) passes, on
-all three providers, including the index/computed-column verification and
-`QUERY /registry`'s `$top`/`$skip` pagination; registering without
+[`features/schema-registry.md`](features/schema-registry.md) **except its
+GraphQL listing scenario** (superseded by "GraphQL-Only Query Layer," not
+yet built) passes, on all three providers, including the index/computed-
+column verification and this item's own `QUERY /registry` `$top`/`$skip`
+pagination test; registering without
 `changeKind`, or with a value other than `Full`/`Partial`, is rejected
 `400`; registering a filterable field whose `jsonPath` doesn't resolve in
 the schema is rejected `400`; plus the masking-registration scenarios in

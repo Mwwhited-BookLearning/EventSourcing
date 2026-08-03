@@ -9,6 +9,7 @@
     <Project Path="src/EventStore.Persistence.Migrations.Sqlite/EventStore.Persistence.Migrations.Sqlite.csproj" />
     <Project Path="src/EventStore.Persistence.Migrations.SqlServer/EventStore.Persistence.Migrations.SqlServer.csproj" />
     <Project Path="src/EventStore.Persistence/EventStore.Persistence.csproj" />
+    <Project Path="src/EventStore.SchemaRegistry/EventStore.SchemaRegistry.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/EventStore.IntegrationTests/EventStore.IntegrationTests.csproj" />

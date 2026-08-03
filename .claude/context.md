@@ -32,49 +32,84 @@ file's status table one item at a time.
 stale numbers here are worse than none)*
 
 - As of **2026-08-03**: `TODO.md`'s Active section and
-  `docs/10-open-questions.md` are both EMPTY — the last remaining 9
-  doc-only items (i18n/l10n, RFC3161Timestamp, RBAC reserved-event
-  Gherkin, streaming `ThreadId`/`RedactedRange`, `LateArrivalFlag`, and 3
-  new feature docs: `dpop-and-tamper-evidence.md`,
-  `upcast-materialization-and-downcast.md`,
-  `compatibility-and-versioning.md`) were closed out and `08-build-plan.md`
-  consolidated to point at them. Full narrative in
+  `docs/10-open-questions.md` are both EMPTY. Full doc-work narrative in
   `docs/changes/2026-08-03.md`.
 - **Implementation started this same session** (direct request: "start
-  converting the build plan to your active TODO... let's do this").
-  `docs/08-build-plan.md` gained a new "Implementation status" table near
-  its top — **that table, not this file, is the authoritative tracker of
-  which of the 48 items is Done/In progress/Not started.** Don't restate
-  its contents here; it drifts the moment an item's status changes.
-- **Item 1, "Scaffolding & Persistence," is Done** — the first real code
-  in this repo. `EventStore.slnx` at repo root, `src/` (10 projects:
-  `EventStore.Domain`, `EventStore.Persistence` + its `IJsonPathTranslator`
-  placeholder interface/3 stub impls, 3 `.Persistence.Migrations.<Provider>`
-  projects, `EventStore.Host.Core`, 3 `EventStore.Host.<Provider>`
-  deployables) and `tests/EventStore.IntegrationTests` (MSTest). Full
-  `EventStoreContext` model built now per that item's own scope
-  (`EventTypeDefinition`/`FilterableField`/`StoredEvent`/`EventParent`,
-  matching `docs/data/schema-registry.md`/`event-log.md` exactly).
-  Migrations generated and **actually verified applying** on all three
-  providers (SQLite file-based, Postgres/SQL Server via real Testcontainers
-  — Docker is available in this dev environment) via a live insert-and-
-  read-back integration test, not just "migration files exist." `global.json`
-  pins the SDK (`10.0.302`); target framework is `net10.0`.
-- **A real data-model doc gap found and fixed while implementing**:
-  `docs/data/schema-registry.md`'s `FilterableField` class was missing
-  `EventTypeAppId` — present in the feature doc's ER diagram and required
-  by `ADR-030`, but never propagated to the data-model doc itself. Fixed
-  in place (this is exactly the kind of drift `CLAUDE.md`'s "verify before
-  citing"/data-model-authority rules exist to catch — expect more of these
-  once code starts actually needing a doc's shape to be literally correct,
-  not just internally consistent prose).
-- **Next up**: item 2, "Schema Registry" (`docs/08-build-plan.md`) — now
-  unblocked. Nothing else is in flight.
+  converting the build plan to your active TODO... let's do this," then
+  "keep going"). `docs/08-build-plan.md`'s new "Implementation status"
+  table (near its top) is the authoritative tracker of which of the 48
+  items is Done/In progress/Not started — don't restate its contents
+  here; it drifts the moment an item's status changes.
+- **Items 1 and 2 are Done**: "Scaffolding & Persistence" (the solution/
+  project skeleton, full `EventStoreContext` model, migrations verified
+  applying on all three providers) and "Schema Registry" (`PUT`/`GET
+  /registry/{event-type}`, a temporary pre-GraphQL `QUERY /registry`
+  listing endpoint, structural JSON Schema/`FilterableField`/`x-masking`
+  validation, per-provider index/computed-column DDL — see
+  `EventStore.SchemaRegistry`). `EventStore.IntegrationTests` now has 6
+  passing tests across SQLite/PostgreSQL/SQL Server (Testcontainers for
+  the latter two — Docker is available in this dev environment).
+  `global.json` pins the SDK (`10.0.302`); target framework `net10.0`.
+- **Item 2 surfaced several real bugs and one reverted library adoption —
+  all found by actually running tests against real engines, not by
+  inspection**:
+  - `IJsonPathTranslator`'s placeholder shape from item 1 was simply
+    wrong — the real interface (verified against
+    `docs/04-odata-filter-pushdown.md`) takes an EF Core `SqlExpression`,
+    not a bare string. Corrected; still unimplemented (belongs to "Follow
+    API + Filter Pushdown"). A **separate**, new interface,
+    `IFilterableFieldIndexDdlGenerator`, was added for the DDL-generation
+    concern "Schema Registry" actually needs — don't conflate the two.
+  - **JsonSchema.Net was adopted, then reverted within the same pass**:
+    it rejects any undeclared vendor keyword by default ("Unknown
+    keywords (x-masking) are disallowed for this dialect") unless the
+    document declares `$schema`/`$vocabulary` or the caller registers a
+    custom `Dialect` — incompatible with this design's pervasive,
+    undeclared `x-masking` extension. Replaced with a small hand-written
+    structural check (valid `type` values, `properties`/`items` shape).
+    **`docs/libraries/`'s catalog does not have an entry for this** —
+    correctly so, since it never became a real adoption; the story is
+    only in this file and `docs/changes/2026-08-03.md`.
+  - `db.Database.ExecuteSqlRawAsync(sql)` always parses `sql` as a
+    composite format string internally, even with zero parameters
+    supplied — PostgreSQL's own `'{Amount}'` path-array literal syntax
+    broke this. Fixed by issuing DDL through a raw `DbCommand` on the
+    same connection/transaction instead. **Watch for this again** — any
+    future raw SQL containing literal `{`/`}` (not just this one spot)
+    needs the same treatment, not `ExecuteSqlRaw`.
+  - PostgreSQL's index-DDL generator had an unquoted column name
+    (`Payload::jsonb` instead of `"Payload"::jsonb`) — Postgres folds
+    unquoted identifiers to lowercase, so it looked for a `payload`
+    column and failed. Fixed. Confirms the value of actually running
+    against a real Postgres container rather than trusting the SQLite
+    pass alone.
+- **A real data-model doc gap found and fixed while implementing item 1,
+  and another while implementing item 2** (both `docs/data/
+  schema-registry.md`): `FilterableField` was missing `EventTypeAppId`
+  (present in the feature doc's ER diagram, required by `ADR-030`, never
+  propagated); `FilterableField.JsonPath` is now explicitly restricted to
+  a safe dotted-identifier-chain grammar (`^\$(\.[A-Za-z_][A-Za-z0-9_]*)+$`)
+  — `04-odata-filter-pushdown.md` cites full RFC 9535 JSONPath, but no
+  real example anywhere uses more than this subset, and an unrestricted
+  grammar flowing into raw DDL would be a real injection surface. Expect
+  more doc-vs-code drift like this as further items get built — this is
+  the first time code has needed a doc's shape to be *literally* correct,
+  not just internally consistent prose.
+- **A build-plan exit-criteria overclaim found and corrected**:
+  "Schema Registry"'s exit criteria claimed "every scenario in
+  `features/schema-registry.md`" as testable, but that doc's Gherkin was
+  rewritten to the GraphQL-only end state this session with no preserved
+  historical scenario for the plain `QUERY /registry` `$top`/`$skip`
+  listing this item actually builds first (unlike an ADR's struck-through-
+  history convention, a feature doc's Gherkin doesn't retain a superseded
+  scenario). Corrected in place with a note; the listing endpoint is real
+  and tested directly in `EventStore.IntegrationTests` instead.
+- **Next up**: item 3, "Publish API" — now unblocked. Nothing else is in
+  flight.
 
 ## How to resume cold
 
-1. Read `CLAUDE.md` (standing conventions + doc-type index — now also
-   describes the repo as having real `src/`/`tests/`, not "no src/ yet").
+1. Read `CLAUDE.md` (standing conventions + doc-type index).
 2. Read this file, then `docs/08-build-plan.md`'s "Implementation status"
    table (what's actually built vs. not), `TODO.md` (active doc work, will
    usually be empty), and `docs/10-open-questions.md` (open design forks).
@@ -85,34 +120,36 @@ stale numbers here are worse than none)*
    narrative.
 5. `dotnet build EventStore.slnx` and `dotnet test tests/EventStore.IntegrationTests` —
    confirm the build/test baseline the last session left still holds
-   before adding to it. Requires Docker running (Testcontainers for
-   Postgres/SQL Server) and the SDK pinned in `global.json`.
+   before adding to it (6 tests should pass). Requires Docker running
+   (Testcontainers for Postgres/SQL Server) and the SDK pinned in
+   `global.json`.
 
 ## Working notes not yet written down elsewhere
 
 - The user wants to be asked before large, effort-heavy content rewrites
   get started unilaterally — offer explicit options, don't just do it.
-  Smaller, unambiguous fixes (broken links, typos, a stale field name
-  found mid-task) are fine to fix directly without asking first — the
-  `FilterableField.EventTypeAppId` fix above is exactly that kind of
-  fix, done in place without a check-in.
-- **Implementation pacing wasn't explicitly specified** — "let's do this"
-  authorized starting, not a specific cadence (one item per session? push
-  until blocked?). This session did exactly one item (Scaffolding &
-  Persistence) end-to-end, verified, then stopped to report back rather
-  than ploughing into item 2 unprompted. Treat that as the working default
-  — finish and verify one build-plan item, report, let the next
-  instruction set the pace — until told otherwise.
+  Smaller, unambiguous fixes (broken links, typos, a stale field name,
+  a wrong library choice found mid-task) are fine to fix directly without
+  asking first, as several were this session.
+- **Implementation pacing**: "let's do this" started item 1; a plain
+  "keep going" (no further scoping) continued straight into item 2 rather
+  than needing a fresh go-ahead each time. Read "keep going" as "continue
+  the same build-plan momentum, one item at a time, verified end to end
+  before moving to the next" — not as license to rush ahead without
+  running the tests, and not as a one-time authorization that expires
+  after one item.
+- **Always actually run new code against every provider it's built for
+  before calling an item done.** Every real bug found this session (the
+  `ExecuteSqlRawAsync` brace-parsing issue, the unquoted Postgres column,
+  the JsonSchema.Net incompatibility) was caught by running tests against
+  real engines, not by reading the code back. A SQLite-only pass would
+  have shipped two of those three bugs silently.
 - **`docs/06-solution-structure.md`'s code sketches are "concept accurate,
-  exact wiring unverified" by its own banner** — confirmed true in
-  practice: `EventStore.Host.Core` needed a `FrameworkReference` to
-  `Microsoft.AspNetCore.App` (the doc's sketch doesn't show csproj-level
-  detail at all), and `IJsonPathTranslator`'s real method shape still
-  doesn't exist anywhere — a deliberate placeholder now, to be designed
-  for real only when "Follow API + Filter Pushdown" lands. Don't treat
-  today's placeholder shape as a decision that item is bound to.
+  exact wiring unverified" by its own banner** — confirmed true again:
+  `EventStore.Host.Core`/`EventStore.SchemaRegistry` both needed a
+  `FrameworkReference` to `Microsoft.AspNetCore.App` the doc's sketches
+  don't show at the csproj level.
 - A full repo-wide doc staleness review beyond what ADR-focused passes
-  have covered is still genuinely open, unscheduled — likely a
-  `parallel-batch-dispatch.md`-shaped job whenever picked up. Now doubly
-  relevant since code will keep surfacing more data-model drift the way
-  `FilterableField` just did.
+  have covered is still genuinely open, unscheduled — now doubly relevant
+  since code keeps surfacing more data-model drift as it's written
+  against each doc for real.

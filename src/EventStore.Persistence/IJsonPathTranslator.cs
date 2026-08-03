@@ -1,12 +1,18 @@
+using Microsoft.EntityFrameworkCore.Query.SqlExpressions;
+using EventStore.Domain.SchemaRegistry;
+
 namespace EventStore.Persistence;
 
-// Placeholder shape, per "Scaffolding & Persistence"'s scope (docs/08-build-plan.md):
-// the interface must exist and be unconditionally registered per provider now, so
-// there's no second wave of DI wiring once "Follow API + Filter Pushdown" lands --
-// but the actual pushdown/index-expression logic belongs to that later item, per
-// docs/04-odata-filter-pushdown.md's now-GraphQL-driven mechanism. Do not add real
-// logic here until that item's own design is worked out.
+// Real shape, verified against docs/04-odata-filter-pushdown.md ("Per-provider
+// translation -- unchanged from the OData era") -- corrected this pass; the
+// placeholder shape "Scaffolding & Persistence" originally stubbed here
+// (`string TranslateToProviderExpression(string)`) didn't match. Registered
+// unconditionally per provider now (that part of the original placeholder's
+// reasoning was right), but the actual EF `HasDbFunction`/`HasTranslation`
+// wiring and each provider's `Translate` body are real query-pushdown logic
+// that belongs to "Follow API + Filter Pushdown", not this item -- still
+// deliberately unimplemented here.
 public interface IJsonPathTranslator
 {
-    string TranslateToProviderExpression(string jsonPath);
+    SqlExpression Translate(SqlExpression payloadColumn, string jsonPath, FilterableFieldType type);
 }
