@@ -81,16 +81,13 @@ stale numbers here are worse than none)*
   correction. `IJsonPathTranslator`'s three implementations (stubbed in
   item 1) are now fully real, used by both Follow's filter pushdown and
   (already, since item 4) nothing else yet.
-- **`resolved` is implemented; `restricted` deliberately is not** — the
-  GraphQL Lineage response shape names both, but `restricted` depends on
-  `RequiredClaims` enforcement, which needs "Event-Type Security" (not
-  yet built). This item's own scope/exit-criteria never mention
-  `restricted` either, so this is confirmed in-scope-as-designed, not an
-  oversight to fix later without checking first. Item 5's own exit
-  criteria make the same point explicitly about `parentEventIds`: a
-  restricted parent's ID being omitted depends on the same not-yet-built
-  `RequiredClaims`, and is called out in the build-plan's own text as
-  *not* part of this item's exit bar.
+- **`resolved` and `restricted` are both implemented as of item 7** —
+  item 4 built `resolved` only, deliberately deferring `restricted` to
+  "Event-Type Security" (this item's own scope/exit-criteria never
+  mentioned it, confirmed in-scope-as-designed at the time, not an
+  oversight); item 5 deferred Follow's `parentEventIds` restriction-
+  filtering the same way. Both are now real, per item 7's own summary
+  above.
 - **Item 6, "Auth (OIDC/OpenIddict) + Orchestration," is Done** —
   `EventStore.DevIdp` (real OpenIddict 7.6.0 Client Credentials server, EF
   Core InMemory store, `DevIdpSeeder`'s 3 clients), `ScopeRequirement`/
@@ -107,7 +104,40 @@ stale numbers here are worse than none)*
   anonymous spec endpoints) — auth is pipeline/middleware behavior, only
   provably correct end-to-end, unlike every other item's direct-
   service-call test style.
-- **Next up**: item 7, "Event-Type Security" — depends only on item 6.
+- **Item 7, "Event-Type Security," is Done** — enforcement of
+  `EventTypeDefinition.RequiredClaims` (already built, accepted-but-not-
+  enforced, by item 2) at Publish (`RequiredClaimEvaluator` in
+  `EventStore.Domain.SchemaRegistry`, shared by all three call sites),
+  Follow (connect-time gate + `parentEventIds` now actually populated,
+  filtering out parents the caller can't Read), and Lineage (root-
+  visibility 403-vs-404, per-node stubbing for parents/children, and a
+  new in-memory BFS in `LineageService` that makes ancestors/descendants
+  genuinely stop recursing past a restricted node — not just redact its
+  fields — without touching any of the 3 providers' recursive-CTE SQL).
+  A real, pre-existing architectural gap surfaced while implementing
+  read-side enforcement: `StoredEvent` carries no `AppId`, but `ADR-030`
+  allows two different `AppId`s to register the same type name
+  independently — nothing in any ADR/doc actually disambiguates which
+  one's `RequiredClaims` governs a bare stored event's type. Recorded as
+  `docs/10-open-questions.md` row 1 (genuinely unresolved, not
+  deprioritized) with a pragmatic, explicitly-flagged simplification
+  (`SchemaRegistryService.GetActiveClaimsByNameAsync`: resolve by
+  `(Name, IsActive)` alone, deterministic-but-arbitrary tie-break on a
+  genuine collision) rather than silently picking one. Also found and
+  fixed, before writing any new code: item 6's own accidental deletion
+  of the `## Event-Type Security` heading (an editing mistake, not a
+  design change — the section's body survived, only the heading and its
+  anchor were dropped) and item 7's own build-plan text describing
+  building `ADR-008`'s *original* single-claim shape "as originally
+  decided," when item 2 had already built `ADR-050`'s generalized
+  `RequiredClaims` list — corrected the build-plan text to match what's
+  actually built and being enforced, rather than build against a stale
+  description. `EventStore.IntegrationTests` still has 16 `[TestMethod]`s
+  (each provider's `AllXScenarios` gained more internal scenario calls,
+  not new test methods) — all 16 pass across SQLite/PostgreSQL/SQL
+  Server.
+- **Next up**: item 8, "Derived/Materialized Event Types (deferred)" —
+  depends on item 7.
 
 ## How to resume cold
 
@@ -143,10 +173,14 @@ stale numbers here are worse than none)*
   expires. **Commits happen only when the user actually says so** — this
   session did not commit unprompted between items 1 and 2; only started
   doing so once explicitly asked, and has kept committing after every
-  item since (items 2, 3, 4, 5 all committed; item 6's commit is pending
-  as of this snapshot — "check off work as you go. then continue" is
-  the standing instruction currently in effect, so item 6 is being
-  committed and item 7 started without waiting for a fresh prompt).
+  item since (items 2 through 6 all committed -- item 6's own work was
+  captured by an external auto-checkpoint commit, `63ff5c7`, not this
+  conversation directly, surfaced to the user rather than silently
+  treated as this session's own action; item 7's commit is pending as of
+  this snapshot — "check off work as you go. then continue" is the
+  standing instruction currently in effect, so item 7 is being committed
+  without waiting for a fresh prompt; item 8 not yet started as of this
+  snapshot).
 - **Always actually run new code against every provider it's built for
   before calling an item done.** Every real bug found this session (the
   `ExecuteSqlRawAsync` brace-parsing issue, an unquoted Postgres column,

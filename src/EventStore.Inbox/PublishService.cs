@@ -1,3 +1,4 @@
+using System.Security.Claims;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json.Nodes;
@@ -14,7 +15,7 @@ public class PublishService(
     SchemaRegistryService schemaRegistry,
     IUniqueConstraintViolationDetector uniqueConstraintViolationDetector)
 {
-    public async Task<PublishResult> PublishAsync(string eventTypeName, PublishEventRequest request, CancellationToken ct = default)
+    public async Task<PublishResult> PublishAsync(string eventTypeName, PublishEventRequest request, ClaimsPrincipal user, CancellationToken ct = default)
     {
         var normalizedName = eventTypeName.ToLowerInvariant();
         var parentEventIds = request.ParentEventIds ?? [];
@@ -36,6 +37,13 @@ public class PublishService(
         var definition = await schemaRegistry.GetVersionAsync(request.AppId, normalizedName, request.SchemaVersion, ct);
         if (definition is null)
             return new PublishResult.ValidationFailed([$"schemaVersion {request.SchemaVersion} is not a registered version of {eventTypeName}"]);
+
+        // ADR-008/050 -- checked before content validation, same as any other
+        // access-control gate; AppId is explicit here (the request's own field),
+        // so there's no lookup ambiguity the way Follow/Lineage's bare-EventType
+        // read-side checks have (docs/10-open-questions.md row 1).
+        if (!RequiredClaimEvaluator.HasAny(definition.RequiredClaims, ClaimDirection.Publish, user))
+            return new PublishResult.Forbidden();
 
         var errors = new List<string>();
         var payloadNode = JsonNode.Parse(request.Payload);

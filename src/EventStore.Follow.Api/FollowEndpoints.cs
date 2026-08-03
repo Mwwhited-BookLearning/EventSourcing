@@ -1,3 +1,4 @@
+using System.Security.Claims;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using Microsoft.AspNetCore.Builder;
@@ -14,13 +15,17 @@ public static class FollowEndpoints
 
     public static WebApplication MapFollowEndpoints(this WebApplication app)
     {
-        app.MapMethods("/follow/{eventType}", ["QUERY"], async (string eventType, FollowRequest request, FollowService service, HttpContext context) =>
+        app.MapMethods("/follow/{eventType}", ["QUERY"], async (string eventType, FollowRequest request, ClaimsPrincipal user, FollowService service, HttpContext context) =>
         {
-            var result = await service.ConnectAsync(eventType, request, context.RequestAborted);
+            var result = await service.ConnectAsync(eventType, request, user, context.RequestAborted);
             switch (result)
             {
                 case FollowResult.UnregisteredEventType:
                     context.Response.StatusCode = StatusCodes.Status404NotFound;
+                    break;
+
+                case FollowResult.Forbidden:
+                    context.Response.StatusCode = StatusCodes.Status403Forbidden;
                     break;
 
                 case FollowResult.ValidationFailed failed:
@@ -34,14 +39,15 @@ public static class FollowEndpoints
                     context.Response.Headers.CacheControl = "no-cache";
                     await context.Response.Body.FlushAsync(context.RequestAborted); // open the stream immediately
 
-                    await foreach (var storedEvent in connected.Events.WithCancellation(context.RequestAborted))
+                    await foreach (var followedEvent in connected.Events.WithCancellation(context.RequestAborted))
                     {
+                        var storedEvent = followedEvent.Event;
                         var envelope = JsonSerializer.Serialize(new
                         {
                             eventId = storedEvent.EventId,
                             sequenceNumber = storedEvent.SequenceNumber,
                             occurredAt = storedEvent.OccurredAt,
-                            parentEventIds = Array.Empty<Guid>(), // populated once "Event-Type Security"'s restricted-parent omission lands
+                            parentEventIds = followedEvent.VisibleParentEventIds, // ADR-008 -- a restricted parent's ID is omitted here
                             payload = JsonNode.Parse(storedEvent.Payload),
                         });
                         await context.Response.WriteAsync($"data: {envelope}\n\n", context.RequestAborted);

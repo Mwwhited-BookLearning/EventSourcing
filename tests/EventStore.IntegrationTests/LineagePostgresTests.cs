@@ -44,7 +44,7 @@ public class LineagePostgresTests
         using var db = CreateContext();
         var registry = new SchemaRegistryService(db, new PostgresFilterableFieldIndexDdlGenerator(), new MemoryCache(new MemoryCacheOptions()));
         var publish = new PublishService(db, registry, new PostgresUniqueConstraintViolationDetector());
-        var lineage = new LineageService(db, new PostgresEventLineageQueryProvider());
+        var lineage = new LineageService(db, new PostgresEventLineageQueryProvider(), registry);
 
         await LineageScenarioAssertions.PublishingAnOriginEventShowsNoParents(registry, publish, lineage);
         await LineageScenarioAssertions.FetchingImmediateParentsAndChildrenReturnsExactlyThoseRelationships(registry, publish, lineage);
@@ -53,5 +53,8 @@ public class LineagePostgresTests
         await LineageScenarioAssertions.MultiHopAncestorChainReturnsEveryAncestor(registry, publish, lineage);
         await LineageScenarioAssertions.FetchingLineageForAnUnknownEventIsRejected(lineage);
         await LineageScenarioAssertions.TopAndSkipCorrectlySliceAResultAndOmittingBothReturnsEverything(registry, publish, lineage);
+        await LineageScenarioAssertions.ARestrictedRootIsRejectedWith403DistinctFromAnUnknownRootsNotFound(registry, publish, lineage);
+        await LineageScenarioAssertions.AncestorTraversalStopsAtARestrictedNodeInsteadOfJustRedactingItsFields(registry, publish, lineage);
+        await LineageScenarioAssertions.ARestrictedSiblingNeverAffectsAnOtherwiseVisibleSibling(registry, publish, lineage);
     }
 }

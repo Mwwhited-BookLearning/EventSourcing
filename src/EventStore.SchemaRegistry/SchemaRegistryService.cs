@@ -159,6 +159,45 @@ public class SchemaRegistryService(EventStoreContext db, IFilterableFieldIndexDd
             .AsNoTracking()
             .SingleOrDefaultAsync(e => e.AppId == appId && e.Name == eventTypeName.ToLowerInvariant() && e.Version == version, ct);
 
+    // Read-time RequiredClaims lookup with no AppId available -- Follow/Lineage
+    // callers only ever have a bare EventType name/StoredEvent, not the AppId a
+    // Publish request always supplies. Resolves by (Name, IsActive) alone. Per
+    // docs/10-open-questions.md row 1, this is a documented, deliberate
+    // simplification: ADR-030 allows two different AppIds to register the same
+    // type name independently, and nothing yet disambiguates which one's
+    // RequiredClaims governs a bare stored event (EntityId's embedded AppId
+    // prefix, ADR-021, isn't populated until "Entity-Centric Core Rebuild").
+    // Deterministic-but-arbitrary tie-break on a genuine collision: ordered by
+    // AppId, first wins. No matching active definition at all defaults to
+    // "unrestricted" rather than failing closed, so a data inconsistency can't
+    // accidentally lock out an otherwise-valid stored event.
+    public async Task<IReadOnlyList<RequiredClaim>> GetActiveClaimsByNameAsync(string eventTypeName, CancellationToken ct = default)
+    {
+        var definition = await db.EventTypeDefinitions
+            .AsNoTracking()
+            .Where(e => e.Name == eventTypeName.ToLowerInvariant() && e.IsActive)
+            .OrderBy(e => e.AppId)
+            .FirstOrDefaultAsync(ct);
+        return definition?.RequiredClaims ?? [];
+    }
+
+    // Batch form of GetActiveClaimsByNameAsync, for Lineage's ancestor/descendant
+    // traversal -- one query for every distinct EventType name discovered in the
+    // reachable set, instead of one round trip per node.
+    public async Task<IReadOnlyDictionary<string, IReadOnlyList<RequiredClaim>>> GetActiveClaimsByNamesAsync(
+        IReadOnlyCollection<string> eventTypeNames, CancellationToken ct = default)
+    {
+        var normalizedNames = eventTypeNames.Select(n => n.ToLowerInvariant()).Distinct().ToList();
+        var definitions = await db.EventTypeDefinitions
+            .AsNoTracking()
+            .Where(e => normalizedNames.Contains(e.Name) && e.IsActive)
+            .OrderBy(e => e.AppId)
+            .ToListAsync(ct);
+        return definitions
+            .GroupBy(e => e.Name)
+            .ToDictionary(g => g.Key, g => (IReadOnlyList<RequiredClaim>)g.First().RequiredClaims);
+    }
+
     // Temporary listing surface for this build stage -- plain HTTP QUERY with
     // $top/$skip (ADR-012), superseded by the GraphQL eventTypes(...) resolver
     // once "GraphQL-Only Query Layer" lands (see the correction note on this

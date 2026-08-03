@@ -60,6 +60,8 @@ public class PublishSqliteTests
         await PublishScenarioAssertions.PublishingAChildEventParentedOffAPriorEventSucceeds(registry, publish);
         await PublishScenarioAssertions.StrictParentValidationRejectsAnUnresolvedParent(registry, publish);
         await PublishScenarioAssertions.PermissiveParentValidationAcceptsADanglingParentReference(registry, publish);
+        await PublishScenarioAssertions.PublishingAClaimGatedTypeWithoutTheClaimIsRejectedWith403AndWithItSucceeds(registry, publish);
+        await PublishScenarioAssertions.PublishAndReadClaimsAreEnforcedFullyIndependentlyForTheSameType(registry, publish);
 
         await OpenApiScenarioAssertions.OpenApiDocumentIncludesRegisteredPublishPaths(registry, specBuilder);
         await OpenApiScenarioAssertions.RegisteringANewTypeInvalidatesTheCachedDocument(registry, specBuilder);
