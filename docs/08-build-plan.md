@@ -24,6 +24,21 @@ the scenario applies to.
 > earlier item (the same additive-history convention `ADR-075`'s note on
 > "Multi-Tenancy" below already used, now the standing pattern) — never
 > renumbering anything above it.
+>
+> **Reworked a second time, this session** (per direct request, "08-
+> build-plan.md should be reworked from scratch first"): every item's
+> Scope/Depends-on/Exit-criteria below was re-derived directly from its
+> source ADR(s) and feature doc(s), independently of the prior text, via
+> ten parallel batches of five items each, then reconciled into one
+> consistent dependency graph. This surfaced a real, sizeable set of
+> missing dependency edges (a claim-gated forward reference, a shared
+> mechanism reused "unchanged" that the citing item never actually
+> declared a dependency on) and a few genuine scope errors (a stale
+> pre-correction restatement of `ADR-093`, an unverified class name,
+> masking's rejection rule undercounting `ADR-009`'s own decided
+> strategies) — all fixed in place below. Several gaps this pass found
+> but that are documentation/coverage work, not build-plan structure, are
+> tracked in `TODO.md` instead of silently fixed here or silently dropped.
 
 Two groups worth naming up front, since they explain most of the
 ordering below:
@@ -44,17 +59,25 @@ ordering below:
   "Upcast Materialization + Downcast", `ADR-075`→"Multi-Tenancy") — those
   are called out where they already live, not duplicated as new items.
   Three ADRs (`ADR-055`/`063`/`085`, all testing-strategy escalations) and
-  two ADRs (`ADR-059`/`084`/`092`, all cross-cutting discipline/scope
-  statements with no exit criteria of their own) are folded into
+  three ADRs (`ADR-041`/`059`/`084`/`092`, all cross-cutting discipline/
+  scope statements with no exit criteria of their own) are folded into
   "Cross-cutting, every item" below rather than given standalone entries —
   they don't gate any single item's own exit criteria the way a real
   build dependency does.
 
 ## Dependency overview — original core build (`ADR-001`–`049`)
 
-Unchanged from before this restructuring pass except state labels
-dropping their old `Phase N` prefix — the graph itself, and the items
-it describes, are identical.
+The graph and the items it describes are unchanged from before this
+session's rework in shape — the corrections this pass made are three
+added edges (Property-Level Masking → Streaming Channels; CQRS
+Projections → Hardening & Evolution; Multi-Tenancy → GraphQL-Only Query
+Layer), two added edges onto Binary Attachments/Non-Authoritative
+Capture, one added edge onto Ticket Exchange, four added edges onto
+SPIFFE/SPIRE, one added edge onto GraphQL-Only Query Layer from Hardening
+& Evolution, and a real revision to MVVM Client's own dependency set
+(Sharding & Replication added; CQRS Projections, Streaming Channels, and
+Binary Attachments removed as ungrounded) — each one traced to specific
+ADR text during the rework and explained at the point it's used below.
 
 ```plantuml
 @startuml BuildPlan_CorePhases
@@ -97,6 +120,7 @@ p5 --> p9
 p5 --> p10
 p2 --> p10
 p4 --> p10
+p9 --> p10
 p6 --> p11
 p1 --> p12
 p11 --> p12
@@ -104,24 +128,32 @@ p10 --> p13
 p11 --> p13
 p5 --> p14
 p11 --> p14
+p8 --> p14
 p5 --> p15
+p11 --> p15
 p11 --> p16
 p11 --> p17
 p5 --> p17
+p15 --> p17
 p11 --> p18
+p12 --> p18
+p10 --> p18
 p18 --> p19
-p9 --> p20
 p12 --> p20
-p14 --> p20
-p15 --> p20
+p16 --> p20
 p14 --> p21
 p15 --> p21
+p17 --> p21
 p17 --> p22
 p6 --> p22
 p12 --> p22
 p10 --> p22
 p5 --> p23
 p16 --> p23
+p14 --> p23
+p15 --> p23
+p18 --> p23
+p21 --> p23
 @enduml
 ```
 
@@ -146,30 +178,63 @@ though a real projection over a claim-gated type would need Phase 6's
 enforcement to already exist so its client's claims mean anything. It's
 independent of Phases 7 and 8 entirely. Phase 10 depends on Phase 5 (DPoP
 hardens the auth model Phase 5 already built), Phase 2 (hash chaining
-extends `EventAppender`, built in Phase 2), and Phase 4 (event upcasting
-matters most for Follow's `mode=replay`) — it's independent of Phases 6
-through 9, since none of DPoP/upcasting/hash-chaining touch event-type
-security, masking, derived events, or projections.
+extends `EventAppender`, built in Phase 2), Phase 4 (event upcasting
+matters most for Follow's `mode=replay`), **and Phase 9** — a real,
+non-transitive addition found this pass: "CQRS Read-Model Projections"'
+own worked example is exactly the kind of `mode=replay` consumer
+Hardening & Evolution's upcast-materialization exit criteria need to
+exercise, and nothing about DPoP/upcasting/hash-chaining is itself
+gated by event-type security, masking, or derived events, so it stays
+independent of Phases 6 through 8.
 
 Phases 11–20 are the design-docs integration (`ADR-021`–`039`). Phase 11 is
 the load-bearing one — nothing in 12–20 makes sense without entities,
 `Optional<T>` patches, the persist-everything posture, and conflict/
-ordering detection existing first. Phases 12–17 are largely independent of
-each other once 11 lands (multi-tenancy, schema-evolution extensions,
-streaming, attachments, distribution, and non-authoritative capture don't
-depend on one another). Phase 18 (the GraphQL-only swap) depends on 11
-specifically, not on 12–17 — it could in principle run in parallel with
-them, though in practice it's disruptive enough (it supersedes 3/4's
-entire query surface) that sequencing it deliberately, once, is likely
-easier than interleaving it with five other phases touching the same
-codebase. Phase 20 (the MVVM client) is sequenced near the end for the
-same reason `ADR-039` itself gives: least load-bearing, composes what
-already exists rather than adding new server-side mechanism. Ticket
+ordering detection existing first. Phase 14 (Streaming Channels) has a
+real, non-transitive dependency on Phase 8 (Property-Level Masking) found
+this pass — `ADR-052`'s `RedactedRange` redaction reuses
+`PartialRevealMaskingStrategy` directly, not a bespoke mechanism. Phase 15
+(Binary Attachments) depends on Phase 11 as well as Phase 5, since an
+`AttachmentRef` is an `EntityId`-scoped concept from the start, not
+retrofitted later. Phase 17 (Non-Authoritative Capture) depends on Phase
+15 in addition to Phase 11/5 — `ADR-036`'s `delegation_chain_ref` needs
+`Attachment`/`AttachmentRef` to exist to carry a self-attestation's
+supporting material. Phase 18 (the GraphQL-only swap) depends on Phase 11
+(GraphQL reads from the Entity Store), **Phase 12** (`ADR-037`'s per-`AppId`
+schema composition needs Multi-Tenancy's `AppId`-scoped registry to exist —
+a real edge this pass found missing, not merely a scheduling
+convenience), and **Phase 10** (the upcast mechanism this item moves onto
+GraphQL SDL directives is Hardening & Evolution's own `UpcastChain`) — it
+could in principle run in parallel with Phases 12–17, though in practice
+it's disruptive enough (it supersedes 3/4's entire query surface) that
+sequencing it deliberately, once, is likely easier than interleaving it
+with five other phases touching the same codebase. Phase 20 (the MVVM
+client) was re-derived this pass against `ADR-039`'s own text rather than
+carried forward from the prior draft: it depends on **Multi-Tenancy**
+(a client is scoped to one `AppId`) and, newly added, **Sharding &
+Replication** — the client's offline-first outbox/sync model assumes
+`ADR-090`'s read-your-writes guarantee across a multi-site mesh already
+exists, the single most load-bearing dependency this item had been
+missing entirely. **CQRS Read-Model Projections, Streaming Channels, and
+Binary Attachments are removed from this item's dependency list** — none
+is named anywhere in `ADR-039`'s own Context/Decision text as something
+the client's build is gated on; rendering a streaming channel or an
+attachment inside a specific entity view is that view definition's own
+later concern, not a prerequisite for the client shell to exist. Ticket
 Exchange (`ADR-040`) depends on Streaming Channels/Binary Attachments
 specifically — it closes a gap those two items' own header-incapable
 callers (`<video src>` playback, inline `<img src>`/`<a href>` attachment
-retrieval) reopen, so it can't meaningfully start until they exist, though
-it doesn't depend on 18/19/20 at all and could run alongside them.
+retrieval) reopen — **and, added this pass, Non-Authoritative Capture**,
+since ticket issuance reuses that item's OAuth Token Exchange
+infrastructure directly (`ADR-040`'s own text: "reusing `ADR-036`'s
+exchange infrastructure with a new `requested_token_type`"). It doesn't
+depend on 18/19/20 at all and could run alongside them. SPIFFE/SPIRE
+Identity & API Gateway gained four edges this pass beyond Auth +
+Orchestration and Sharding & Replication: GraphQL-Only Query Layer,
+Streaming Channels, Binary Attachments, and Ticket Exchange — `ADR-049`'s
+own text names every one of these as a surface the Gateway fronts, so
+each has to exist before the Gateway can be verified as actually routing
+to it.
 
 ## Dependency overview — additions since `ADR-050`
 
@@ -210,12 +275,15 @@ state "Data Lifecycle &\nBackup Classification" as a25
 a2 --> a4
 a1 --> a5
 a6 --> a7
+a8 --> a10
 a10 --> a13
 a10 --> a16
+a13 --> a12
 a5 --> a18
 a17 --> a18
 a17 --> a19
 a19 --> a20
+a17 --> a24
 a10 --> a23
 @enduml
 ```
@@ -236,32 +304,75 @@ the diagram above only shows addition-to-addition edges):
   **Entity-Centric Core Rebuild** — and **revises** "Delegated Grants,
   RBAC & Read Audit Logging"'s own storage mechanism; see that item's own
   entry below for the forward-pointing note.
-- **Leader Election** depends on **Entity-Centric Core Rebuild** (Router/
-  UpcastMaterializer exist as background services from that item on).
+- **Dynamic Feature Flags** depends on **Scaffolding & Persistence** (and,
+  per the diagram above, Control-Plane Reserved Events for its storage
+  mechanism).
+- **Leader Election** depends on **Entity-Centric Core Rebuild** and,
+  added this pass, **Sharding & Replication** — `ADR-078` names the
+  peer-sync outbox pump (built in Sharding & Replication) as one of
+  exactly four worker roles this item's lease mechanism covers, on equal
+  footing with the Router/`UpcastMaterializer`.
 - **Per-Tenant Rate Limiting** depends on **Auth + Orchestration** and
   **SPIFFE/SPIRE Identity & API Gateway**.
-- **Outbound Webhooks** depends on **Publish API** and **Auth +
-  Orchestration**.
+- **Outbound Webhooks** depends on **Publish API**, **Auth +
+  Orchestration**, and, added this pass, **Property-Level Masking**
+  (`ADR-060`'s own text: every payload is masked "via `IPayloadMasker`,
+  unchanged" before delivery) and, per the diagram above, **Leader
+  Election** (the outbox pump this item builds is one of `ADR-078`'s four
+  leader-elected roles).
 - **Data Residency** depends on **Sharding & Replication** and
   **Multi-Tenancy**.
-- **Tenant Federation Mapping** depends on **Multi-Tenancy** and **Auth +
-  Orchestration**.
-- **Bulk Ingestion + Interchange Adapters** depends on **Publish API**
-  (and, per the diagram above, Outbound Webhooks for the outbound half).
+- **Tenant Federation Mapping** depends on **Multi-Tenancy**, **Auth +
+  Orchestration**, and, per the diagram above, **Bulk Ingestion +
+  Interchange Adapters** — `ADR-082`'s bespoke per-tenant-pair mapping is
+  written *as* an `IInterchangeFormatAdapter` implementation, an
+  interface that doesn't exist before that item.
+- **Bulk Ingestion + Interchange Adapters** depends on **Publish API**,
+  added this pass **Non-Authoritative Capture** (`ADR-072`'s own text:
+  inbound-adapter capture inherits `ADR-035`'s non-authoritative default),
+  and, per the diagram above, **Outbound Webhooks** for the outbound half.
 - **Sanctions Screening Seam** depends on **Scaffolding & Persistence**
-  only — it's an application-scoped (KYC/Meridian) extension, not core.
+  and, added this pass, **Non-Authoritative Capture** — `ADR-079`'s
+  invocation point is explicitly "gated exactly like any other
+  non-authoritative capture," a real, testable dependency beyond the
+  bare DI registration.
 - **Release Engineering, Packaging & Supply Chain** depends on
-  **Scaffolding & Persistence** only.
+  **Scaffolding & Persistence** and, added this pass, **Compatibility &
+  Deployment Discipline** — `ADR-076`'s own Compliance note ties its
+  migration-bundle mechanism directly to that item's N-1/N+1
+  rollback-safety promise.
+- **Signing Secret Rotation** depends on **Outbound Webhooks** (the real
+  schema change, `WebhookSubscription.PreviousSigningSecret`) and,
+  corrected this pass, **Auth + Orchestration** — not Ticket Exchange;
+  see that item's own entry below for why.
 - **Lineage Export + Bitemporal Playback** depends on **Lineage API**,
-  **Entity-Centric Core Rebuild**, and **MVVM Client**.
+  **Entity-Centric Core Rebuild**, **MVVM Client**, and, added this pass,
+  **GraphQL-Only Query Layer** (`exportLineage`/`playbackAsOf` are GraphQL
+  Gateway fields), **Property-Level Masking** and **GDPR/CCPA Erasure**
+  (both named in `ADR-068`'s own "no bypass" rule), and **Delegated
+  Grants, RBAC & Read Audit Logging** (every export/playback read writes
+  an `AccessLogEntry`).
+- **Pluggable Outbox Flush Triggers** depends on **MVVM Client** and
+  **Lineage Export + Bitemporal Playback** (the portable bundle format
+  reused for offline sneakernet transfer).
+- **Device Input Integration** depends on **MVVM Client**, **Pluggable
+  Outbox Flush Triggers**, and, added this pass, **Non-Authoritative
+  Capture** — `ADR-070`'s server-side discrete-reading path defaults to
+  `ADR-035`'s non-authoritative capture unless the device itself carries
+  a self-attested identity, and neither prerequisite mechanism is
+  transitively guaranteed by MVVM Client or the flush-triggers item.
 - **Accessibility Standard** and **i18n/l10n Scope** both depend on
-  **MVVM Client** only.
+  **MVVM Client** only — confirmed independent of each other; neither's
+  mechanism relies on the other's.
 - **Mechanism-Level OTel Instrumentation** depends on **Hardening &
   Evolution**, **Sharding & Replication**, **Entity-Centric Core
   Rebuild** (and, per the diagram above, Outbound Webhooks).
 - **Event Log/AccessLog Archival** depends on **Binary Attachments**,
-  **Delegated Grants, RBAC & Read Audit Logging**, and **Hardening &
-  Evolution**.
+  **Delegated Grants, RBAC & Read Audit Logging**, **Hardening &
+  Evolution**, and, added this pass, **Lineage Export + Bitemporal
+  Playback** — `ADR-089`'s NDJSON serialization is explicitly the same
+  format that item's litigation export already uses, reused rather than
+  invented a second time.
 - **Data Lifecycle & Backup Classification** formally depends only on
   **Scaffolding & Persistence** (the classification exists from day one)
   but its exit criteria stay accurate only as later items land — see its
@@ -269,90 +380,121 @@ the diagram above only shows addition-to-addition edges):
 
 ## Scaffolding & Persistence
 
-**Scope**: the project layout in `06-solution-structure.md`
-(`EventStore.Domain`, `EventStore.Persistence`, the three
-`*.Migrations.<Provider>` projects, `EventStore.Host.Core`, and the three
-`EventStore.Host.<Provider>` deployables per `ADR-001`). Build the **full**
-`EventStoreContext` model now — `EventTypeDefinition`, `FilterableField`,
-`StoredEvent`, `EventParent` — even though most of it isn't used until later
-items. Laying down one coherent schema up front avoids a second wave of
-migrations once later items start using tables this one didn't create.
-`EventStore.AppHost`/`EventStore.ServiceDefaults`/`EventStore.DevIdp` are
-**not** part of this item — see "Auth + Orchestration".
+**Scope**: the project layout in `06-solution-structure.md` —
+`EventStore.Domain`, `EventStore.Persistence` (including the
+`IJsonPathTranslator` interface, unconditionally registered per provider),
+the three `EventStore.Persistence.Migrations.<Provider>` projects,
+`EventStore.Host.Core` (shared, provider-agnostic composition root), and
+the three `EventStore.Host.Sqlite`/`.Postgres`/`.SqlServer` deployables,
+each hardcoding its own `UseSqlite`/`UseNpgsql`/`UseSqlServer` call and
+referencing its own migrations assembly directly — no `switch`, no
+`Database:Provider` config key anywhere (`ADR-001`). `StoredEvent.Payload`
+and `EventTypeDefinition.JsonSchema` are mapped as plain `TEXT`/
+`nvarchar(max)`/`text` columns, never a provider's native JSON column type
+(`ADR-004`) — native JSON *functions* are a query-time concern via
+`IJsonPathTranslator`, not a column-type one, and aren't exercised until
+"Follow API + Filter Pushdown". Build the **full** `EventStoreContext`
+model now — `EventTypeDefinition`, `FilterableField`, `StoredEvent`,
+`EventParent` — even though most of it isn't used until later items, to
+avoid a second wave of migrations once later items start using tables
+this one didn't create. `EventStore.AppHost`/`EventStore.ServiceDefaults`/
+`EventStore.DevIdp` are **not** part of this item — see "Auth +
+Orchestration".
 
 **Depends on**: nothing.
 
 **Exit criteria**:
 - Solution builds; an initial migration exists and applies cleanly on
-  SQLite, PostgreSQL, and SQL Server.
+  SQLite, PostgreSQL, and SQL Server (each of the three deployables
+  references exactly one provider's migrations assembly).
 - `EventStore.IntegrationTests` runs one trivial round-trip test (insert +
-  read back a `StoredEvent`) against all three providers (Testcontainers for
-  Postgres/SQL Server, file-based SQLite) — this harness stays live for
-  every item after this one, it is not a one-time setup task.
+  read back a `StoredEvent`, `Payload` stored as portable text) against
+  all three providers (Testcontainers for Postgres/SQL Server, file-based
+  SQLite) — this harness stays live for every item after this one, it is
+  not a one-time setup task.
 
 ## Schema Registry
 
 **Scope**: `PUT`/`GET /registry/{event-type}` and `QUERY /registry`
-(paginated listing, `ADR-012`) per `05-schema-registry-and-spec-generation.md`
-and [`features/schema-registry.md`](features/schema-registry.md): structural
-JSON Schema validation, `FilterableField` path validation against the
-schema, versioning (`IsActive` flip, no mutation of prior versions),
-`ParentValidationMode` accepted and validated as an enum on the request.
-Per-provider index/computed-column migrations for `IsIndexed = true` fields
-(`04-odata-filter-pushdown.md`) are built here too, even though nothing
-queries through them until "Follow API + Filter Pushdown". **`x-masking`
-structural validation** also belongs here: reject `strategy` other than
-`"FixedValue"`, reject placement directly on an `object`-/`array`-typed
-property, validate `requiredClaim`'s `"type:value"` format and that
+(paginated listing, `ADR-012` — `$top`/`$skip`, both optional, omitting
+both returns everything) per `05-schema-registry-and-spec-generation.md`
+and [`features/schema-registry.md`](features/schema-registry.md):
+structural JSON Schema validation, `FilterableField` path validation
+against the schema, versioning (a new `(Name, Version)` row per
+registration, `IsActive` flip, no mutation of prior versions).
+**`ChangeKind` (`ADR-016`)** is a *required* field with no default —
+rejected `400` if missing or invalid at registration — needed here
+because "CQRS Read-Model Projections" (much later) assumes it's already
+enforced starting from this item, even though the *merge* semantics it
+drives aren't consumed until that later item. `ParentValidationMode` is
+accepted and validated as an enum (`Strict`|`Permissive`, default
+`Strict`, `ADR-005`). Per-provider index/computed-column migrations for
+`IsIndexed = true` fields (`ADR-003`) are built here too, even though
+nothing queries through them until "Follow API + Filter Pushdown".
+**`x-masking` structural validation** also belongs here (`ADR-009`):
+reject placement directly on an `object`-/`array`-typed property (valid
+only on a scalar node, a scalar array's `items`, or a property nested
+inside a complex-object `items` schema); reject any `strategy` value
+other than the **three** `ADR-009` actually decided —
+`"FixedValue"`, `"PartialReveal"`, and `"Hash"`, not just
+`"FixedValue"`; validate `requiredClaim`'s `"type:value"` format; validate
 `regulatoryClassification`/`governanceBody`/`regulationReference` are
-non-empty strings if present (`ADR-009`) — this is pure data validation on
-the registration payload with no claims involved, so it doesn't wait for
+non-empty strings if present. This is pure data validation on the
+registration payload with no claims involved, so it doesn't wait for
 "Event-Type Security"/"Property-Level Masking" the way enforcement does,
-and "Follow API + Filter Pushdown"'s `MaskingSchemaTransformer` needs to be
-able to assume any `x-masking` it encounters is already well-formed.
+and "Follow API + Filter Pushdown"'s `MaskingSchemaTransformer` needs to
+be able to assume any `x-masking` it encounters is already well-formed.
 
 Not in scope yet: `ParentValidationMode` is stored but not *enforced*
-(that's `ParentLinkService`, "Publish API"); `registry:admin` scope is not
+(`ParentLinkService`, "Publish API"); `registry:admin` scope is not
 enforced (that's "Auth + Orchestration") — accept requests unauthenticated
-for now. `RequiredPublishClaim`/`RequiredReadClaim` (`ADR-008`) are likewise
-accepted and validated for format (a well-formed `"type:value"` string) but
-not enforced — that needs JWT claims to exist first, so enforcement is
-"Event-Type Security". `x-masking`'s *validation* is this item's job
-(above); its *enforcement* (`IPayloadMasker`) is still "Property-Level
-Masking".
+for now; `RequiredPublishClaim`/`RequiredReadClaim` (`ADR-008`) are
+accepted and format-validated but not enforced. `EntityIdField`
+(`ADR-021`) validation does **not** belong here either — that's "Entity-
+Centric Core Rebuild"'s own scope, a much later item; registering a
+required `EntityIdField` makes no sense before the Entity Store it
+identifies rows in exists. `x-masking`'s *enforcement* (`IPayloadMasker`)
+is still "Property-Level Masking".
 
-**Depends on**: Scaffolding & Persistence.
+**Depends on**: Scaffolding & Persistence (needs the
+`EventTypeDefinition`/`FilterableField` tables to exist).
 
 **Exit criteria**: every scenario in
-[`features/schema-registry.md`](features/schema-registry.md) passes, on all
-three providers, including the index/computed-column verification and
-`QUERY /registry`'s `$top`/`$skip` pagination (omitting both still
-returns everything); plus the two registration-rejection scenarios in
-[`features/masking.md`](features/masking.md) ("x-masking directly on an
-object-typed property is rejected" and "a masking strategy other than
-FixedValue is rejected") and the "regulatory metadata fields are optional"
-scenario there — the rest of that doc's scenarios (actual masking/wrapping
-behavior) belong to later items, not this one.
+[`features/schema-registry.md`](features/schema-registry.md) passes, on
+all three providers, including the index/computed-column verification and
+`QUERY /registry`'s `$top`/`$skip` pagination; registering without
+`changeKind`, or with a value other than `Full`/`Partial`, is rejected
+`400`; registering a filterable field whose `jsonPath` doesn't resolve in
+the schema is rejected `400`; plus the masking-registration scenarios in
+[`features/masking.md`](features/masking.md) — "Registering x-masking
+directly on an object-typed property is rejected" (`400`), "Registering a
+genuinely unsupported masking strategy is rejected" (rejects
+`"Bucketing"`, `400`), "Registering PartialReveal and Hash strategies
+succeeds" (`201` — **not** rejected), and "Regulatory metadata fields are
+optional" (`201` with none supplied) — the rest of that doc's scenarios
+(actual masking/wrapping behavior at read time) belong to later items.
 
 ## Publish API
 
 **Scope**: `POST /publish/{event-type}` per `03-api-contracts.md` and
 [`features/publish-event.md`](features/publish-event.md): the `{
 schemaVersion, payload, parentEventIds?, eventId? }` envelope
-(`schemaVersion` required — `ADR-020`), `SchemaValidationService` against
-the *declared* version (rejected `400` if that version doesn't exist, not
-automatically "whichever is active"), `ParentLinkService` enforcing
-`ParentValidationMode`
-(`Strict`/`Permissive`, per [`features/event-chains.md`](features/event-chains.md)),
-the `eventId`/`PayloadHash` idempotency short-circuit (`ADR-011`,
-including the concurrent-retry race handled at the unique-constraint
-level — `06-solution-structure.md`), `EventAppender` writing `StoredEvent`
-+ `EventParents` in one transaction. Generate and expose `/openapi.json`
-now that the publish contract exists
-(`ADR-002`): `EventSchemaConverter` (parses registered `JsonSchema` text
-into the shared `Microsoft.OpenApi` `OpenApiSchema`) and
-`OpenApiDocumentBuilder` (native `Microsoft.OpenApi` document + writer),
-`IMemoryCache`-backed per `ADR-002`.
+(`schemaVersion` **required**, `ADR-020`), `SchemaValidationService`
+against the **declared** version specifically, never automatically
+"whichever is active" (unknown `schemaVersion` rejected `400`; a
+structurally non-conforming `payload` rejected `400`), `ParentLinkService`
+enforcing `ParentValidationMode` (`Strict` default rejects `400` on any
+unresolved `parentEventId`; `Permissive` allows a dangling reference
+through unconditionally), the `eventId`/`PayloadHash` idempotency
+short-circuit (`ADR-011` — a matching replay returns the original
+response with no new write; a differing hash is `409`; the concurrent-
+retry race is handled at the unique-constraint level, not the preceding
+lookup), `EventAppender` writing `StoredEvent` + `EventParents` in one
+transaction. Generate and expose `/openapi.json` now that the publish
+contract exists (`ADR-002`): `EventSchemaConverter` (parses registered
+`JsonSchema` text into the shared `Microsoft.OpenApi` `OpenApiSchema`) and
+`OpenApiDocumentBuilder`, `IMemoryCache`-backed with the ~60s TTL
+invalidated on registration.
 
 Lineage is built here, not deferred — only the derived-event-types idea
 (`ADR-007`) is deferred, not `EventParents` (`ADR-005`, already Accepted).
@@ -362,257 +504,393 @@ dead-letter behavior are **not** part of this item — they depend on
 `UpcastChain` (`ADR-018`), which doesn't exist until "Hardening &
 Evolution". Until then, a publish with `schemaVersion` behind the active
 version is simply accepted and stored at the declared version, exactly as
-if `ADR-020` didn't exist yet; "Hardening & Evolution" is where the
-live-validation behavior turns on.
+if `ADR-020` didn't exist yet.
 
-**Depends on**: Schema Registry (needs a registered schema to validate
-against).
+**Clarification**: the original success status code here is `201`, not
+`202` — `ADR-023` (the Inbox/Router split introducing always-`202`) isn't
+built until "Entity-Centric Core Rebuild," a much later item, so this
+item's own exit criteria assert `201` for a successful publish and an
+identical-content idempotent replay, `409` for a different-content
+replay, `400` for an unknown `schemaVersion`/invalid payload/unresolved-
+Strict-parent, and `404` for an unregistered event type.
+
+**Depends on**: Schema Registry (needs a registered schema/version to
+validate against).
 
 **Exit criteria**: every scenario in
 [`features/publish-event.md`](features/publish-event.md) and the
 publish-side scenarios in
 [`features/event-chains.md`](features/event-chains.md) pass on all three
-providers, including: retrying with the same `eventId` and identical
-content replays the original response with no new write; retrying with
-the same `eventId` and different content is `409`; omitting `eventId`
-behaves exactly as before `ADR-011`. `/openapi.json` includes
-`/publish/{event-type}` with the envelope shape (including `eventId`),
-served anonymously, cache-invalidated on the next registration.
+providers, translated to this item's pre-`ADR-023` status codes: a valid
+publish succeeds (`201`); a payload missing a required field or wrong-
+shaped is rejected `400`, not persisted; publishing against an
+unregistered event type is `404`; publishing after a schema-version
+upgrade validates against the newly-active version; retrying with the
+same `eventId` and identical content replays the original `201` response
+with no new write; retrying with different content is `409`; omitting
+`eventId` behaves exactly as before `ADR-011`; a Strict-mode publish
+naming an unresolved parent is `400` and appends nothing; a Permissive-
+mode publish with a dangling parent reference succeeds and later shows
+`resolved: false` once the Lineage API exists. `/openapi.json` includes
+`/publish/{event-type}` with the full envelope shape, served anonymously,
+cache-invalidated on the next registration.
 
 ## Lineage API (read side)
 
 **Scope**: `QUERY /events/{id}/parents|children|ancestors|descendants`
-(`ADR-012` — replacing `GET`, adding `$top`/`$skip` pagination) per
-`03-api-contracts.md` and
+(`ADR-012` — replacing `GET`, moving the request off the URL into the
+body, adding `$top`/`$skip` pagination) per `03-api-contracts.md` and
 [`features/event-chains.md`](features/event-chains.md): `EventParentReader`
-(plain LINQ join) for direct parents/children, `IEventLineageQueryProvider`
-(provider-specific recursive CTE) + `CycleGuard` for ancestors/descendants,
-routed via `MapMethods(..., ["QUERY"], ...)` reading `$top`/`$skip` (and,
-once "Event-Type Security" lands, the visibility check) from the request
-body.
+(plain LINQ join, fully portable) for direct parents/children,
+`IEventLineageQueryProvider` (one implementation per provider, issuing a
+native recursive CTE) plus cycle-safe traversal (`CycleGuard`) for
+ancestors/descendants — mandatory regardless of `ParentValidationMode`,
+since a `Permissive`-mode cycle can appear even reachable from a
+`Strict`-mode starting event. Routed via `MapMethods(pattern, ["QUERY"],
+handler)`.
 
 **Depends on**: Publish API (needs published events with parent links to
 traverse).
 
-**Exit criteria**: the lineage-query and cycle-safety scenarios in
-[`features/event-chains.md`](features/event-chains.md) pass on all three
-providers — specifically including the scenario where a cycle exists across
-two `Permissive`-mode events and traversal still terminates, returning each
-node exactly once; `$top`/`$skip` correctly slice the result, and omitting
-both still returns everything.
+**Exit criteria**: publishing an origin event with no parents shows no
+parent events on `QUERY /events/{id}/parents`; fetching immediate
+parents/children after publishing a child event parented off one or more
+prior events returns exactly those relationships; a Strict-mode publish
+referencing an unresolved parent never reaches this API at all (rejected
+at publish); a Permissive-mode dangling reference shows up with
+`resolved: false`; given a cycle constructed across two `Permissive`-mode
+events, `ancestors`/`descendants` from either node terminates without an
+infinite loop and returns each node exactly once; fetching a multi-hop
+ancestor chain returns every ancestor, not just the immediate parent;
+fetching lineage for an unknown `eventId` is rejected `404`; `$top`/
+`$skip` correctly slice a large result, and omitting both still returns
+everything. All of the above passes on all three providers, since
+`IEventLineageQueryProvider`'s recursive-CTE mechanics are
+provider-specific by design.
 
 ## Follow API + Filter Pushdown
 
 **Scope**: `QUERY /follow/{event-type}` (`ADR-012` — replacing `GET`,
-`$filter`/`mode`/`fromSequenceNumber` now in the request body) per
-`03-api-contracts.md`, [`features/follow-subscribe.md`](features/follow-subscribe.md),
-and [`features/filter-pushdown.md`](features/filter-pushdown.md):
-`ODataFilterParser`, validation against declared `FilterableFields`,
-`PredicateTranslator` + `IJsonPathTranslator` per provider, the
-`EventTailReader` polling loop, the `mode`/`fromSequenceNumber`
-cursor-initialization logic (`ADR-010`, `06-solution-structure.md`), SSE
-responses carrying the envelope headers (`eventId`, `sequenceNumber`,
-`occurredAt`, `parentEventIds`). No `access_token` query parameter — browser
-clients authenticate via `fetch()` with a real `Authorization` header, same
-as everyone else (`ADR-012`). Generate and
-expose `/asyncapi.json` now that the follow contract exists:
-`AsyncApiDocumentBuilder` (hand-built JSON envelope around the same shared
-`OpenApiSchema` from `EventSchemaConverter`) **and**
-`MaskingSchemaTransformer` — even though masking's runtime enforcement
-(`IPayloadMasker`) doesn't land until "Property-Level Masking", the
-schema-level `x-masking` → `oneOf[value,masked,erased]` (`ADR-057`) wrapper
-is claims-independent and must exist now so `/asyncapi.json` never
-documents a maskable property's bare, unwrapped type (`ADR-002`, `ADR-009`).
+`$filter`/`mode`/`fromSequenceNumber` read from the request body) per
+`03-api-contracts.md`,
+[`features/follow-subscribe.md`](features/follow-subscribe.md), and
+[`features/filter-pushdown.md`](features/filter-pushdown.md). Filter
+pushdown, per `04-odata-filter-pushdown.md`'s preserved "Historical"
+section: an incoming `$filter` is parsed via `Microsoft.OData.UriParser`
+into a `FilterClause` AST, validated against the event type's registered
+`FilterableFields` (rejecting an unfilterable field with `400` at parse
+time, before touching the database), translated into a LINQ
+`Expression<Func<StoredEvent, bool>>`, with a property reference compiled
+via the shared `JsonFunctions.JsonValue` marker method into a call to the
+active provider's `IJsonPathTranslator` (cast to `FilterableField.
+DataType` before comparison) — no separately named "PredicateTranslator"
+class exists in any ADR, feature doc, or `06-solution-structure.md`; that
+name is unverified and dropped. `EventTailReader`'s one continuous poll
+loop (`WHERE SequenceNumber > lastSeen AND predicate`) drives both
+`mode=tail` (default) and `mode=replay` (`ADR-010`) — only `lastSeen`'s
+*initial* value differs; supplying `fromSequenceNumber` together with
+`mode=tail` (or the default) is rejected `400`. SSE responses carry the
+envelope headers (`eventId`, `sequenceNumber`, `occurredAt`,
+`parentEventIds`). No `access_token` query-string fallback — a browser
+client authenticates via `fetch()` with a real `Authorization` header,
+identically to every other endpoint. Generate and expose `/asyncapi.json`
+now that the Follow contract exists: `AsyncApiDocumentBuilder` (hand-built
+envelope around the same shared `OpenApiSchema`, validated by round-
+tripping each generated document against the published AsyncAPI 3.0 JSON
+Schema) **and** `MaskingSchemaTransformer` — even though masking's
+*runtime* enforcement doesn't land until "Property-Level Masking," the
+schema-level `x-masking` → `oneOf[value,masked,erased]` wrapper is
+claims-independent and must exist now, so `/asyncapi.json` never
+documents a maskable property's bare, unwrapped type.
 
 **Depends on**: Publish API (needs published events to tail). Independent
 of Lineage API — can be built before, after, or alongside it.
 
-**Exit criteria**: every scenario in
-[`features/follow-subscribe.md`](features/follow-subscribe.md) and
-[`features/filter-pushdown.md`](features/filter-pushdown.md) passes on all
-three providers, including the scenario outline that runs the same query
-identically across SQLite/Postgres/SQL Server, and the 400-before-any-SQL
-rejection for an undeclared filter field; `/asyncapi.json` includes the
-follow channel, served anonymously, cache-invalidated on the next
-registration; a maskable property (registered ahead of "Property-Level
-Masking") already appears wrapped as `oneOf[value,masked,erased]` in the
-generated document, even though every event still streams it
-unconditionally as `{"value": ...}` until that item's enforcement lands
-(`features/masking.md`); `mode=replay` delivers matching history then
-tails with no gap or duplicate, `fromSequenceNumber` correctly bounds where
-replay starts, and supplying `fromSequenceNumber` with `mode=tail` (or the
-default) is rejected `400`.
+**Exit criteria**: connecting with no `$filter` streams every event of
+the type; connecting with `$filter=Amount gt 100` streams only matching
+events, including combined conditions; `$filter` referencing a field not
+declared `FilterableField` is rejected `400` at parse time, before any
+SQL runs; `mode=replay` (no `fromSequenceNumber`) delivers all matching
+history then tails new matching events with no gap or duplicate;
+supplying `fromSequenceNumber` only replays events after that sequence
+number; `mode=replay` combined with `$filter` replays only matching
+history; the default (`mode=tail`) never delivers pre-existing events;
+supplying `fromSequenceNumber` without `mode=replay` is rejected `400`;
+the same query produces the correct native JSON-extraction fragment
+identically across SQLite/PostgreSQL/SQL Server, with correct numeric
+cast-before-compare and index usage for an indexed field; `/asyncapi.json`
+includes the Follow channel, served anonymously, cache-invalidated on the
+next registration; a maskable property already appears wrapped as
+`oneOf[value,masked,erased]` in the generated document, even though every
+event still streams it unconditionally as `{"value": ...}` until
+Property-Level Masking's enforcement lands. A restricted parent's ID
+being omitted from the streamed `parentEventIds` header depends on
+`RequiredClaims` existing ("Event-Type Security," a later item) and is
+**not** part of this item's own exit bar.
 
 ## Auth (OIDC/OpenIddict) + Orchestration
 
-**Scope**: per `ADR-006` and [`features/auth.md`](features/auth.md) — JWT
-bearer middleware and the four scope policies (`events:publish`,
-`events:follow`, `events:lineage:read`, `registry:admin`) layered onto
-every endpoint built so far; the custom `ScopeRequirement` handler
-(space-delimited `scope` claim, not a bare `RequireClaim`); the new
-`EventStore.DevIdp` project (OpenIddict, EF Core InMemory store, three
-clients pre-seeded in code by `DevIdpSeeder`); `EventStore.AppHost` (Aspire)
-wiring whichever single `EventStore.Host.<Provider>` it targets (`ADR-001`)
-+ that provider's database container + `EventStore.DevIdp` (a project
-resource, not a third-party container); the `docker-compose.yml` fallback
-(two ordinary app images, no external IdP image); CORS (`ADR-014`) —
-`Cors:AllowedOrigins` config, the named policy allowing `QUERY` and
-`Authorization` for browser callers of Follow/Lineage/Registry (`ADR-012`).
+**Scope**: per `ADR-006`, `ADR-014`, `ADR-026`, and
+[`features/auth.md`](features/auth.md): OAuth2 Client Credentials grant
+(RFC 6749 §4.4) + Bearer usage (RFC 6750) against an OIDC provider,
+validated against the provider's own discovery document — no custom
+token-validation code; one authorization policy per scope
+(`events:publish`, `events:follow`, `events:lineage:read`,
+`registry:admin`); a custom `ScopeRequirement` handler (OAuth2 `scope` is
+one space-delimited claim, not a repeated one, so a bare `RequireClaim`
+doesn't fit); the new `EventStore.DevIdp` project (OpenIddict, EF Core
+**InMemory** store, `DevIdpSeeder` seeding three clients — `publisher-
+client`, `follower-client`, `operator-client` — in code, no realm-export
+file, no admin console); `/connect/token` +
+`/.well-known/openid-configuration`, consumed generically by every
+`EventStore.Host.<Provider>`'s shared JWT-bearer validation with zero
+OpenIddict-specific code; `/openapi.json`/`/asyncapi.json` stay anonymous.
+**`ADR-026`** (refines `ADR-006`'s orchestration story only): `EventStore.
+AppHost` (.NET Aspire) wiring the targeted `EventStore.Host.<Provider>` +
+its DB container + `EventStore.DevIdp` as an Aspire **project** resource,
+dev-only. **`EventStore.ServiceDefaults.ConfigureOpenTelemetry`**, called
+from every host and `EventStore.DevIdp`, wiring all three OTel signals —
+logs, metrics (`AddAspNetCoreInstrumentation`/`AddHttpClientInstrumentation`/
+`AddRuntimeInstrumentation`), and tracing (`AddSource` +
+`AddAspNetCoreInstrumentation` with a `Filter` excluding health/liveness
+paths + `AddHttpClientInstrumentation`) — with an OTLP exporter wired
+conditionally on `OTEL_EXPORTER_OTLP_ENDPOINT`, pointed at the Aspire
+Dashboard's OTLP receiver in dev. A root `docker-compose.yml` is **the
+actual production deployment path** (`ADR-026` explicitly revises
+`ADR-006`'s original "fallback"/"CI" framing), building
+`EventStore.Host.<Provider>` and `EventStore.DevIdp` (or its production
+IdP replacement) as ordinary app images, two images at this point in the
+build. **`ADR-014`**: ASP.NET Core's built-in CORS middleware, one named
+policy wired identically across all three host deployables,
+`Cors:AllowedOrigins` config, **deny by default**, explicitly allowing
+the `Authorization` header and every method in use including `QUERY`
+(always preflights); `AllowCredentials()` deliberately **not** set
+(bearer-only auth, never cookies).
 
 **Depends on**: Schema Registry, Publish API, Lineage API, Follow API +
 Filter Pushdown (there is nothing to authorize before they exist).
 
-**Exit criteria**: every scenario in
-[`features/auth.md`](features/auth.md) passes — 401/403/202 paths, public
-spec documents staying anonymous, a browser `fetch()` call to Follow
-succeeding cross-origin once its origin is in `Cors:AllowedOrigins` and
-failing closed when it isn't; `aspire run`
-and `docker-compose up` each produce a working dev stack from a clean
-checkout with zero manual setup (no admin console exists to configure in
-the first place — the seed is code, verified via a token request).
-`ADR-006` is already Accepted (confirmed) — this item is where it gets
-verified end-to-end, not where it gets decided.
+**Exit criteria**: request without `Authorization` → `401`; expired/
+invalid token → `401`; token missing the required scope → `403`
+(publish; registry `PUT`); token with the required scope → `201` for
+publish (this item's own pre-`ADR-023` status), `201` for registry `PUT`;
+`/openapi.json`/`/asyncapi.json` stay `200`-readable with no
+`Authorization` header at all; a browser `fetch()` call to Follow
+succeeds cross-origin once its origin is in `Cors:AllowedOrigins`, and is
+blocked (browser-enforced) when it isn't, with a clean deployment
+CORS-closed to every origin by default; `aspire run` and `docker-compose
+up` each produce a working stack from a clean checkout with zero manual
+IdP setup, verified via a real `/connect/token` request or the discovery
+document since no admin console exists to eyeball instead; all three OTel
+signals (logs, traces, metrics) are visible in the local Aspire Dashboard
+for an ordinary request, a health/liveness poll never appears in the
+trace view, and the OTLP export target is config-driven, not hardcoded.
+`ADR-006` is already Accepted — this item verifies it end-to-end, does
+not decide it.
 
 ## Event-Type Security
 
-**Scope**: per `ADR-008` and
-[`features/event-security.md`](features/event-security.md):
-`RequiredPublishClaim` enforcement in `PublishEndpoint`;
-`RequiredReadClaim` enforcement in `FollowEndpoint` (once, at connect time,
-for its own event type — plus per-parent filtering of the
-`parentEventIds` envelope header, see below); `LineageEndpoint`'s two-tier
-check per "you can only see what you can see" — pass/fail `403` for the
-root `{eventId}`'s own type, then an independent per-node check for every
-*other* type the traversal discovers, turning a failure there into a
-`restricted: true` stub rather than failing the request (the recursive CTE
-from "Lineage API" needs updating to stop expanding through a restricted
-node, not just redact it in the output — see `06-solution-structure.md`).
-Both claim checks run as plain application code after the relevant
-`EventTypeDefinition` is loaded, not as a static `AddPolicy` — see
-`06-solution-structure.md` for why.
+**Scope**: per `ADR-008` **as originally decided** — a single
+`RequiredPublishClaim`/`RequiredReadClaim` string per direction on
+`EventTypeDefinition` (`ADR-050`'s later generalization to an
+`OR`-matched list is a documented forward revision, not built here).
+`RequiredPublishClaim` gates `POST /publish/{event-type}`.
+`RequiredReadClaim` gates `QUERY /follow/{event-type}` (checked once, at
+connect time) **and** all four Lineage API endpoints, per "you can only
+see what you can see": the **root** `{eventId}` a Lineage call names
+directly must be visible to the caller or the whole request is rejected
+`403` (deliberately distinguishable from a genuinely unknown `eventId`'s
+`404`); everything the traversal *discovers* from the root is
+visibility-checked per node, independently of the root's own check and of
+each other, and traversal does not recurse past a node the caller can't
+see — this requires the recursive CTE to stop expanding *during*
+recursion at a restricted node, not merely redact fields in the final
+output. Publish never checks `RequiredReadClaim` on a referenced parent —
+`ParentLinkService` only ever checks existence; read visibility is
+entirely a per-viewer, read-time decision. Enforced in application code
+after the event type is resolved from the registry, not a static
+`AddPolicy` (needs a per-request data lookup a static policy can't
+express). Registering/changing these claims still only needs
+`registry:admin` — no new scope. Masking (`ADR-009`) is confirmed **not**
+part of this item despite sharing the same claim machinery — a deliberate
+priority call, not a technical split.
 
-Masking (`ADR-009`) is **not** part of this item despite sharing the same
-`RequiredReadClaim` machinery — see "Property-Level Masking". It's a
-deliberate priority call, not a technical dependency that had to be split
-out.
+**Depends on**: Auth + Orchestration only.
 
-**Depends on**: Auth + Orchestration (needs JWT claims to already be
-populated — there is nothing to check against before bearer auth exists).
-
-**Exit criteria**: every scenario in
-[`features/event-security.md`](features/event-security.md) and the new
-scenarios in [`features/follow-subscribe.md`](features/follow-subscribe.md)
-pass, including: publish vs. read claims enforced independently for the
-same event type; a lineage query on a **restricted root** rejected
-entirely (`403`); a lineage query on a **visible root** still succeeding
-(`200`) with a `restricted: true` stub for any discovered node the caller
-can't see, while every other node — including ones reachable only through
-a different, visible path — returns normally; the `403`-vs-`404`
-distinction (root restricted-but-existing vs. truly unknown) holding for
-all four Lineage endpoints; and a restricted parent's ID omitted from
-Follow's `parentEventIds` envelope header without blocking the event
-itself from streaming.
+**Exit criteria**: publish of a claim-gated type without the claim →
+`403`; with the claim → `201`, persisting regardless of shape; publish
+and read claims enforced fully independently for the same type; follow
+connect without the read claim → `403`; with it → accepted; a Lineage
+query on a **restricted root** → `403` for the whole request, across all
+four Lineage endpoints; a Lineage query on a **visible root** with a
+discovered restricted node → `200`, that node stubbed
+`{eventId, resolved: true, restricted: true}` with no other fields, while
+every other node returns normally; lacking access to a parent never hides
+an otherwise-visible child, and vice versa; restricted-but-existing
+(`403`) is distinguishable from truly unknown (`404`); a restricted
+parent's ID is omitted from Follow's `parentEventIds` envelope header
+without blocking the event itself from streaming.
 
 ## Derived/Materialized Event Types (deferred)
 
-**Scope**: per `ADR-007` — not started until the primary system is
-complete and stable. `POST /create/{event-type}?$from=...&$on=...&$select=...`,
-schema auto-composition from the projection, the per-derived-type
-configurable join-trigger (fire-once vs. continuous enrichment) and
-configurable backfill-vs-from-now, and the background derivation worker
-(an internal `EventTailReader` consumer that republishes through the same
-Publish API path). Derived events record their sources via
-`parentEventIds` — reusing the Publish/Lineage API's mechanism with no
-schema change, per `ADR-007`'s own consequences.
+**Scope**: per `ADR-007` — `ADR-007`'s own closing line states it "carries
+no unresolved technical questions of its own anymore," true on
+inspection: every open question it once had (unbounded pending-join
+state, cycle risk, n-ary joins) has a recorded, resolved answer in its own
+Consequences section. `POST /create/{event-type}?$from=A,B,...&$on=<...>
+&$select=...` — an arbitrary-length `$from` source list, `$on` a
+conjunction of pairwise equalities across all of them; two independent
+per-derivation config knobs (fire-once vs. continuous-enrichment join
+trigger; backfill-from-history vs. from-now-only, plus
+`backfillThroughDerivedSources` when a source is itself derived); a
+background derivation worker per derivation reusing `EventTailReader`,
+republishing through the ordinary publish path, recording sources via
+`parentEventIds` with no schema/data-model change needed; a durable,
+TTL-bounded `PendingJoinState` table, swept periodically; a plain
+depth-first cycle check over the small derivation-*definition* graph at
+registration time (distinct from `ADR-005`'s runtime `CycleGuard`); a
+`derivationHopCount` envelope field capping runaway propagation at a
+configured max depth, as a runtime safety net for the residual
+registration race. Derivation registration reuses `registry:admin` — no
+new scope.
 
-**Depends on**: Event-Type Security. Explicitly out of the primary build's
-critical path — see `ADR-007` for the open questions (unbounded
-pending-join state, n-ary `$select`, backfill over a derived source), all
-resolved in the ADR itself; this item stays deferred purely on scheduling.
+**Depends on**: Event-Type Security, per the current sequencing — this is
+a **scheduling** dependency, not a technical one: `ADR-007`'s own Context
+names only publish/follow/registry/lineage/auth as the primary system,
+never `ADR-008`. This item stays deferred purely on scheduling, once the
+primary system (0 through the items before this one) is stable.
+
+**Exit criteria**: no feature doc exists for this item yet, consistent
+with its Deferred status — once scheduled, a future
+`features/derived-event-types.md` needs to cover: n-ary `$from`/`$on`
+registration with auto-composed schema; both join-trigger modes; both
+backfill modes plus `backfillThroughDerivedSources`; a derivation-
+definition cycle rejected `400` at registration; a pending join surviving
+a worker restart and expiring after its TTL with a recorded reason;
+`derivationHopCount` capping runaway propagation at the configured max
+depth.
 
 ## Property-Level Masking (data enforcement)
 
-**Scope**: per `ADR-009` and [`features/masking.md`](features/masking.md)
-— design-complete, scheduled after "Event-Type Security" purely as a
-priority call, not because anything is unresolved (contrast with "Derived/
-Materialized Event Types"). This is only the **data** half — `x-masking`
-structural validation moved to "Schema Registry" and the **schema** half
-(`MaskingSchemaTransformer`) moved to "Follow API + Filter Pushdown",
-since neither needs claims (see those items). What's left here: the
-`IPayloadMasker` pure `(schema, data, hasClaim) -> data` transform
-(`06-solution-structure.md`) wired into `FollowEndpoint`'s per-event
-pipeline; the per-connection masked-node set computed once at connect time
-alongside `RequiredReadClaim`; the recursive wrapping rule through array
-`items` (scalar: wrap each element; complex object: wrap only the masked
-properties within each element) applied to actual payload *data*, reusing
-the same node-finding helper `MaskingSchemaTransformer` already
-established in "Follow API + Filter Pushdown".
+**Scope**: per `ADR-009` — the **data** half only (`x-masking` structural
+validation → "Schema Registry"; the schema-shape half,
+`MaskingSchemaTransformer` → "Follow API + Filter Pushdown," since
+neither needs claims). `IPayloadMasker`: a pure `(schema, data, hasClaim)
+-> data` transform wired into `FollowEndpoint`'s per-event pipeline; the
+per-connection masked-node set computed once at connect time, alongside
+`RequiredReadClaim`; recursive wrapping through arrays (scalar `items`:
+wrap each element; complex-object `items`: wrap only the masked
+properties per element). The wrapper is `oneOf: {value}/{masked}` here —
+`ADR-057`'s third `{erased}` branch is a later revision, not built in
+this item. **Three `IMaskingStrategy` implementations, an explicit
+Strategy-pattern seam**, each a keyed DI registration
+(`AddKeyedSingleton<IMaskingStrategy, ...>("FixedValue"/"PartialReveal"/
+"Hash")`) — `IPayloadMasker` never branches on the strategy name, only
+resolves the matching keyed service per masked leaf: `FixedValue` (a
+configured literal, default `"***"`); `PartialReveal`
+(`{showFirst, showLast, maskChar, preserveSeparators}`, modeled on
+PCI-DSS Requirement 3.3's own plain-language PAN masking); `Hash` (a
+**keyed** HMAC via `Microsoft.Extensions.Compliance.Redaction`'s
+`HmacRedactor` — correlatable across events without being brute-forceable
+the way an unsalted hash would be). Registering any other `strategy`
+value is rejected `400`. `x-masking`'s three optional descriptive fields
+(`regulatoryClassification`, `governanceBody`, `regulationReference`)
+carry no runtime behavior and never appear on the wire.
+
+**Extended by `ADR-050`** (same item, not new): `x-required-claims`/
+`x-masking` guaranteed in generated OpenAPI/AsyncAPI docs;
+`Microsoft.Extensions.Compliance.Redaction` wired into logging via two
+shapes (static `[LoggerMessage]` attributes for typed call sites;
+programmatic `IRedactorProvider.GetRedactor(classification)` for
+schema-driven `Payload`-derived dynamic logging) — exit criterion: a log
+call touching a `clearance:phi`-classified field is verified redacted,
+not just the response path.
+
+**Revised by `ADR-057`**: the `oneOf` wrapper's third `{erased}` branch
+lands in the later "GDPR/CCPA Erasure via Crypto-Shredding" item.
+
+**Note — a genuine forward-dependency gap, not yet homed anywhere**:
+`ADR-009`'s `revealOnDemand` mechanism names its reveal action as "a
+small, dedicated GraphQL operation (`revealField(...)`, `ADR-037`'s
+transport)" — GraphQL doesn't exist until "GraphQL-Only Query Layer,"
+much later. This item builds `revealOnDemand`'s `displayMask` computation
+(no GraphQL dependency); the actual `revealField` round-trip cannot land
+here, and neither this item nor "GraphQL-Only Query Layer" currently
+claims it — see `TODO.md`.
 
 **Depends on**: Event-Type Security (reuses its claim-checking primitive
 and the connect-time check already happening for `RequiredReadClaim`) and
-Follow API + Filter Pushdown (the shared node-finding helper). Independent
-of "Derived/Materialized Event Types" — neither depends on the other.
+Follow API + Filter Pushdown (the shared node-finding helper,
+`MaskingSchemaTransformer`). Independent of Derived/Materialized Event
+Types.
 
-**Extended by `ADR-050`** (same item, not a new one): `x-masking` and
-the generalized `RequiredClaims` list both guaranteed to appear in
-generated OpenAPI/AsyncAPI docs as `x-*` Specification Extensions
-(the `OpenApiDocumentBuilder`/`AsyncApiDocumentBuilder` from "Publish API"/
-"Follow API + Filter Pushdown" gain this here, once masking metadata
-exists to emit); `Microsoft.Extensions.Compliance.Redaction` wired into
-logging so classified `Payload` values never reach log output — exit
-criterion: a log statement touching a `clearance:phi`-classified field is
-verified redacted, not just the API response path.
-
-**Revised by `ADR-057`** ("GDPR/CCPA Erasure" below): the `oneOf` wrapper
-this item builds (`{value}`/`{masked}`) gains a third `{erased}` branch
-once that item lands — not built here, since erasure doesn't exist yet at
-this point in the build.
-
-**Exit criteria**: every scenario in
-[`features/masking.md`](features/masking.md) passes: registration rejecting
-`x-masking` on a non-scalar node (other than array items); a follower
-without the field-specific claim receiving `{"masked": "***"}` while one
-with the claim receives `{"value": <real value>}`, on the same connection,
-same event type; the wrapper applied correctly to a scalar array (each
-element wrapped) and to an array of complex objects (only the masked
-properties within each element wrapped, the rest of each object untouched);
-and a legitimately-absent field staying absent rather than gaining a
-wrapper.
+**Exit criteria**: `x-masking` rejected `400` when placed directly on an
+object-typed property; an unsupported strategy value (e.g.
+`"Bucketing"`) rejected `400` at registration, `PartialReveal` and `Hash`
+both succeed (decided, not proposed); a follower without the claim
+receives `{"masked": ...}`, one with the claim receives
+`{"value": <real value>}`, same connection, same type; `PartialReveal`
+reveals only the configured first/last characters, masking the rest, with
+separators preserved when configured; `Hash` masking is correlatable
+(two events sharing the same value produce identical masked HMACs)
+without revealing or being brute-forceable to the real value; a required,
+non-nullable field is still maskable with no null-workaround; a property
+without `x-masking` is never wrapped; a scalar array wraps each element, a
+complex-object array wraps only the masked property per element; a
+legitimately-absent field stays absent, not wrapped; masking still
+applies when the type has no `RequiredReadClaim` entry at all; regulatory
+metadata is retrievable from the registry but never appears on the wire;
+a log call touching a `clearance:phi`-classified field is verified
+redacted, not just the response path (`ADR-050`).
 
 ## CQRS Read-Model Projections (worked example)
 
-**Scope**: per `ADR-015`, `ADR-016`, `09-cqrs-read-models.md`, and
-[`features/cqrs-projections.md`](features/cqrs-projections.md):
-`EventStore.Projections.Abstractions` (`IProjection<TReadModel>`);
-`EventStore.Projections.Host` (`ProjectionHost`'s replay-from-checkpoint
-loop against `QUERY /follow/{event-type}`, `SnapshotMerger`'s
-Full-replace-vs-Partial-merge-patch logic, `ProjectionsDbContext` —
-`ProjectionCheckpoint` + `ProjectionSnapshot`, its own separate database);
-the required `changeKind` field on event-type registration (`ADR-016`,
-already validated starting "Schema Registry" — this item is where it's
-finally *consumed*, not where it's first accepted); a fourth seeded
-OAuth2 client (`projections-client`, `events:follow` scope) in
-`EventStore.DevIdp`'s `DevIdpSeeder` (`ADR-006`); the worked example itself,
-`Samples.Orders.Projections`' `OrderSummaryProjection` over the four Orders
-event types.
+**Scope**: per `ADR-015`, `ADR-016` — the **consumption** half
+(`ChangeKind` is already required at registration starting "Schema
+Registry"; this is where it's first consumed). Deliberately the
+**pre-`ADR-022`** whole-payload merge rule — `Optional<T>` per-property
+patches and explicit-`null`-clears-a-field are a later revision, not
+built here. `EventStore.Projections.Abstractions`: `IProjection<TReadModel>`
+(`Name`, `EventTypes`, `GetKey`, `Project`) — individual projections never
+see raw events, `ChangeKind`, or merge logic at all. `EventStore.
+Projections.Host`: `ProjectionHost`'s own poll loop, **always** `QUERY
+/follow/{event-type}` with `mode=replay&fromSequenceNumber=<checkpoint>`
+(never `mode=tail` — no reason to track two code paths for "starting
+fresh" vs. "resuming"); `ProjectionsDbContext` with `ProjectionCheckpoint`
+and `ProjectionSnapshot`, its own separate database, reachable only via
+HTTP from the write side; one EF Core provider (SQLite) is enough here.
+`SnapshotMerger`, applied once, centrally: `Full` **replaces** a key's
+whole snapshot; `Partial` **merges** the incoming payload onto the
+existing snapshot (RFC 7396's overwrite-if-present half only, not its
+delete-on-`null` half); a `Partial` event for a key with no existing
+snapshot simply starts one from that event's own fields. A masked/absent
+field arriving in a `Partial` payload is, from the merge's point of view,
+simply absent — the same overlay rule `ADR-009`'s masking consequences
+already state. A fourth seeded OAuth2 client (`projections-client`,
+`events:follow` scope). Runs as its own deployable, `EventStore.
+Projections.Host`, never in-process. Worked example: `Samples.Orders.
+Projections`' `OrderSummaryProjection` over `OrderPlaced` (`Full`) /
+`OrderAddressUpdated` / `OrderShipped` / `OrderCancelled` (`Partial`),
+keyed by `OrderId`.
 
 **Depends on**: Follow API + Filter Pushdown (Follow must exist — a
 projection is an ordinary Follow caller) and Auth + Orchestration (needs
 its own OAuth2 client). Independent of Event-Type Security, Derived/
-Materialized Event Types, and Property-Level Masking.
+Materialized Event Types, and Property-Level Masking — a projection is
+"subject to `RequiredReadClaim`/masking exactly like any other Follow
+caller," a constraint on what it can be built *over* if it needs
+claim-gated data, not a build-order dependency for the item itself.
 
-**Exit criteria**: every scenario in
-[`features/cqrs-projections.md`](features/cqrs-projections.md) passes:
-a `Full` event establishes a read-model row from scratch; a `Partial`
-event merges onto existing state without disturbing fields it doesn't
-carry; independent `Partial` events for the same key don't clobber each
-other's fields; a field the projection's own client lacks the claim to see
-is never overlaid as a placeholder (reusing `ADR-009`'s overlay rule,
-demonstrated here rather than merely stated); registering an event type
-without `changeKind` is rejected `400`; a full rebuild (truncate + reset
-checkpoint to `0` + replay) reproduces the exact same end state as the
-incrementally-built one; and resuming after downtime delivers no gap and
-no duplicate, reusing `ADR-010`'s guarantee rather than reimplementing it.
+**Exit criteria**: a `Full` event establishes a read-model row from
+scratch; a `Partial` event merges onto existing state, leaving untouched
+fields alone; independent `Partial` events for the same key don't clobber
+each other's fields; a masked/absent field in a `Partial` payload is
+ignored on merge, never overlaid as a placeholder; registering an event
+type without `ChangeKind` is rejected `400`; a full rebuild (truncate
+table + snapshots, reset checkpoint to `0`, replay) reproduces the exact
+same end state as the incrementally-built one; resuming after downtime
+delivers no gap and no duplicate, reusing `ADR-010`'s guarantee rather
+than reimplementing it.
 
 ## Hardening & Evolution (DPoP, event upcasting, hash-chained tamper evidence)
 
@@ -622,9 +900,9 @@ working system, per `ADR-017`, `ADR-018`, `ADR-019`:
   `DevIdpSeeder`; `cnf.jkt` embedding at token issuance; the DPoP-proof
   validation middleware in `EventStore.Host.Core`, alongside the existing
   JWT-bearer validation.
-- **Event upcasting** (`ADR-018`): `IEventUpcaster` + `UpcastChain`
-  (`06-solution-structure.md`), wired into `FollowEndpoint` (before
-  masking's transform) and `ProjectionHost` (before `SnapshotMerger`).
+- **Event upcasting** (`ADR-018`): `IEventUpcaster` + `UpcastChain`, wired
+  into `FollowEndpoint` (before masking's transform) and `ProjectionHost`
+  (before `SnapshotMerger`).
 - **Hash-chained tamper evidence** (`ADR-019`): `ChainHash` computed in
   `EventAppender` alongside the existing `SequenceNumber`/`PayloadHash`
   assignment; the `GET /events/verify?throughSequenceNumber=<n>`
@@ -637,15 +915,26 @@ working system, per `ADR-017`, `ADR-018`, `ADR-019`:
   item is what makes it do anything beyond validate-and-store.
 
 **Depends on**: Auth + Orchestration (DPoP), Publish API (hash chaining),
-Follow API + Filter Pushdown (event upcasting). Independent of Event-Type
-Security through CQRS Read-Model Projections.
+Follow API + Filter Pushdown (event upcasting), and **CQRS Read-Model
+Projections** — a real, non-transitive edge found this pass: this item's
+own `mode=replay`-across-a-version-gap exit criterion needs a
+`ProjectionHost`-shaped consumer to exercise upcasting against, not just
+`FollowEndpoint` directly, and that consumer doesn't exist before CQRS
+Read-Model Projections lands. Independent of Event-Type Security,
+Derived/Materialized Event Types, and Property-Level Masking.
+
+**Note — no dedicated feature doc exists for either DPoP or hash-chained
+verification specifically** (`ADR-017`/`ADR-019`'s behavior is exercised
+indirectly through other items' Gherkin, e.g. Multi-Tenancy's/Sharding &
+Replication's use of `ChainHash`, but neither has its own scenario file);
+tracked in `TODO.md` rather than silently assumed covered.
 
 **Exit criteria**: a request with a valid bearer token but a missing or
 mismatched DPoP proof is rejected `401` (`dpop-proof-invalid`); a request
 with both valid throughout succeeds exactly as before this item; a
 `mode=replay` burst spanning a registered upcaster's version gap presents
 every event in the current schema's shape to the caller, verified against
-both `FollowEndpoint` and a `ProjectionHost` consumer; and deliberately
+both `FollowEndpoint` and a `ProjectionHost` consumer; deliberately
 corrupting one historical `Payload` (test-only, direct database edit) is
 detected by the verification endpoint at exactly that `SequenceNumber`,
 with every event before it verifying clean.
@@ -655,15 +944,27 @@ with every event before it verifying clean.
 **Scope**: `ADR-021` (`EntityId`, the always-on Entity Store, folded by
 `EventStore.Fold`), `ADR-022` (`Optional<T>` property-level patches,
 refining `ADR-016`'s merge), `ADR-023` (the Inbox/Router split — publish
-returns `202` + a status envelope; `SchemaStatus`/`AuthorityStatus`
-become advisory, never `400`), `ADR-024` (`ExpectedVersion` optimistic
-concurrency + `ConflictFlag`, and `ADR-029`'s `LateArrivalFlag`/logical-
-order fold — see `docs/patterns/interactions/fold-ordering-and-conflict.md`
-for how the two checks compose in one fold step).
+returns `202` + a status envelope from here on; `SchemaStatus`/
+`AuthorityStatus` become advisory, never `400`), `ADR-024`
+(`ExpectedVersion` optimistic concurrency + `ConflictFlag`, and
+`ADR-029`'s `LateArrivalFlag`/logical-order fold — see `docs/patterns/
+interactions/fold-ordering-and-conflict.md` for how the two checks
+compose in one fold step). **Correction**: `ADR-029`'s own
+`LateArrivalFlag`/logical-order-fold mechanism predates and is unrelated
+to `ADR-037`'s later GraphQL swap — a prior draft of this item
+mis-cited "`ADR-029`'s GraphQL layer," which doesn't exist; fixed here to
+cite `ADR-037` separately, where the GraphQL swap actually belongs
+("GraphQL-Only Query Layer," below).
 
 **Depends on**: Event-Type Security (the primary system needs to be
 stable and fully auth'd before this rebuild touches every endpoint's
 response shape).
+
+**Note — a real feature-doc gap, not a build-plan error**:
+[`features/entity-concept.md`](features/entity-concept.md) does not
+currently contain a scenario exercising `LateArrivalFlag` specifically
+(only `ConflictFlag`) despite this item's own exit criteria below citing
+one — tracked in `TODO.md`.
 
 **Exit criteria**: [`features/entity-concept.md`](features/entity-concept.md)
 passes on all its scenarios — a new `EntityId` creates an Entity Store row,
@@ -672,9 +973,7 @@ a second event for the same `EntityId` bumps `Version`, a stale
 schema-invalid publish persists as `202` + `SchemaStatus: invalid`; every
 existing feature-doc Gherkin scenario that asserted `400` for a schema-
 invalid/unknown-version publish now asserts `202` + the right
-`SchemaStatus` instead (a real rewrite of existing scenarios, done as part
-of this session's `docs/features/*.md` sweep — see `docs/changes/
-2026-08-01.md`); a same-property concurrent-write scenario shows
+`SchemaStatus` instead; a same-property concurrent-write scenario shows
 `ConflictFlag`; a deliberately-reordered-delivery test (publish B, then
 publish A with an earlier `OccurredAt`) shows `LateArrivalFlag` and
 confirms A's change did not overwrite B's.
@@ -684,19 +983,20 @@ confirms A's change did not overwrite B's.
 **Scope**: `ADR-030` — `AppId` joins the schema registry's key; every
 registry/upcast/downcast lookup across "Schema Registry"/"Hardening &
 Evolution"/"Upcast Materialization + Downcast" gets `AppId` added.
-**Boundary note, added this session (`ADR-075`)**: this item's `AppId`
-isolation now protects different *applications within one tenant's own
-dedicated deployment*, not different *customers* sharing one deployment —
-the deployment boundary itself is the customer isolation now, decided
-after this item's original exit criteria were written.
+**Boundary note (`ADR-075`)**: this item's `AppId` isolation now protects
+different *applications within one tenant's own dedicated deployment*,
+not different *customers* sharing one deployment — the deployment
+boundary itself is the customer isolation now, decided after this item's
+original exit criteria were written; confirmed a genuine revision on
+re-derivation, not a drift.
 
 **Depends on**: Schema Registry (must exist), Entity-Centric Core Rebuild
 (`AppId` is part of `EntityId`, already there — this item makes the
 *registry* side consistent with it).
 
 **Exit criteria**: two applications registering a same-named event type
-with different shapes/claims/`ChangeKind` don't collide; a caller
-scoped to one `AppId` cannot resolve or read another's schema.
+with different shapes/claims/`ChangeKind` don't collide; a caller scoped
+to one `AppId` cannot resolve or read another's schema.
 
 ## Upcast Materialization + Downcast
 
@@ -713,14 +1013,18 @@ swappable via configuration with no core-engine change).
 **Depends on**: Hardening & Evolution (upcasting itself), Entity-Centric
 Core Rebuild (the fold-skip invariant needs the Entity Store to exist).
 
+**Note — no dedicated feature doc exists for this item** (`ADR-027`/
+`028`/`053`'s behavior has no `docs/features/*.md` file of its own);
+tracked in `TODO.md` rather than silently assumed covered.
+
 **Exit criteria**: a materialized upcast never double-applies to the
 Entity Store (a targeted regression test: fold an original, materialize
 its upcast, confirm `Version` doesn't bump twice); a downcast request for
 a genuinely older version returns the old shape; a version with no
 `downcastToPrevious` registered fails the request rather than guessing;
-the same registered `UpcastFromPrevious` expression evaluates
-identically whether CEL or `Jsonata.Net.Native` is the configured
-engine, for a mapping both can express.
+the same registered `UpcastFromPrevious` expression evaluates identically
+whether CEL or `Jsonata.Net.Native` is the configured engine, for a
+mapping both can express.
 
 ## Streaming Channels
 
@@ -729,26 +1033,37 @@ and media), batch ingestion, tail/replay reusing `ADR-010`'s shape,
 `Derived` channels via `ChannelDerivationWorker`, playback (HTTP Range
 Requests), deep-linking (Media Fragments URI), redaction (`RedactedRange`,
 concretely per `ADR-052`: read-time, zero-fill/tone/blank-frame default,
-configurable `PartialReveal` for structured content, mandatory sideband
-existence signal), out-of-order/slow-upload detection, and the
-detector→`TelemetryPointer` bridge back into ordinary domain events.
+**reusing `PartialRevealMaskingStrategy` directly** for configurable
+structured-content redaction rather than a bespoke mechanism — a real,
+non-transitive dependency this pass found and added below — plus a
+mandatory sideband existence signal), out-of-order/slow-upload detection,
+and the detector→`TelemetryPointer` bridge back into ordinary domain
+events.
 
 **Depends on**: Auth + Orchestration (new `telemetry:ingest`/
 `telemetry:read` scopes), Entity-Centric Core Rebuild (a detector's
-published event needs `EntityId`/fold to exist meaningfully).
+published event needs `EntityId`/fold to exist meaningfully), and
+**Property-Level Masking** (`ADR-052`'s `RedactedRange` reuses
+`PartialRevealMaskingStrategy` — the strategy has to exist first).
 
 **Extended by `ADR-081`**: `TelemetryChannel.ThreadId` groups multiple
 simultaneous channels under one session (e.g. a multi-electrode montage);
 `TelemetryPointer` generalizes from a single object to a list, for a
 detection spanning several channels at once. Build alongside the base
-scope above, not as a later pass — the field shapes are already revised
-in `docs/data/streaming-and-attachments.md`.
+scope above, not as a later pass.
 
 **Extended by `ADR-090`**: no new mechanism, but this item's `OriginId`/
 `SequenceNumber` fields (surfaced in the publish response once "Sharding
 & Replication" lands) are what a caller uses to achieve read-your-writes
 across the multi-site mesh — documented as an existing-mechanism
 capability, not built as a new one.
+
+**Note — a real feature-doc gap, not a build-plan error**:
+[`features/streaming-channels.md`](features/streaming-channels.md) does
+not currently contain scenarios exercising `ThreadId`-grouped multi-
+channel sessions or `RedactedRange` substitution behavior specifically,
+despite this item's own exit criteria below citing both; tracked in
+`TODO.md`.
 
 **Exit criteria**: a batch of samples ingests without touching schema
 validation/hash-chain/fold at all; a detector publishing an event with a
@@ -770,50 +1085,73 @@ hash), GraphQL browsing of an entity's linked attachments, and `GET`
 retrieval with HTTP Range-request support.
 
 **Depends on**: Auth + Orchestration (new `attachments:read`/
-`attachments:ingest` scopes).
+`attachments:ingest` scopes) and, added this pass, **Entity-Centric Core
+Rebuild** — an `AttachmentRef` is an `EntityId`-scoped concept from
+`ADR-032`'s own text, not something retrofitted onto entities later.
+
+**Note — a real scope/ordering gap, not a build-plan error**: this
+item's own "GraphQL browsing of an entity's linked attachments" exit
+criterion has an undeclared forward dependency on "GraphQL-Only Query
+Layer," which is sequenced *after* this item — GraphQL doesn't exist yet
+when this item lands. The upload/retrieval-by-content-hash half is fully
+testable here; the GraphQL-browse half genuinely can't be exercised until
+that later item lands. Tracked in `TODO.md` rather than silently claimed
+as already testable.
 
 **Exit criteria**: uploading identical bytes twice deduplicates (one
-stored object, two `AttachmentRef` rows); a GraphQL query against an
-entity lists its linked attachments (`contentHash`, `filename`,
-`mimeType`, `sizeBytes`); a `GET` against a content-addressed attachment
-URL with a `Range` header returns `206 Partial Content` for exactly the
-requested byte range.
+stored object, two `AttachmentRef` rows); a `GET` against a
+content-addressed attachment URL with a `Range` header returns `206
+Partial Content` for exactly the requested byte range. The GraphQL-
+browse scenario (`contentHash`/`filename`/`mimeType`/`sizeBytes` listing)
+is deferred to be re-verified once "GraphQL-Only Query Layer" lands, per
+the note above.
 
 ## Sharding & Replication
 
-**Scope**: `ADR-034` (shard by `EntityType`), `ADR-033` (gossip
-topology, minimum 2-replica/regional-fault-tolerance requirement,
-`OriginId`/`LogicalClock`, the fault/abend/restart-tolerant peer-sync
-outbox/inbox, Merkle-tree catch-up), and `ADR-051` (peer discovery via
-explicit static `SeedPeers` configuration, not any form of automatic
-discovery) — see `docs/comparisons/sharding-strategy.md`/
-`peer-sync-topology.md`/`peer-discovery.md` for why each won.
+**Scope**: `ADR-034` (shard by `EntityType`), `ADR-033` (gossip topology,
+minimum 2-replica/regional-fault-tolerance requirement, `OriginId`/
+`LogicalClock`, the fault/abend/restart-tolerant peer-sync outbox/inbox,
+Merkle-tree catch-up), and `ADR-051` (peer discovery via explicit static
+`SeedPeers` configuration, not any form of automatic discovery).
 
-**Depends on**: Entity-Centric Core Rebuild (there must be an Entity Store
-to shard/replicate).
+**Depends on**: Entity-Centric Core Rebuild (there must be an Entity
+Store to shard/replicate).
+
+**Note — the same forward-ordering gap as Binary Attachments above**:
+this item's "a sharded cross-`EntityType` query fans out and merges
+correctly" exit criterion also has an undeclared forward dependency on
+"GraphQL-Only Query Layer" (cross-shard fan-out is a GraphQL resolver
+concern in this design, not a bare SQL one) — testable in full only once
+that later item lands. Tracked in `TODO.md`.
 
 **Exit criteria**: killing one site mid-write doesn't lose the write (it's
 in that site's durable outbox, replayed once the site restarts); two
 sites disconnected and independently written to converge, with any
 genuine conflict flagged (`ADR-024`, reused) not silently dropped; a
-sharded cross-`EntityType` query fans out and merges correctly; a
 newly-deployed peer with no prior configuration beyond its own
 `SeedPeers` list successfully gossips with the mesh via its first
-reachable seed.
+reachable seed; the cross-shard fan-out scenario is re-verified once
+"GraphQL-Only Query Layer" lands, per the note above.
 
 ## Non-Authoritative Capture
 
 **Scope**: `ADR-035` (`AuthorityStatus`, `authorityDecision` events,
 `RejectionBehavior` — annotate-only default per
 `docs/comparisons/authority-rejection-behavior.md`), `ADR-036`
-(DID/UCAN self-attestation, server-side OAuth Token Exchange, RFC 8693),
-and `ADR-042` (the gated authoritative fold + `LiveEntityStoreRow` —
-revises `ADR-035`'s original "folds identically" framing).
+(DID/UCAN self-attestation, server-side OAuth Token Exchange, RFC 8693 —
+per [`did-ucan-attestation.md`](patterns/did-ucan-attestation.md), a
+self-attestation's `delegation_chain_ref` may point at supporting
+material carried as a `AttachmentRef`, a real, non-transitive dependency
+this pass found and added below), and `ADR-042` (the gated authoritative
+fold + `LiveEntityStoreRow` — revises `ADR-035`'s original "folds
+identically" framing).
 
 **Depends on**: Entity-Centric Core Rebuild (the trust axis rides on
 `StoredEvent`, already extended there for other reasons), Auth +
 Orchestration (auth/token issuance infrastructure to extend for token
-exchange).
+exchange), and **Binary Attachments** — `ADR-036`'s `delegation_chain_ref`
+carries supporting material as an `AttachmentRef`, which doesn't exist
+before that item.
 
 **Exit criteria**: [`features/non-authoritative-capture.md`](features/non-authoritative-capture.md)
 passes on all its scenarios — an event submitted with a self-attested
@@ -843,17 +1181,25 @@ JSONata interchangeable behind `IUpcastExpressionEvaluator`); per-`AppId`
 schema composition (`ADR-030`); mandatory depth/cost limiting and
 DataLoader batching.
 
-**Depends on**: Entity-Centric Core Rebuild (GraphQL reads from the Entity
-Store, assumed to already exist).
+**Depends on**: Entity-Centric Core Rebuild (GraphQL reads from the
+Entity Store, assumed to already exist), Multi-Tenancy (`ADR-037`'s
+per-`AppId` schema composition needs Multi-Tenancy's `AppId`-scoped
+registry to exist — a real edge this pass found missing, not merely a
+scheduling convenience), and **Hardening & Evolution** — the upcast
+mechanism this item moves onto GraphQL SDL directives is that item's own
+`UpcastChain`, another real dependency this pass added. Upcast
+Materialization + Downcast is cited in this item's own text but confirmed
+**documentation-only** — nothing in `ADR-037`'s Decision text requires
+materialization/downcast to exist first, so it is deliberately not listed
+as a hard dependency here.
 
 **Exit criteria**: every scenario the earlier Lineage/Follow/Filter-
 Pushdown items wrote for OData `$filter`/traversal/registry listing now
-passes against the GraphQL Gateway instead (a real rewrite of existing
-scenarios — done this session, see `docs/changes/2026-08-01.md`'s
-`docs/features/*.md` sweep); a query containing PII-like content in its
-arguments never appears in access logs (confirms the `QUERY`-not-`GET`
-requirement actually holds); a deliberately deep/expensive query is
-rejected by the depth/cost limiter rather than executing.
+passes against the GraphQL Gateway instead; a query containing PII-like
+content in its arguments never appears in access logs (confirms the
+`QUERY`-not-`GET` requirement actually holds); a deliberately deep/
+expensive query is rejected by the depth/cost limiter rather than
+executing.
 
 ## Compatibility & Deployment Discipline
 
@@ -864,6 +1210,15 @@ rollback.
 
 **Depends on**: GraphQL-Only Query Layer (needs the final GraphQL schema
 shape to state compatibility rules against).
+
+**Note — most of this item's own decision is untested beyond the
+rollback drill**: `ADR-038` decides four distinct things (enum fallback,
+capability negotiation, Expand/Contract discipline, the rollback window
+itself); the exit criterion below exercises only the last one. Tracked in
+`TODO.md` — a real implementation would need scenarios for an unknown
+enum value falling back safely, a client negotiating capabilities against
+a server's version-discovery endpoint, and an Expand/Contract migration
+sequence, none of which currently has a home in any feature doc.
 
 **Exit criteria**: a rollback drill — deploy a schema version, publish an
 event tagged with it, roll back to a deployment that doesn't know that
@@ -878,10 +1233,18 @@ layering, the client-local durable outbox (same fault-tolerance bar as
 "Sharding & Replication"'s peer-sync outbox), HTML+JS entity view
 definitions, the native/JS bridge, offline-first caching.
 
-**Depends on**: CQRS Read-Model Projections (custom projections — a
-client is exactly the kind of consumer `ADR-015` already designed for),
-Multi-Tenancy (a client is scoped to one `AppId`), Streaming Channels/
-Binary Attachments (streaming/attachment rendering in entity views).
+**Depends on**: Multi-Tenancy (a client is scoped to one `AppId`) and,
+corrected this pass, **Sharding & Replication** — the single most
+load-bearing dependency this item had been missing entirely: the
+client's offline-first outbox/sync model assumes `ADR-090`'s
+read-your-writes guarantee across a multi-site mesh already exists.
+**CQRS Read-Model Projections, Streaming Channels, and Binary
+Attachments are removed from this item's dependency list** on
+re-derivation — none is named anywhere in `ADR-039`'s own Context/
+Decision text as something the client's build is gated on; rendering a
+streaming channel or an attachment inside a specific entity view is that
+view definition's own later concern, not a prerequisite for the client
+shell to exist.
 
 **Exit criteria**: a command dispatched while offline queues durably and
 applies once connectivity resumes with no duplicate application; an
@@ -896,12 +1259,18 @@ ones.
 8693, reusing "Non-Authoritative Capture"'s exchange infrastructure with a
 new `requested_token_type`), client-side HMAC signing, resolution via an
 RFC 7662-shaped introspection call extended with the signature
-parameter, single-use/short-lived ticket consumption.
+parameter, single-use/short-lived ticket consumption. The shared secret
+used for the HMAC step is either the caller's already-registered OAuth2
+`client_secret` (DevIdp-side state, outside `EventStoreContext`) or a
+caller-generated, never-persisted `one_time_secret` — no new persisted
+entity, per `docs/features/ticket-exchange.md`'s own Data model section.
 
 **Depends on**: Auth + Orchestration (auth/token issuance infrastructure —
 this extends it, doesn't replace it), Streaming Channels (playback, the
 first real header-incapable caller this item serves), Binary Attachments
-(retrieval, the second).
+(retrieval, the second), and, added this pass, **Non-Authoritative
+Capture** — ticket issuance reuses that item's OAuth Token Exchange
+infrastructure directly, not merely something built alongside it.
 
 **Exit criteria**: a `<video src>`-style URL carrying only a ticket +
 signature (never a raw bearer token) successfully streams content; the
@@ -930,15 +1299,22 @@ here), Multi-Tenancy (`AppTrustRoot` is `AppId`-scoped), Hardening &
 Evolution (`AccessLog`'s hash chain reuses `ADR-019`'s primitive, built
 there).
 
-**Revised by `ADR-067`** ("Control-Plane Reserved Events" below): `Role`/
-`UserPermission` were originally built here as plain CRUD-backed tables.
-Once that later item lands, `RoleGranted`/`RoleRevoked`/
-`PermissionGranted` become reserved event types in the same Event Log, and
-`Role`/`UserPermission` become folded read models over them instead — the
-exit criteria below are unaffected (the externally-observable behavior is
-identical), only the internal storage mechanism changes. Not rebuilt here
-in anticipation of that later revision — built the simple way first,
-revised once the later item's own reasoning exists to justify it.
+**Revised by `ADR-067`** ("Control-Plane Actions as Reserved Events"
+below): `Role`/`UserPermission` were originally built here as plain
+CRUD-backed tables. Once that later item lands, `RoleGranted`/
+`RoleRevoked`/`PermissionGranted` become reserved event types in the same
+Event Log, and `Role`/`UserPermission` become folded read models over
+them instead — the exit criteria below are unaffected (the externally-
+observable behavior is identical), only the internal storage mechanism
+changes. Not rebuilt here in anticipation of that later revision — built
+the simple way first, revised once the later item's own reasoning exists
+to justify it.
+
+**Note — exit criteria below were tightened this pass**: `ADR-046`/`047`
+each name a specific, previously-uncited scenario (an additive-only
+direct user permission surviving a role change; a federated IdP's claim
+successfully augmenting a token via Token Exchange) that a prior draft
+of this item's exit criteria omitted — both added below.
 
 **Exit criteria**: a user holding a claim can delegate a subset of it,
 scoped to one specific `EntityId` and an expiration, to a named grantee;
@@ -949,11 +1325,15 @@ rooted in a DID that isn't a registered `AppTrustRoot` for the target
 `AppId` is rejected; a UCAN rooted in a registered `AppTrustRoot` is
 accepted for that `AppId`'s own custom permission strings with no
 central-IdP-side pre-registration of those strings; every read through
-any surface (GraphQL, attachment retrieval, streaming playback, ticket-authenticated
-access) writes an `AccessLogEntry` recording `ReaderActorId` and
-whether `ReaderTrustBasis` is `Authoritative` or `Attested`; tampering
-with a past `AccessLog` entry is detectable by replaying its
-independent hash chain.
+any surface (GraphQL, attachment retrieval, streaming playback, ticket-
+authenticated access) writes an `AccessLogEntry` recording `ReaderActorId`
+and whether `ReaderTrustBasis` is `Authoritative` or `Attested`; tampering
+with a past `AccessLog` entry is detectable by replaying its independent
+hash chain; a direct, additive-only user permission survives an unrelated
+change to that user's role assignment (`ADR-046`); a token augmented with
+a claim sourced from a federated/external IdP via Token Exchange passes a
+`RequiredReadClaim` check exactly as if the claim had come from the
+primary IdP (`ADR-047`).
 
 ## SPIFFE/SPIRE Service Identity & API Gateway
 
@@ -966,7 +1346,12 @@ service via SPIFFE-authenticated internal calls.
 
 **Depends on**: Auth + Orchestration (this composes with, not replaces,
 `ADR-006`'s external-facing OAuth2), Sharding & Replication (this is
-specifically `ADR-033`'s peer-sync auth mechanism).
+specifically `ADR-033`'s peer-sync auth mechanism), and, added this pass,
+**GraphQL-Only Query Layer, Streaming Channels, Binary Attachments, and
+Ticket Exchange** — `ADR-049`'s own text names every one of these as a
+surface the Gateway fronts, so each has to exist before this item's own
+"every surface reaches through one gateway address" exit criterion can
+actually be exercised against it.
 
 **Exit criteria**: an internal service call between two of this
 framework's own components is mTLS-authenticated via SPIFFE workload
@@ -1000,10 +1385,12 @@ rebuildable stores explicitly, rather than leaving it implicit.
 
 **Depends on**: Scaffolding & Persistence (the classification exists in
 principle from day one; its coverage of specific stores grows accurate as
-Streaming Channels, Binary Attachments, and Delegated Grants/RBAC/Read
-Audit Logging each land — this item's exit criteria should be re-checked
-against the classification table each time one of those lands, not just
-once).
+Streaming Channels, Binary Attachments, Delegated Grants/RBAC/Read Audit
+Logging, and **GDPR/CCPA Erasure via Crypto-Shredding** — added this
+pass to the re-check-triggers list, since a `IErasureKeyStore` backend
+itself becomes a store this classification needs to account for — each
+land; this item's exit criteria should be re-checked against the
+classification table each time one of those lands, not just once).
 
 **Exit criteria**: the authoritative/rebuildable classification table in
 `06-solution-structure.md`'s "Data lifecycle" section matches the actual
@@ -1014,322 +1401,553 @@ rebuildable stores reconstruct identically to the pre-backup state.
 
 ## GDPR/CCPA Erasure via Crypto-Shredding
 
-**Scope**: `ADR-057` — per-`(AppId, EntityId)` Data-Encryption Keys (DEKs)
-wrapping every `x-masking`-classified field, generated on first classified
-publish for that entity; the pluggable `IErasureKeyStore` seam (cloud —
-Azure Key Vault/AWS KMS/Google Cloud KMS; on-prem/self-hosted — HashiCorp
-Vault; local — an encrypted file/DB-backed store for dev), multiple
-backends registered and active simultaneously, selected per `AppId`; the
-new `erasureScope` `x-masking` field (JSON Pointer to the owning entity
-when it differs from the event's own); the `oneOf` wrapper's third
-`{"erased": true}` branch, distinct from `{"masked": ...}`; the reserved
-`EntityErasureRequested` event, and irreversible key destruction via the
-configured `IErasureKeyStore`'s own primitive.
+**Scope**: `ADR-057` (revises `ADR-009`'s original no-erasure stance) —
+per-`(AppId, EntityId)` Data-Encryption Keys (DEKs) wrapping every
+`x-masking`-classified field, generated the first time a classified field
+is published for that entity; encryption happens after
+`SchemaValidationService` validates the plaintext and before the payload
+is written to `StoredEvent.Payload` and hashed, so `ADR-019`'s hash chain
+is completely unaffected. The pluggable `IErasureKeyStore` seam (same
+Strategy/keyed-DI shape as `IMaskingStrategy`/`ADR-052`'s
+`IStreamRedactionStrategy`) supports **multiple backends registered and
+active simultaneously in one deployment**, selected per `AppId` (or
+finer): cloud (Azure Key Vault, AWS KMS, Google Cloud KMS), on-prem/
+self-hosted (HashiCorp Vault), local (an encrypted file/DB-backed store
+for dev). A new optional `x-masking` field, `erasureScope` (JSON Pointer
+to another payload property naming the owning `EntityId`, defaulting to
+the event's own `EntityId`), covers the case where classified data
+belongs to a different entity than the event's own. The `oneOf` wrapper
+gains a third branch, `{"erased": true}`, deliberately distinct from
+`{"masked": ...}` — shown even to a caller who holds the claim, since
+erasure is a permanent, unconditional fact, not a permission gap.
+Erasure itself is an event, not a side effect: requesting erasure for an
+`EntityId` publishes a reserved `EntityErasureRequested` `StoredEvent`
+(hash-chained like everything else), then destroys that entity's DEK via
+the configured `IErasureKeyStore`'s own irreversible primitive.
 
-**Depends on**: Property-Level Masking (this item revises its `oneOf`
-wrapper and reuses its claim-check-then-reveal read path), Entity-Centric
-Core Rebuild (erasure is scoped to `EntityId`).
+**Depends on**: Property-Level Masking (`ADR-009`/`ADR-050`) — this item
+reuses its `x-masking.regulatoryClassification`-carrying fields wholesale
+and revises its `oneOf` wrapper and claim-check-then-reveal read path
+(`IPayloadMasker` gains a decrypt step after the existing claim check
+passes) — and Entity-Centric Core Rebuild (`ADR-021`) — erasure is
+explicitly scoped to `EntityId`.
 
-**Exit criteria**: publishing a classified field encrypts it at rest
-(`Payload` on disk is ciphertext for that field, verified by direct
-database inspection in a test); a caller holding the field's claim still
-sees `{"value": <real value>}` (decrypted transparently); requesting
-erasure for an `EntityId` publishes `EntityErasureRequested`, destroys
-that entity's DEK, and every subsequent read of a previously-classified
-field on that entity returns `{"erased": true}` **even for a caller who
-holds every relevant claim**; `ADR-019`'s hash chain verifies clean across
-an erasure (chain values were computed over ciphertext originally and are
-never retroactively touched); a field with `erasureScope` pointing at a
-different `EntityId` is erased when *that* entity is erased, not the
-event's own; two tenants configured with different `IErasureKeyStore`
-backends (e.g. one on HashiCorp Vault, one on the local store) both work
-correctly in the same running deployment.
+**Exit criteria**: publishing a classified field encrypts it at rest —
+`Payload` on disk is ciphertext for that field, verified by direct
+database inspection; a caller holding the field's claim sees
+`{"value": <real value>}`, decrypted transparently, while a caller who
+both holds the claim *and* whose entity's key has since been destroyed
+instead sees `{"erased": true}` unconditionally; requesting erasure for
+an `EntityId` publishes `EntityErasureRequested` and destroys that
+entity's DEK, and every subsequent read of a previously-classified field
+on that entity returns `{"erased": true}`; `ADR-019`'s hash chain
+verifies clean across an erasure (chain values were computed over
+ciphertext originally, never retroactively touched); a field with
+`erasureScope` pointing at a different `EntityId` is erased when *that*
+entity is erased, not the event's own; two tenants configured with
+different `IErasureKeyStore` backends (e.g. one on HashiCorp Vault, one
+on the local store) both work correctly in the same running deployment.
 
 ## PCI-DSS Sensitive Authentication Data Registration Boundary
 
 **Scope**: `ADR-071` — a reserved `x-masking.regulatoryClassification`
-value, `"PCI-SAD"`, that makes schema *registration* (not publish) hard-
-reject an event type outright (`400`) if declared on a field. Scoped
+value, `"PCI-SAD"`, that makes schema **registration** (not publish) hard-
+reject the event type outright (`400`) if declared on any field. Scoped
 narrowly to what PCI-DSS Requirement 3.2/3.2.2 singles out for absolute
-non-persistence (CVV2/CVC2/CID, full track/magnetic-stripe data, PIN
-blocks) — full PAN is not SAD and is already fully covered by ordinary
-masking/erasure, unaffected by this item.
+non-persistence after authorization, under any circumstances, including
+encrypted: CVV2/CVC2/CID, full magnetic-stripe/track data, and PIN
+blocks. Neither masking nor crypto-shredding can satisfy PCI-DSS here,
+because both still write the real plaintext value into `Payload` before
+protecting it, and PCI-DSS requires the value never be persisted at all —
+registration is the one place in this design that still enforces
+reject-on-invalid after `ADR-023`, extending the existing, narrower
+registration-time rejection surface rather than adding any new exception
+to the publish path. Full PAN (the card number) is explicitly **not**
+SAD and is already fully covered by ordinary `"PCI"` classification
+(masking + `ADR-057` erasure), unaffected by this item.
 
 **Depends on**: Schema Registry (registration-time validation is where
-this enforces), Property-Level Masking (extends the existing
-`regulatoryClassification` metadata vocabulary).
+this enforces) and Property-Level Masking (extends its existing
+`x-masking.regulatoryClassification` vocabulary).
 
 **Exit criteria**: registering an event type with a field declaring
 `x-masking.regulatoryClassification: "PCI-SAD"` is rejected `400` at
-`PUT /registry/{event-type}`, before the type is ever active — verified
-this is the *only* `x-masking` classification value that rejects at
-registration rather than just being recorded as metadata; a field
+`PUT /registry/{event-type}` and the type never becomes active —
+verified this is the *only* `x-masking` classification value that rejects
+at registration rather than being recorded as inert metadata; a field
 declaring the ordinary `"PCI"` classification (full PAN) registers
 successfully and is masked/erasable exactly like any other classified
-field.
+field, unaffected by this boundary.
 
 ## Local/Edge Active-Scope Caching & Erasure Invalidation
 
 **Scope**: `ADR-065` — a local/edge client (MVVM Client) subscribes with
 an explicit scope filter (the same `FilterableFields`-backed GraphQL
-Subscription argument shape every other consumer already uses) rather
-than caching a tenant's full history; the local cache holds decrypted,
-reviewable plaintext for genuine offline review, a stated trade-off
-bounded by keeping the *scope* narrow; falling out of scope (closed,
-completed, reassigned) proactively evicts the local copy; receiving an
+Subscription argument shape every other consumer already uses) instead
+of caching a tenant's full history — a client, not a fourth replication
+site (distinct from `ADR-033`/`ADR-061`'s server-side multi-site
+gossip-mesh topology). The local cache holds **decrypted, reviewable
+plaintext**, not ciphertext only — a stated, deliberate trade-off,
+bounded by keeping the *scope* narrow rather than by avoiding local
+plaintext. Falling out of scope (closed, completed, reassigned)
+proactively evicts the local copy — the subscription's own filter *is*
+the retention policy, not a TTL. Receiving `ADR-057`'s
 `EntityErasureRequested` event for a subscribed entity is a mandatory,
-immediate local purge instruction, not just the next scope-eviction cycle.
+immediate local purge, not deferred to the next scope-eviction cycle —
+the specific gap crypto-shredding's server-side key destruction alone
+can't close: a device that already decrypted and cached plaintext holds
+a copy independent of the destroyed key. Named, honest limitation: a
+device offline at the moment erasure fires won't purge until it
+reconnects and receives the event.
 
 **Depends on**: MVVM Client (the local cache this item scopes and
-invalidates), GDPR/CCPA Erasure via Crypto-Shredding (the event this item
-reacts to).
+invalidates is a construct built there) and GDPR/CCPA Erasure via
+Crypto-Shredding (the event this item's purge rule reacts to doesn't
+exist without it) — a structural, not merely sequencing, dependency:
+this item reuses `ADR-039`'s cache/subscription machinery verbatim and
+adds no new sync protocol or replication tier of its own.
 
 **Exit criteria**: a client's local cache contains only entities matching
 its subscription's active-scope filter, verified by inspecting local
-storage directly in a test; an entity falling out of scope is purged from
-local storage without waiting for any unrelated TTL; a client subscribed
-to an entity that then receives `EntityErasureRequested` for it purges the
-local copy immediately upon receiving that event, verified distinctly from
-the scope-eviction path; a client that is offline at the moment erasure
-fires still purges correctly once it reconnects and receives the event (no
-special-cased "already offline" exemption).
+storage directly; an entity falling out of scope is purged from local
+storage without waiting for any unrelated TTL; a client subscribed to an
+entity that then receives `EntityErasureRequested` for it purges the
+local copy immediately upon receiving that event, verified distinctly
+from the scope-eviction path; a client that is offline at the moment
+erasure fires still purges correctly once it reconnects and receives the
+event, with no special-cased "already offline" exemption asserted
+anywhere.
 
 ## Digital Sign-Off for Regulated Actions (Step-Up Authentication)
 
-**Scope**: `ADR-066` — an optional `EventTypeDefinition.RequiredSignature`
-(`{ AcrValues, MaxAge }`); publish-time enforcement via RFC 9470's
-step-up challenge (`WWW-Authenticate` naming the required `acr_values`/
-`max_age` instead of accepting the publish) when the caller's token
-doesn't meet it; a new envelope `Signature` field (`{ SignerId, SignedAt,
-Meaning, Acr }`, `Meaning` required, rejected if absent) on the resulting
-`StoredEvent`, exempt from crypto-shredding by deliberate legal reasoning
-(GDPR Art. 17(3)(b)/(e)).
+**Scope**: `ADR-066` — resolves the framework-vs-domain-level fork
+`docs/10-open-questions.md` tracked for electronic signatures, decided in
+favor of the framework level. An optional `EventTypeDefinition.
+RequiredSignature` (`{ AcrValues: [...], MaxAge: <seconds> }`), registered
+per event type the same way `RequiredClaims` already is. Publish-time
+enforcement is **RFC 9470's** OAuth2 step-up-authentication challenge
+protocol: if the caller's current token's `acr` claim doesn't meet the
+configured `AcrValues`, or isn't recent enough for `MaxAge`, the Inbox
+responds with RFC 9470's `WWW-Authenticate` challenge instead of
+accepting the publish — the framework never implements the actual
+step-up verification itself, that stays the IdP's job. A new envelope
+field, `Signature` (`{ SignerId, SignedAt, Meaning, Acr }`), lands on the
+resulting `StoredEvent` when `RequiredSignature` is satisfied; `Meaning`
+is required and rejected if absent — satisfying 21 CFR Part 11 §11.50's
+three linked elements. Non-repudiation reuses the existing hash chain
+with no new primitive. `SignerId`/`Signature` are a **deliberate,
+reasoned exemption** from `ADR-057`'s crypto-shredding erasure, grounded
+in GDPR Art. 17(3)(b)/(e).
 
 **Depends on**: Auth + Orchestration (this extends the existing OAuth2/
-OIDC stack — the framework never implements the actual step-up
-verification itself, that's the IdP's job), ActorId on Every Event
-(`SignerId` denormalizes `ActorId`).
+OIDC stack directly) and ActorId on Every Event (`SignerId` is explicitly
+a denormalized copy of `ActorId`).
 
 **Exit criteria**: a publish targeting a `RequiredSignature`-configured
 event type, from a caller whose token doesn't meet the configured
 `acr_values`/`max_age`, is rejected with RFC 9470's challenge rather than
-accepted — the one new legitimately-rejectable case since the
-persist-everything posture, distinguishable from the always-accepted
-data-shape case; retrying with a token that does meet the requirement
-succeeds and the resulting `StoredEvent` carries a complete `Signature`
-(all four fields populated, `Meaning` non-empty); an attempt to erase the
-entity that owns a signed event does not erase `SignerId`/`Signature`,
-verified explicitly as a distinct assertion from the ordinary erasure
-scenarios in "GDPR/CCPA Erasure via Crypto-Shredding".
+accepted, and no event is persisted for that attempt; a publish that
+meets the step-up requirement but omits `Meaning` is rejected `400` as an
+incomplete envelope, never persisted with an advisory flag; retrying with
+a token that does meet the requirement and a populated `Meaning` succeeds
+and the resulting `StoredEvent` carries a complete `Signature` (all four
+fields populated); altering a single byte of a stored `Signature.Meaning`
+is detected by ordinary chain-hash replay verification, no separate
+mechanism; an erasure request against an entity owning a signed event
+does not erase `SignerId`/`Signature`, verified as a distinct assertion
+from "GDPR/CCPA Erasure via Crypto-Shredding"'s own erasure scenarios.
 
 ## Control-Plane Actions as Reserved Events
 
-**Scope**: `ADR-067` — every control-plane mutation (`SchemaRegistered`,
+**Scope**: `ADR-067` — resolves the `docs/10-open-questions.md` fork over
+whether control-plane/administrative actions (schema registration, RBAC
+role/permission grants, `AppTrustRoot` registration) get the same audit
+rigor as ordinary business events. Decided: **yes**, by modeling them as
+ordinary, reserved event types in the *same* Event Log — `SchemaRegistered`,
 `RoleGranted`/`RoleRevoked`/`PermissionGranted`, `AppTrustRootRegistered`,
-and any future administrative mutation) publishes as a reserved,
-platform-level event in the same Event Log, same `StoredEvent` shape,
-same hash chain, capturing `ActorId` and optionally a `Signature` — no new
-store, no new tamper-evidence primitive. The existing CRUD-shaped tables
-(`EventTypeDefinition`, `AppTrustRoot`, RBAC's `Role`/`UserPermission`)
-become current-state read models folded from these events, the same
-write/read split the Entity Store already demonstrates for tenant
-business data.
+and any future administrative mutation. Reserved the same way `ADR-020`'s
+`EventUpcastFailed` already is — no new reservation mechanism. Same
+`StoredEvent` shape, same hash chain; these events carry `ActorId` and
+can optionally carry a `Signature` where a specific control-plane action
+is configured to require sign-off. The existing `EntityId` convention
+applies unchanged. The existing CRUD-shaped tables (`EventTypeDefinition`,
+`AppTrustRoot`, RBAC's `Role`/`UserPermission`) become current-state read
+models **folded from these events**, the same write/read split
+`EntityStoreRow` already demonstrates. Linkable via the existing
+`parentEventIds` lineage mechanism where a genuine causal relationship
+exists — not a blanket requirement. Explicitly and deliberately **not**
+`ADR-045`'s separate-`AccessLog` shape: reads vastly outnumber writes and
+a read causes nothing worth linking, whereas control-plane mutations are
+writes, structurally identical in shape/volume to ordinary business
+events.
 
-**Depends on**: Schema Registry (the first control-plane mutation this
-item reserves an event for), Entity-Centric Core Rebuild (the existing
-`EntityId` convention this item reuses unchanged for control-plane rows).
+**Depends on**: Schema Registry (`SchemaRegistered` is explicitly the
+first control-plane mutation this item reserves an event for) and
+Entity-Centric Core Rebuild (the existing `EntityId` convention this item
+reuses unchanged for control-plane rows). This item **revises** "Delegated
+Grants, RBAC & Read Audit Logging"'s own storage mechanism — see that
+item's own entry above for the forward-pointing note.
 
-**Exit criteria**: registering a schema, granting a role, and registering
-an `AppTrustRoot` each publish a corresponding reserved event visible
-through the ordinary Lineage API, hash-chained alongside business events;
-a business event published under a specific RBAC grant can name that
-grant's reserved event as a parent, and the Lineage API traces the causal
-link; `EventTypeDefinition`/`AppTrustRoot`/`Role`/`UserPermission` reads
-are served from folded read models that reconstruct identically via a
-full replay from `SequenceNumber 0`, the same rebuild guarantee the Entity
-Store already provides.
+**Note — exit criteria narrowed this pass, a real gap found, not glossed
+over**: a targeted search of every file under `docs/features/` found
+**no Gherkin scenario anywhere** exercising `RoleGranted`/`RoleRevoked`/
+`PermissionGranted`/`AppTrustRootRegistered` publication or replay-rebuild
+— only `auth.md`'s prose describing the fold relationship, and
+`schema-registry.md`'s scenario for `SchemaRegistered` specifically.
+Narrowed the exit criteria below to what's actually proven and tracked
+the gap in `TODO.md` rather than citing untested behavior as already
+backed.
+
+**Exit criteria**: registering a schema publishes a traceable, hash-
+chained `SchemaRegistered` reserved event visible through the ordinary
+Lineage API (confirmed by an existing scenario in
+[`features/schema-registry.md`](features/schema-registry.md)); a business
+event published under a specific RBAC grant can name that grant's
+reserved event as a parent and the Lineage API traces the causal link;
+`EventTypeDefinition`/`AppTrustRoot`/`Role`/`UserPermission` reads are
+served from folded read models that reconstruct identically via a full
+replay from `SequenceNumber 0`. Granting a role and registering an
+`AppTrustRoot` publishing their own corresponding reserved events is
+part of this item's decision but **not yet backed by any Gherkin
+scenario** — see the note above and `TODO.md`.
 
 ## Dynamic Feature-Flag Configuration Provider
 
-**Scope**: `ADR-077` — instant feature-flag toggles via a chained,
-reload-token-based `IConfigurationProvider`; flag state as a reserved
-Event Log event (per Control-Plane Actions as Reserved Events' pattern),
-polled every few seconds, `AppId`-scoped.
+**Scope**: `ADR-077` — a chained, `GetReloadToken()`-based
+`IConfigurationProvider` (`EventLogFeatureFlagConfigurationProvider`) that
+polls a folded `FeatureFlagState` table every few seconds (default,
+configurable) and fires a reload token when a value it's watching
+changes, so `IOptionsMonitor<T>`/a fresh `IConfiguration` read/
+`IOptionsSnapshot<T>` sees the new value with no restart or redeploy.
+Flag state is captured as a reserved `FeatureFlagSet` event, reusing
+Control-Plane Actions as Reserved Events' pattern exactly — not a new,
+unaudited admin table. Flags are `AppId`-scoped per `ADR-075`'s silo
+model. No push infrastructure (no Postgres `LISTEN`/`NOTIFY`) — polling
+only, to stay provider-portable. `ADR-077` explicitly resolves what
+looked like a three-way contradiction (`ADR-038`'s "disabled instantly,"
+`ADR-041`'s "configuration stays `Microsoft.Extensions.Configuration`,"
+`ADR-058`'s open config-source question) by showing the premise was
+wrong, not the ADRs.
 
-**Depends on**: Control-Plane Actions as Reserved Events (flag state is a
-reserved event, not a new storage mechanism), Scaffolding & Persistence
-(the configuration system this chains into).
+**Depends on**: Control-Plane Actions as Reserved Events (flag state
+reuses that item's reserved-event/folded-read-model mechanism verbatim)
+and Scaffolding & Persistence (the `Microsoft.Extensions.Configuration`
+provider-chaining pipeline this plugs into).
 
-**Exit criteria**: toggling a feature flag takes effect across a running
-deployment within the poll interval, with no restart/redeploy; two
-`AppId`s with different flag states for the same flag name behave
-independently in the same running instance; `ADR-041`'s explicit-
-composition and `ADR-058`'s per-tenant rate-limit-value posture are both
-confirmed unaffected (flags are a configuration *value*, not a runtime
-plugin-discovery mechanism).
+**Exit criteria**: toggling a flag for one `AppId` is observable at that
+`AppId`'s running instance(s) within one poll interval, with no process
+restart and no redeployment; a poll that observes no changed row fires no
+reload token and no consumer sees a change notification; two `AppId`s
+hold independently different values for a flag of the identical name
+with zero cross-tenant interaction; the resulting `FeatureFlagSet` event
+is hash-chained into the same Event Log as any business event and
+carries the `ActorId` of the operator who made the change, queryable
+through the ordinary Lineage API — not a side-channel audit table;
+toggling a flag never changes which adapters/plugins are loaded
+(`ADR-041`'s explicit-composition rule is unaffected) and static
+configuration (e.g. a connection string) stays sourced from its static
+provider throughout.
 
 ## Leader Election via Database-Backed Lease
 
-**Scope**: `ADR-078` — a single-active-worker lease per worker role
-(Router, `UpcastMaterializer`, each outbox pump), backed by the existing
-trusted per-site database, not a quorum system (etcd/ZooKeeper).
+**Scope**: `ADR-078` — single-active-worker leader election via a
+database-backed lease **row per worker role**, not one shared lease
+across roles: `Router`/fold step, `UpcastMaterializer`, the peer-sync
+outbox pump, and the webhook outbox pump are each their own role with
+their own `LeaderLease` row (`WorkerRole`, `LeaseHolderId`,
+`LeaseExpiresAt`). A holder renews inside its own expiry window; a holder
+that fails to renew loses the lease and any other instance can claim it
+next attempt. Not a quorum/consensus system (etcd/ZooKeeper/Consul) —
+deliberately rejected, since `ADR-075`'s silo model already gives each
+site exactly one trusted database to arbitrate from. **Explicitly
+clarifies `ADR-024`'s scope, not a revision of it**: `ADR-024`'s
+optimistic concurrency resolves concurrent *write-time* races between two
+API callers on the same entity version; it was never the mechanism
+protecting two fold workers from double-applying the same event stream.
+No in-flight handoff protocol is needed because every covered worker role
+is already resumable from a durable checkpoint — a new leader just
+resumes from the last checkpoint.
 
-**Depends on**: Entity-Centric Core Rebuild (Router and `UpcastMaterializer`
-exist as background services from this item on).
+**Depends on**: Entity-Centric Core Rebuild (`Router`/`UpcastMaterializer`
+exist as background services from that item on) and, added this pass,
+**Sharding & Replication** — `ADR-078` names the peer-sync outbox pump
+as one of exactly four worker roles this ADR covers, on equal footing
+with `Router`/`UpcastMaterializer`, and that pump is built there. The
+fourth named role, the webhook outbox pump, is built later ("Outbound
+Webhooks") — that item's own dependency list notes it reuses this item's
+mechanism rather than re-deriving leader election a fourth time.
 
 **Exit criteria**: running two instances of the same worker role
-simultaneously results in exactly one holding the lease and doing work at
-any time, verified by instrumented logging showing the non-leader idle; a
-lease-holder crash results in another instance acquiring the lease within
-the configured lease timeout, with no duplicate processing of the same
-work item across the handover.
+(tested across all three roles that exist at this point — `Router`,
+`UpcastMaterializer`, and the peer-sync outbox pump) simultaneously
+results in exactly one holding that role's `LeaderLease` row and actively
+doing work at any time, with the non-leader instance(s) verified idle via
+instrumented logging; a lease holder's crash results in another instance
+of the *same* role acquiring the lease within the configured lease
+timeout, resuming from that role's own durable checkpoint with no
+duplicate processing across the handover; two different worker roles hold
+and lose their leases completely independently; a test asserting that
+`ADR-024`'s `ExpectedVersion` conflict check alone (with no leader
+election running) does *not* prevent two concurrent fold-worker instances
+from double-applying the same event, demonstrating why this ADR's
+mechanism is doing independent work, not duplicating `ADR-024`.
 
 ## Per-Tenant Rate Limiting
 
-**Scope**: `ADR-058` — `AppId`-partitioned ASP.NET Core `RateLimiting`
-middleware: Token Bucket for publish (bursts allowed, sustained volume
-bounded), Concurrency Limiter for GraphQL Subscriptions/Follow-style
-long-lived connections, Sliding Window for ordinary GraphQL queries/
-OpenAPI publish bursts — enforced at the API Gateway first, since it's an
-ASP.NET Core app the middleware attaches to like any other.
+**Scope**: `ADR-058` — `AppId`-partitioned rate limiting via ASP.NET
+Core's first-party `Microsoft.AspNetCore.RateLimiting` middleware (.NET
+7+), no third-party library or bespoke token-bucket. Three algorithms
+mapped to three distinct resources: **Token Bucket** for publish
+(`Inbox`) traffic — absorbs a legitimate burst while bounding sustained
+volume; **Concurrency Limiter** for GraphQL Subscriptions/Follow-style
+long-lived connections — bounds open connection *slots*; **Sliding
+Window** for ordinary GraphQL queries and OpenAPI publish bursts — the
+general-purpose default. Enforced at the API Gateway (YARP) first, since
+YARP is itself an ordinary ASP.NET Core app this middleware attaches to
+the same way it would any pipeline. A service behind the Gateway may
+layer its own additional, resource-specific limiter only for a genuine
+reason of its own — not as a default. Limits are ordinary
+`Microsoft.Extensions.Configuration` values.
 
 **Depends on**: Auth + Orchestration (`AppId` is resolved from the
-existing tenant-scoping key), SPIFFE/SPIRE Service Identity & API Gateway
-(this is the first, primary enforcement point).
+existing tenant-scoping key) and SPIFFE/SPIRE Service Identity & API
+Gateway (the primary enforcement point — this is literally where the
+YARP Gateway this ADR enforces at gets built).
 
 **Exit criteria**: a tenant sustaining publish volume past its configured
-Token Bucket limit receives `429` with `Retry-After`, while a different
-tenant sharing the same deployment is completely unaffected (verified with
-two tenants under load in the same test); a burst within the bucket's
-capacity is never throttled; a tenant's limit is changeable via
-configuration alone, with no code deploy, confirmed by changing it
-mid-test and observing the new limit take effect.
+Token Bucket limit receives `429` with `Retry-After`, while a burst
+within the bucket's own capacity is never throttled; a tenant opening
+more concurrent GraphQL-Subscription/Follow connections than its
+Concurrency Limiter permits is rejected `429` with `Retry-After` while
+its existing open connections stay open, unaffected, and closing one
+frees a slot for a new one; a tenant exceeding its Sliding-Window query
+limit is rejected `429` with `Retry-After`; a rejected request at any of
+the three limiters never reaches the backend service behind the Gateway
+at all; one tenant exhausting any one of its three limiters never affects
+a different tenant sharing the same deployment; passing the Gateway's
+rate limiter does not exempt a GraphQL query from `ADR-037`'s separate
+depth/cost limiter — a query within its Sliding-Window budget but
+exceeding configured nesting depth is still rejected one hop later,
+demonstrating the two mechanisms are complementary, not overlapping; a
+tenant's limit is changeable via configuration alone, with no code
+deploy, confirmed by reconfiguring it mid-test and observing the new
+limit take effect immediately.
 
 ## Outbound Webhooks
 
-**Scope**: `ADR-060` — `WebhookSubscription` (target URL, signing secret,
-event/entity-type filter, a fixed claim set computed once at registration
-time); delivery via the same durable outbox/inbox primitive Sharding &
-Replication's peer-sync and MVVM Client's client outbox already use
-(`WebhookOutbox`/`WebhookDeliveryCursor`); Standard Webhooks-shaped
-signing (`webhook-id`/`webhook-timestamp`/`webhook-signature`); at-least-
-once delivery with exponential backoff + jitter; exhausted retries
-dead-letter as a reserved `WebhookDeliveryFailed` event.
+**Scope**: `ADR-060` — a `WebhookSubscription` per `AppId`: target URL, a
+signing secret, the event/entity type(s) it wants notified about, and a
+`FixedClaimsSnapshot` computed **once**, at registration time. Delivery
+reuses the same durable outbox/inbox *shape* the Inbox, peer-sync, and
+client outbox already share: a durable `WebhookOutbox` table plus a
+`WebhookDeliveryCursor { SubscriptionId, LastDeliveredSequenceNumber,
+LastAttemptAt, LastSuccessAt }` — structurally identical to
+`ADR-033`'s `PeerSyncCursor`, confirming inheritance rather than mere
+resemblance. Every enqueued payload is masked via the unchanged
+`IPayloadMasker` against the subscription's frozen `FixedClaimsSnapshot`.
+Signing follows the Standard Webhooks spec directly (`webhook-id`/
+`webhook-timestamp`/`webhook-signature`, HMAC-SHA256 over
+`{id}.{timestamp}.{payload}`). At-least-once delivery, exponential
+backoff + jitter. Exhausted retries dead-letter as a reserved
+`WebhookDeliveryFailed` event in the subscribing tenant's own Event Log.
+**Honest, stated limitation**: once a payload has left with a `2xx`, a
+later crypto-shredding erasure cannot reach an already-delivered copy,
+though a *retry* attempted after erasure correctly re-masks and carries
+`{"erased": true}`.
+
+**Revised/extended by `ADR-093`** — see "Signing Secret Rotation, Dual
+Signature" below, built as its own, later item, not here.
 
 **Depends on**: Publish API (the events a subscription matches against),
-Auth + Orchestration (a subscription's fixed claim set is computed the
-same way a Follow connection's is).
+Auth + Orchestration (the fixed-claims-snapshot computation reuses the
+same mechanism a Follow connection's claims-fixing already uses), and,
+added this pass, **Property-Level Masking** (`ADR-060`'s own text: every
+payload is masked "via `IPayloadMasker`, unchanged" — that component
+doesn't exist before that item) and **Leader Election via Database-
+Backed Lease** (the webhook outbox pump is one of exactly four
+leader-elected roles `ADR-078` names — without that item already landed,
+running more than one dispatcher instance would double-deliver).
 
-**Exit criteria**: registering a subscription and publishing a matching
-event results in a signed HTTP delivery to the target URL, with a
-signature the receiver can verify against the shared secret; killing the
-webhook dispatcher mid-delivery and restarting it resumes from the durable
-`WebhookDeliveryCursor` with no lost or duplicated delivery (the same
-fault/abend/restart-tolerance bar as every other outbox in this design); a
-payload field outside the subscription's fixed claim set is masked/erased
-in the delivered payload exactly as it would be for a live Follow
-connection with the same claims; exhausting retries publishes
-`WebhookDeliveryFailed`, queryable through the ordinary Lineage API.
+**Exit criteria**: registering a subscription freezes its
+`FixedClaimsSnapshot` once, at registration time — a claim later granted
+to (or revoked from) the registering caller never changes an existing
+subscription's snapshot; a matching event is masked against that frozen
+snapshot and enqueued into the durable `WebhookOutbox`, never an
+in-memory queue, while a non-matching event type is never enqueued;
+delivery signs the payload with the Standard Webhooks header triple and
+the receiver can verify `webhook-signature` against the shared secret; a
+delivery that fails retries with growing backoff+jitter before eventually
+succeeding, updating `WebhookDeliveryCursor` only on actual success;
+killing `WebhookOutboxPump` mid-delivery and restarting it resumes from
+the durable cursor with no lost or duplicated delivery; exhausting
+retries publishes a `WebhookDeliveryFailed` event into the subscribing
+tenant's own Event Log, queryable through the ordinary Lineage API; a
+payload for a field already delivered before a later crypto-shredding
+erasure remains exactly as originally sent, while a retry attempted
+*after* that erasure but before delivery succeeds correctly carries
+`{"erased": true}` for that field — this last scenario depends on
+"GDPR/CCPA Erasure via Crypto-Shredding" already existing to produce the
+`{erased}` branch it exercises.
 
 ## Data Residency (Region Pinning)
 
-**Scope**: `ADR-061` — a `Region` tag per configured peer; a new
-per-`AppId` `AllowedRegions` list; enforcement at the peer-sync outbox
-(a region-constrained `AppId`'s event is simply never included in a sync
-batch bound for a disallowed site) — `ShardKey = EntityType` stays
-unchanged, region constrains *where a shard's replicas may live*, not a
-new sharding dimension.
+**Scope**: `ADR-061` — every configured peer gains a `Region` tag —
+deployment-time metadata, not a new discovery or trust mechanism. A new
+per-`AppId` `AllowedRegions` list constrains which regions that tenant's
+events may replicate to; absent, an `AppId` is unconstrained (purely
+additive). Enforced at the peer-sync outbox, not at fold/query time: an
+event belonging to a region-constrained `AppId` is simply never included
+in a sync batch bound for a disallowed site. `ShardKey = EntityType`
+stays completely unchanged — region constrains *where a shard's replicas
+may live*, not a new sharding dimension. **Named, honest tension with
+`ADR-033`'s minimum-replication-factor-of-2 requirement, not silently
+resolved**: where a tenant's restricted region doesn't have ≥2 live
+sites, residency wins, and the deployment carries the operational
+responsibility to ensure ≥2 sites per region or knowingly accept
+single-site risk.
 
 **Depends on**: Sharding & Replication (the peer-sync outbox this item
-adds a filter to), Multi-Tenancy (`AppId` is the scoping key for
-`AllowedRegions`).
+adds one filtering rule to) and Multi-Tenancy (`AppId` is the scoping key
+`AllowedRegions` hangs off of).
 
-**Exit criteria**: an `AppId` with `AllowedRegions: ["eu-west"]` never
-replicates to a peer tagged with a different region, verified by
-inspecting actual sync batches in a multi-region test topology; an `AppId`
-with no `AllowedRegions` configured replicates unconstrained, exactly as
-before this item existed; a region configured with only one live site is
-flagged (log/metric, not a hard failure) as unable to simultaneously
-satisfy `ADR-033`'s 2-replica requirement and residency — the documented,
-accepted tension, not silently ignored.
-
-## Tenant-to-Tenant Federation Mapping
-
-**Scope**: `ADR-082` — tenant-to-tenant federation as an ordinary
-`client_credentials`-authenticated API call between two tenants' own
-deployments (`ADR-006`, no new auth mechanism); the actual event-shape
-mapping accepted as bespoke per tenant pair, optionally via a custom
-`IInterchangeFormatAdapter` implementation.
-
-**Depends on**: Multi-Tenancy (federation is between two tenants' own
-siloed deployments, `ADR-075`), Auth + Orchestration (the `client_
-credentials` call this reuses unchanged).
-
-**Exit criteria**: tenant A's deployment successfully authenticates to
-tenant B's deployment via an ordinary `client_credentials` token and
-publishes a mapped event into B's Event Log; the mapping logic for a
-specific tenant pair is confirmed to be bespoke application code (an
-`IInterchangeFormatAdapter` or equivalent), not a shared, framework-level
-schema — verified there is no attempt to force two independently-evolved
-tenants' schemas into one canonical shape.
+**Exit criteria**: an `AppId` configured with `AllowedRegions: ["eu-
+west"]` has its events replicate to every peer tagged `eu-west` but never
+to a peer tagged a different region, even when that peer is a normal,
+reachable, configured gossip peer of the originating site — verified by
+inspecting actual outbound sync batches in a multi-region test topology;
+an `AppId` with no `AllowedRegions` configured continues to replicate to
+every configured peer, unconstrained, exactly as before this item
+existed; a region configured with only one live site is surfaced (log or
+metric, an operational signal — not a hard failure or a blocked write) as
+unable to simultaneously satisfy `ADR-033`'s 2-replica requirement and an
+`AppId` restricted to that region's residency constraint.
 
 ## Bulk Ingestion & External Interchange-Format Adapters
 
-**Scope**: `ADR-072` — `POST /publish/batch` (NDJSON/JSON-array body,
-each event independently persist-everything, response is an array of the
-same per-event status envelope, in submission order); the
-`IInterchangeFormatAdapter` extensibility seam (`Hl7V2Adapter`,
-`FhirAdapter`, `IchE2bR3Adapter`, `Gs1EpcisAdapter`, ...), inbound
-transforming an external message into the registered `JsonSchema` shape
-before publishing through the ordinary path, outbound transforming before
-webhook delivery; a dedicated MLLP-listener component for HL7v2
-specifically (HL7v2's real transport is TCP/MLLP, not HTTP).
+**Scope**: `ADR-072` — two related, separately-testable capabilities:
+1. **`POST /publish/batch`**: an NDJSON/JSON-array body of N event
+   submissions in one HTTP request. Each event goes through the exact
+   same persist-everything path (own `SequenceNumber`, `ChainHash`,
+   idempotency check) in the same transaction shape as a solo publish
+   (per-event, *not* one shared batch transaction). A batch never fails
+   or succeeds as a unit: response is an array of the same per-event
+   status envelope, in submission order.
+2. **`IInterchangeFormatAdapter`**: a keyed-DI extensibility seam, one
+   implementation per external standard (`Hl7V2Adapter`, `FhirAdapter`,
+   `IchE2bR3Adapter`, `Gs1EpcisAdapter`, ...), several active
+   simultaneously. Inbound: transforms an external message into the
+   registered `JsonSchema` shape, then publishes through the *ordinary*
+   path — inheriting persist-everything and non-authoritative-capture
+   automatically. HL7v2 specifically needs a dedicated MLLP-listener
+   component (TCP, no inherent transport security of its own — a named,
+   un-mitigated deployment responsibility), since real HL7v2 traffic is
+   MLLP/TCP, not HTTP. FHIR needs no such bridge. Outbound: transforms an
+   event into the external format as an extra step immediately before
+   webhook delivery, never touching `StoredEvent.Payload`/`ChainHash` or
+   the signing/retry state machine.
 
-**Depends on**: Publish API (both the batch endpoint and every adapter's
-eventual publish target), Outbound Webhooks (the outbound half composes
-with webhook delivery as an extra transform step).
+**Depends on**: Publish API (the per-event path both the batch endpoint
+and every inbound adapter ultimately delegate to), added this pass
+**Non-Authoritative Capture** (`ADR-072`'s own text: inbound adapter
+capture inherits "non-authoritative capture, a reasonable default for
+EMR-sourced data"), and Outbound Webhooks (the outbound half composes as
+a transform step ahead of its existing delivery/signing/retry pipeline).
 
-**Exit criteria**: `POST /publish/batch` with N events, one of which is
-malformed, persists the N-1 valid events and reports the malformed one's
-own status independently — a batch never fails or succeeds as a unit; an
-`Hl7V2Adapter` receiving a message over MLLP/TCP transforms and publishes
-it through the ordinary path, indistinguishable downstream from a directly
-published event; an outbound adapter transforms an event into an external
-format before a webhook fires, verified against a real target schema
-(e.g. GS1/EPCIS) for at least one configured integration.
+**Exit criteria**: `POST /publish/batch` with N events, one malformed,
+persists the N-1 valid events with distinct increasing `SequenceNumber`s
+and reports the malformed one's own 400-shaped rejection independently,
+in an array in submission order, outer HTTP status staying `202`
+throughout; a schema-invalid (not malformed) event inside a batch still
+persists with an advisory `SchemaStatus`, never rejected; an
+`Hl7V2Adapter` receiving an ADT^A01 message over MLLP/TCP transforms and
+publishes it through the ordinary path with `AuthorityStatus` starting
+below `accepted`; a `FhirAdapter` receiving a FHIR resource over ordinary
+HTTPS publishes with no MLLP or TCP listener involved at any point; an
+outbound adapter (e.g. `IchE2bR3Adapter`) transforms a matching event
+into its external format immediately before delivery, with the delivery
+itself using the subscription's unmodified signing/retry mechanics; an
+MLLP listener deployed with no TLS/network isolation is confirmed to be a
+named, un-mitigated deployment risk, not a framework-level gap.
+
+## Tenant-to-Tenant Federation Mapping
+
+**Scope**: `ADR-082` — federation between two tenants' own independently-
+versioned, silo-model deployments needs no new mechanism: transport/auth
+is `ADR-006`'s existing `client_credentials` flow, unchanged. Shape
+mapping between the two tenants' independently-versioned native schemas
+stays accepted as **bespoke, per-tenant-pair integration code** — not
+promoted to a new adapter category, not a shared canonical interchange
+schema. The bespoke mapping doesn't need a new interface — it's written
+as an ordinary custom `IInterchangeFormatAdapter` implementation,
+registered per tenant pair in that tenant's own composition root.
+
+**Depends on**: Multi-Tenancy (`ADR-075`'s silo model — federation is
+between two tenants' *separate* deployments), Auth + Orchestration (the
+`client_credentials` call this reuses unchanged), and, added this pass,
+**Bulk Ingestion & External Interchange-Format Adapters** — the bespoke
+mapping is written *as* an `IInterchangeFormatAdapter` implementation, an
+interface that doesn't exist before that item.
+
+**Exit criteria**: tenant A's deployment authenticates to tenant B's
+deployment via an ordinary `client_credentials` token and publishes an
+event through tenant B's Publish API; a custom `IInterchangeFormatAdapter`
+registered in tenant B's own composition root maps tenant A's native
+event shape to tenant B's own registered event type before it lands in
+tenant B's Event Log; the response is `202` with tenant B's Event Log
+containing the *mapped* event, never the raw cross-tenant shape;
+confirmed no new authentication mechanism or credential type was
+involved beyond ordinary `client_credentials`; confirmed the mapping is
+bespoke, per-pair application code, not a shared framework-level
+canonical schema.
 
 ## Sanctions/Watchlist Screening Extensibility Seam
 
-**Scope**: `ADR-079` — `ISanctionsScreeningProvider`, an application-
-scoped (KYC/Meridian, not core Duplex) extension point shaped like
-`ADR-057`'s `IErasureKeyStore`, registered in the *application's* own
-composition root, not the framework's.
+**Scope**: `ADR-079` — `ISanctionsScreeningProvider` (a
+`ScreenAsync(IdentityClaim) -> ScreeningResult`-shaped interface),
+keyed-DI, multiple backends registrable/selectable per `AppId`/entity via
+configuration. **Scoped to the KYC/Meridian application's own composition
+root, not core Duplex** — the first domain-scoped (non-core) extension
+point in this design; no new interface ships inside core Duplex as a
+result. **Invocation point, stated explicitly in `ADR-079`'s own
+Decision text**: an automated detector's publish (a screening hit) is
+gated *exactly* like any other non-authoritative capture — it lands
+`pending_review`, never auto-accepted regardless of confidence; a
+compliance officer's `authorityDecision` remains the actual decision.
 
-**Depends on**: Scaffolding & Persistence only — this is application-
-scoped, not gated by any core-engine capability beyond the solution
-existing at all.
+**Depends on**: Scaffolding & Persistence (the solution existing at all)
+and, added this pass, **Non-Authoritative Capture** — `ADR-079`'s own
+Decision text rests a screening hit's actual behavior on that item's
+gating mechanism, and the KYC domain's own worked Gherkin
+(`periodic-screening-and-sar-escalation.md`) tests exactly that gating —
+a meaningful exit criterion for this seam needs it, not just the bare DI
+registration.
 
 **Exit criteria**: the KYC/Meridian application's own composition root
-registers a concrete `ISanctionsScreeningProvider` implementation and
-successfully screens a test identity against it; confirmed this
-registration lives in the application's project, not any core `EventStore.*`
-project — a second, unrelated application using core Duplex has no
-dependency on this seam at all.
+registers a concrete `ISanctionsScreeningProvider` implementation —
+confirmed this registration lives in that application's own project, not
+any core `EventStore.*` project; screening a test identity that matches
+produces a `ScreeningResult` whose corresponding published event lands
+with `AuthorityStatus: pending_review` regardless of match confidence
+(never auto-accepted); a compliance officer's subsequent
+`authorityDecision` event (gated by ordinary RBAC, unchanged) is what
+actually resolves the event to `accepted` or `rejected` — the provider
+supplies a signal, never the decision itself.
 
 ## Release Engineering, Packaging & Supply Chain
 
-**Scope**: bundles five related, non-runtime, release-process ADRs rather
-than five separate items with identical "does this actually ship" exit
-criteria:
-- **`ADR-062`**: every non-provider-specific, non-sample project becomes a
-  published NuGet package; a new `EventStore.Abstractions` package
+**Scope**: bundles five related, non-runtime, release-process ADRs
+rather than five separate items with identical "does this actually ship"
+exit criteria:
+- **`ADR-062`**: every non-provider-specific, non-sample project becomes
+  a published NuGet package; a new `EventStore.Abstractions` package
   carries every extensibility interface with no implementation; the Vue
   client ships as npm package(s); SemVer 2.0.0 governs every public
   surface.
 - **`ADR-076`**: no replica ever calls `Database.Migrate()` at startup —
-  EF Core Migration Bundles (or a provider-native declarative tool: DACPAC/
-  `SqlPackage` for SQL Server, `pgschema` for PostgreSQL) apply schema as a
-  single deploy-time step before any replica starts serving traffic.
+  EF Core Migration Bundles (or a provider-native declarative tool:
+  DACPAC/`SqlPackage` for SQL Server, `pgschema` for PostgreSQL) apply
+  schema as a single deploy-time step before any replica starts serving
+  traffic.
 - **`ADR-074`**: SBOM generation via `microsoft/sbom-tool` (SPDX 2.2,
   auto-detects both NuGet and npm graphs) at build/release time; the
   existing `docs/libraries/README.md` catalog is formalized as this
@@ -1342,292 +1960,545 @@ criteria:
   where this repository is hosted — no build→release→run/promotion-path
   design is attempted yet, since there's no real pipeline to sequence.
 
-**Depends on**: Scaffolding & Persistence only.
+**Depends on**: Scaffolding & Persistence and, added this pass,
+**Compatibility & Deployment Discipline** — `ADR-076`'s own Compliance
+note is explicit: its migration-bundle mechanism is the concrete
+realization of that item's own N-1/N+1 rollback-safety promise, not an
+independent concern.
 
 **Exit criteria**: every `EventStore.*` project (excluding provider glue
 and samples) has a `<PackageId>` and builds a valid NuGet package;
 `EventStore.Abstractions` contains only interfaces, no implementation,
 confirmed by a build-time check; a fresh database with zero prior
 migrations reaches current schema via exactly one migration-bundle
-execution, with no application code ever calling `Database.Migrate()`; a
-CI run produces a valid SPDX SBOM covering both the NuGet and npm
-dependency graphs in one pass; a GitHub Actions workflow runs the existing
-test suite and produces build provenance attestations for at least one
+execution, with no application code ever calling `Database.Migrate()`;
+that same migration bundle, inspected against the prior schema version,
+contains only expand-style changes — the concrete artifact backing
+"Compatibility & Deployment Discipline"'s own rollback drill; a CI run
+produces a valid SPDX SBOM covering both the NuGet and npm dependency
+graphs in one pass; a GitHub Actions workflow runs the existing test
+suite and produces build provenance attestations for at least one
 published package.
 
 ## Signing Secret Rotation, Dual Signature
 
-**Scope**: `ADR-093` — the ticket-signing secret (`ADR-040`) and the
-webhook-signing secret (`ADR-060`) each become a current+previous pair;
-the webhook dispatcher emits dual signatures (Standard Webhooks' own
-mechanism) during a rotation-overlap window; the ticket-exchange verifier
-accepts either secret during that window; rotation cadence itself stays
-ops-configurable.
+**Scope**: `ADR-093` (revises `ADR-040`/`ADR-060`'s single-secret
+assumption — **only where a persisted secret actually exists to
+revise**). Two genuinely different mechanisms, not one applied twice:
+- **`WebhookSubscription.SigningSecret` (`ADR-060`) becomes a real,
+  schema-level current+previous *pair*** — `PreviousSigningSecret` is
+  added. The webhook dispatcher emits **dual signatures** during an
+  ops-configured overlap window, using Standard Webhooks' own already-
+  adopted multi-signature mechanism — no new signing mechanism invented.
+- **The ticket-exchange shared secret (`ADR-040`) does *not* gain any new
+  persisted field.** The shared secret used for the HMAC step is either
+  (a) the caller's already-registered OAuth2 `client_secret`, DevIdp-side
+  state entirely outside `EventStoreContext`, where "current vs.
+  previous" rotation is just ordinary OAuth2 client-credential rotation
+  (OpenIddict already supports a client holding more than one valid
+  credential — no framework change needed), or (b) a caller-generated
+  `one_time_secret`, used for exactly one ticket and never persisted at
+  all. `docs/features/ticket-exchange.md`'s own Data model section states
+  this explicitly. Rotation cadence/overlap-window length stays
+  ops-configurable in both cases.
 
-**Depends on**: Ticket Exchange for Header-Incapable Clients, Outbound
-Webhooks (this item revises both items' single-secret assumption).
+**Depends on**: Outbound Webhooks (the real schema change,
+`WebhookSubscription.PreviousSigningSecret`, and the dual-signature
+emission logic) and, corrected this pass, **Auth (OIDC/OpenIddict) +
+Orchestration** — not Ticket Exchange for Header-Incapable Clients: the
+ticket-exchange path's rotation is entirely OpenIddict's existing
+multi-credential-per-client support, and Ticket Exchange's own
+mechanism/entity is untouched by this ADR — there was never a
+single-secret schema field there to revise, so no dependency on that item
+belongs here.
 
-**Exit criteria**: rotating a webhook subscription's secret while a
-delivery is in flight results in the receiver being able to verify against
-either the old or new secret during the configured overlap window; after
-the overlap window ends, only the new secret verifies; the same
-current+previous acceptance holds for a ticket signed just before a
-rotation and presented just after.
+**Exit criteria**: rotating a webhook subscription's secret (`POST
+/webhooks/subscriptions/{id}/rotate-secret`) while a delivery is in
+flight results in `PreviousSigningSecret` being set to the old secret and
+`SigningSecret` to the new one; a delivery sent during the overlap window
+carries two `webhook-signature` entries, one verifiable against each
+secret; a receiver caching only the old secret still verifies
+successfully during the window; discarding the previous secret ends the
+window, after which only the new secret verifies; separately and
+independently, a client with two valid OAuth2 credentials registered
+(ordinary OpenIddict multi-credential support, no framework change) can
+obtain a ticket-exchange-signing-capable token using either credential,
+and a ticket signed using the not-yet-revoked older credential still
+passes introspection — demonstrated as an instance of ordinary
+`client_credentials` rotation, not as a new Ticket-entity field.
 
 ## Lineage Export & Bitemporal Playback
 
-**Scope**: `ADR-068` — lineage-scoped event export (walks the existing
-Lineage DAG, portable NDJSON + manifest + manifest-hash bundle, full
-read-path enforcement including masking/erasure/audit logging — no
-bypass); bitemporal system-time playback (fold only events with
-`SequenceNumber <= T` in arrival order, no logical-time correction — VCR-
-style play/rewind/fast-forward over consecutive `SequenceNumber`
-positions, computed on demand); a self-contained, self-verifying offline
-static-HTML player (shares the MVVM Client's Vue playback component via a
-`vite-plugin-singlefile` build target) that independently recomputes the
-hash chain/manifest hash on load; bundle-format versioning (the manifest
-records the producing framework's SemVer; a version reads only its own or
-compatible bundles, no eternal-backward-compatibility promise).
+**Scope**: `ADR-068` — three distinct capabilities, all new *read*
+shapes over history, none a new authorization primitive:
+1. **Lineage-scoped event export** — walks the existing Lineage DAG
+   through the *exact same* read-path enforcement as any other query
+   (`RequiredClaims`, masking including `ADR-057`'s `erased` branch, read-
+   access audit logging — no bypass), into a portable NDJSON-plus-manifest
+   bundle (manifest carries referenced `EventTypeDefinition`/
+   `SchemaVersion`s and a `SHA-256` `ManifestHash` over the ordered
+   original `ChainHash` values + export metadata). Import assigns a
+   fresh `SequenceNumber`/`ChainHash` in the receiving log and records
+   `OriginalSequenceNumber`/`OriginalChainHash`/`ImportedFrom` as new
+   envelope metadata.
+2. **Bitemporal system-time playback** — fold only events with
+   `SequenceNumber <= T`, in **arrival** order, no logical-time
+   correction — a `LateArrivalFlag`'d event's correction visibly lands in
+   place, at the position it actually arrived. VCR-style play/rewind/
+   fast-forward steps consecutive `SequenceNumber` positions, computed on
+   demand, no new persisted store.
+3. **Self-contained offline player** — a single static HTML file, built
+   via `vite-plugin-singlefile` as an alternate build target of the
+   *same* Vue playback component MVVM Client needs. Self-verifying on
+   load: recomputes the `ChainHash` sequence and manifest hash
+   independently, distinguishing "fully independently verified" from
+   "verified except N masked fields, chain linkage intact," never one
+   undifferentiated pass/fail. No masking/claims logic runs in the player
+   itself.
+4. **Bundle-format versioning** — the manifest records the producing
+   framework's SemVer; the guarantee is narrowed to "same version reads
+   its own bundles," not eternal backward compatibility.
 
-**Depends on**: Lineage API (the DAG this walks), Entity-Centric Core
-Rebuild (the valid-time-corrected fold this contrasts against), MVVM
-Client (the shared playback component).
+**Depends on**: Lineage API (the DAG traversal machinery the export
+walks), Entity-Centric Core Rebuild (the `EntityId` model, and the
+valid-time-corrected fold playback deliberately contrasts against), MVVM
+Client (the Vue playback component the offline player reuses), and, added
+this pass, **GraphQL-Only Query Layer** (`exportLineage`/`playbackAsOf`
+are new GraphQL Gateway query fields — confirmed live in
+`03-api-contracts.md`), **Property-Level Masking** and **GDPR/CCPA
+Erasure via Crypto-Shredding** (both explicitly named in `ADR-068`'s "no
+bypass" rule, and neither is transitively guaranteed by Entity-Centric
+Core Rebuild alone — Property-Level Masking is a sibling of that item in
+the core dependency graph, not an ancestor of it), and **Delegated
+Grants, RBAC & Read Audit Logging** ("every export or playback read
+writes one `AccessLogEntry`" is explicit in both the ADR and the feature
+doc's own sequence diagrams, and that item is not itself downstream of
+Entity-Centric Core Rebuild directly).
 
-**Exit criteria**: exporting a lineage graph for a test `EntityId`
-produces a bundle whose manifest hash verifies against the exported
-events; an actor lacking a claim for one exported event's type sees that
-event `restricted: true` in the export, identical to what a live query
-would show — the "no bypass" rule holds; system-time playback of an
-entity with a `LateArrivalFlag`'d event shows the correction landing
-visibly at that position in playback, not smoothed away; the offline
-player, opened by double-click with no server and no network request,
-independently re-verifies the hash chain and reports pass for an unmasked
-bundle and a distinguishable "verified except N masked fields, chain
-linkage intact" result for one containing masked fields.
+**Exit criteria**: a caller lacking visibility on the export's starting
+`EntityId`'s own root event is rejected outright (`403`/`404`), no bundle
+produced; an export's `ManifestHash` equals `SHA-256` over the ordered
+`ChainHash` values of every exported event plus
+`ExportedByActorId`/`ExportedAt`, and an `AccessLogEntry` (`Action:
+"export"`) is written; importing a valid bundle assigns each event a
+fresh `SequenceNumber`/`ChainHash` in the receiving environment while
+recording `OriginalSequenceNumber`/`OriginalChainHash`/`ImportedFrom`;
+importing a bundle whose `ManifestHash` doesn't match its own contents is
+rejected before any write; `playbackAsOf` at the `SequenceNumber` a
+`LateArrivalFlag`'d event arrived at shows the correction already
+applied, and querying the immediately preceding `SequenceNumber` does
+not; the offline player, opened by double-click with no server/network
+round trip, reports "Fully independently verified" for a bundle with no
+masked fields, and the distinguishable "Verified except N masked fields —
+chain linkage intact" result for a bundle containing a field masked
+because the *exporting actor* lacked its claim, while still confirming
+structural chain linkage across every event, including the masked one;
+the player performs **no** masking/claims enforcement of its own; a
+bundle whose manifest records a newer major `FrameworkVersion` than the
+player was built against is **not** guaranteed correctly readable by
+that player.
 
 ## RFC 3161 Trusted Timestamping
 
-**Scope**: `ADR-086` — a pluggable `ITimestampAuthorityClient` obtaining
-an RFC 3161 `TimeStampToken` over an event's `ChainHash`, for Digital
-Sign-Off's `Signature` objects and Lineage Export's litigation bundles.
+**Scope**: `ADR-086` — adopts RFC 3161 rather than inventing a bespoke
+timestamping mechanism, since this design's `ChainHash`/`ContentHash`
+primitives already produce exactly the hash a TSA needs. Two consumers:
+Digital Sign-Off's `Signature` gains an optional `RFC3161Timestamp` — the
+TSA's `TimeStampToken` obtained over `hash(ChainHash)`, not `Payload`
+directly, optional per `EventTypeDefinition`, the same configuration
+surface `RequiredSignature` already uses; and Lineage Export's litigation
+export bundle gains an RFC 3161 timestamp over its own manifest hash,
+proving *when* the export was made independent of the exporting party's
+system clock. A pluggable `ITimestampAuthorityClient` seam lets a
+deployment point at any RFC-3161-compliant TSA. Verification needs no new
+mechanism: tokens are checked against the TSA's own published X.509
+certificate chain by any off-the-shelf RFC 3161 verifier.
 
-**Depends on**: Digital Sign-Off for Regulated Actions (the signatures
-this timestamps), Lineage Export & Bitemporal Playback (the litigation
-export bundles this timestamps).
+**Depends on**: Digital Sign-Off for Regulated Actions (the `Signature`
+objects this timestamps) and Lineage Export & Bitemporal Playback (the
+litigation export bundles this timestamps).
 
-**Exit criteria**: a signed event configured to require trusted
-timestamping obtains and stores a valid `TimeStampToken` from a
-configured TSA; independently verifying that token against the event's
-`ChainHash` (using an off-the-shelf RFC 3161 verifier, not this
-framework's own code) confirms the timestamp; a lineage export bundle
-similarly carries and can be independently verified via its own
-timestamp token.
+**Note — a propagation gap found, not a build-plan error**: this item's
+lineage-export-bundle exit criterion is faithful to `ADR-086`'s own
+decision text and to `03-api-contracts.md`, but
+[`features/lineage-export-and-playback.md`](features/lineage-export-and-playback.md)
+has no `RFC3161Timestamp` field on its `ExportManifest` ER-diagram class
+and no Gherkin scenario exercising it — tracked in `TODO.md`.
+
+**Exit criteria**: a `Signature`-requiring event type configured to also
+opt into `RFC3161Timestamp` obtains a `TimeStampToken` from
+`ITimestampAuthorityClient`, called with a hash of the event's
+`ChainHash`, not its `Payload`, and stores it on
+`Signature.RFC3161Timestamp`; a `Signature`-requiring type that does
+**not** opt in leaves `RFC3161Timestamp` null; the stored
+`RFC3161Timestamp` is independently verifiable by any standard,
+off-the-shelf RFC 3161 verifier against the issuing TSA's own published
+certificate chain — no verification code of this framework's own is
+required; a lineage export bundle's manifest similarly carries and can be
+independently verified via its own RFC 3161 timestamp token, once the
+propagation gap above is closed.
 
 ## Pluggable Outbox Flush Triggers
 
 **Scope**: `ADR-069` — the durable client outbox exposes one idempotent
-`Flush` operation any trigger may invoke safely, any number of times;
-three trigger categories — opportunistic (existing, unchanged), scheduled/
-"phone home" (Web Periodic Background Sync where available — Chromium-
-only, checked not assumed; an OS/device-level scheduled task otherwise),
-and explicit/manual (a "sync now" action, or for a genuinely air-gapped
-device, exporting queued commands to Lineage Export's portable bundle
-format for physical transport and later import).
+`Flush` operation; any trigger may invoke it, any number of times,
+safely — publish idempotency is what makes a redundant `Flush` always
+safe. Three trigger categories, two of them new: **Opportunistic**
+(existing, unchanged) — Background Sync API / open-focus fallback.
+**Scheduled ("phone home")** — Web Periodic Background Sync API where
+available (Chromium-only, experimental, checked not assumed; zero support
+in Firefox/Safari as of writing), otherwise an OS/device-level scheduled
+task on non-browser/native clients — this framework doesn't build a
+scheduler, only needs `Flush` to be safely callable by one. **Explicit/
+manual** — a user/operator "sync now" action, or for a genuinely
+air-gapped device with no network path at all, exporting the outbox's
+queued commands to a portable medium, reusing Lineage Export's portable
+bundle format directly (NDJSON + manifest + chain-of-custody hash) —
+carrying queued outbound commands instead of historical read-side
+events, verified the same way before import.
 
-**Depends on**: MVVM Client (the existing outbox this extends), Lineage
-Export & Bitemporal Playback (the portable bundle format this reuses for
-offline transfer).
+**Depends on**: MVVM Client (the existing outbox this extends) and
+Lineage Export & Bitemporal Playback (the portable bundle format this
+reuses for offline transfer).
 
-**Exit criteria**: invoking `Flush` redundantly (simulating two trigger
-categories firing close together) never double-applies a queued command,
-confirmed via `ADR-011`'s existing idempotency; a scheduled trigger firing
-while the app is closed (where the platform supports it) flushes without
-user interaction; exporting a queued-command bundle from an offline
-device and importing it on a connected system applies every command
-exactly once, with the same chain-of-custody verification Lineage Export's
-bundle already provides.
+**Exit criteria**: invoking `Flush` redundantly (two trigger categories
+firing close together, or the same trigger firing twice) never
+double-applies a queued command; a scheduled ("phone home") trigger
+firing while the app is closed delivers the queued command with no user
+interaction required; an air-gapped device can export its queued outbox
+commands to a portable bundle using the same NDJSON + manifest + chain-
+of-custody hash format Lineage Export defines for history export, and the
+receiving system verifies the bundle is complete and unaltered before
+importing it, with each command applied exactly once; Background Sync
+unavailability still falls back to flush-on-focus, never dropping a
+queued command.
 
 ## Device Input Integration
 
-**Scope**: `ADR-070` (with `ADR-083` folded in) — `IDeviceInputSource`,
-one adapter per hardware interface (`WebUsbInputSource`/
-`WebHidInputSource`/`WebSerialInputSource`/`WebBluetoothInputSource`,
-Chromium-only per-API, checked not assumed) plus `NativeBridgeInputSource`
-(a local companion app over `localhost` WebSocket) for Firefox/Safari or
-any device none of the four browser APIs reach; captured readings feed
-the existing client outbox unchanged; server-side mapping to a Streaming
-Channel (continuous) or an ordinary event (discrete reading) is a
-per-integration schema choice, defaulting to non-authoritative capture.
-**`ADR-083`**: an optional `TelemetrySample.MonotonicElapsedMicros`,
-captured alongside wall-clock `Timestamp`, for detecting a lying device
-clock specifically on this capture path.
+**Scope**: `ADR-070` — how HID/raw-USB/serial/BLE device streams reach
+the MVVM client, particularly offline. WebUSB (~76% global), Web Serial
+(~72%), WebHID (~27%, weakest) are Chromium-desktop-only; Web Bluetooth
+has **zero** support in Firefox or Safari — the device-capture half of
+the client is Chromium-only unless a fallback exists. New extensibility
+seam `IDeviceInputSource`: one adapter per hardware interface plus
+`NativeBridgeInputSource` (a local companion app over a `localhost`
+WebSocket) for Firefox/Safari or any device none of the four browser
+APIs reach — multiple adapters run simultaneously in the same client.
+All four browser APIs require a secure context + explicit user gesture.
+Captured readings feed the **existing** durable client outbox unchanged.
+Server-side mapping is a **per-integration schema choice**: continuous
+high-frequency output → a Streaming Channel; a discrete one-shot reading
+→ an ordinary published event, defaulting to non-authoritative capture
+unless the device itself carries a self-attested DID/UCAN identity.
+
+**`ADR-083`, folded in as one scenario, not a separate item**: an
+optional `TelemetrySample.MonotonicElapsedMicros` — elapsed time since
+the client-side recording agent's own session start, read from a
+monotonic clock source immune to wall-clock adjustment/tampering,
+captured alongside the existing wall-clock `Timestamp`. Detection of a
+lying wall clock is downstream, application-level analysis over the two
+captured values side by side — no new framework detector interface.
 
 **Depends on**: MVVM Client (the browser-API/native-bridge adapters live
-in the client), Pluggable Outbox Flush Triggers (captured readings feed
-the outbox this item's triggers flush).
+in the client; also transitively guarantees Streaming Channels already
+exists), Pluggable Outbox Flush Triggers (the Service Worker's job stays
+exactly what that item already made it), and, added this pass,
+**Non-Authoritative Capture** — the server-side discrete-reading path
+defaults to non-authoritative capture unless the device carries a
+self-attested DID/UCAN identity, and neither `AuthorityStatus` nor
+DID/UCAN self-attestation is transitively guaranteed by MVVM Client or
+the flush-triggers item.
 
-**Exit criteria**: at least one of the four browser-API adapters
-(`WebUsbInputSource` is the recommended one to build first — widest
-Chromium support) captures a reading from a real or simulated device and
-queues it into the existing outbox; `NativeBridgeInputSource` successfully
-relays a reading from a companion app over a `localhost` WebSocket,
-verified specifically on a browser lacking the relevant native API
-(Firefox or Safari); a captured reading with a deliberately-skewed device
-wall-clock but a consistent `MonotonicElapsedMicros` is detectable as a
-clock-lie by comparing the two, in a test that deliberately desyncs them.
+**Exit criteria**: connecting a device via a browser Web Hardware API
+requires an explicit user gesture — the native device-picker dialog is
+shown, and no connection is attempted without it; a captured reading is
+enqueued in the **same** `ClientOutbox` as any other client-originated
+command, and survives the app process restarting before the next flush;
+multiple adapters are active simultaneously, capturing independently with
+neither blocking the other; on Firefox (no Web Bluetooth),
+`NativeBridgeInputSource` is used instead of a browser API, and the
+resulting reading is enqueued identically to a browser-API-captured one;
+when the native companion app isn't running, the client reports capture
+unavailable and prompts the user to launch it; a continuous device output
+appends `TelemetrySample`s, publishing **no** `StoredEvent` per sample; a
+discrete reading publishes an ordinary `StoredEvent`, appending **no**
+`TelemetrySample`; a device with no self-attested identity defaults to
+`AuthorityStatus: non_authoritative`; a device presenting a self-attested
+DID/UCAN identity carries that attestation through instead; a recording
+agent capturing both `Timestamp` and `MonotonicElapsedMicros` side by
+side lets a downstream analysis flag a sample whose claimed wall-clock
+delta diverges sharply from its actual monotonic delta as a suspiciously
+inconsistent wall clock.
 
 ## Accessibility Standard
 
-**Scope**: `ADR-073` — WCAG 2.1 AA baseline for every screen this
-framework's client renders, WCAG 2.2 AA where practical, regardless of
-which UI pattern (MVVM primary, or a named fallback) implements a given
-screen. This item states the requirement; how each screen satisfies it is
-that screen's own implementation detail.
+**Scope**: `ADR-073` — WCAG 2.1 AA is the accessibility baseline for
+**every screen this framework's client renders**, regardless of which UI
+pattern actually implements a given screen — not scoped to one
+proving-ground domain. WCAG 2.2 AA "where practical" is the stated
+forward-looking position. **This ADR governs the requirement; `ADR-039`
+(or a fallback pattern) governs how a given screen satisfies it** — a
+deliberate separation.
 
 **Depends on**: MVVM Client.
 
-**Exit criteria**: an automated WCAG 2.1 AA conformance check (e.g. axe-
-core against the rendered MVVM client) passes with zero critical/serious
-violations on at least the core entity-view screens; a manual screen-
-reader pass confirms the generic property-list fallback view (MVVM
-Client's own exit criterion for an entity with no registered view
-definition) is fully navigable, not just visually present.
+**Exit criteria**: an automated WCAG 2.1 AA conformance check (e.g.
+axe-core) against the rendered MVVM client passes with zero critical/
+serious violations on at least the core entity-view screens; both a
+`ViewDefinition`-template-backed screen **and** the generic property-list
+fallback view conform to WCAG 2.1 AA — a manual screen-reader pass
+specifically confirms the fallback is fully navigable, not merely
+visually present.
 
 ## i18n/l10n Architectural Scope
 
 **Scope**: `ADR-087` — locale negotiation via `Accept-Language` (RFC 9110
-§12); structural string-externalization in the MVVM Client's view-
-definition format; culture-aware formatting via built-in `System.
-Globalization`/`Intl` APIs; RTL layout via W3C CSS Logical Properties.
-Translated *content* itself is domain-owned, out of this item's scope,
-the same way domain vocabulary/glossaries already are.
+§12), read by the GraphQL Gateway and every `EventStore.Host.<Provider>`;
+structural string-externalization required in the MVVM Client's view-
+definition format (a rendered string must reference a translation key,
+never a hardcoded literal — the same structural discipline `ADR-073`
+already imposes for ARIA attributes); culture-aware date/number/currency
+formatting via built-in culture APIs only (`System.Globalization` server-
+side, `Intl.DateTimeFormat`/`Intl.NumberFormat` client-side, never hand-
+rolled); RTL layout via W3C CSS Logical Properties in the client's base
+stylesheet conventions. The framework owns this architectural guidance
+only, the identical split `ADR-073` already established for
+accessibility — **the actual translated strings/content are explicitly
+domain-owned, out of scope**, the same way each domain's own glossary
+vocabulary is already domain-specific. No translation-management system
+or resource-file format is adopted here either.
 
-**Depends on**: MVVM Client.
+**Depends on**: MVVM Client (the view-definition format this item's
+translation-key requirement and logical-properties convention extend).
+Confirmed independent of Accessibility Standard — both extend the same
+view-definition format but neither's mechanism depends on the other's.
+
+**Note — a real propagation gap, self-disclosed by the ADR, not a doc-
+sync miss this pass introduced**: [`features/mvvm-client.md`](features/mvvm-client.md)
+has an "Accessibility standard (`ADR-073`)" section but no i18n/l10n
+section at all — `ADR-087`'s own Consequences flag this as propagation
+work not yet done. Tracked in `TODO.md` rather than silently assumed
+covered.
 
 **Exit criteria**: a view definition's externalized strings render in at
-least two configured locales (including one RTL locale) with no code
-change, only translation-resource and `Accept-Language` differences; a
-number/date value renders per the negotiated locale's own convention via
-`Intl`/`System.Globalization`, not a hardcoded format; the RTL locale's
-layout uses CSS Logical Properties, verified by inspecting rendered
-layout direction rather than assuming the stylesheet is correct.
+least two configured locales (including one RTL locale), using
+placeholder/test translation resources, with no code change, only
+translation-resource and `Accept-Language` differences; a number/date
+value renders per the negotiated locale's own convention via `Intl`/
+`System.Globalization`, never a hardcoded format; the RTL locale's layout
+is verified by inspecting actual rendered layout direction as using CSS
+Logical Properties; a rendered string sourced from a hardcoded literal
+rather than a translation key is confirmed to be rejected/flagged by
+whatever structural check enforces the requirement (lint rule, build
+check, or equivalent).
 
 ## Mechanism-Level OpenTelemetry Instrumentation
 
-**Scope**: `ADR-088` — detailed custom OTel metrics/traces for this
-framework's own async mechanisms (Router fold lag — explicitly excluding
-time spent in `ADR-042`'s review-gating, so ordinary processing latency
-and open-ended human-review duration are never conflated in the same
-histogram; peer-sync outbox depth/age; webhook delivery lag; hash-chain
-verification outcomes), extending the existing Aspire/OTel scaffolding
-with additional `.AddMeter` calls. Alert thresholds and on-call process
-stay deployment-specific, explicitly out of this item's scope.
+**Scope**: `ADR-088` (extends `ADR-026`) — custom **metrics**, via
+`System.Diagnostics.Metrics` (first-party since .NET 6, already
+OTel-compatible), registered into the existing Aspire/OTel pipeline with
+an added `.AddMeter("Duplex.Core")`: Router fold lag (`Histogram<double>`,
+recorded **only** for events that fold immediately — `AuthorityStatus`
+already `accepted` at publish — so mechanism latency and open-ended
+review-workflow duration are never conflated in the same histogram);
+peer-sync outbox depth/age (`ObservableGauge<long>` per peer); webhook
+delivery lag (`Histogram<double>`); hash-chain verification outcomes
+(`Counter<long>`, tagged by outcome). Plus custom **traces** — already
+structurally free, not a separate build task: `ADR-026`'s existing
+`AddSource` already collects any named `ActivitySource`, so the fold
+step, each outbox pump, and the hash-chain verifier each need only wrap
+their own work in a named `Activity`. Domains follow the identical
+`Meter`/`ActivitySource` convention for their own operations —
+architectural guidance, not something this item's own exit criteria need
+to demonstrate with a real domain example. Alert thresholds and on-call
+process stay deployment-specific, explicitly out of this item's scope.
 
-**Depends on**: Hardening & Evolution (hash-chain verification), Sharding
-& Replication (peer-sync outbox), Entity-Centric Core Rebuild (Router
-fold), Outbound Webhooks (delivery lag).
+**Depends on**: Entity-Centric Core Rebuild (the Router/fold this metric
+instruments), Hardening & Evolution (the hash-chain verifier), Sharding &
+Replication (the peer-sync outbox), Outbound Webhooks (the delivery
+pipeline) — all four mechanisms this item adds a signal to must already
+exist to have anything to measure.
 
-**Exit criteria**: the Router fold-lag metric is visible in a local
+**Exit criteria**: the Router fold-lag histogram is visible in a local
 OTel/Aspire dashboard and demonstrably excludes review-gated time (a test
 publishing a self-attested event pending review shows no fold-lag spike
-attributable to the review wait); peer-sync outbox depth/age, webhook
-delivery lag, and hash-chain verification outcomes are each independently
-visible as their own metrics, not folded into one generic counter.
+attributable to the review wait, verified distinctly from an ordinary
+immediately-accepted publish's recorded value); peer-sync outbox depth/
+age, webhook delivery lag, and hash-chain verification outcomes are each
+independently visible as their own named metric/instrument; **the fold
+step, an outbox pump, and the hash-chain verifier each produce a named
+`Activity` visible in the collected trace output for a single end-to-end
+operation** — the trace half of the decision, not automatically covered
+just because the metrics pass; no alert-threshold or paging configuration
+is asserted anywhere in this item's tests.
 
 ## Event Log/AccessLog Archival Segment Detachment
 
-**Scope**: `ADR-089` — detach a verified, contiguous segment of the Event
-Log (or `AccessLog`, independently) to the existing pluggable
-`IAttachmentContentStore` (serialized as the same NDJSON shape Lineage
-Export's bundle format already uses), leaving a small `ChainCheckpoint`
-(`{SequenceNumberRangeStart, SequenceNumberRangeEnd, ChainHashAtRangeEnd,
-ContentProviderKey, ContentProviderRef}`) behind so live verification never
-touches archived data. No new interface — table partitioning is one valid
-backend implementation, not a framework-mandated one.
+**Scope**: `ADR-089` — detach a verified, contiguous segment of
+`StoredEvent` rows (or, independently, `AccessLogEntry` rows) once past
+`ADR-056`'s deployment-configured retention window, serialized as an
+NDJSON blob — the identical export format Lineage Export's litigation
+export already uses, reused rather than inventing a second serialization
+— written to a registered `IAttachmentContentStore` backend under an
+ordinary `ContentProviderKey`/`ContentProviderRef` pair. **No new
+interface**: an archived segment is just bytes; which physical backend/
+tier a deployment points it at is deliberately not decided here. A small
+checkpoint record, `ChainCheckpoint { SequenceNumberRangeStart,
+SequenceNumberRangeEnd, ChainHashAtRangeEnd, ContentProviderKey,
+ContentProviderRef }`, stays behind in the primary table so ongoing live
+verification of events appended *after* the archived segment needs only
+the checkpoint's `ChainHashAtRangeEnd`, never touching archived data.
+Full re-verification of an archived segment stays possible on demand,
+using the identical verification algorithm already used for the live
+chain. `AccessLog` gets identical treatment, via its own independent hash
+chain and its own checkpoint row. `ADR-056` still owns *when*; this item
+owns only *how*. The `ChainCheckpoint` shape is already propagated into
+`docs/data/event-log.md` and `docs/data/access-log.md`.
 
 **Depends on**: Binary Attachments (`IAttachmentContentStore`, reused
-unchanged), Delegated Grants, RBAC & Read Audit Logging (`AccessLog`, the
-second store this archives independently), Hardening & Evolution (the
-hash chain a `ChainCheckpoint` picks up from).
+completely unchanged), Delegated Grants, RBAC & Read Audit Logging
+(`AccessLog`, the second, independently-chained store this item
+archives), Hardening & Evolution (`ADR-019`'s hash chain, which the
+`ChainCheckpoint` and re-verification logic both build on), and, added
+this pass, **Lineage Export & Bitemporal Playback** — the NDJSON
+serialization this item reuses is explicitly that item's litigation-
+export format, a genuine content dependency the ordering already
+satisfies (Lineage Export already precedes this item) but that wasn't
+previously stated.
 
 **Exit criteria**: archiving a verified segment moves it to the
-`IAttachmentContentStore` and leaves a `ChainCheckpoint` correctly naming
-the archived range's boundary `ChainHash`; live hash-chain verification
-after an archival operation verifies only the still-live portion, starting
-from the checkpoint, and completes without needing to touch the archived
-segment; retrieving an archived segment via the `IAttachmentContentStore`
-and re-verifying its own internal chain (using the checkpoint's
-`ChainHashAtRangeEnd` as the expected end value) confirms it's unaltered.
+registered `IAttachmentContentStore` and leaves a `ChainCheckpoint`
+correctly naming the archived range's boundary `ChainHash`; live
+hash-chain verification of events appended after an archival operation
+verifies only the still-live portion, starting from the checkpoint, and
+completes with no read of the archived segment at all; retrieving an
+archived segment via `IAttachmentContentStore` and re-verifying its own
+internal chain (using the checkpoint's `ChainHashAtRangeEnd` as the
+expected end value) confirms it's unaltered; `AccessLog`'s own
+independent chain archives and re-verifies correctly using the identical
+mechanism, with its own distinct `ChainCheckpoint` row, confirmed not to
+share or collide with the Event Log's checkpoint; the archival backend is
+confirmed to be an ordinary registered `IAttachmentContentStore`
+implementation with no new extensibility interface introduced anywhere.
 
 ## Cross-cutting, every item
 
 - **Integration tests against all three providers** run from Scaffolding
-  & Persistence onward — they are not a late-item afterthought. An item
-  that only passes on one provider isn't done.
+  & Persistence onward — not a late-item afterthought. An item that only
+  passes on one of SQLite/PostgreSQL/SQL Server isn't done, for the whole
+  document, not just its own item.
 - **`ADR-041`'s composition discipline applies from the first item
-  onward, not as its own item**: constructor injection, an explicit
-  composition root (no assembly-scanning auto-registration),
-  `Microsoft.Extensions.Logging`/no third-party structured-logging
-  framework, `System.Text.Json` over `Newtonsoft.Json`, no AutoMapper. An
-  item that introduces a new project or service registration is not done
-  if it violates this — the same way provider-coverage is a standing bar,
-  not an item-specific one. **`ADR-059`** formalizes this specifically as
-  the answer to "how do I add an extension" (an interface, a built-in
-  registration, a hosting team's own registration in *their* composition
-  root — never dynamic plugin discovery) and is the reason
-  `docs/extensibility-points.md` exists as a living catalog; not a build
-  item with exit criteria of its own.
+  onward, not as its own item**: constructor injection everywhere
+  possible, no property/method injection, no service-locator lookups; an
+  explicit Composition Root per `EventStore.Host.<Provider>`'s
+  `Program.cs` (Pure DI — no assembly-scanning auto-registration);
+  `Microsoft.Extensions.Logging` as the one logging abstraction, no
+  third-party structured-logging framework; `System.Text.Json` over
+  `Newtonsoft.Json`; no AutoMapper or other reflection/convention-based
+  mapping library; `Microsoft.Extensions.Configuration` for all
+  configuration, **including secrets** — every secret this design ever
+  needs (a DB connection string from Scaffolding & Persistence's very
+  first item onward, `ADR-057`'s KEK reference, `ADR-040`/`ADR-060`'s
+  HMAC signing secrets, any KMS credentials) is an ordinary configuration
+  value from whichever first-party or provider-native source a
+  deployment already uses (environment variables, `dotnet user-secrets`,
+  or a Key Vault/Secrets Manager/Vault configuration provider), with no
+  bespoke secrets mechanism anywhere in this design. **`ADR-059`**
+  formalizes the same discipline specifically as the answer to "how do I
+  add an extension" — an interface, one or more built-in registrations in
+  the framework's own composition root, and a hosting team's own
+  registration in *their* composition root, never dynamic/reflection-
+  based plugin discovery — and is the reason `docs/extensibility-
+  points.md` exists as a living catalog of every such seam. Neither ADR
+  gets its own item because neither gates one item's exit criteria the
+  way a real build dependency does — both are a standing bar every item
+  is checked against, the same way provider-coverage above is.
 - **Testing strategy is layered, not a single item**: `ADR-055` sets the
-  baseline (MSTest+Moq unit, Vitest+Vue Test Utils frontend unit,
-  Testcontainers integration, Playwright E2E) from the first item onward.
-  `ADR-063` adds `FsCheck` property-based tests (the hash chain, conflict-
-  resolution policy) and `Polly`+`Simmy` in-process fault injection
-  (outbox/inbox crash-recovery) once Hardening & Evolution/Sharding &
-  Replication exist to test, with `Testcontainers`+`Toxiproxy` (real
-  network-level fault injection) and Jepsen-style external verification
-  both named, deliberate, **not-yet-adopted** escalations, triggered by
-  an actual move toward production, not a calendar date. `ADR-085` adds
-  performance-regression testing the same staged way — BenchmarkDotNet
-  now, NBomber named as the future escalation — with no framework-wide
-  numeric throughput/latency target set (deployment-specific capacity
-  planning, the same posture `ADR-058`'s rate limits already take).
+  baseline from the first item onward — MSTest+Moq for backend unit
+  tests, Vitest+Vue Test Utils for frontend unit tests, the existing
+  `Testcontainers`-based `EventStore.IntegrationTests` suite reaffirmed as
+  this design's service-level integration/e2e layer, and Playwright
+  (.NET, MSTest base classes) for UI action tests via a new
+  `EventStore.E2ETests` project. `ADR-063` escalates this once Hardening
+  & Evolution/Sharding & Replication exist to test: `FsCheck`
+  property-based tests for the hash chain and conflict-resolution policy,
+  `Polly`+`Simmy` in-process fault injection for outbox/inbox crash-
+  recovery — both adopted now, cheaply, alongside the existing MSTest
+  suite. `Testcontainers`+`Toxiproxy` (real network-level fault
+  injection) and Jepsen-style external black-box verification are both
+  named, deliberate, **not-yet-adopted** escalations, triggered by an
+  actual move toward a real production deployment, not a calendar date.
+  `ADR-085` adds performance-regression testing the identical staged
+  shape: BenchmarkDotNet now, NBomber named as the future load/soak-
+  testing escalation. **No framework-wide numeric throughput/latency/
+  scale target is set anywhere in this design** — a deliberate
+  resolution: this framework is multi-tenant and domain-agnostic and a
+  single number would be meaningless for one deployment and impossible
+  for another; numeric targets are deployment-time capacity planning, the
+  same posture `ADR-058`'s per-tenant rate limits already take. None of
+  `ADR-055`/`063`/`085` gets its own item because each is a testing-
+  methodology layer applied continuously across every item above.
 - **Liveness/readiness semantics (`ADR-084`) apply from whichever item
-  first wires health checks (Auth + Orchestration's `EventStore.
-  ServiceDefaults`) onward**: liveness fails only on unrecoverable
-  internal failure; readiness does **not** fail merely because a peer is
-  unreachable or a replica is lagging (that would silently reintroduce
-  the "block on trouble" behavior `ADR-023` already rejected) — only for
-  what makes the instance itself incapable (its own database unreachable,
-  an unrecoverable startup failure). A deployment may configure stricter
-  semantics on top if its own risk tolerance demands it.
+  first wires health checks onward** — that's Auth + Orchestration's
+  `EventStore.ServiceDefaults` (Scaffolding & Persistence's own scope
+  explicitly excludes `ServiceDefaults`, deferring it there). Liveness
+  answers only "is this process capable of handling requests at all" and
+  fails only on unrecoverable internal failure — never on a dependency's
+  health. Readiness does **not** fail merely because a downstream peer is
+  unreachable or a replica is lagging — doing so would cause an
+  orchestrator to stop routing traffic, functionally equivalent to the
+  instance refusing writes itself, which would silently reintroduce
+  exactly the "block on trouble" behavior `ADR-023`'s persist-first,
+  flag-don't-reject posture already rejected. Readiness fails only for
+  what makes the instance itself incapable of its own core job — its own
+  primary database unreachable, an unrecoverable startup failure — never
+  for a peer's or replica's condition. A deployment may configure
+  stricter readiness semantics on top of this default if its own domain's
+  risk tolerance genuinely demands it. No item gets its own entry for
+  this because it's a semantic contract every health-check-exposing item
+  must honor, not a capability with its own build/verify step.
 - **The core engine's trust model assumes non-malicious actors
-  (`ADR-092`)** — `ADR-035`'s non-authoritative capture and `ADR-023`'s
-  persist-everything exist to tolerate an honest-but-wrong claim, not to
-  harden against an adversary. Hostile-traffic defense (DDoS, credential
-  stuffing, a WAF) is a deployment-perimeter concern layered in front of
-  SPIFFE/SPIRE Service Identity & API Gateway's own gateway, not something
-  any item above builds into the core engine itself. No item's exit
-  criteria should be read as a security/penetration-test guarantee beyond
-  what it explicitly states.
+  (`ADR-092`)** — the real, narrower surface this actually describes: not
+  an "unauthenticated submitter" gap (an ordinary, already bearer-token-
+  authenticated publish already defaults to `AuthorityStatus: accepted`),
+  but an *authenticated-but-not-yet-trusted-claim* one — a self-attested/
+  UCAN submitter or a detector's own unconfirmed output.
+  Non-authoritative capture and persist-everything ingestion exist to
+  tolerate an honest caller who got their own claim wrong, not to harden
+  against a party actively trying to do harm. Hostile-traffic defense
+  (DDoS, malicious payload floods, credential stuffing) is a deployment-
+  perimeter concern, satisfied by an ordinary API gateway/WAF layer a
+  production deployment adds in front of SPIFFE/SPIRE Service Identity &
+  API Gateway's own YARP entry point — not something any item above
+  builds into the core engine itself. `ADR-058`'s rate limiting already
+  names "a noisy **or hostile** publisher" explicitly, but stays scoped
+  to bounding sustained volume from a caller already inside the system
+  for tenant fairness, never designed as a WAF-shaped defense against
+  unauthenticated attack traffic. No formal STRIDE threat model or risk
+  register is adopted as a framework artifact. No item's exit criteria
+  anywhere in this document should be read as a security/penetration-test
+  guarantee beyond what it explicitly states.
 - **Keep ADR status current** as items land: `ADR-001` through `ADR-006`
   and `ADR-010` are already Accepted (confirmed design decisions) — Auth +
   Orchestration is where `ADR-006` gets verified end-to-end, not where it
-  gets decided. `ADR-008` and `ADR-009` are already Accepted but neither's
-  enforcement is real until its own item lands (`ADR-008` → Event-Type
-  Security, `ADR-009` → Property-Level Masking); `ADR-007` stays Deferred
-  until scheduled, with no unresolved technical questions of its own
-  left. `ADR-015`/`ADR-016` are verified end-to-end by CQRS Read-Model
-  Projections. `ADR-017`–`ADR-020` are built and verified by Hardening &
-  Evolution. `ADR-021`–`ADR-039` are built and verified by the
-  correspondingly-named items above (see `CLAUDE.md` for which). `ADR-040`
-  is verified by Ticket Exchange. `ADR-041` is cross-cutting, see above.
-  `ADR-042` (revises `ADR-035`) is verified alongside Non-Authoritative
-  Capture. `ADR-043`–`ADR-047` are Delegated Grants, RBAC, Federated
-  Claims & Read Audit Logging. `ADR-048`/`ADR-049` are SPIFFE/SPIRE
-  Service Identity & API Gateway. `ADR-050`–`093` are Accepted and built/
-  verified by the items above named for each, or folded into an earlier
-  item/this cross-cutting section as noted at the top of the `ADR-050`+
-  section.
+  gets decided. `ADR-008`/`ADR-009` are Accepted but neither's
+  enforcement is real until its own item lands. `ADR-007` stays Deferred
+  until scheduled. `ADR-015`/`ADR-016` are verified by CQRS Read-Model
+  Projections. `ADR-017`–`ADR-020` are built/verified by Hardening &
+  Evolution. `ADR-021`–`ADR-039` are built/verified by the
+  correspondingly-named items (see `CLAUDE.md`). `ADR-040` is verified by
+  Ticket Exchange. `ADR-041`/`ADR-059` are cross-cutting, per above.
+  `ADR-042` is verified alongside Non-Authoritative Capture. `ADR-043`–
+  `047` are Delegated Grants, RBAC, Federated Claims & Read Audit
+  Logging. `ADR-048`/`ADR-049` are SPIFFE/SPIRE Service Identity & API
+  Gateway. `ADR-055`/`063`/`085` and `ADR-084`/`092` are cross-cutting per
+  above, confirmed this pass that none of the five gates any single
+  item's own exit criteria. `ADR-087` is i18n/l10n Architectural Scope;
+  `ADR-088` is Mechanism-Level OpenTelemetry Instrumentation; `ADR-089` is
+  Event Log/AccessLog Archival Segment Detachment. `ADR-050`–`093`
+  otherwise are Accepted and built/verified by the items above named for
+  each, or folded into an earlier item/this cross-cutting section as
+  noted at the top of the `ADR-050`+ section.
 
 ## Suggested References
 
