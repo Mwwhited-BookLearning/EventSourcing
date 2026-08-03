@@ -260,7 +260,9 @@ rectangle "GraphQL Gateway" <<Boundary>> as graphql {
     rectangle "**Depth/Cost Limiter**\n<<Component>>\n//Guards against unbounded hierarchical fan-out//\n--\nMandatory, not optional (ADR-037)" <<Component>> as depthLimiter
     rectangle "**Batching (DataLoader pattern)**\n<<Component>>\n//Per-resolver batching//\n--\nAvoids N+1 across shards/replicas" <<Component>> as dataLoader
     rectangle "**UpcastChain**\n<<Component>>\n//Same executor as the Router uses//\n--\nADR-018/027 -- reshapes a stored/materialized event to current shape on read" <<Component>> as upcaster
-    rectangle "**IPayloadMasker**\n<<Component>>\n//schema+data transform//\n--\nADR-009 -- Phase 8, not yet built" <<Component>> as masker
+    rectangle "**IPayloadMasker**\n<<Component>>\n//schema+data transform//\n--\nADR-009 -- 08-build-plan.md's \"Property-Level Masking\" item, not yet built" <<Component>> as masker
+    rectangle "**ExportLineage Resolver**\n<<Component>>\n//Walks the Lineage DAG (same IEventLineageQueryProvider/\nCycleGuard as History Resolver), NDJSON+manifest bundle//\n--\nADR-068 -- a read, full claims/masking/audit pipeline, no bypass" <<Component>> as exportResolver
+    rectangle "**PlaybackAsOf Resolver**\n<<Component>>\n//Folds events <= a given SequenceNumber\nin ARRIVAL order, not logical order//\n--\nADR-068 -- bitemporal system-time reconstruction, opposite of Entity Resolver's fold" <<Component>> as playbackResolver
 }
 
 database "Entity Store" <<Container>> as entityStore
@@ -272,14 +274,28 @@ handler --> claimCheck : validate RequiredClaims (Read direction)
 handler --> entityResolver : Query: current state
 handler --> historyResolver : Query: entityHistory
 handler --> subResolver : Subscription: live changes
+handler --> exportResolver : Query: exportLineage(entityId)
+handler --> playbackResolver : Query: playbackAsOf(entityId, asOfSequenceNumber)
 entityResolver --> dataLoader : batch reads
 dataLoader --> entityStore : SELECT ... (sharded)
 historyResolver --> eventLog : SELECT ... WHERE EntityId = ... ORDER BY SequenceNumber
 entityResolver --> upcaster : reshape if needed
 upcaster --> masker : mask before returning
+exportResolver --> eventLog : recursive CTE, cycle-safe (ADR-005), SequenceNumber order
+exportResolver --> masker : mask each event's payload before bundling
+playbackResolver --> eventLog : SELECT ... WHERE EntityId = ... AND SequenceNumber <= T\nORDER BY SequenceNumber ASC (arrival order)
+playbackResolver --> masker : mask each event's payload before returning
 
 @enduml
 ```
+
+`ExportLineage Resolver` and `PlaybackAsOf Resolver` are both new *read*
+shapes over history (`ADR-068`), not a privileged bypass of anything
+above — both route through the identical `IPayloadMasker` transform (and,
+implicitly, the same `claimCheck` per-node visibility rule `History
+Resolver`'s own traversal already applies) rather than a separate
+enforcement path. See [`docs/features/lineage-export-and-playback.md`](features/lineage-export-and-playback.md)
+for the full mechanism.
 
 ## Component diagram — Lineage traversal (now inside the GraphQL Gateway)
 

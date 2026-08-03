@@ -45,6 +45,8 @@ EventStore.sln
     EventStore.Webhooks/            -- outbound webhook dispatcher: drains the durable WebhookOutbox (same fault/abend/restart-tolerant primitive as PeerSync/client outbox, ADR-033/039), Standard Webhooks HMAC signing, masks every payload against its subscription's fixed claim set before sending, exponential-backoff retry, dead-letters as WebhookDeliveryFailed on exhaustion (ADR-060)
     EventStore.Streaming/           -- TelemetryChannel/TelemetrySample ingestion + tail/replay, separate from the event pipeline entirely (ADR-031)
     EventStore.Attachments/         -- content-addressed binary storage; POST upload, GET with Range, browsable via the GraphQL Gateway (ADR-032)
+    EventStore.InterchangeAdapters/  -- IInterchangeFormatAdapter seam + built-in adapters (Hl7V2Adapter, FhirAdapter, IchE2bR3Adapter, Gs1EpcisAdapter, ADR-072); inbound transforms publish through the ordinary Inbox path unchanged, outbound composes ahead of EventStore.Webhooks' delivery
+    EventStore.InterchangeAdapters.Hl7v2MllpListener/  -- a dedicated background TCP listener speaking MLLP (ADR-072) -- HL7v2's real transport, unlike every other component in this solution (all HTTP/GraphQL); FHIR's own inbound path is ordinary HTTP, no separate listener needed. Transport security (TLS termination or network isolation) is the deploying team's own responsibility -- MLLP carries none itself
     EventStore.SpecGeneration/      -- OpenAPI builder (publish) + GraphQL SDL builder (supersedes the AsyncAPI builder for Follow -- Follow itself is gone, replaced by GraphQL Subscription); the two specs this project generates are what Kiota / GraphQL Code Generator / Strawberry Shake regenerate typed client SDKs from at consumer build time (ADR-054) -- no SDK-generation project lives in this solution itself, since generated code is never committed here, only in a consuming application's own build
     EventStore.Host.Core/           -- shared, provider-agnostic composition root logic (see below)
     EventStore.Host.Sqlite/         -- the actual deployable: Host.Core + SQLite wiring (ADR-001)
@@ -73,6 +75,13 @@ EventStore.sln
                                            -- also hosts WebUsbInputSource/WebHidInputSource/WebSerialInputSource/WebBluetoothInputSource
                                            -- (ADR-070) -- WebUSB/WebHID/Web Serial/Web Bluetooth are browser-only APIs, reachable
                                            -- only from this open page/window context, Chromium-only for 3 of the 4 (ADR-070)
+    client-web/offline-player/            -- NOT a separate app -- an alternate Vite build target of client-web's own
+                                           -- lineage/playback Vue component (ADR-068), configured with vite-plugin-singlefile
+                                           -- (docs/libraries/web/vite-plugin-singlefile.md) to inline all JS/CSS into one
+                                           -- self-contained .html file: data + playback UI both embedded, zero external
+                                           -- requests, opens by double-click, no server, no install. Self-verifying on load
+                                           -- (independently recomputes the ADR-019 hash chain + ADR-068 manifest hash from
+                                           -- the embedded bundle) -- see docs/features/lineage-export-and-playback.md
 
     -- Sample application, explicitly NOT part of the framework (ADR-030):
     Samples.Orders.Projections/           -- worked example: OrderSummaryProjection (features/cqrs-projections.md)
