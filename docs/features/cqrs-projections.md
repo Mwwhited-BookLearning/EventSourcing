@@ -1,23 +1,34 @@
 # Feature: CQRS read-model projections (worked example — Orders)
 
-> **Scenarios below predate `ADR-022`/`ADR-023`/`ADR-037`.** Partial
-> merges are now `Optional<T>`-wrapped per-property (`ADR-022`, including
-> explicit-null-clears-a-field, which the original `Partial` merge
-> deliberately didn't support); a registration missing `changeKind` now
-> persists with `SchemaStatus: invalid` rather than a `400` (`ADR-023`);
-> `ProjectionHost` subscribes through the GraphQL Gateway now, not `QUERY
-> /follow` directly (`ADR-037` — same tail/replay semantics, different
-> transport). Tracked as outstanding propagation work (`CLAUDE.md`), not
-> done in this pass.
+> **Fixed this pass, with one claim from the prior version of this banner
+> corrected.** `ProjectionHost` now subscribes through the GraphQL
+> Gateway, not a bare `QUERY /follow` call directly (`ADR-037` — same
+> tail/replay semantics, different transport) — the sequence and ER
+> diagrams below are updated accordingly. Partial merges are now
+> `Optional<T>`-wrapped per-property (`ADR-022`), including an added
+> scenario for explicit-null-clears-a-field, which the original `Partial`
+> merge deliberately didn't support. Every `RequiredReadClaim` reference
+> is now `RequiredClaims` (`ADR-050`). **Corrected, not fixed**: the prior
+> banner claimed a registration missing `changeKind` now persists with
+> `202` + `SchemaStatus: invalid` rather than a `400` (`ADR-023`) — that's
+> wrong. `ADR-013`'s Problem Details table strikes through only the
+> *publish*-time `validation-failed`/`unknown-schema-version` rows; the
+> `change-kind-required` *registration*-time row is never struck through,
+> so `PUT /registry/{event-type}` without `changeKind` still genuinely
+> rejects with `400`, exactly as the scenario below already showed —
+> `ADR-023`'s persist-everything posture never applied to schema
+> registration, only to publish.
 
 Context: design in `../09-cqrs-read-models.md`; decision records `ADR-015`
-(projections as Follow consumers) and `ADR-016` (`ChangeKind`, centralized
-merge) in `../07-adrs.md`. Builds on
+(projections as Follow consumers), `ADR-016` (`ChangeKind`, centralized
+merge, refined by `ADR-022`'s `Optional<T>` per-property patches), and
+`ADR-037` (GraphQL as the sole query layer) in `../07-adrs.md`. Builds on
 [`follow-subscribe.md`](follow-subscribe.md) — a `ProjectionHost` is just
-another Follow caller. Per `ADR-012`, `QUERY` is the real method for
-Follow; this doc writes `GET`/`?param=value` shorthand throughout for
-readability, same convention as the other feature docs — read it as
-`QUERY`-with-body.
+another Follow (GraphQL Subscription, `ADR-037`) caller, connecting
+through the GraphQL Gateway (`../06-solution-structure.md`) like any other
+consumer, never a bespoke internal path. This doc writes real GraphQL
+subscription documents below rather than `GET`/`?param=value` shorthand,
+since `ADR-037` already moved Follow onto GraphQL entirely.
 
 ## The example domain
 
@@ -56,9 +67,10 @@ public class OrderSummaryProjection : IProjection<OrderSummary>
 ```
 
 Note what `Project` does *not* do: no merge logic, no `ChangeKind` branch,
-no knowledge of which event just arrived — by the time `ProjectionHost`
-calls it, `mergedState` already reflects every field any prior event for
-this `OrderId` contributed, per `ADR-016`.
+no `Optional<T>` unwrapping, no knowledge of which event just arrived — by
+the time `ProjectionHost` calls it, `mergedState` already reflects every
+field any prior event for this `OrderId` contributed, per `ADR-016`,
+refined by `ADR-022`'s `Optional<T>`-aware fold below.
 
 ## Sequence diagram — one event's trip from Follow to the read model
 
@@ -66,16 +78,16 @@ this `OrderId` contributed, per `ADR-016`.
 @startuml CqrsProjection_Apply_Sequence
 autonumber
 participant "ProjectionHost" as host
-participant "Follow API\n(write side)" as follow
-participant "SnapshotMerger" as merger
+participant "GraphQL Gateway\n(Follow Subscription, ADR-037)" as gateway
+participant "SnapshotMerger\n(Optional<T>-aware, ADR-022)" as merger
 database "ProjectionSnapshot\n(read side)" as snapshotDb
 participant "OrderSummaryProjection" as proj
 database "OrderSummary\n(read side)" as readDb
 database "ProjectionCheckpoint\n(read side)" as checkpointDb
 
 host -> checkpointDb: read LastSequenceNumber for "order-summary"
-host -> follow: QUERY /follow/OrderAddressUpdated\nmode=replay, fromSequenceNumber=<checkpoint>
-follow --> host: event { OrderId: "o-1", Address: "221B Baker St" }
+host -> gateway: QUERY /graphql\nsubscription { onOrderAddressUpdated(mode: REPLAY,\n  fromSequenceNumber: <checkpoint>) { orderId address } }
+gateway --> host: event { OrderId: "o-1", Address: "221B Baker St" }
 host -> snapshotDb: load snapshot("order-summary", "o-1")
 snapshotDb --> host: { CustomerName: "A. Smith", Address: "old address", Amount: 42.00 }
 host -> merger: apply(ChangeKind=Partial, existing, incoming)
@@ -88,9 +100,12 @@ host -> checkpointDb: advance LastSequenceNumber
 @enduml
 ```
 
-`Amount`, untouched by `OrderAddressUpdated`'s payload, survives the merge
-unchanged — that's `ADR-016`'s merge-patch rule, shown concretely rather
-than just described.
+`Amount`, omitted from (`Unspecified`, not `Specified(null)`)
+`OrderAddressUpdated`'s payload, survives the merge unchanged —
+`ADR-022`'s `Optional<T>`-aware fold rule (refining `ADR-016`'s original
+whole-payload-merge description), shown concretely rather than just
+described. See the "explicit null clears a field" scenario below for the
+`Specified(null)` case this same rule handles differently.
 
 ## Data model (ER diagram) — the write/read boundary
 
@@ -141,7 +156,7 @@ package "Read side (ProjectionsDbContext) -- separate database" {
 
 event .[hidden]. etd
 snapshot ..> summary : "Project() maps\nsnapshot -> row"
-note "The only connection between\nthe two packages is an HTTP\nQUERY /follow call -- never a\nshared DbContext or a join\nacross the boundary." as N
+note "The only connection between\nthe two packages is a GraphQL\nSubscription through the Gateway\n(QUERY /graphql, ADR-037) -- never a\nshared DbContext or a join\nacross the boundary." as N
 event .. N
 N .. checkpoint
 @enduml
@@ -197,17 +212,38 @@ Feature: CQRS read-model projections (Orders example)
     Then eventually the "OrderSummary" row for "o-1" should have both ShippedAt "2026-01-05T10:00:00Z" and CancelledAt "2026-01-06T10:00:00Z"
     And Address should still be "10 Downing St"
 
+  Scenario: An explicit null in a Partial event's payload clears the field, unlike an absent one
+    Given an "OrderPlaced" event was published for "o-1" with body { "OrderId": "o-1", "CustomerName": "A. Smith", "Address": "10 Downing St", "Amount": 42.00 }
+    When an "OrderAddressUpdated" event is published with body:
+      """
+      { "OrderId": "o-1", "Address": null }
+      """
+    Then eventually the "OrderSummary" row for "o-1" should have Address equal to null
+    And the "OrderSummary" row for "o-1" should still have CustomerName "A. Smith" and Amount 42.00
+    # Specified(null) clears the property outright -- a different outcome
+    # from simply omitting Address (the "leaving untouched fields alone"
+    # scenario above), which leaves the prior value in place instead
+    # (ADR-022, refining ADR-016's original whole-payload-merge rule,
+    # which deliberately didn't support an explicit clear at all).
+
   Scenario: A masked/absent field in a Partial event's payload is ignored on merge, not overlaid as a placeholder
-    Given "OrderAddressUpdated" is registered with RequiredReadClaim "clearance:secret"
+    Given "OrderAddressUpdated" is registered with a Read-direction entry in RequiredClaims of "clearance:secret"
     And the "order-summary" projection's client lacks the "clearance:secret" claim
     And an "OrderPlaced" event was published for "o-1" with body { "OrderId": "o-1", "CustomerName": "A. Smith", "Address": "10 Downing St", "Amount": 42.00 }
     When an "OrderAddressUpdated" event is published with body { "OrderId": "o-1", "Address": "221B Baker St" }
-    Then the projection cannot see that event at all (RequiredReadClaim gates connect time)
+    Then the projection cannot see that event at all (RequiredClaims gates connect time, ADR-050)
     And the "OrderSummary" row for "o-1" should still have Address "10 Downing St", unchanged
+    # Masked/absent is treated as Unspecified, never as Specified(null) --
+    # the scenario immediately above is the one case that DOES clear the
+    # field; this is deliberately not that case (ADR-022's own note that
+    # masking's "treat as absent" guidance is unchanged by Optional<T>).
 
   Scenario: Registering an event type without ChangeKind is rejected
     When I PUT to "/registry/OrderRefunded" with a body that omits "changeKind"
     Then the response status should be 400
+    # Registration is a control-plane action, not a publish -- ADR-023's
+    # persist-everything posture never applied to it, and ADR-013's
+    # change-kind-required row is never struck through. Still a real 400.
 
   Scenario: Full rebuild from scratch reproduces the same end state as incremental application
     Given an "OrderPlaced" event was published for "o-1" with body { "OrderId": "o-1", "CustomerName": "A. Smith", "Address": "10 Downing St", "Amount": 42.00 }
@@ -222,7 +258,7 @@ Feature: CQRS read-model projections (Orders example)
     And the "order-summary" projection is then stopped
     And an "OrderShipped" event is published for "o-1" while the projection is stopped
     When the "order-summary" projection is restarted
-    Then it resumes with mode=replay&fromSequenceNumber=<its last checkpoint>
+    Then it resumes the subscription with mode: REPLAY, fromSequenceNumber: <its last checkpoint>
     And the "OrderShipped" event is applied exactly once
     And no event already reflected in the OrderSummary row is re-applied in a way that would be observable (idempotent upsert)
 ```

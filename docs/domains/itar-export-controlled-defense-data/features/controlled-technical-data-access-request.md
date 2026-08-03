@@ -264,7 +264,30 @@ Revoked --> [*]
 @enduml
 ```
 
-## Salt (UI mockup)
+## Salt (UI mockup) — request-to-read user flow, across the approver's queue, decision, and delegated-read screens
+
+### Screen 1: Access Request Queue — AppId defco
+
+```plantuml
+@startsalt
+{
+  { "Access Request Queue -- AppId: defco" }
+  ..
+  | Request ID | Asset ID | Requester             | Grant Type    | Status      |
+  | ar-2201    | td-4471  | "foreign-partner-42"  | TAA-delegated | UnderReview |
+  | ar-2198    | td-4471  | "engineer-22"          | RBAC role     | Approved    |
+  | ar-2190    | td-9982  | "foreign-partner-42"  | TAA-delegated | Denied      |
+}
+@endsalt
+```
+
+Each row is one position in the *Access Request Lifecycle* state machine
+above (`Requested`/`UnderReview`/`Approved`/`Denied`) — this queue is what
+a cleared engineer holding `itar:read` (`ADR-046`) works from, not a
+read of `TechnicalDataAssetEntityStoreRow` itself. Clicking `ar-2201`
+opens Screen 2, the pending TAA-delegated request's own approval detail.
+
+### Screen 2: Approver's review and sign-off screen
 
 ```plantuml
 @startsalt
@@ -293,11 +316,40 @@ Revoked --> [*]
 Every field above is a read of `TechnicalDataAssetEntityStoreRow` plus
 the pending request/grant fields (`AssetId`/`UsmlCategory`/
 `Classification` from the asset row, `GranteeDid`/`DelegatedClaim`/
-`EntityScope`/`ExpiresAt` from the request-in-progress) — no new
-storage for the screen itself. `Approve` triggers the `ADR-066`
-step-up challenge inline, per the state machine above; `Deny` transitions
-straight to `Denied` with no sign-off required, since a denial grants no
-new access.
+`EntityScope`/`ExpiresAt` from the request-in-progress) — no new storage
+for the screen itself. `Approve` triggers the `ADR-066` step-up challenge
+inline, per the state machine above, then publishes the `accessGrant`
+event that moves this request to `ActiveTaa`; UCAN issuance and exchange
+happen next, out of frame, before Screen 3. `Deny` transitions straight
+to `Denied` with no sign-off required, since a denial grants no new
+access, and never reaches Screen 3.
+
+### Screen 3: Foreign partner's delegated read, within granted scope
+
+```plantuml
+@startsalt
+{
+  { "defco:TechnicalDataAsset:td-4471 -- read via TAA-delegated grant" }
+  ..
+  { "Caller" | "foreign-partner-42 (DID token-exchanged, ADR-036)" }
+  { "Entity scope" | "defco:TechnicalDataAsset:td-4471" }
+  ..
+  { "USML Category" | "USML Category XII" }
+  { "Classification" | "ITAR-Controlled" }
+  ..
+  "200 OK -- AccessLogEntry written: ReaderTrustBasis \"Attested\", GrantRef ar-2201 (ADR-045)"
+}
+@endsalt
+```
+
+This is the second sequence diagram's TAA-scoped branch, dramatized: once
+`foreign-partner-42` exchanges the UCAN issued by Screen 2's approval for
+a bearer JWT, the same `GraphQL Gateway`/`Entity Resolver` path a cleared
+US engineer uses returns this asset's data because `HasClaim("itar:read")
+AND entityScope == entityId` holds (`ADR-043`). The same query against
+`td-9982` — outside `ar-2201`'s `entityScope` — never reaches this screen
+at all; it returns `403` instead, exactly as this doc's second sequence
+diagram's third branch shows.
 
 ## Gherkin
 

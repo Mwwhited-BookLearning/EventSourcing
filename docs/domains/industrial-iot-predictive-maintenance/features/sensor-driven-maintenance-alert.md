@@ -326,43 +326,90 @@ type (e.g. `WorkOrderCreated`, optionally `parentEventIds`-linked back to
 this alert, `ADR-005`) once it acts on the webhook, but that event type
 isn't designed here.
 
-## Salt (UI mockup)
+## Salt (UI mockup) — detection-to-dispatch flow, across the operator's queue, technician's field-verification, and confirmed-record screens
+
+### Screen 1: Plant operator dashboard — maintenance-alert queue across assets
 
 ```plantuml
 @startsalt
 {
-  { "Plant Operator Dashboard -- Pump 42" }
+  { "Plant Operator Dashboard -- Maintenance Alerts  (mixed isAuthoritative)" }
   ..
-  | Field              | Value                                    |
-  | Asset               | "pump-42"                                |
-  | AlertSeverity        | "High"                                   |
-  | DetectorConfidence   | 0.94                                      |
-  | SuggestedAction      | "Inspect bearing"                        |
-  | AuthorityStatus       | "accepted"                               |
-  ..
-  { [ ! ConflictFlag ] | [ LateArrivalFlag ] | [ AuthorityStatus: accepted ] }
-  ..
-  [View raw telemetry window (t1-t2)]
-  ..
-  [Acknowledge] | [Dismiss] | [Create work order]
+  | Alert    | Asset   | AlertSeverity | DetectorConfidence | AuthorityStatus | isAuthoritative |
+  | alert-10 | pump-42 | High          | 0.94               | accepted        | true            |
+  | alert-8  | pump-42 | Medium        | 0.41               | pending_review  | false           |
+  | alert-9  | pump-42 | High          | 0.97               | accepted        | true            |
 }
 @endsalt
 ```
 
-The "View raw telemetry window" link resolves the alert's own
-`TelemetryPointer` (`{ ChannelId: "pump-42-vibration", FromTimestamp: t1,
-ToTimestamp: t2 }`) — the same deep-link mechanism `ADR-031` defines via
-the W3C Media Fragments URI temporal-fragment syntax for `Media`
-channels, applied here to a `RawScalar` channel's own tail/replay read
-path instead (`streaming-channels.md`). The flag row reuses the one
-shared convention `ADR-024`/`ADR-029`/`ADR-035` already established
-(`entity-concept.md`'s Salt mockup does the same) rather than three
-bespoke indicators. `Acknowledge`/`Dismiss` map to a technician's
-`authorityDecision: accepted`/`rejected` publish for a
-`pending_review` alert (not shown enabled above, since this mockup shows
-an already-`accepted`, high-confidence alert); `Create work order` is the
-application-specific action a real CMMS integration would trigger,
-outside this framework's own scope.
+`alert-10`/`alert-9` are high-confidence detector publishes, already
+`accepted` by `ADR-042`'s default and read here from the authoritative
+`EntityStoreRow`. `alert-8` is the low-confidence branch from the first
+sequence diagram above — visible only via `LiveEntityStoreRow`, wrapped
+`isAuthoritative: false`, and would not appear at all if this screen
+only read the authoritative store. Clicking `alert-8` opens Screen 2,
+the technician's field-verification screen for that one pending alert;
+clicking an already-`accepted` row like `alert-10` instead skips
+straight to Screen 3, since no decision is outstanding.
+
+### Screen 2: Technician's field-verification screen
+
+```plantuml
+@startsalt
+{
+  { "alert-8 -- Field Verification  (Live View, isAuthoritative: false)" }
+  ..
+  { "Asset"              | "pump-42"                 }
+  { "AlertSeverity"      | "Medium"                  }
+  { "DetectorConfidence" | "0.41"                    }
+  { "SuggestedAction"    | "Recommend inspection"    }
+  ..
+  [ View raw telemetry window (t3-t4) ]
+  ..
+  { "Field verification reason:" | "[                              ]" }
+  [ Acknowledge (accept) ] | [ Dismiss (reject) ]
+}
+@endsalt
+```
+
+"View raw telemetry window" resolves the alert's own `TelemetryPointer`
+(`{ ChannelId: "pump-42-vibration", FromTimestamp: t3, ToTimestamp: t4
+}`) — the same deep-link mechanism `ADR-031` defines, applied to this
+`RawScalar` channel's tail/replay read path (`streaming-channels.md`).
+Clicking **Acknowledge** publishes the technician's own
+`authorityDecision` with `decision: "accepted"` (e.g. "confirmed bearing
+wear on inspection") and moves the flow to Screen 3. **Dismiss**
+publishes `decision: "rejected"` instead — the alert never reaches
+Screen 3 at all, staying visible only on Screen 1, re-labeled
+`Dismissed`, never deleted.
+
+### Screen 3: Confirmed record, notified downstream
+
+```plantuml
+@startsalt
+{
+  { "pump-42 -- Maintenance Alert Record  (Entity Store, isAuthoritative: true)" }
+  ..
+  { "AlertSeverity"   | "Medium"                                             }
+  { "AuthorityStatus" | "accepted"                                           }
+  { "Verified by"     | "tech-17 -- confirmed bearing wear on inspection"    }
+  { "CMMS notified"   | "webhook-id/webhook-signature delivered (ADR-060)"  }
+  ..
+  [ Create work order ]
+}
+@endsalt
+```
+
+Reached either directly from Screen 1 (a high-confidence alert, already
+`accepted` at publish) or from Screen 2's **Acknowledge** — either path
+folds into the authoritative `EntityStoreRow` and enqueues a
+`WebhookOutbox` entry once `AuthorityStatus` reaches `accepted`
+(`ADR-060`), notifying the downstream CMMS. **Create work order** is the
+application-specific action `WorkOrderDispatched`'s state-machine note
+names: a real CMMS integration would publish its own `WorkOrderCreated`
+event here, optionally `parentEventIds`-linked back to this alert
+(`ADR-005`) — that event type isn't designed in this doc.
 
 ## Gherkin
 

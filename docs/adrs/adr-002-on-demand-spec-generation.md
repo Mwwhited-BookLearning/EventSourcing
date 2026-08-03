@@ -64,7 +64,8 @@ grows large enough that generation cost becomes measurable.
   as `AsyncApiDocumentBuilder` does — i.e. from the same phase AsyncAPI
   generation is built, not deferred alongside masking's runtime
   enforcement (`IPayloadMasker`, still deprioritized — see
-  `08-build-plan.md`, Phases 4 and 8). The two transforms should share one
+  `08-build-plan.md`, "Follow API + Filter Pushdown" and "Property-Level
+  Masking"). The two transforms should share one
   underlying "find every `x-masking` node" tree-walk helper so the
   recursion rule (scalar node / scalar array `items` / property nested
   inside complex-object `items`) is implemented once, not twice with a

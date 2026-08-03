@@ -29,87 +29,50 @@ here than in most repos.
 *(update this section's content, not just its presence, every session —
 stale numbers here are worse than none)*
 
-- As of **2026-08-01** (continuing the same working session that started
-  2026-07-31): HEAD was `a602317` ("updating design") as of the last check,
-  moved several times via commits not made by this conversation (an
-  external process/terminal checkpointing the work; harmless, just don't
-  assume it's still current — re-check `git log`/`git status`). Working
-  tree has further unstaged edits from this session's TODO-list work-
-  through — see `git status`.
-- **Phase 4 (GraphQL/API-contract rewrite cluster) is 3 of 4 items done.**
-  `04-odata-filter-pushdown.md` (retitled/rewritten to the GraphQL
-  pushdown design), `03-api-contracts.md` (full GraphQL/OpenAPI-split
-  rewrite), and `06-solution-structure.md` (DI-wiring sketches brought
-  current — `FollowEndpoint`/`LineageEndpoint` renamed to their GraphQL
-  resolver identities, `MapMethods` QUERY-per-surface routing replaced,
-  `RequiredPublishClaim`/`RequiredReadClaim` → `RequiredClaims`,
-  `AsyncApiDocumentBuilder` marked superseded inline, and the `ADR-054`+
-  projects — `EventStore.Gateway`, `EventStore.Webhooks`,
-  `EventStore.Client.DeviceInput` — added to the project layout, including
-  a real gap found beyond the tracked TODO item: no YARP Gateway project
-  existed anywhere in this file despite `ADR-049` requiring one) are all
-  done — see `docs/changes/2026-08-01.md` for the full narrative. **Only
-  the `docs/features/*.md` Gherkin rewrite (400→202+SchemaStatus, OData→
-  GraphQL syntax, `ADR-054`–`074` coverage) is left in Phase 4**, next up.
-- **`docs/10-open-questions.md` is now EMPTY** — worked down from 22
-  rows to 0 this session, via twenty-two new ADRs (`ADR-076`–`093`) plus
-  an `ADR-045` addendum. Full narrative in `docs/changes/2026-07-31.md`,
-  not repeated here. Rows 3/4 relocated (not resolved) to their owning
-  domains' `README.md`s; row 7 fully excluded (pure ops, not a
-  framework fork at all — a new standing exclusion category in the
-  file's own header now). **This is a milestone, not a steady state** —
-  the file's whole purpose is to catch the *next* real fork the moment
-  it's found, not to stay empty. Standing policy, reversed once this
-  session (don't re-derive either version from scratch — see the file's
-  own header): a resolved row is **deleted outright**, not struck
-  through; the resolving ADR is its permanent record, and that day's
-  `docs/changes/{date}.md` carries the one-line pointer instead.
-  Recurring lenses worth applying to whatever's found next: **(1)** an
-  ops/runbook concern with no real architecture/dev decision embedded
-  can be excluded entirely, not just deferred; **(2)** prefer a real
-  RFC/web standard over a custom mechanism when one's available;
-  **(3)** reuse an existing framework mechanism/interface before
-  inventing a new one.
-- **A full review pass over all 22 new ADRs, this session, found and
-  fixed 8 real issues** (4 parallel review agents, each checking a
-  different axis — citation accuracy, data-model-propagation-claims-vs-
-  reality, index/tracker consistency, and references/domain-doc
-  consistency): `ADR-086` misnamed a hash ("root" → the correct
-  "manifest hash," matching `ADR-068`'s own term); `ADR-092`
-  mischaracterized both `ADR-035`'s actual scope (it's non-authoritative
-  capture of an *authenticated* claim, not "unauthenticated," since
-  `ADR-042` revised the default) and `ADR-058`'s (which already says
-  "hostile," contradicting the claim that it doesn't); `ADR-088`'s fold-
-  lag metric didn't account for `ADR-042`'s review-gating (would have
-  conflated processing latency with open-ended human-review time);
-  `ADR-077`/`ADR-078` claimed data-model propagation as "not yet done"
-  when it had actually already landed in the same session; a typo/count
-  error in `TODO.md` and a stale `75→85` (should be `93`) count in
-  `docs/changes/2026-07-31.md`; and `docs/domains/digital-identity-kyc/
-  README.md` had a real partial-edit bug — only its Special Concerns
-  bullet was updated to reflect `ADR-079`'s resolution, while five other
-  spots in the same file (the regulations table, a workflow description,
-  the feature-docs list, two glossary entries) still called the OFAC/SAR
-  question open. All fixed. **Lesson for next time**: verify propagation
-  claims against the actual files rather than trusting an ADR's own
-  Consequences section, and grep a whole file for a topic before
-  assuming one updated bullet means the whole file is consistent.
-- **`TODO.md` restructured into 6 dependency-ordered phases** this
-  session (was a flat 12-item list) — Phase 1 quick/independent fixes,
-  Phase 2 data-model correctness (foundational), Phase 3 diagrams/
-  library catalog, Phase 4 the GraphQL/API-contract rewrite cluster
-  (internally sequenced: pushdown doc → api-contracts → solution-
-  structure → Gherkin scenarios), Phase 5 the `08-build-plan.md`
-  dependency-checklist restructuring, Phase 6 the 13-domain Salt-mockup
-  rework (sized for parallel dispatch). Read `TODO.md` directly rather
-  than this summary for the actual items.
-- Also created, this session: `TODO.md`'s restructure aside, `.claude/
-  protocols/todo-tracking.md` + `context-handoff.md` (both created
-  earlier the same session).
-- **Still open, not yet executed**: everything in `TODO.md`'s 6 phases,
-  plus a full repo-wide staleness review pass beyond what this
-  session's ADR-focused review covered — see "Working notes" below for
-  retained detail on anything not fully captured by `TODO.md` itself.
+- As of **2026-08-03** (continuing one long working session that started
+  2026-07-31): HEAD was `a602317` ("updating design") as of the last
+  check, moved several times via commits not made by this conversation
+  (an external process/terminal checkpointing the work; harmless, just
+  don't assume it's still current — re-check `git log`/`git status`).
+  Working tree has further unstaged edits from this session's work-
+  through of `TODO.md` — see `git status`.
+- **`docs/10-open-questions.md` is EMPTY** and **`08-build-plan.md` no
+  longer uses fixed `Phase N` numbering** — cite its items by name only
+  (`` `08-build-plan.md`, "Event-Type Security" ``, never a number).
+  **All 93 ADRs are Accepted; the original 6-phase TODO.md restructuring
+  plan from earlier this session (quick fixes → data-model → diagrams →
+  GraphQL/API-contract cluster → build-plan restructuring → 13-domain
+  Salt-mockup rework) is fully complete.** Full narrative across
+  `docs/changes/2026-07-30.md` through `2026-08-03.md` — not repeated
+  here; skim the latest one or two for what actually happened, this
+  section only tracks what's still open.
+- **`TODO.md` is down to 3 small, mutually-independent items**, found
+  mid-session rather than pre-planned — read `TODO.md` directly, don't
+  rely on this summary: `docs/features/masking.md`'s wrapper needs
+  `ADR-057`'s `erased` branch (bundled with a genuine unresolved
+  contradiction over how many masking strategies v1 actually supports);
+  `docs/features/*.md` has zero coverage for `ADR-054`–`074` (needs its
+  own scoping pass on full-doc-vs-section before starting, not yet done);
+  and `RequiredPublishClaim`/`RequiredReadClaim` (pre-`ADR-050` naming)
+  is still presented as current in several domain feature docs, `05-
+  schema-registry-and-spec-generation.md`'s body, `ADR-013`'s error
+  table, and `streaming-and-attachments.md`'s `TelemetryChannel` field —
+  not yet scoped with a full repo grep.
+- **Lessons from this session worth carrying forward, not re-learning**:
+  **(1)** verify a propagation claim against the actual file, never trust
+  an ADR's own Consequences section saying something "is done"; **(2)**
+  grep a whole file for a topic before assuming one updated bullet means
+  the whole file is consistent — partial-edit bugs hide in the
+  untouched spots; **(3)** a same-session rewrite isn't yet-verified
+  ground truth just because it's more recent than what it cites — cross-
+  check it the same as anything older; **(4)** when a large TODO item
+  turns out to bundle two genuinely different jobs (fix-what's-stale vs.
+  write-net-new-content), split them explicitly rather than letting the
+  harder half quietly ride along or get dropped; **(5)** offering an
+  explicit choice before a large, effort-heavy rewrite (full-restructure-
+  now vs. lighter-touch vs. defer) consistently got a clear, fast answer
+  rather than stalling — keep doing this for the next large item, don't
+  assume silent authorization from an earlier "keep going."
 
 ## How to resume cold
 
@@ -124,39 +87,24 @@ stale numbers here are worse than none)*
 
 ## Working notes not yet written down elsewhere
 
-- The user explicitly wants to be asked before large, effort-heavy
-  content rewrites get started unilaterally (e.g. the 13-domain Salt-
-  mockup rework) — offer it, don't just do it. Smaller, unambiguous
-  fixes (broken links, typos, missing cross-references) are fine to fix
-  directly during a review pass.
+- The user wants to be asked before large, effort-heavy content rewrites
+  get started unilaterally — offer explicit options (e.g. "full rewrite
+  now / lighter version / defer"), don't just do it. This got a clear,
+  fast answer every time it was tried this session (the build-plan
+  restructuring, the Salt-mockup batch) — keep doing it, don't start
+  assuming a much earlier "keep going" still covers a new large item.
+  Smaller, unambiguous fixes (broken links, typos, missing cross-
+  references, a stale field name found mid-task) are fine to fix directly
+  during a review pass without asking first.
 - The two-tier domain depth (13 domains at 1 feature doc each vs. 2
   chosen domains at 4 feature docs / 3 workflows each) is intentional,
   not unfinished — don't mistake the 13 shallower domains for a batch
-  that still needs finishing to 4 docs each.
-- **`08-build-plan.md` restructuring — agreed direction, not yet
-  executed.** Replace fixed `Phase N` labels with a dependency-checklist
-  model (each item declares its own prerequisite ADRs/items; display
-  order/grouping is derived via topological sort, not hand-assigned) so
-  adding a new capability never again requires renumbering or risks
-  being skipped the way `ADR-050`–`079` were. The existing PlantUML
-  dependency graph already models the right relationships through
-  ~`ADR-048`; this reframes it as data instead of hand-maintained edges,
-  then backfills the missing ADRs.
-- **The missing GraphQL-pushdown doc** (replacing `04-odata-filter-
-  pushdown.md`) — agreed direction, not yet written. Confirmed as a
-  **query-pattern** doc, not a projection or CEL-based one. Filtering
-  follows the Query pattern (GraphQL `Query` → HotChocolate
-  `[UseFiltering]` → `IQueryable<Entity>` → same `IJsonPathTranslator`
-  pushdown `ADR-037` already says survives). Projection (`[UseProjection]`,
-  field-shaping) is a separate, mostly-free GraphQL bonus, not what this
-  doc replaces. CEL stays scoped to upcast mapping only — reusing it for
-  query filtering would need a new CEL-to-pushdown translator that
-  doesn't exist, where HotChocolate already gives that translation for
-  filtering natively. **Explicit user direction: don't build a dedicated
-  query-store abstraction now** — if `IQueryable`-over-Entity-Store
-  filtering ever proves insufficient, extend the already-designed CQRS/
-  Projections mechanism (`ADR-015`/`016`, Phase 9) then, not preemptively.
-- **User also asked for a full repo-wide staleness review pass** (not
-  just `features/*.md`'s stale Gherkin/`ADR-054`–`074` gap) —
-  scope/timing not yet agreed; likely a `parallel-batch-dispatch.md`-
-  shaped job once the above docs land.
+  that still needs finishing to 4 docs each. (Their Salt mockups are now
+  at the same 2–4-screen depth as the chosen domains' — only the feature-
+  doc *count* per domain still differs, deliberately.)
+- **A full repo-wide staleness review pass beyond what this session's
+  ADR-focused reviews have covered** was asked for at one point but never
+  scoped/scheduled — still genuinely open, likely a `parallel-batch-
+  dispatch.md`-shaped job whenever it's picked up. Don't assume it's been
+  done just because several large, related sweeps (the `docs/features/*.md`
+  Gherkin rewrite, the build-plan restructuring) have since landed.

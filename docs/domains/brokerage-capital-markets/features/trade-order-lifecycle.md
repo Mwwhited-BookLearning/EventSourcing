@@ -288,12 +288,58 @@ public class EventParent
 }
 ```
 
-## Salt (UI mockup)
+## Salt (UI mockup) — order-submission-to-settlement user flow, across the trader's ticket, risk officer's queue, and compliance's audit screens
 
-A compliance/back-office order-history screen: the lifecycle timeline
-with a chain-integrity badge, plus a control-plane audit panel showing
-the reserved events from both sequence diagrams above landing in the
-same log.
+### Screen 1: Order Management System — trader's new order ticket
+
+```plantuml
+@startsalt
+{
+  { "Order Management System -- New Order Ticket" }
+  ..
+  { "Account" | "acct-42" }
+  { "Symbol" | "^ACME^" } | { "Side" | "^Buy^" } | { "Quantity" | "500" } | { "Limit Price" | "41.10" }
+  ..
+  [ Submit Order ]
+  "Status: -- not yet submitted --"
+}
+@endsalt
+```
+
+Clicking **Submit Order** dispatches `POST /publish/OrderSubmitted`
+exactly as the first sequence diagram's SequenceNumber 119 step shows;
+the ticket flips to "received, awaiting risk review" and the order
+leaves the trader's screen entirely — there is no trader-side polling
+or status page in this doc's scope, the next real action is the risk
+officer's own queue (Screen 2), a different role's screen entirely.
+
+### Screen 2: Risk Officer's review queue and decision screen
+
+```plantuml
+@startsalt
+{
+  { "Risk Officer Queue -- reviewer-1 (compliance-officer, RoleGranted rg-1)" }
+  ..
+  | OrderId | Account | Symbol | Side | Qty | LimitPrice |
+  | ord-1   | acct-42 | ACME   | Buy  | 500 | 41.10      |
+  ..
+  { [ Approve ] | [ Reject ] }
+  "Decision parents: OrderSubmitted (119) + RoleGranted (rg-1) -- ADR-005/067"
+}
+@endsalt
+```
+
+Either button dispatches `OrderRiskChecked` with **two** `parentEventIds`
+— the `OrderSubmitted` event this check evaluates and the `RoleGranted`
+event that authorized reviewer-1 to perform it at all, exactly as the
+first sequence diagram's SequenceNumber 120 step and `ADR-005`/`ADR-067`
+require. **Approve** lets the OMS and clearing system carry the order on
+to `OrderExecuted`/`OrderSettled` automatically, with no further manual
+screen in between; **Reject** instead terminates the lifecycle
+structurally at `OrderRejected` (no status flag). Either outcome is what
+Screen 3 later displays.
+
+### Screen 3: Compliance/back-office order-history and lineage screen
 
 ```plantuml
 @startsalt
@@ -318,7 +364,11 @@ same log.
 @endsalt
 ```
 
-The chain-integrity badge is a display of `GET /events/verify` (`ADR-019`)
+This is the resting state Screen 2's **Approve** path reaches once
+`OrderExecuted`/`OrderSettled` land (a **Reject** path instead shows only
+steps 1–2 plus an `OrderRejected` row, per the first sequence diagram's
+`else` branch — no step 3/4 ever exists for that order). The
+chain-integrity badge is a display of `GET /events/verify` (`ADR-019`)
 re-run through this order's own `SequenceNumber` range, not a
 per-entity mechanism of its own. "Export for litigation review" reuses
 `ADR-068`'s lineage export/manifest mechanism unchanged — not built out

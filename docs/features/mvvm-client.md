@@ -10,7 +10,7 @@ MVVM→MVP→MVC→code-behind fallback order in
 [`../comparisons/ui-architecture-patterns.md`](../comparisons/ui-architecture-patterns.md);
 Vue-vs-Blazor framework reasoning in
 [`../comparisons/ui-framework.md`](../comparisons/ui-framework.md). Build-plan
-exit criteria in `../08-build-plan.md`, Phase 20. Data shapes referenced below
+exit criteria in `../08-build-plan.md`, "MVVM Client". Data shapes referenced below
 (`Optional<T>` patches, `Extensions`, `ConflictFlag`/`LateArrivalFlag`,
 `AuthorityStatus`) come from `ADR-022`/`ADR-024`/`ADR-029`/`ADR-035` and
 `../data/entity-store.md`; the content-addressed/versioned `ViewDefinition`

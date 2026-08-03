@@ -1,11 +1,28 @@
 # Feature: Property-level masking (value/masked wrapper)
 
-> **Registration-rejection scenarios below predate `ADR-023`.** A
-> malformed `x-masking` annotation now persists with `SchemaStatus:
-> invalid` rather than a `400` at registration — same posture shift as
-> everywhere else. The masking mechanism itself (the `{value}`/`{masked}`
-> wrapper) is unaffected. Tracked as outstanding propagation work
-> (`CLAUDE.md`), not done in this pass.
+> **Corrected and partially updated this pass.** The registration-
+> rejection scenarios below do **not** predate `ADR-023` the way an
+> earlier version of this banner claimed — `ADR-013`'s Problem Details
+> table strikes through only the *publish*-time `validation-failed` and
+> `unknown-schema-version` `400` rows; the `masking-invalid` and
+> `change-kind-required` *registration*-time rows are never struck
+> through, so `PUT /registry/{event-type}` still rejects a malformed
+> `x-masking` placement or an unsupported strategy with a real `400`,
+> exactly as the scenarios below already show — registering an event
+> type is an admin/control-plane action, not a publish, and `ADR-023`'s
+> persist-everything posture never applied to it. What genuinely *was*
+> stale, now fixed: the one publish scenario asserting `201` now asserts
+> `202` (`ADR-023`); every `RequiredReadClaim` reference is now
+> `RequiredClaims` (`ADR-050`); and the Follow step in the sequence
+> diagram now shows a GraphQL Subscription over SSE (`ADR-037`) instead
+> of a bare `GET`. **Still genuinely unresolved, left out of this pass**:
+> this doc's wrapper is v1's original two-branch `FixedValue`-only shape
+> (`{value}`/`{masked}`); `ADR-057` later added a third `erased` branch
+> (crypto-shredding) to the same wrapper, already reflected in
+> `03-api-contracts.md`'s GraphQL schema (`{ value masked erased }`) but
+> not propagated into this doc's scenarios or ER diagram — tracked as
+> outstanding propagation work (`CLAUDE.md`), a bigger lift than this
+> pass's three named fixes.
 
 Context: data model note in `../02-data-model.md` ("Event-type security",
 masking paragraph); contract in `../03-api-contracts.md` ("Masking" note
@@ -15,11 +32,14 @@ under "AsyncAPI (follow side)"); registration validation in
 transform"); decision record `ADR-009` in `../07-adrs.md` (including the
 "Future: definable masking strategies" proposal — not built, sketched
 only). Depends on [`event-security.md`](event-security.md) — masking only
-ever applies to callers who already cleared `RequiredReadClaim` for the
-event type (or the type has none). Design is complete; per `08-build-plan.md`
+ever applies to callers who already cleared a `Read`-direction entry in
+`RequiredClaims` (`ADR-050`) for the event type (or the type has none).
+Design is complete; per `08-build-plan.md`
 Phase 8, building it is a lower priority than everything else, not blocked
-on anything technical. Follow is shown below as `GET` for readability —
-per `ADR-012` it's actually `QUERY`, unrelated to anything masking-specific.
+on anything technical. Follow is a GraphQL Subscription over SSE
+(`ADR-037`; see `../03-api-contracts.md`'s "Follow — GraphQL Subscription
+over SSE") — the sequence diagram below shows the real
+`subscription { ... }` document, not `GET`/OData shorthand.
 
 v1 supports exactly one masking strategy, `"FixedValue"`: a maskable
 property's value is wrapped as `{"value": <real value>}` for a caller
@@ -40,29 +60,30 @@ diagram note below, and `ADR-009`).
 @startuml Masking_Sequence
 autonumber
 actor "Consuming System" as follower
-participant "Follow API" as endpoint
+participant "GraphQL Gateway\n(Follow Subscription, ADR-037)" as endpoint
 participant "IPayloadMasker\n(pure: schema + data + hasClaim)" as masker
 database "Event & Schema Store" as db
 
-follower -> endpoint: GET /follow/OrderPlaced\nBearer <JWT>
-endpoint -> endpoint: events:follow scope + RequiredReadClaim checks pass\n(see event-security.md)
+follower -> endpoint: QUERY /graphql\nsubscription { onOrderPlaced { amount customerTaxId { value masked } } }\nBearer <JWT>
+endpoint -> endpoint: events:follow scope + Read-direction RequiredClaims\ncheck passes (ADR-050; see event-security.md)
 endpoint -> db: load active EventTypeDefinition.JsonSchema
 endpoint -> endpoint: once, at connect time: build hasClaim closure over\nthis connection's JWT claims (nothing schema-specific yet)
-endpoint --> follower: SSE connection open (200)
+endpoint --> follower: SSE connection open (200, graphql-sse\n"distinct connections" mode)
 
 loop for each matching event, while connection open
   endpoint -> db: poll for new matching events (see follow-subscribe.md)
   endpoint -> masker: Mask(activeSchema, rawPayload, hasClaim)
   masker -> masker: walk schema recursively; wherever x-masking is found\n(a scalar property, a scalar array's items, or a property nested\ninside a complex-object items schema), wrap that node's value
   masker --> endpoint: payload with masked nodes wrapped as\n{value:...} or {masked:"***"}, everything else untouched
-  endpoint -> follower: SSE event: headers{...}, data{masked payload}
+  endpoint -> follower: SSE "next" event: data{ selected fields, masked\nnodes resolved to whichever wrapper branch the query selected }
 end
 @enduml
 ```
 
 `IPayloadMasker` needs only the schema and the data — see
 `06-solution-structure.md` for why that matters (it's a reusable pipeline
-step, not logic embedded in `FollowEndpoint`).
+step, not logic embedded in the Follow Subscription resolver, `ADR-037`
+having retired the old `FollowEndpoint` name).
 
 ## Data model (ER diagram)
 
@@ -242,7 +263,10 @@ Feature: Property-level masking (value/masked wrapper)
     Given I have a Bearer token for client "follower-client" with no additional claims
     And I open an SSE connection to "/follow/OrderPlaced"
     When an "OrderPlaced" event with body {"Amount": 150.00, "CustomerTaxId": "123-45-6789"} is published
-    Then the response status should be 201
+    Then the response status should be 202
+    # Publish is always 202 + SchemaStatus now (ADR-023) -- masking is a
+    # read-time transform, wholly unrelated to which status code the
+    # publish itself got back.
     And I should receive that event on the SSE stream with CustomerTaxId equal to {"masked": "***"}
 
   Scenario: A property without x-masking is never wrapped
@@ -269,8 +293,8 @@ Feature: Property-level masking (value/masked wrapper)
     When an "OrderPlaced" event with body {"Amount": 150.00, "CustomerTaxId": "123-45-6789"} is published
     Then I should receive that event on the SSE stream without a Notes property present
 
-  Scenario: Masking applies even when the event type has no RequiredReadClaim at all
-    Given "OrderPlaced" has no RequiredReadClaim set
+  Scenario: Masking applies even when the event type has no RequiredClaims entry at all
+    Given "OrderPlaced" has no Read-direction entry in RequiredClaims
     And I have a Bearer token for client "follower-client" with no additional claims
     When I open an SSE connection to "/follow/OrderPlaced"
     Then the connection should be accepted

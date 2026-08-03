@@ -241,7 +241,31 @@ public class DisclosureDeterminationPayload
 // parentEventIds = [PublicRecordsRequestReceived.EventId, PermissionGranted.EventId] (ADR-005).
 ```
 
-## Salt (UI mockup) — records officer's redaction review screen
+## Salt (UI mockup) — request intake, officer's redaction review, and the requester's disclosed record
+
+### Screen 1: Public portal — submitting the records request
+
+```plantuml
+@startsalt
+{
+  { "Public Records Request Portal" }
+  ..
+  { "Requester name" | "^J. Alvarez^" }
+  { "Case file reference" | "^gov:CaseFile:c-1^" }
+  { "Requested scope" | "^full case file^" }
+  ..
+  [ Submit Request ] | [ Cancel ]
+}
+@endsalt
+```
+
+**Submit Request** publishes the `PublicRecordsRequestReceived` event
+shown in the first sequence diagram — an origin event with no
+`parentEventIds`, `ActorId` set to the requester's own verified portal
+identity (`ADR-064`). The request then waits for a records officer to
+pick it up, moving the flow to Screen 2.
+
+### Screen 2: Records officer's redaction review and determination
 
 ```plantuml
 @startsalt
@@ -266,9 +290,40 @@ public class DisclosureDeterminationPayload
 
 Every field the officer sees here is unmasked (`{"value": ...}`) because
 `officer-1` now holds `case:pii-view` scoped to `gov:CaseFile:c-1`, from
-the `PermissionGranted` event above — this is the reviewer-side
-counterpart to the public requester's masked view in the second sequence
-diagram, the same `x-masking` mechanism, two different callers.
+the `PermissionGranted` event the first sequence diagram shows being
+issued right after Screen 1's request lands. **Submit determination**
+dispatches the signed `DisclosureDetermination` publish; a token that
+doesn't already satisfy the configured `acr`/`max_age` triggers the
+RFC 9470 step-up challenge before the click actually completes. A
+`PartiallyApproved` or `Approved` outcome is what makes Screen 3 — the
+requester's own disclosed view — reachable at all; `Denied` ends the
+flow here, with no read link ever issued.
+
+### Screen 3: The requester's disclosed record, masked per outcome
+
+```plantuml
+@startsalt
+{
+  { "Case File Disclosure -- gov:CaseFile:c-1  (requester: J. Alvarez)" }
+  ..
+  { "Determination: PartiallyApproved" }
+  ..
+  | Field         | Value (your view)               |
+  | ApplicantName | "Maria Alvarez"                  |
+  | SSN           | "***-**-6789"  ( masked -- no case:pii-view ) |
+  | ProgramNotes  | "***"  ( masked -- no case:pii-view )         |
+}
+@endsalt
+```
+
+This is the same `gov:CaseFile:c-1` record from the second sequence
+diagram's disclosure read, queried by the public requester rather than
+the officer — `ApplicantName` carries no `x-masking` at all so it shows
+in full regardless of `Outcome`, while `SSN`/`ProgramNotes` stay masked
+because this caller never holds `case:pii-view`, the same reviewer-side
+counterpart to Screen 2's unmasked view, one mechanism, two different
+callers. This read, like the officer's, writes an `AccessLogEntry`
+(`ADR-045`), not shown as its own screen since it isn't user-facing.
 
 ## Gherkin
 

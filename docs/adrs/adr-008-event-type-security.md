@@ -59,7 +59,7 @@ Decision:
   resolved from the registry, not as a static ASP.NET Core policy — see
   `06-solution-structure.md`. It requires the caller's claims to already be
   populated by JWT bearer auth (`ADR-006`), so it can't be enforced before
-  that exists; see `08-build-plan.md`, Phase 6.
+  that exists; see `08-build-plan.md`, "Event-Type Security".
 - Registering/changing these claims still only requires `registry:admin` —
   no new scope.
 

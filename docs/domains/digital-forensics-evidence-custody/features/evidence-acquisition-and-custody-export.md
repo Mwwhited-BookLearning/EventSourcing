@@ -223,7 +223,35 @@ public class ArtifactExtractedPayload
 // AttachmentRef points at the extracted artifact's own binary content, independently content-addressed (ADR-032).
 ```
 
-## Salt (UI mockup) — chain-of-custody screen for one evidence item
+## Salt (UI mockup) — acquisition intake, the custody timeline, and the offline player's verdict
+
+### Screen 1: Examiner's acquisition intake form
+
+```plantuml
+@startsalt
+{
+  { "Acquire Evidence -- Case 24-CR-118" }
+  ..
+  { "Disk image" | [Choose file...]  "disk-ev1.img (128 GB)" }
+  { "Evidence ID" | "^ev-1^" }
+  { "Source device" | "^Dell Latitude 5410, S/N ABC123^" }
+  { "Acquisition tool" | "^FTK Imager 4.7^" }
+  { "Write blocker used" | [X] }
+  ..
+  [ Upload and Publish EvidenceAcquired ] | [ Cancel ]
+}
+@endsalt
+```
+
+**Upload and Publish EvidenceAcquired** first runs the `POST
+/attachments` upload from the first sequence diagram, computing the disk
+image's `ContentHash` (`ADR-032`), then publishes `EvidenceAcquired`
+carrying that hash as its `AttachmentRef`. The new `ChainHash` extends
+the Event Log's existing chain (`ADR-019`) immediately, without waiting
+for any later custody handoff. Once acquired, the item shows up on
+Screen 2, the chain-of-custody timeline.
+
+### Screen 2: Chain-of-custody timeline for one evidence item
 
 ```plantuml
 @startsalt
@@ -241,6 +269,42 @@ public class ArtifactExtractedPayload
 }
 @endsalt
 ```
+
+Each row is one hash-chained `StoredEvent` from the timeline the first
+sequence diagram builds — the `CustodyTransferred` row's signed checkmark
+is only ever set once `ADR-066`'s RFC 9470 step-up challenge is
+satisfied, exactly as that diagram's `alt` branch requires before
+storage. Clicking **Export for litigation** runs the second sequence
+diagram's lineage export end to end and hands the resulting bundle to
+Screen 3, the offline player.
+
+### Screen 3: Offline player's verification result
+
+```plantuml
+@startsalt
+{
+  { "Offline Player -- ev-1-export-2026-08-03.bundle" }
+  ..
+  { "Recomputing ChainHash sequence and manifest hash from embedded data..." }
+  ..
+  { "Result: Verified except 1 masked field -- chain linkage intact" }
+  ..
+  | Field masked                  | Reason                                  |
+  | ArtifactExtracted.SourcePath  | exporting actor lacked its requiredClaim |
+  ..
+  [ View full event list ] | [ Close ]
+}
+@endsalt
+```
+
+This is the second sequence diagram's offline-player step, opened by
+double-clicking `offline-player.html` with no server or install
+(`ADR-068`) — no network round trip back to Screen 1 or 2 is involved.
+The verdict shown here is the honest partial case: envelope-level chain
+linkage is still fully re-verified, but one field's original
+`PayloadHash`/`ChainHash` can't be re-derived because the exporting actor
+themselves lacked that field's `requiredClaim` at export time, so the
+bundle never carried the real bytes to re-hash.
 
 ## Gherkin
 

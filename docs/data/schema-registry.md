@@ -338,7 +338,7 @@ direction" limitation no longer applies.
   behaves exactly as before this feature existed.
 - Enforcement needs the caller's claims to already be populated by JWT
   bearer auth (`ADR-006`), so this can only be enforced once that auth
-  middleware exists — see `../08-build-plan.md`, Phase 6.
+  middleware exists — see `../08-build-plan.md`, "Event-Type Security".
 
 Property-level **masking** — wrapping individual field *values* in a
 `{"value": ...}` / `{"masked": "***"}` / `{"erased": true}` envelope

@@ -233,25 +233,88 @@ public class EpcisObjectEventWireShape
 }
 ```
 
-## Salt (UI mockup) — trading-partner transaction / shipment screen
+## Salt (UI mockup) — scan-to-shipment-to-receipt user flow, across the manufacturer's scan queue, sign-off screen, and the receiving partner's inbound reconciliation screen
+
+### Screen 1: Manufacturer's shipment scan queue (Live View, pending reconciliation)
+
+```plantuml
+@startsalt
+{
+  { "Shipment s-1 -- Scan Queue (mfr, Live View, isAuthoritative: false)" }
+  ..
+  | NDC          | Serial     | BizStep    | AuthorityStatus  |
+  | 12345-678-90 | SN00019283 | shipping   | pending_review   |
+  | 12345-678-90 | SN00019284 | shipping   | pending_review   |
+  | ...          | ...        | ...        | ...              |
+  ..
+  "200 units scanned (POST /publish/batch, ADR-072/070)"
+  [ Close out shipment as Transaction Statement ]
+}
+@endsalt
+```
+
+This is the first sequence diagram's batch-scan loop rendered as a
+screen: every row is a `UnitScanned` event, still `pending_review`
+(`ADR-035`) because none of them has been reconciled against the
+manufacturer's own serialization record yet. Clicking **Close out
+shipment as Transaction Statement** is the shipping clerk's action that
+opens Screen 2, the sign-off screen for the aggregating
+`TradingPartnerTransaction`.
+
+### Screen 2: Manufacturer's transaction statement sign-off screen
 
 ```plantuml
 @startsalt
 {
   { "Transaction t-88  --  mfr -> Wholesale Distributor whl-7" }
   ..
-  | NDC          | Serial     | BizStep    | Disposition   |
-  | 12345-678-90 | SN00019283 | shipping   | in_transit     |
-  | 12345-678-90 | SN00019284 | shipping   | in_transit     |
-  | ...          | ...        | ...        | ...            |
+  { "EpcList" | "200 units from shipment s-1" }
+  { "Transaction Statement" | "attested -- authorized, received from authorized source" }
   ..
-  Transaction Statement: "attested -- authorized, received from authorized source"
-  Signed by: "clerk-4"    Meaning: "transaction statement"
-  ..
-  [ Send EPCIS notification to trading partner ] | [ View lineage (units -> transaction) ]
+  [ Sign & Send ]
+  "Sign-off requires step-up authentication (RFC 9470) -- ADR-066"
 }
 @endsalt
 ```
+
+**Sign & Send** dispatches `POST /publish/TradingPartnerTransaction`
+with `parentEventIds` naming all 200 `UnitScanned` events (`ADR-005`)
+and a `Signature` whose `Meaning` is DSCSA's "transaction statement"
+(`ADR-066`) — a token that doesn't yet satisfy `RequiredSignature`
+gets turned away with a step-up challenge before storage, exactly as
+the first sequence diagram's `alt` branch shows, and the clerk retries
+from this same screen once stepped up. Once stored, `Gs1EpcisAdapter`'s
+outbound transform and webhook delivery (`ADR-072`/`ADR-060`) carry the
+transaction to the receiving partner with no further screen on the
+manufacturer's side — Screen 3 belongs to a different tenant entirely.
+
+### Screen 3: Receiving partner's inbound reconciliation screen (whl-7, Live View)
+
+```plantuml
+@startsalt
+{
+  { "Shipment s-1 Received -- whl-7 Inbound Reconciliation (Live View, isAuthoritative: false)" }
+  ..
+  | NDC          | Serial     | BizStep    | AuthorityStatus  |
+  | 12345-678-90 | SN00019283 | receiving  | pending_review   |
+  | 12345-678-90 | SN00019284 | receiving  | pending_review   |
+  | ...          | ...        | ...        | ...              |
+  ..
+  [ Verify against manufacturer's transaction t-88 ]
+}
+@endsalt
+```
+
+Each row is a `UnitReceived` event the inbound `Gs1EpcisAdapter`
+transform produced from the EPCIS `ObjectEvent` the manufacturer's
+Screen 2 triggered — still `pending_review` at whl-7 pending its own
+reconciliation (`ADR-035`), the same non-authoritative posture the
+manufacturer's own Screen 1 started from. **Verify against
+manufacturer's transaction t-88** is the suspect-product/VRS-shaped
+cross-tenant read the second sequence diagram shows, writing an
+`AccessLogEntry` at the manufacturer's own tenant (`ADR-045`) — DSCSA's
+transaction-history requirement made auditable as an ordinary read,
+not a new mechanism.
 
 ## Gherkin
 

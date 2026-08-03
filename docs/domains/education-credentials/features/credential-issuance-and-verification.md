@@ -306,7 +306,37 @@ identical either way: the entity's Data-Encryption Key is destroyed via
 the configured `IErasureKeyStore`, never `Payload`/`ChainHash`
 themselves (`ADR-057`, `ADR-019`).
 
-## Salt (UI mockup) — employer/relying-party verification screen
+## Salt (UI mockup) — issuance-to-verification user flow, across the registrar's issuance form, the employer's initial view, and the delegated-access result screen
+
+### Screen 1: Registrar's diploma issuance form
+
+```plantuml
+@startsalt
+{
+  { "Sunridge University -- Issue Diploma" }
+  ..
+  { "Credential Id" | "cred-1001" }
+  { "Student Id" | "S-4471" } | { "Date of Birth" | "1997-03-02" }
+  { "Degree Awarded" | "B.S. Computer Science" } | { "Conferred" | "2019-05-18" }
+  { "Diploma (PDF)" | [ Attach file... ] }
+  ..
+  [ Issue Diploma ]
+}
+@endsalt
+```
+
+**Issue Diploma** first uploads the PDF via `POST /attachments`
+(`ADR-032`), then dispatches `POST /publish/DiplomaIssued` carrying the
+resulting `ContentHash`, exactly as the issuance sequence diagram's own
+steps show. `FERPA`-classified fields are encrypted before `Payload` is
+ever written (`ADR-057`) and `AuthorityStatus` is `"accepted"`
+immediately — this is an ordinary authoritative institutional issuance
+(`ADR-006`), never routed through review-pending gating. This screen
+belongs to the registrar; the employer's own verification screens
+(Screens 2–3) are opened later, out of band, by a different actor
+entirely.
+
+### Screen 2: Employer/relying-party's initial verification view
 
 ```plantuml
 @startsalt
@@ -328,14 +358,46 @@ themselves (`ADR-057`, `ADR-019`).
 @endsalt
 ```
 
-The two buttons map directly onto the sequence diagram's two branches:
-"Request verification access" starts the `ADR-043` delegated-grant/
-Token-Exchange flow above; "Verify offline presentation instead" opens a
-local file/QR import for a student-supplied W3C VC presentation,
-verified entirely client-side with no request ever leaving the
-employer's device. `StudentId`/`DateOfBirth` render masked in **either**
-path unless the caller separately holds `ferpa:view` — a delegated
-`credential:read` grant alone never implies it.
+The two buttons map directly onto the verification sequence diagram's
+two branches. **Verify offline presentation instead** opens a local
+file/QR import for a student-supplied W3C VC presentation, verified
+entirely client-side with no request ever leaving the employer's
+device — that branch has no further platform screen at all, per the
+sequence diagram's own `else` arm. **Request verification access**
+instead starts the `ADR-043` delegated-grant/Token-Exchange flow and
+leads to Screen 3 once the registrar issues the grant and the employer
+exchanges it for a bearer JWT.
+
+### Screen 3: Employer's delegated-access result screen
+
+```plantuml
+@startsalt
+{
+  { "Credential Verification -- cred-1001 (Sunridge University)" }
+  ..
+  | Field           | Value                                     |
+  | Institution      | "Sunridge University"                     |
+  | Degree Awarded   | "B.S. Computer Science"                    |
+  | Conferred        | "2019-05-18"                                |
+  | Student ID       | "***"  ( FERPA -- masked, no "ferpa:view" ) |
+  | Date of Birth    | "***"  ( FERPA -- masked, no "ferpa:view" ) |
+  | Diploma (PDF)    | [ View attachment ]                        |
+  ..
+  { "Access basis:" | "delegated grant, entity-scoped to cred-1001, expires 2026-08-04" }
+}
+@endsalt
+```
+
+This is the same `sunridge:Credential:cred-1001` record, now readable
+because the employer's bearer JWT carries the registrar's `ADR-043`
+delegation (`credential:read`, entity-scoped, capped to an expiration) —
+the verification sequence diagram's platform-mediated branch completing.
+`StudentId`/`DateOfBirth` still render masked: the grant delegates
+`credential:read`, not `ferpa:view`, and holding one never implies the
+other (`ADR-009`/`ADR-043`). Reaching this screen also writes an
+`AccessLogEntry` with `ReaderTrustBasis: "Attested"` and the grant
+referenced (`ADR-045`) — unlike Screen 2's offline branch, which never
+touches the platform at all.
 
 ## Gherkin
 
