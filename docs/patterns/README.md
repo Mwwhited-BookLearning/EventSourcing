@@ -40,11 +40,11 @@ per kind).
 
 | Pattern | Summary | Applied in | Status |
 |---|---|---|---|
-| [Strategy Pattern (Extensible Masking/Redaction Content)](strategy-pattern-extensible-masking.md) | A family of interchangeable algorithms behind one interface, selected at runtime by a data-carried key (here, `x-masking.strategy`) instead of a hardcoded `switch` — new algorithms register in, nothing existing changes | `ADR-009` (`IMaskingStrategy`, keyed DI), reused by `ADR-052` (`IStreamRedactionStrategy`) and `ADR-057` (`IErasureKeyStore`, keyed by `AppId`) | Written |
+| [Strategy Pattern (Extensible Masking/Redaction Content)](strategy-pattern-extensible-masking.md) | A family of interchangeable algorithms behind one interface, selected at runtime by a data-carried key (here, `x-masking.strategy`) instead of a hardcoded `switch` — new algorithms register in, nothing existing changes | `ADR-009` (`IMaskingStrategy`, keyed DI), reused by `ADR-052` (`IStreamRedactionStrategy`), `ADR-057` (`IErasureKeyStore`, keyed by `AppId`), and `ADR-053` (`IUpcastExpressionEvaluator`, CEL/Jsonata swappable via configuration) | Written |
 | [Composition Root & Pure DI](composition-root-and-pure-di.md) | Wire every object graph in exactly one visible place near the entry point, via explicit registration lines, never a reflection-driven scanning convention | `ADR-041`, formalized as the extensibility answer by `ADR-059`, extended to installable packages by `ADR-062` | Written |
 | [Anti-Corruption Layer](anti-corruption-layer.md) | An isolating translation layer between two subsystems with different data models, so a foreign system's shape/quirks never leak into your own domain model | `ADR-072` (`IInterchangeFormatAdapter` — HL7v2/FHIR inbound, ICH E2B(R3)/GS1-EPCIS outbound) | Written |
 | [Idempotent Receiver & Inbox/Dead Letter](idempotent-receiver-and-inbox.md) | Safe retries; persist-before-understand; failures become inspectable records, not silent drops | `ADR-011`, `ADR-020`, `ADR-023` | Written |
-| [Tolerant Reader & Schema Evolution](tolerant-reader-and-schema-evolution.md) | Ignore what you don't recognize; reconcile old-shaped data on read, never by rewriting history | `ADR-018`, `ADR-020`, `ADR-022` | Written |
+| [Tolerant Reader & Schema Evolution](tolerant-reader-and-schema-evolution.md) | Ignore what you don't recognize; reconcile old-shaped data on read, never by rewriting history | `ADR-018`, `ADR-020`, `ADR-022`; the enum unknown-value fallback contract and N-1/N+1 window are the same tolerance restated as a deployment-time guarantee (`ADR-038`) | Written |
 
 ## Architecture patterns
 
@@ -79,6 +79,7 @@ per kind).
 | Device input integration via Web Hardware APIs | Read directly from USB/HID/serial/BLE hardware from a web page, offline, via a browser-native permission-gated API, with a local native-bridge fallback where unsupported | `ADR-070`, feeding the same client outbox `ADR-039`/`ADR-069` already provide | Catalog only |
 | Rate limiting (Token Bucket / Sliding Window / Concurrency Limiter) | Bound a caller's request volume or concurrent resource usage, partitioned per tenant so one caller can't starve another | `ADR-058` | Catalog only |
 | Bitemporal modeling (valid time vs. transaction time) | Track two independent time axes — when something was true in reality, vs. when the system learned about it — so "what do we know now" and "what did we show at the time" can both be queried honestly | `ADR-068` | Catalog only |
+| Expand/Contract (Parallel Change) database migration | Add new structures without touching existing ones (Expand), cut over writers/readers to the new shape (Migrate), remove the old shape only once nothing depends on it, much later if ever (Contract) — a rolling deployment's binary rollback then just works, since the database never stops understanding the old code | `ADR-038`, layered on this design's existing "never lose data" posture (`ADR-023`) | Catalog only |
 
 ## Standards
 

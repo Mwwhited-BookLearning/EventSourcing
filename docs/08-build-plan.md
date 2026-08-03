@@ -37,8 +37,13 @@ the scenario applies to.
 > pre-correction restatement of `ADR-093`, an unverified class name,
 > masking's rejection rule undercounting `ADR-009`'s own decided
 > strategies) — all fixed in place below. Several gaps this pass found
-> but that are documentation/coverage work, not build-plan structure, are
-> tracked in `TODO.md` instead of silently fixed here or silently dropped.
+> were documentation/coverage work, not build-plan structure — tracked in
+> `TODO.md` at the time, worked through in a later pass instead (see
+> `docs/changes/2026-08-03.md`): three new feature docs
+> (`features/dpop-and-tamper-evidence.md`,
+> `features/upcast-materialization-and-downcast.md`,
+> `features/compatibility-and-versioning.md`) and five feature-doc gaps
+> closed in place, each noted at its own point below.
 
 Two groups worth naming up front, since they explain most of the
 ordering below:
@@ -809,14 +814,14 @@ not just the response path.
 **Revised by `ADR-057`**: the `oneOf` wrapper's third `{erased}` branch
 lands in the later "GDPR/CCPA Erasure via Crypto-Shredding" item.
 
-**Note — a genuine forward-dependency gap, not yet homed anywhere**:
+**Note — the `revealField(...)` gap below is now resolved**:
 `ADR-009`'s `revealOnDemand` mechanism names its reveal action as "a
 small, dedicated GraphQL operation (`revealField(...)`, `ADR-037`'s
 transport)" — GraphQL doesn't exist until "GraphQL-Only Query Layer,"
 much later. This item builds `revealOnDemand`'s `displayMask` computation
-(no GraphQL dependency); the actual `revealField` round-trip cannot land
-here, and neither this item nor "GraphQL-Only Query Layer" currently
-claims it — see `TODO.md`.
+only (no GraphQL dependency); the actual `revealField` round-trip is
+homed in "GraphQL-Only Query Layer" below, the first item where GraphQL
+actually exists to carry it.
 
 **Depends on**: Event-Type Security (reuses its claim-checking primitive
 and the connect-time check already happening for `RequiredReadClaim`) and
@@ -923,11 +928,10 @@ own `mode=replay`-across-a-version-gap exit criterion needs a
 Read-Model Projections lands. Independent of Event-Type Security,
 Derived/Materialized Event Types, and Property-Level Masking.
 
-**Note — no dedicated feature doc exists for either DPoP or hash-chained
-verification specifically** (`ADR-017`/`ADR-019`'s behavior is exercised
-indirectly through other items' Gherkin, e.g. Multi-Tenancy's/Sharding &
-Replication's use of `ChainHash`, but neither has its own scenario file);
-tracked in `TODO.md` rather than silently assumed covered.
+**Feature-doc coverage**: `ADR-017`/`ADR-019` now have their own home in
+[`features/dpop-and-tamper-evidence.md`](features/dpop-and-tamper-evidence.md) —
+previously exercised only indirectly through other items' Gherkin (e.g.
+Multi-Tenancy's/Sharding & Replication's use of `ChainHash`).
 
 **Exit criteria**: a request with a valid bearer token but a missing or
 mismatched DPoP proof is rejected `401` (`dpop-proof-invalid`); a request
@@ -960,11 +964,9 @@ cite `ADR-037` separately, where the GraphQL swap actually belongs
 stable and fully auth'd before this rebuild touches every endpoint's
 response shape).
 
-**Note — a real feature-doc gap, not a build-plan error**:
-[`features/entity-concept.md`](features/entity-concept.md) does not
-currently contain a scenario exercising `LateArrivalFlag` specifically
-(only `ConflictFlag`) despite this item's own exit criteria below citing
-one — tracked in `TODO.md`.
+[`features/entity-concept.md`](features/entity-concept.md) now contains
+a scenario exercising `LateArrivalFlag` specifically, distinct from
+`ConflictFlag`, matching this item's own exit criteria below.
 
 **Exit criteria**: [`features/entity-concept.md`](features/entity-concept.md)
 passes on all its scenarios — a new `EntityId` creates an Entity Store row,
@@ -1013,9 +1015,9 @@ swappable via configuration with no core-engine change).
 **Depends on**: Hardening & Evolution (upcasting itself), Entity-Centric
 Core Rebuild (the fold-skip invariant needs the Entity Store to exist).
 
-**Note — no dedicated feature doc exists for this item** (`ADR-027`/
-`028`/`053`'s behavior has no `docs/features/*.md` file of its own);
-tracked in `TODO.md` rather than silently assumed covered.
+**Feature-doc coverage**: `ADR-027`/`028`/`053`'s behavior now has its own
+home in
+[`features/upcast-materialization-and-downcast.md`](features/upcast-materialization-and-downcast.md).
 
 **Exit criteria**: a materialized upcast never double-applies to the
 Entity Store (a targeted regression test: fold an original, materialize
@@ -1058,12 +1060,10 @@ scope above, not as a later pass.
 across the multi-site mesh — documented as an existing-mechanism
 capability, not built as a new one.
 
-**Note — a real feature-doc gap, not a build-plan error**:
-[`features/streaming-channels.md`](features/streaming-channels.md) does
-not currently contain scenarios exercising `ThreadId`-grouped multi-
-channel sessions or `RedactedRange` substitution behavior specifically,
-despite this item's own exit criteria below citing both; tracked in
-`TODO.md`.
+[`features/streaming-channels.md`](features/streaming-channels.md) now
+contains scenarios exercising both `ThreadId`-grouped multi-channel
+sessions and `RedactedRange` substitution behavior, matching this item's
+own exit criteria below.
 
 **Exit criteria**: a batch of samples ingests without touching schema
 validation/hash-chain/fold at all; a detector publishing an event with a
@@ -1091,12 +1091,15 @@ Rebuild** — an `AttachmentRef` is an `EntityId`-scoped concept from
 
 **Note — a real scope/ordering gap, not a build-plan error**: this
 item's own "GraphQL browsing of an entity's linked attachments" exit
-criterion has an undeclared forward dependency on "GraphQL-Only Query
-Layer," which is sequenced *after* this item — GraphQL doesn't exist yet
-when this item lands. The upload/retrieval-by-content-hash half is fully
-testable here; the GraphQL-browse half genuinely can't be exercised until
-that later item lands. Tracked in `TODO.md` rather than silently claimed
-as already testable.
+criterion has a forward dependency on "GraphQL-Only Query Layer," which
+is sequenced *after* this item — GraphQL doesn't exist yet when this item
+lands. The upload/retrieval-by-content-hash half is fully testable here;
+the GraphQL-browse half genuinely can't be exercised until that later
+item lands. This is a deliberate, accepted build-order consequence, not
+an oversight — stated explicitly here rather than silently claimed as
+already testable, so a future implementer re-verifies the GraphQL-browse
+scenario once "GraphQL-Only Query Layer" actually lands instead of
+assuming this item's exit criteria are complete on their own.
 
 **Exit criteria**: uploading identical bytes twice deduplicates (one
 stored object, two `AttachmentRef` rows); a `GET` against a
@@ -1119,10 +1122,11 @@ Store to shard/replicate).
 
 **Note — the same forward-ordering gap as Binary Attachments above**:
 this item's "a sharded cross-`EntityType` query fans out and merges
-correctly" exit criterion also has an undeclared forward dependency on
-"GraphQL-Only Query Layer" (cross-shard fan-out is a GraphQL resolver
-concern in this design, not a bare SQL one) — testable in full only once
-that later item lands. Tracked in `TODO.md`.
+correctly" exit criterion also has a forward dependency on "GraphQL-Only
+Query Layer" (cross-shard fan-out is a GraphQL resolver concern in this
+design, not a bare SQL one) — testable in full only once that later item
+lands, the same deliberate, accepted build-order consequence as Binary
+Attachments' own note above, not an oversight.
 
 **Exit criteria**: killing one site mid-write doesn't lose the write (it's
 in that site's durable outbox, replayed once the site restarts); two
@@ -1179,7 +1183,11 @@ arguments); moves `ADR-018`'s upcast mechanism onto CEL/Jint + GraphQL SDL
 directives (`ADR-053` makes the declarative half itself pluggable, CEL/
 JSONata interchangeable behind `IUpcastExpressionEvaluator`); per-`AppId`
 schema composition (`ADR-030`); mandatory depth/cost limiting and
-DataLoader batching.
+DataLoader batching. Also builds `ADR-009`'s `revealField(...)` GraphQL
+operation — the actual reveal-on-demand round-trip, resolved this pass:
+"Property-Level Masking" above builds only the `displayMask` computation
+it acts on, since GraphQL doesn't exist yet at that earlier point in the
+build.
 
 **Depends on**: Entity-Centric Core Rebuild (GraphQL reads from the
 Entity Store, assumed to already exist), Multi-Tenancy (`ADR-037`'s
@@ -1199,7 +1207,10 @@ passes against the GraphQL Gateway instead; a query containing PII-like
 content in its arguments never appears in access logs (confirms the
 `QUERY`-not-`GET` requirement actually holds); a deliberately deep/
 expensive query is rejected by the depth/cost limiter rather than
-executing.
+executing; a follower calling `revealField` on a masked node it holds
+the claim for receives the real value, and the same call without the
+claim is rejected — the `revealOnDemand` round-trip "Property-Level
+Masking" above could only build half of.
 
 ## Compatibility & Deployment Discipline
 
@@ -1211,14 +1222,15 @@ rollback.
 **Depends on**: GraphQL-Only Query Layer (needs the final GraphQL schema
 shape to state compatibility rules against).
 
-**Note — most of this item's own decision is untested beyond the
-rollback drill**: `ADR-038` decides four distinct things (enum fallback,
-capability negotiation, Expand/Contract discipline, the rollback window
-itself); the exit criterion below exercises only the last one. Tracked in
-`TODO.md` — a real implementation would need scenarios for an unknown
-enum value falling back safely, a client negotiating capabilities against
-a server's version-discovery endpoint, and an Expand/Contract migration
-sequence, none of which currently has a home in any feature doc.
+**Feature-doc coverage**: `ADR-038` decides four distinct things (enum
+fallback, capability negotiation, Expand/Contract discipline, the
+rollback window itself); the exit criterion below exercises only the
+last one directly, but all four now have a home in
+[`features/compatibility-and-versioning.md`](features/compatibility-and-versioning.md) —
+an unknown enum value falling back safely, a client negotiating
+capabilities against a server's version-discovery endpoint, an
+Expand/Contract migration sequence, and this same rollback drill,
+restated there rather than redefined.
 
 **Exit criteria**: a rollback drill — deploy a schema version, publish an
 event tagged with it, roll back to a deployment that doesn't know that
@@ -1588,28 +1600,20 @@ reuses unchanged for control-plane rows). This item **revises** "Delegated
 Grants, RBAC & Read Audit Logging"'s own storage mechanism — see that
 item's own entry above for the forward-pointing note.
 
-**Note — exit criteria narrowed this pass, a real gap found, not glossed
-over**: a targeted search of every file under `docs/features/` found
-**no Gherkin scenario anywhere** exercising `RoleGranted`/`RoleRevoked`/
-`PermissionGranted`/`AppTrustRootRegistered` publication or replay-rebuild
-— only `auth.md`'s prose describing the fold relationship, and
-`schema-registry.md`'s scenario for `SchemaRegistered` specifically.
-Narrowed the exit criteria below to what's actually proven and tracked
-the gap in `TODO.md` rather than citing untested behavior as already
-backed.
-
 **Exit criteria**: registering a schema publishes a traceable, hash-
 chained `SchemaRegistered` reserved event visible through the ordinary
 Lineage API (confirmed by an existing scenario in
-[`features/schema-registry.md`](features/schema-registry.md)); a business
-event published under a specific RBAC grant can name that grant's
-reserved event as a parent and the Lineage API traces the causal link;
-`EventTypeDefinition`/`AppTrustRoot`/`Role`/`UserPermission` reads are
-served from folded read models that reconstruct identically via a full
-replay from `SequenceNumber 0`. Granting a role and registering an
-`AppTrustRoot` publishing their own corresponding reserved events is
-part of this item's decision but **not yet backed by any Gherkin
-scenario** — see the note above and `TODO.md`.
+[`features/schema-registry.md`](features/schema-registry.md)); granting/
+revoking a role, granting a direct permission, and registering an
+`AppTrustRoot` each publish their own traceable, hash-chained reserved
+event, gated by the correct scope (confirmed by
+[`features/auth.md`](features/auth.md)'s own scenarios, added this pass);
+a business event published under a specific RBAC grant can name that
+grant's reserved event as a parent and the Lineage API traces the causal
+link; `EventTypeDefinition`/`AppTrustRoot`/`Role`/`UserPermission` reads
+are served from folded read models that reconstruct identically via a
+full replay from `SequenceNumber 0` (also now backed by an explicit
+replay-rebuild scenario in `features/auth.md`).
 
 ## Dynamic Feature-Flag Configuration Provider
 
@@ -2118,12 +2122,10 @@ certificate chain by any off-the-shelf RFC 3161 verifier.
 objects this timestamps) and Lineage Export & Bitemporal Playback (the
 litigation export bundles this timestamps).
 
-**Note — a propagation gap found, not a build-plan error**: this item's
-lineage-export-bundle exit criterion is faithful to `ADR-086`'s own
-decision text and to `03-api-contracts.md`, but
 [`features/lineage-export-and-playback.md`](features/lineage-export-and-playback.md)
-has no `RFC3161Timestamp` field on its `ExportManifest` ER-diagram class
-and no Gherkin scenario exercising it — tracked in `TODO.md`.
+now has an `RFC3161Timestamp` field on its `ExportManifest` ER-diagram
+class and a Gherkin scenario exercising it, matching `ADR-086`'s own
+decision text and `03-api-contracts.md`.
 
 **Exit criteria**: a `Signature`-requiring event type configured to also
 opt into `RFC3161Timestamp` obtains a `TimeStampToken` from
@@ -2273,12 +2275,14 @@ translation-key requirement and logical-properties convention extend).
 Confirmed independent of Accessibility Standard — both extend the same
 view-definition format but neither's mechanism depends on the other's.
 
-**Note — a real propagation gap, self-disclosed by the ADR, not a doc-
-sync miss this pass introduced**: [`features/mvvm-client.md`](features/mvvm-client.md)
-has an "Accessibility standard (`ADR-073`)" section but no i18n/l10n
-section at all — `ADR-087`'s own Consequences flag this as propagation
-work not yet done. Tracked in `TODO.md` rather than silently assumed
-covered.
+[`features/mvvm-client.md`](features/mvvm-client.md) now has an
+"Internationalization & localization (`ADR-087`)" section alongside its
+"Accessibility standard (`ADR-073`)" section — the propagation work
+`ADR-087`'s own Consequences flagged is done. That new section itself
+names one honest, still-open gap: whether the generic native-fallback
+view (raw property-name labels, no registered view definition) is also
+in scope for translation-key resolution — `ADR-087`'s text doesn't say
+either way, so it's flagged in place there rather than guessed at here.
 
 **Exit criteria**: a view definition's externalized strings render in at
 least two configured locales (including one RTL locale), using

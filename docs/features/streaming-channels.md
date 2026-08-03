@@ -21,7 +21,24 @@ docs" table. `RedactedRange`'s read-time redaction transform, originally
 left unspecified beyond its field shape, is now resolved in `ADR-052`
 (read-time, zero-fill/tone/blank-frame default per `ContentKind`, a
 configurable `Strategy`) — see `../comparisons/streaming-redaction-mechanism.md`
-for the full prior-art search and reasoning.
+for the full prior-art search and reasoning. `ADR-052`'s existence-signal
+requirement — every `RedactedRange` application also sets a sideband
+flag at the read/tail/replay boundary, structurally the same shape
+`TelemetrySample.LateArrivalFlag` already uses — means a caller lacking
+the claim always learns *that* redaction applied, never just seeing
+substituted content that looks like ordinary data. `ADR-081` revises
+`ADR-031` further, on two points this doc's scenarios now cover:
+`TelemetryChannel` gains `ThreadId`, an optional grouping key for
+multiple simultaneous channels registered together as one logical
+session/recording (a multi-electrode montage is the motivating case) —
+denormalized onto `TelemetryPointer` too, so a flat query across every
+event pointing into one session never has to join back through
+`TelemetryChannel`; and `TelemetryPointer` generalizes from a single
+object to a `List<TelemetryPointerEntry>` (each entry `{ChannelId,
+ThreadId?, FromTimestamp, ToTimestamp?}`), so a detection spanning a
+correlated pattern across several channels at once can name every
+contributing channel's window in one event — an ordinary single-channel
+detection is simply a one-entry list, not a different shape.
 
 The `Streaming Channel Service` container appears in
 `../01-c4-architecture.md` (its component diagram is flagged there as
@@ -109,6 +126,83 @@ end
 `ADR-005` already established for `parentEventIds`, so it can never collide
 with `additionalProperties`/JSON Schema validation.
 
+## Sequence diagram — a correlated detection across a `ThreadId`-grouped session
+
+```plantuml
+@startuml Streaming_ThreadId_Correlated_Detection_Sequence
+autonumber
+participant "Detector Worker" as detector
+participant "Telemetry Read API" as read
+database "Telemetry Store" as tdb
+participant "Publish API" as publish
+participant "EventAppender" as appender
+database "Event & Schema Store" as edb
+
+note over detector, tdb
+  32-electrode EEG montage: channels "eeg-ch1".."eeg-ch32" were all
+  registered with ThreadId "session-9f2" (ADR-081) -- one logical
+  recording, 32 simultaneous ChannelIds
+end note
+
+detector -> read: GET /telemetry/sessions/session-9f2/samples?mode=tail\n(ThreadId-scoped tail -- ADR-081)
+read -> tdb: SELECT ... WHERE ChannelId IN (SELECT ChannelId FROM TelemetryChannel WHERE ThreadId = 'session-9f2')\nAND Timestamp > lastSeen
+tdb --> read: TelemetrySample rows across all 32 channels, grouped by ThreadId
+read --> detector: one grouped session view (not 32 unrelated channel streams)
+detector -> detector: apply correlation logic across channels\n(a seizure signature visible on several channels at once)
+alt correlated pattern found across channels "eeg-ch3", "eeg-ch7", "eeg-ch12"
+  detector -> publish: POST /publish/SeizureSignatureDetected\n{ payload: {...}, telemetryPointer: [\n    { channelId: "eeg-ch3", threadId: "session-9f2", fromTimestamp: t0, toTimestamp: t1 },\n    { channelId: "eeg-ch7", threadId: "session-9f2", fromTimestamp: t0, toTimestamp: t1 },\n    { channelId: "eeg-ch12", threadId: "session-9f2", fromTimestamp: t0, toTimestamp: t1 } ] }
+  publish -> appender: append(StoredEvent { ..., TelemetryPointer })\n(List<TelemetryPointerEntry>, one entry per contributing channel -- ADR-081)
+  appender -> edb: INSERT StoredEvent
+  appender --> detector: 202 { correlationId, status, schemaStatus, entityId }
+else no cross-channel pattern found this poll
+  detector -> detector: continue tailing the grouped session
+end
+@enduml
+```
+
+`ThreadId` has no meaning of its own beyond grouping (`ADR-081`) — it is
+not an `EntityId`, a channel, or a stream, purely a denormalized
+correlation key present on both `TelemetryChannel` and every
+`TelemetryPointerEntry` that points into a channel belonging to that
+session. A single-channel detection (the diagram above the previous
+section) is simply a one-entry `TelemetryPointer` list; this diagram is
+the same mechanism with more entries, not a different shape.
+
+## Sequence diagram — tail/replay with a `RedactedRange` applied
+
+```plantuml
+@startuml Streaming_RedactedRange_Read_Sequence
+autonumber
+actor "Follower" as follower
+participant "Telemetry Read API" as read
+participant "Auth\n(JWT Bearer + claim check)" as auth
+database "Telemetry Store" as tdb
+participant "IStreamRedactionStrategy\n(ADR-052)" as strategy
+
+follower -> read: GET /telemetry/eeg-ch1/samples?mode=replay&fromTimestamp=<t>
+read -> tdb: SELECT TelemetrySample WHERE ChannelId = 'eeg-ch1' AND Timestamp >= <t>
+read -> tdb: SELECT RedactedRange WHERE ChannelId = 'eeg-ch1'\nAND [FromTimestamp, ToTimestamp] overlaps requested window
+tdb --> read: overlapping RedactedRange { FromTimestamp, ToTimestamp, RequiredClaim, Strategy }
+read -> auth: does Follower hold RedactedRange.RequiredClaim?
+alt Follower holds the claim
+  auth --> read: authorized for this range
+  read --> follower: real sample values for the full window,\nincluding the RedactedRange span
+else Follower lacks the claim
+  auth --> read: not authorized for this range
+  read -> strategy: resolve the configured IStreamRedactionStrategy\n(Strategy == "Default" -> ZeroFillStrategy/ToneStrategy/BlankFrameStrategy\nper ContentKind; Strategy == "PartialReveal" -> reuses\nPartialRevealMaskingStrategy's reveal computation, ADR-009/ADR-052)
+  strategy --> read: substituted bytes for the RedactedRange span only\n(samples outside the span are returned unmodified)
+  read --> follower: samples for the window, with the RedactedRange span\nreplaced by the substitution AND a sideband existence flag set\n(same shape as TelemetrySample.LateArrivalFlag) --\nnever a response indistinguishable from "no redaction happened here"
+end
+@enduml
+```
+
+Samples outside a `RedactedRange`'s span are never touched by this path —
+only the overlapping span is substituted, and the substitution is a
+read-time transform (`ADR-052`): `TelemetrySample` rows on disk are
+untouched, so a caller who later acquires the claim (or a caller who
+already holds it) sees the same real underlying data, not a
+once-redacted-forever copy.
+
 ## Data model (ER diagram)
 
 ```plantuml
@@ -126,6 +220,7 @@ entity "TelemetryChannel" as channel {
   MimeType : string?
   SampleIntervalMicros : bigint?
   Origin : enum {Origin, Derived}
+  ThreadId : string?
   SourceChannelIds : string[]?
   TransformKind : enum {Resample, Filter, Aggregate, Transcode}?
   RequiredClaims : {Direction, Claim}[]?
@@ -145,6 +240,11 @@ entity "RedactedRange" as redaction {
   --
   ToTimestamp : datetimeoffset
   RequiredClaim : string
+  Strategy : string = "Default"
+  ShowFirst : int?
+  ShowLast : int?
+  MaskChar : char?
+  PreserveSeparators : bool
 }
 
 entity "StoredEvent" as event {
@@ -155,9 +255,10 @@ entity "StoredEvent" as event {
 }
 
 channel ||--o{ sample : "ChannelId -- real FK,\nevery sample belongs to a declared channel"
-channel ..o{ redaction : "ChannelId -- field shape (ADR-031),\nread-time substitution mechanism\nresolved in ADR-052"
+channel ..o{ redaction : "ChannelId -- field shape (ADR-031),\nread-time substitution mechanism\nand Strategy field resolved in ADR-052"
 channel ..> channel : "SourceChannelIds -- a Derived channel references\none or more source channels; a string list,\nnot a normal FK"
-event ..> channel : "TelemetryPointer.ChannelId -- logical only,\nNOT a DB FK; TelemetryPointer itself is a\ncolumn on StoredEvent, defined in event-log.md"
+channel ..> channel : "ThreadId -- multiple channels registered together\nshare one ThreadId value; a denormalized grouping\nkey (ADR-081), not a normal FK"
+event ..> channel : "TelemetryPointer.ChannelId -- logical only,\nNOT a DB FK; TelemetryPointer itself is a\ncolumn on StoredEvent, defined in event-log.md.\nJSON-serialized List<TelemetryPointerEntry>\n{ChannelId, ThreadId?, FromTimestamp, ToTimestamp?}\nper entry (ADR-081) -- one entry for an ordinary\nsingle-channel detection, multiple for a correlated\nmulti-channel one; ThreadId is denormalized onto\neach entry too, not just onto TelemetryChannel"
 
 note right of sample
   Composite PK (ChannelId, Timestamp).
@@ -169,9 +270,24 @@ end note
 note bottom of redaction
   Field shape named in ADR-031.
   The read-time transform that substitutes
-  zero-fill/tone/blank-frame content over
-  this span is resolved in ADR-052 --
+  zero-fill/tone/blank-frame content (Strategy
+  "Default", per ContentKind) or a format-preserving
+  partial reveal (Strategy "PartialReveal", reusing
+  PartialRevealMaskingStrategy -- ADR-009) over this
+  span is resolved in ADR-052 --
   see comparisons/streaming-redaction-mechanism.md.
+  Every application also sets a sideband existence
+  flag at the read boundary (ADR-052) -- not shown
+  as its own column, structurally the same as
+  TelemetrySample.LateArrivalFlag.
+end note
+
+note bottom of channel
+  ThreadId groups multiple simultaneous channels
+  registered together as one logical session/
+  recording (e.g. a 32-electrode EEG montage) --
+  ADR-081. No meaning of its own beyond grouping;
+  not an EntityId, a channel, or a stream.
 end note
 @enduml
 ```
@@ -244,6 +360,44 @@ Feature: Streaming channels (telemetry, audio/video ingestion)
     And the stored event's TelemetryPointer should reference channel "eeg-ch1" at "2026-07-29T10:00:04Z"
     And the stored event should have gone through the normal publish pipeline unchanged, including SchemaStatus
 
+  Scenario: Registering multiple channels under one ThreadId groups them into a session (ADR-081)
+    Given a "RawScalar" TelemetryChannel "eeg-ch2" is registered for entity "patient:123"
+      with SampleType "Float64", SampleIntervalMicros 4000, Origin "Origin", ThreadId "session-9f2"
+    When I PUT "/telemetry/channels/eeg-ch3" with body:
+      """
+      { "appId": "clinical-app", "entityId": "patient:123", "contentKind": "RawScalar",
+        "sampleType": "Float64", "sampleIntervalMicros": 4000, "origin": "Origin",
+        "threadId": "session-9f2" }
+      """
+    Then the response status should be 201
+    And channels "eeg-ch2" and "eeg-ch3" should both belong to ThreadId "session-9f2"
+
+  Scenario: A follower querying by ThreadId gets one grouped view across every channel in that session
+    Given channels "eeg-ch2" and "eeg-ch3" both belong to ThreadId "session-9f2"
+    And both channels have samples spanning "2026-07-29T10:00:00Z" to "2026-07-29T10:00:05Z"
+    When I GET "/telemetry/sessions/session-9f2/samples?mode=tail"
+    Then the response status should be 200
+    And the response should include samples from both "eeg-ch2" and "eeg-ch3"
+    And the response should present them as one grouped session view, not two unrelated channel streams
+
+  Scenario: A correlated multi-channel detection publishes a TelemetryPointer with one entry per contributing channel
+    Given channels "eeg-ch2" and "eeg-ch3" both belong to ThreadId "session-9f2"
+    And a detector tailing ThreadId "session-9f2" notices a pattern correlated across both channels
+      between "2026-07-29T10:00:01Z" and "2026-07-29T10:00:02Z"
+    When the detector POSTs to "/publish/DizzinessReported" with body:
+      """
+      { "payload": { "Note": "correlated pattern across eeg-ch2/eeg-ch3" },
+        "telemetryPointer": [
+          { "channelId": "eeg-ch2", "threadId": "session-9f2", "fromTimestamp": "2026-07-29T10:00:01Z", "toTimestamp": "2026-07-29T10:00:02Z" },
+          { "channelId": "eeg-ch3", "threadId": "session-9f2", "fromTimestamp": "2026-07-29T10:00:01Z", "toTimestamp": "2026-07-29T10:00:02Z" }
+        ] }
+      """
+    Then the response status should be 202
+    And the stored event's TelemetryPointer should contain exactly two entries, one for "eeg-ch2" and one for "eeg-ch3"
+    And both entries should carry ThreadId "session-9f2"
+    And the event should have gone through the normal publish pipeline unchanged, including SchemaStatus
+      (ADR-081 generalizes the TelemetryPointer shape only, never the pipeline)
+
   Scenario: Retrieving a byte range from a Media channel for seekable playback
     Given a "Media" TelemetryChannel "cam-ch1" with MimeType "video/h264" has 30 seconds of ingested chunks
     When I GET "/telemetry/cam-ch1/samples" with header "Range: bytes=1000-1999"
@@ -279,4 +433,37 @@ Feature: Streaming channels (telemetry, audio/video ingestion)
     When the ChannelDerivationWorker tails channel "eeg-ch1" and applies the "Resample" transform
     Then channel "eeg-ch1-1hz" should contain the resampled output for that 1-second span
     And if channel "eeg-ch1-1hz" were lost or corrupted, it should be fully recoverable by re-deriving from "eeg-ch1"
+
+  Scenario: A follower lacking a RedactedRange's required claim receives the substitution plus a sideband existence flag (ADR-052)
+    Given channel "eeg-ch1" has a RedactedRange from "2026-07-29T10:00:04Z" to "2026-07-29T10:00:06Z"
+      requiring claim "clinical:full-eeg"
+    And channel "eeg-ch1" has samples spanning "2026-07-29T10:00:00Z" to "2026-07-29T10:00:10Z"
+    And I hold a valid "telemetry:read" scoped token without claim "clinical:full-eeg"
+    When I GET "/telemetry/eeg-ch1/samples?mode=replay&fromTimestamp=2026-07-29T10:00:00Z"
+    Then the response status should be 200
+    And samples outside "2026-07-29T10:00:04Z" to "2026-07-29T10:00:06Z" should contain their real recorded values
+    And samples within that range should contain the configured "Default" substitution (zero-fill, since ContentKind is RawScalar)
+    And each substituted sample should carry the redaction sideband existence flag set
+    And no sample in the response should be indistinguishable from an ordinary, unredacted sample
+
+  Scenario: A follower holding the required claim receives the real content, not the substitution
+    Given channel "eeg-ch1" has a RedactedRange from "2026-07-29T10:00:04Z" to "2026-07-29T10:00:06Z"
+      requiring claim "clinical:full-eeg"
+    And channel "eeg-ch1" has samples spanning "2026-07-29T10:00:00Z" to "2026-07-29T10:00:10Z"
+    And I hold a valid "telemetry:read" scoped token with claim "clinical:full-eeg"
+    When I GET "/telemetry/eeg-ch1/samples?mode=replay&fromTimestamp=2026-07-29T10:00:00Z"
+    Then the response status should be 200
+    And every sample in the response, including "2026-07-29T10:00:04Z" to "2026-07-29T10:00:06Z", should contain its real recorded value
+    And no sample in the response should carry the redaction sideband existence flag
+
+  Scenario: A RedactedRange configured for PartialReveal substitutes a format-preserving partial value on structured content
+    Given a "RawBinary" TelemetryChannel "device-log-ch1" carries structured, string-like records
+    And channel "device-log-ch1" has a RedactedRange requiring claim "pii:view"
+      with Strategy "PartialReveal", ShowFirst 0, ShowLast 4
+    And I hold a valid "telemetry:read" scoped token without claim "pii:view"
+    When I GET "/telemetry/device-log-ch1/samples?mode=replay&fromTimestamp=<redacted-range-start>"
+    Then the response status should be 200
+    And the redacted record's revealed value should show only its last 4 characters, e.g. "XXX-XX-1234"
+      (reusing PartialRevealMaskingStrategy's reveal computation -- ADR-009/ADR-052)
+    And the redaction sideband existence flag should be set for that record
 ```

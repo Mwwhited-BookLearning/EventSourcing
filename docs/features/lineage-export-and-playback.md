@@ -86,6 +86,7 @@ participant "GraphQL Gateway" as gateway
 participant "LineageExportResolver\n(ADR-068)" as resolver
 participant "IEventLineageQueryProvider\n(ADR-005, see event-chains.md)" as lineageProvider
 participant "IPayloadMasker\n(ADR-009/057, see masking.md)" as masker
+participant "ITimestampAuthorityClient\n(ADR-086)" as tsa
 database "Event & Schema Store" as db
 database "AccessLog\n(ADR-045)" as accessLog
 
@@ -115,6 +116,9 @@ else root visible
   end
   resolver -> accessLog: INSERT AccessLogEntry\n(Action: "export", ResourceRef: "lab1:Evidence:ev-1",\nReaderActorId: exporter's ActorId, ADR-045)
   resolver -> resolver: build NDJSON bundle (SequenceNumber order)\n+ manifest { referenced EventTypeDefinitions/SchemaVersions,\n  ManifestHash = SHA-256(ordered ChainHash values\n  || ExportedByActorId || ExportedAt), FrameworkVersion (ADR-062) }
+  resolver -> tsa: request TimeStampToken over ManifestHash (ADR-086)
+  tsa --> resolver: RFC3161Timestamp (TimeStampToken)
+  resolver -> resolver: manifest.RFC3161Timestamp = <token>\n-- proves the export existed at or before this time,\nindependent of trusting the exporting party's own clock (ADR-086)
   resolver --> gateway: bundleUrl (produced artifact,\nnever stored server-side beyond its retrieval window)
   gateway --> exporter: 200 { bundleUrl }
 end
@@ -270,6 +274,12 @@ class "ExportManifest\n(produced artifact, never a persisted table)" as manifest
   ExportedAt : datetimeoffset
   FrameworkVersion : string
   ' ADR-062's SemVer -- "matched version reads its own bundles" (ADR-068 §4)
+  RFC3161Timestamp : string?
+  ' TSA TimeStampToken obtained over ManifestHash, proving the export
+  ' existed at or before a specific time independent of the exporting
+  ' party's own system clock (ADR-086) -- matches 03-api-contracts.md's
+  ' exportLineage comment ("manifest hash + RFC 3161 timestamp (ADR-086)
+  ' over that hash"). Optional per ADR-086's own per-deployment posture.
 }
 
 class "SystemTimePlaybackResult\n(produced artifact, computed on demand -- ADR-068 v1)" as playbackResult {
@@ -411,6 +421,17 @@ Feature: Lineage-scoped event export, bitemporal system-time playback, and the s
     Then the response status should be 200 with a bundleUrl
     And the manifest's ManifestHash should equal SHA-256 over the ordered ChainHash values of all 5 exported events plus ExportedByActorId "auditor-3" and ExportedAt
     And an AccessLogEntry should be written with Action "export" and ReaderActorId "auditor-3"
+
+  Scenario: An export bundle's manifest carries an RFC 3161 trusted timestamp over its own manifest hash
+    Given "lab1:Evidence:ev-1" and its 4 descendant events are visible to "auditor-3"
+    And the configured TSA (ITimestampAuthorityClient, ADR-086) is reachable
+    When "auditor-3" queries "exportLineage(entityId: \"lab1:Evidence:ev-1\")"
+    Then the response status should be 200 with a bundleUrl
+    And the manifest's RFC3161Timestamp should be a TimeStampToken obtained over the manifest's own ManifestHash
+    And the timestamp should prove the export existed at or before a specific time, independent of the exporting party's own system clock
+    # ADR-086 -- strengthens ADR-068's own stated goal ("independent of
+    # trusting the exporting party") the same way it strengthens ADR-066's
+    # Signature.SignedAt with an independently-verifiable timestamp.
 
   Scenario: Importing an exported bundle preserves provenance rather than presenting it as organic
     Given a valid bundle exported from environment "prod-east" is available
