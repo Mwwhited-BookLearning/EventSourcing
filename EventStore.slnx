@@ -2,6 +2,7 @@
   <Folder Name="/src/">
     <Project Path="src/EventStore.AppHost/EventStore.AppHost.csproj" />
     <Project Path="src/EventStore.DevIdp/EventStore.DevIdp.csproj" />
+    <Project Path="src/EventStore.Derivation/EventStore.Derivation.csproj" />
     <Project Path="src/EventStore.Domain/EventStore.Domain.csproj" />
     <Project Path="src/EventStore.Follow.Api/EventStore.Follow.Api.csproj" />
     <Project Path="src/EventStore.Host.Core/EventStore.Host.Core.csproj" />

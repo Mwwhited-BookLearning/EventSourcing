@@ -71,6 +71,9 @@ namespace EventStore.Persistence.Migrations.Postgres.Migrations
                     b.Property<bool>("ConflictFlag")
                         .HasColumnType("boolean");
 
+                    b.Property<int>("DerivationHopCount")
+                        .HasColumnType("integer");
+
                     b.Property<string>("EntityId")
                         .IsRequired()
                         .HasColumnType("text");
@@ -142,6 +145,71 @@ namespace EventStore.Persistence.Migrations.Postgres.Migrations
                         .IsUnique();
 
                     b.ToTable("Events");
+                });
+
+            modelBuilder.Entity("EventStore.Domain.SchemaRegistry.DerivationCursor", b =>
+                {
+                    b.Property<string>("AppId")
+                        .HasColumnType("text");
+
+                    b.Property<string>("DerivationName")
+                        .HasColumnType("text");
+
+                    b.Property<string>("SourceEventType")
+                        .HasColumnType("text");
+
+                    b.Property<long>("LastProcessedSequenceNumber")
+                        .HasColumnType("bigint");
+
+                    b.HasKey("AppId", "DerivationName", "SourceEventType");
+
+                    b.ToTable("DerivationCursors");
+                });
+
+            modelBuilder.Entity("EventStore.Domain.SchemaRegistry.DerivationDefinition", b =>
+                {
+                    b.Property<string>("AppId")
+                        .HasColumnType("text");
+
+                    b.Property<string>("Name")
+                        .HasColumnType("text");
+
+                    b.Property<int>("BackfillMode")
+                        .HasColumnType("integer");
+
+                    b.Property<bool>("BackfillThroughDerivedSources")
+                        .HasColumnType("boolean");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("JoinConditions")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<int>("JoinTriggerMode")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("MaxHopCount")
+                        .HasColumnType("integer");
+
+                    b.Property<TimeSpan>("PendingJoinTtl")
+                        .HasColumnType("interval");
+
+                    b.Property<DateTimeOffset>("RegisteredAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("SelectFields")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("Sources")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.HasKey("AppId", "Name");
+
+                    b.ToTable("DerivationDefinitions");
                 });
 
             modelBuilder.Entity("EventStore.Domain.SchemaRegistry.EventTypeDefinition", b =>
@@ -233,6 +301,46 @@ namespace EventStore.Persistence.Migrations.Postgres.Migrations
                     b.HasIndex("EventTypeAppId", "EventTypeName", "EventTypeVersion");
 
                     b.ToTable("FilterableFields");
+                });
+
+            modelBuilder.Entity("EventStore.Domain.SchemaRegistry.PendingJoinState", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("AppId")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("ArrivedSourcesJson")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("DerivationName")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("ExpiredReason")
+                        .HasColumnType("text");
+
+                    b.Property<DateTimeOffset>("ExpiresAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTimeOffset>("FirstSeenAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("JoinKeyValue")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ExpiresAt");
+
+                    b.HasIndex("AppId", "DerivationName", "JoinKeyValue");
+
+                    b.ToTable("PendingJoinStates");
                 });
 
             modelBuilder.Entity("EventStore.Domain.SchemaRegistry.FilterableField", b =>

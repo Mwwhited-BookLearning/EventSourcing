@@ -21,6 +21,9 @@ public class EventStoreContext(DbContextOptions<EventStoreContext> options, IJso
     public DbSet<FilterableField> FilterableFields => Set<FilterableField>();
     public DbSet<StoredEvent> Events => Set<StoredEvent>();
     public DbSet<EventParent> EventParents => Set<EventParent>();
+    public DbSet<DerivationDefinition> DerivationDefinitions => Set<DerivationDefinition>();
+    public DbSet<DerivationCursor> DerivationCursors => Set<DerivationCursor>();
+    public DbSet<PendingJoinState> PendingJoinStates => Set<PendingJoinState>();
 
     protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder) =>
         optionsBuilder.ReplaceService<IModelCacheKeyFactory, ProviderAwareModelCacheKeyFactory>();
@@ -74,6 +77,41 @@ public class EventStoreContext(DbContextOptions<EventStoreContext> options, IJso
             e.HasKey(x => new { x.ChildEventId, x.ParentEventId });
             e.HasIndex(x => x.ChildEventId);
             e.HasIndex(x => x.ParentEventId);
+        });
+
+        modelBuilder.Entity<DerivationDefinition>(e =>
+        {
+            e.HasKey(x => new { x.AppId, x.Name });
+
+            e.Property(x => x.Sources)
+                .HasConversion(JsonValueConverter.For<List<string>>())
+                .Metadata.SetValueComparer(JsonValueConverter.ListComparer<List<string>>());
+
+            e.Property(x => x.JoinConditions)
+                .HasConversion(JsonValueConverter.For<List<JoinCondition>>())
+                .Metadata.SetValueComparer(JsonValueConverter.ListComparer<List<JoinCondition>>());
+
+            e.Property(x => x.SelectFields)
+                .HasConversion(JsonValueConverter.For<List<SelectField>>())
+                .Metadata.SetValueComparer(JsonValueConverter.ListComparer<List<SelectField>>());
+        });
+
+        modelBuilder.Entity<DerivationCursor>(e =>
+        {
+            e.HasKey(x => new { x.AppId, x.DerivationName, x.SourceEventType });
+        });
+
+        modelBuilder.Entity<PendingJoinState>(e =>
+        {
+            e.HasKey(x => x.Id);
+            // Not unique: "at most one ACTIVE (ExpiredReason IS NULL) row per key" is
+            // an application-level invariant (DerivationWorker always queries
+            // ExpiredReason == null before deciding insert-vs-update), not a database
+            // constraint -- a straggling source arriving after a key's row already
+            // expired starts a fresh row with the same (AppId, DerivationName,
+            // JoinKeyValue), which a DB-level unique constraint would reject.
+            e.HasIndex(x => new { x.AppId, x.DerivationName, x.JoinKeyValue });
+            e.HasIndex(x => x.ExpiresAt); // the TTL sweep's own lookup (ADR-007)
         });
     }
 

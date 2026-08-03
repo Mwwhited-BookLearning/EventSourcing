@@ -1,3 +1,4 @@
+using EventStore.Derivation;
 using EventStore.Follow.Api;
 using EventStore.Host.Core;
 using EventStore.Inbox;
@@ -21,6 +22,7 @@ builder.Services.AddScoped<IUniqueConstraintViolationDetector, PostgresUniqueCon
 builder.Services.AddScoped<IEventLineageQueryProvider, PostgresEventLineageQueryProvider>();
 builder.Services.AddSchemaRegistry();
 builder.Services.AddInbox();
+builder.Services.AddDerivation();
 builder.Services.AddSpecGeneration();
 builder.Services.AddLineageApi();
 builder.Services.AddFollowApi();
@@ -39,6 +41,7 @@ app.MapDefaultEndpoints();
 app.MapEventStoreCommonEndpoints();
 app.MapSchemaRegistryEndpoints();
 app.MapPublishEndpoints();
+app.MapDerivationEndpoints();
 app.MapSpecGenerationEndpoints();
 app.MapLineageEndpoints();
 app.MapFollowEndpoints();

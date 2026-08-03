@@ -5,6 +5,7 @@
     <ProjectReference Include="..\EventStore.Persistence.Migrations.Sqlite\EventStore.Persistence.Migrations.Sqlite.csproj" />
     <ProjectReference Include="..\EventStore.SchemaRegistry\EventStore.SchemaRegistry.csproj" />
     <ProjectReference Include="..\EventStore.Inbox\EventStore.Inbox.csproj" />
+    <ProjectReference Include="..\EventStore.Derivation\EventStore.Derivation.csproj" />
     <ProjectReference Include="..\EventStore.SpecGeneration\EventStore.SpecGeneration.csproj" />
     <ProjectReference Include="..\EventStore.Lineage.Api\EventStore.Lineage.Api.csproj" />
     <ProjectReference Include="..\EventStore.Follow.Api\EventStore.Follow.Api.csproj" />

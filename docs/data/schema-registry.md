@@ -355,6 +355,107 @@ direction" limitation no longer applies.
   bearer auth (`ADR-006`), so this can only be enforced once that auth
   middleware exists — see `../08-build-plan.md`, "Event-Type Security".
 
+## Derived/materialized event types (deferred, `ADR-007`)
+
+```csharp
+// Registered via POST /create/{event-type}, analogous to PUT /registry/
+// {event-type} (ADR-007) -- an EventTypeDefinition for (AppId, Name) is
+// registered alongside this row, in the same transaction, with JsonSchema
+// auto-composed from SelectFields rather than hand-authored.
+public class DerivationDefinition
+{
+    public string AppId { get; set; } = default!;       // part of the composite key, same scoping as EventTypeDefinition (ADR-030)
+    public string Name { get; set; } = default!;         // the derived event type's own name
+    public List<string> Sources { get; set; } = new();   // $from -- ordered, arbitrary-length source event type names (ADR-007)
+    public List<JoinCondition> JoinConditions { get; set; } = new(); // $on -- conjunction of pairwise field equalities across Sources
+    public List<SelectField> SelectFields { get; set; } = new();     // $select -- output field <- source field mapping; also drives the auto-composed JsonSchema
+    public JoinTriggerMode JoinTriggerMode { get; set; }  // FireOnce | ContinuousEnrichment (ADR-007) -- per-derivation, not global
+    public BackfillMode BackfillMode { get; set; }        // FromHistory | FromNow (ADR-007) -- per-derivation, not global
+    public bool BackfillThroughDerivedSources { get; set; } // only meaningful when a declared source is itself a derived type (ADR-007)
+    public TimeSpan PendingJoinTtl { get; set; }          // FireOnce only -- ExpiresAt = FirstSeenAt + this, swept periodically (ADR-007)
+    public int MaxHopCount { get; set; } = 5;             // derivationHopCount runtime cap, belt-and-suspenders against the residual race a registration-time cycle check can't fully close (ADR-007)
+    public DateTimeOffset RegisteredAt { get; set; }
+    public bool IsActive { get; set; }                    // the worker only tails Sources for active derivations
+}
+
+public class JoinCondition
+{
+    public string LeftSource { get; set; } = default!;  // must name one of the owning DerivationDefinition's Sources
+    public string LeftField { get; set; } = default!;   // JSON path into that source's Payload
+    public string RightSource { get; set; } = default!;
+    public string RightField { get; set; } = default!;
+}
+
+public class SelectField
+{
+    public string OutputField { get; set; } = default!; // JSON path in the derived type's own Payload
+    public string SourceType { get; set; } = default!;   // which declared source this value comes from
+    public string SourceField { get; set; } = default!;  // JSON path into that source's Payload
+}
+
+public enum JoinTriggerMode
+{
+    FireOnce,             // wait for one event per source per join key, emit once, key closes (ADR-007)
+    ContinuousEnrichment  // any new arrival on any source re-emits, joined against the current latest state of the others (ADR-007)
+}
+
+public enum BackfillMode
+{
+    FromHistory, // the derivation worker starts by tailing each source from SequenceNumber 0
+    FromNow      // the derivation worker starts tailing each source from its SequenceNumber as of registration
+}
+
+// Per-(derivation, source) tailing checkpoint -- the concrete
+// "checkpointing" mechanism ADR-007 names as a complexity without
+// specifying a shape; this is this pass's answer, following
+// EventTailReader's own lastSeen-cursor model but persisted so a worker
+// restart resumes instead of re-tailing from BackfillMode's starting
+// point every time.
+public class DerivationCursor
+{
+    public string AppId { get; set; } = default!;
+    public string DerivationName { get; set; } = default!;
+    public string SourceEventType { get; set; } = default!;
+    public long LastProcessedSequenceNumber { get; set; }
+}
+
+// FireOnce-mode join state, durable and TTL-bounded rather than an
+// in-memory cache (ADR-007) -- so a key that hasn't completed across all
+// declared sources survives a worker restart, and is dropped with a
+// recorded reason if the remaining sources never arrive. Not used by
+// ContinuousEnrichment mode, which never waits.
+public class PendingJoinState
+{
+    public Guid Id { get; set; }
+    public string AppId { get; set; } = default!;
+    public string DerivationName { get; set; } = default!;
+    public string JoinKeyValue { get; set; } = default!;       // the shared value connecting Sources' JoinConditions for this pending join
+    public string ArrivedSourcesJson { get; set; } = default!; // JSON: { [sourceType]: { eventId, payload } } for sources seen so far
+    public DateTimeOffset FirstSeenAt { get; set; }
+    public DateTimeOffset ExpiresAt { get; set; }               // FirstSeenAt + owning DerivationDefinition.PendingJoinTtl
+    public string? ExpiredReason { get; set; }                  // set (row kept, not deleted) when the sweep drops this past ExpiresAt -- a minimal dead-letter record, per ADR-007's own "not designed further here" note on the exact shape
+}
+```
+
+Registration walks the existing derivation-definition graph (derived
+type → its declared `Sources`) with a plain DFS and a visited-set,
+rejecting (`400`) if the new registration's `Sources` transitively
+include the type being defined — a different cycle from `ADR-005`'s
+`CycleGuard`, which guards a single traversal of the already-published,
+inert event DAG; this one guards the small, admin-scale graph of
+derivation *definitions themselves*, which is not inert (`ADR-007`).
+`StoredEvent.DerivationHopCount` (`docs/data/event-log.md`) is the
+runtime belt-and-suspenders cap for the residual race this
+registration-time check can't fully close.
+
+The derivation worker is architecturally "an internal follower"
+(`ADR-007`): it reads directly, with no claims filtering of its own —
+it is a server-side process producing new data, not exposing existing
+data to an external caller, so `RequiredClaims`' Read direction (above)
+doesn't apply to it. `EventParents` (no schema change) already records
+which source events a derived event was computed from, exactly as
+`ADR-007` anticipated.
+
 Property-level **masking** — wrapping individual field *values* in a
 `{"value": ...}` / `{"masked": "***"}` / `{"erased": true}` envelope
 (a three-way `oneOf`, the third branch added by `ADR-057`) for callers

@@ -34,6 +34,7 @@ public class StoredEvent
     public long? OriginalSequenceNumber { get; set; }
     public string? OriginalChainHash { get; set; }
     public string? ImportedFrom { get; set; }
+    public int DerivationHopCount { get; set; }
 }
 
 public enum EventKind

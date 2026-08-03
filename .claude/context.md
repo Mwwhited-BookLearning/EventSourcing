@@ -136,8 +136,42 @@ stale numbers here are worse than none)*
   (each provider's `AllXScenarios` gained more internal scenario calls,
   not new test methods) — all 16 pass across SQLite/PostgreSQL/SQL
   Server.
-- **Next up**: item 8, "Derived/Materialized Event Types (deferred)" —
-  depends on item 7.
+- **Item 8, "Derived/Materialized Event Types (deferred)," is Done** —
+  a new `EventStore.Derivation` project: `DerivationRegistrationService`
+  (`POST /create/{event-type}`, `$from`/`$on`/`$select` as request-body
+  fields per `ADR-012`'s own precedent, auto-composed schema, DFS cycle
+  check), `DerivationWorker` (`IHostedService`, one polling loop across
+  every active `DerivationDefinition`, republishing through the ordinary
+  `PublishService.PublishAsync` path). New persisted shapes
+  (`DerivationDefinition`, `DerivationCursor`, `PendingJoinState`,
+  `StoredEvent.DerivationHopCount`) documented in `docs/data/schema-
+  registry.md`/`event-log.md` in the same pass, per this repo's own
+  "ADR that adds a shape is that shape's authority" rule — `ADR-007`
+  itself named these as complexity without specifying a concrete shape,
+  so this pass's answers are recorded there, not just in code. Two real
+  bugs found only by running the tests, not by reading the code back:
+  (1) `PendingJoinState.ExpiresAt <= now` doesn't translate on SQLite
+  (relational operators other than equality aren't supported on
+  `DateTimeOffset` columns by that provider) — fixed by filtering
+  client-side after fetching non-expired candidates; (2) a `PendingJoinState`
+  row `Add()`ed for one event in a multi-event batch wasn't visible to
+  the *next* event's `SingleOrDefaultAsync` lookup in the same tick, since
+  `SaveChangesAsync` was originally deferred to the end of the whole
+  batch — fixed by saving after each event, not once per tick. Also
+  dropped the `(AppId, DerivationName, JoinKeyValue)` unique index down to
+  a plain (non-unique) index — a straggling source arriving after its
+  join already expired starts a **fresh** row with the same key, which a
+  DB-level unique constraint would reject; "at most one active row per
+  key" is enforced in application code (`ExpiredReason == null` in every
+  lookup), not the database. `EventStore.IntegrationTests` now has 19
+  passing tests (up from 16) across SQLite/PostgreSQL/SQL Server — 3 new
+  `DerivationScenarioAssertions` scenarios' worth of `[TestMethod]`s
+  (`DerivationSqliteTests`/`DerivationPostgresTests`/
+  `DerivationSqlServerTests`), each running all 10 scenarios (registration
+  validation × 4, FireOnce join × 2, ContinuousEnrichment, TTL sweep,
+  FromNow backfill, hop-count cap).
+- **Next up**: item 9, "Property-Level Masking (data enforcement)" —
+  depends on Event-Type Security and Follow API + Filter Pushdown.
 
 ## How to resume cold
 
@@ -152,7 +186,7 @@ stale numbers here are worse than none)*
    narrative.
 5. `dotnet build EventStore.slnx` and `dotnet test tests/EventStore.IntegrationTests` —
    confirm the build/test baseline the last session left still holds
-   before adding to it (16 tests should pass). Requires Docker running
+   before adding to it (19 tests should pass). Requires Docker running
    (Testcontainers for Postgres/SQL Server) and the SDK pinned in
    `global.json`.
 
@@ -176,11 +210,10 @@ stale numbers here are worse than none)*
   item since (items 2 through 6 all committed -- item 6's own work was
   captured by an external auto-checkpoint commit, `63ff5c7`, not this
   conversation directly, surfaced to the user rather than silently
-  treated as this session's own action; item 7's commit is pending as of
-  this snapshot — "check off work as you go. then continue" is the
-  standing instruction currently in effect, so item 7 is being committed
-  without waiting for a fresh prompt; item 8 not yet started as of this
-  snapshot).
+  treated as this session's own action; items 7 and 8 both committed —
+  "check off work as you go. then continue" is the standing instruction
+  currently in effect, so each item is committed without waiting for a
+  fresh prompt; item 9 not yet started as of this snapshot).
 - **Always actually run new code against every provider it's built for
   before calling an item done.** Every real bug found this session (the
   `ExecuteSqlRawAsync` brace-parsing issue, an unquoted Postgres column,

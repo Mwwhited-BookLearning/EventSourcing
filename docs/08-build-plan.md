@@ -66,7 +66,7 @@ provider they apply to — not "code written."
 | 5 | [Follow API + Filter Pushdown](#follow-api--filter-pushdown) | Publish API | Done |
 | 6 | [Auth (OIDC/OpenIddict) + Orchestration](#auth-oidcopeniddict--orchestration) | Lineage API, Follow API + Filter Pushdown | Done |
 | 7 | [Event-Type Security](#event-type-security) | Auth + Orchestration | Done |
-| 8 | [Derived/Materialized Event Types (deferred)](#derivedmaterialized-event-types-deferred) | Event-Type Security | Not started |
+| 8 | [Derived/Materialized Event Types (deferred)](#derivedmaterialized-event-types-deferred) | Event-Type Security | Done |
 | 9 | [Property-Level Masking](#property-level-masking-data-enforcement) | Event-Type Security, Follow API + Filter Pushdown | Not started |
 | 10 | [CQRS Read-Model Projections](#cqrs-read-model-projections-worked-example) | Follow API + Filter Pushdown, Auth + Orchestration | Not started |
 | 11 | [Hardening & Evolution](#hardening--evolution-dpop-event-upcasting-hash-chained-tamper-evidence) | Auth + Orchestration, Publish API, Follow API + Filter Pushdown, CQRS Read-Model Projections | Not started |
@@ -161,8 +161,8 @@ state "Publish API" as p2 #palegreen
 state "Lineage API" as p3 #palegreen
 state "Follow API + Filter Pushdown" as p4 #palegreen
 state "Auth + Orchestration" as p5 #palegreen
-state "Event-Type Security" as p6 #palegreen #palegoldenrod
-state "Derived Event Types (deferred)" as p7
+state "Event-Type Security" as p6 #palegreen
+state "Derived Event Types (deferred)" as p7 #palegreen
 state "Property-Level Masking" as p8
 state "CQRS Projections" as p9
 state "Hardening & Evolution" as p10
@@ -852,42 +852,75 @@ without blocking the event itself from streaming.
 
 ## Derived/Materialized Event Types (deferred)
 
-**Scope**: per `ADR-007` — `ADR-007`'s own closing line states it "carries
-no unresolved technical questions of its own anymore," true on
-inspection: every open question it once had (unbounded pending-join
-state, cycle risk, n-ary joins) has a recorded, resolved answer in its own
-Consequences section. `POST /create/{event-type}?$from=A,B,...&$on=<...>
-&$select=...` — an arbitrary-length `$from` source list, `$on` a
-conjunction of pairwise equalities across all of them; two independent
-per-derivation config knobs (fire-once vs. continuous-enrichment join
-trigger; backfill-from-history vs. from-now-only, plus
-`backfillThroughDerivedSources` when a source is itself derived); a
-background derivation worker per derivation reusing `EventTailReader`,
-republishing through the ordinary publish path, recording sources via
-`parentEventIds` with no schema/data-model change needed; a durable,
-TTL-bounded `PendingJoinState` table, swept periodically; a plain
-depth-first cycle check over the small derivation-*definition* graph at
-registration time (distinct from `ADR-005`'s runtime `CycleGuard`); a
-`derivationHopCount` envelope field capping runaway propagation at a
-configured max depth, as a runtime safety net for the residual
-registration race. Derivation registration reuses `registry:admin` — no
-new scope.
+**Scope**: per `ADR-007`, now built. `POST /create/{event-type}` registers
+a `DerivationDefinition` (arbitrary-length `$from` source list, `$on` a
+conjunction of pairwise equalities across all of them, `$select` mapping
+output fields to source fields) — carried as request-body fields, not
+literal query-string operators, the same adaptation `FollowRequest`
+(`ADR-012`) already made for `$filter` and for the same reason (avoids
+PII/PHI in a query string). The derived type's `JsonSchema` is
+auto-composed from `$select` against the sources' own currently-active
+schemas (falls back to an untyped `{"type":"string"}` slot only if a
+referenced source field can't be resolved). Both per-derivation config
+knobs are built: `JoinTriggerMode` (`FireOnce` | `ContinuousEnrichment`)
+and `BackfillMode` (`FromHistory` | `FromNow`, plus
+`BackfillThroughDerivedSources` for a source that is itself derived). A
+`DerivationWorker` background service (`IHostedService`, one polling loop
+across every active derivation, `EventStore.Derivation`) is "an internal
+follower" per `ADR-007` — it reads `StoredEvent` directly with no claims
+filtering of its own (a server-side process producing new data, not
+exposing existing data to a caller) and republishes through the ordinary
+`PublishService.PublishAsync` path, which is what records
+`parentEventIds` via `EventParents` — no schema change needed, exactly as
+`ADR-007` anticipated. A durable, TTL-bounded `PendingJoinState` table
+(FireOnce only) is swept every tick; an expired or hop-capped row is kept
+with a recorded `ExpiredReason` (`"ttl_expired"` | `"hop_limit_exceeded"`)
+rather than deleted, a minimal dead-letter record per `ADR-007`'s own
+"not designed further here" note on the exact shape. Derivation-
+*definition* cycles are rejected `400` at registration via a plain
+depth-first walk with a visited-set over the small derivation-definition
+graph (distinct from `ADR-005`'s runtime `CycleGuard`); `StoredEvent.
+DerivationHopCount` is the belt-and-suspenders runtime cap for the
+residual race that check can't fully close. Derivation registration
+reuses `registry:admin` — no new scope, as `ADR-007` anticipated.
 
-**Depends on**: Event-Type Security, per the current sequencing — this is
-a **scheduling** dependency, not a technical one: `ADR-007`'s own Context
-names only publish/follow/registry/lineage/auth as the primary system,
-never `ADR-008`. This item stays deferred purely on scheduling, once the
-primary system (0 through the items before this one) is stable.
+Three concrete shapes `ADR-007` named as complexity without specifying —
+`DerivationCursor` (a per-derivation-per-source tailing checkpoint,
+following `EventTailReader`'s own `lastSeen` model but persisted),
+`ContinuousEnrichment`'s exact re-emission trigger (first emission still
+requires every source to have arrived once, matching `FireOnce`'s own
+completion condition; only then does any later single-source arrival
+re-emit against the others' current latest state, looked up directly
+against `StoredEvent` rather than a rebuilt cache — a worker restart
+needs no warm-up step), and the join-key extraction itself (a union-find
+over `$on`'s pairwise `(source, field)` equalities, grouping every field
+transitively tied to the same logical key into one class — supports an
+n-ary join generally, not just a special-cased two-source pair) — are
+this pass's own resolved answers, documented in `docs/data/schema-
+registry.md`'s "Derived/materialized event types" section per this
+repo's standing "the ADR that adds a persisted shape is that shape's
+authority" rule.
 
-**Exit criteria**: no feature doc exists for this item yet, consistent
-with its Deferred status — once scheduled, a future
-`features/derived-event-types.md` needs to cover: n-ary `$from`/`$on`
-registration with auto-composed schema; both join-trigger modes; both
-backfill modes plus `backfillThroughDerivedSources`; a derivation-
-definition cycle rejected `400` at registration; a pending join surviving
-a worker restart and expiring after its TTL with a recorded reason;
-`derivationHopCount` capping runaway propagation at the configured max
-depth.
+**Depends on**: Event-Type Security, per the sequencing this item was
+originally deferred under.
+
+**Exit criteria** (all verified, `DerivationScenarioAssertions` against
+SQLite/PostgreSQL/SQL Server): registering a valid n-ary derivation
+auto-composes a correctly-typed schema; an unregistered `$from` source or
+an `$on`/`$select` clause referencing an undeclared source is rejected;
+a derivation-definition cycle is rejected `400`; `FireOnce` emits exactly
+once all declared sources have arrived, with the derived event's
+`parentEventIds` covering every source event and `DerivationHopCount ==
+1`, and the completed join's `PendingJoinState` row removed; a partial
+`FireOnce` join persists a `PendingJoinState` row surviving until the
+remaining source arrives; an expired pending join is swept with
+`ExpiredReason = "ttl_expired"` and never retroactively completes — a
+straggler arriving after expiry starts a fresh row instead;
+`ContinuousEnrichment` re-emits on every new arrival once both sources
+have arrived at least once, with no `PendingJoinState` involved;
+`BackfillMode.FromNow` ignores events published before registration; a
+hop count exceeding `MaxHopCount` skips emission and records a
+`"hop_limit_exceeded"` dead-letter row instead of publishing.
 
 ## Property-Level Masking (data enforcement)
 
