@@ -305,6 +305,20 @@ issues a provider-specific migration to add a computed/expression index:
 | PostgreSQL | Expression index: `CREATE INDEX ... ON "Events" ((("Payload"::jsonb) ->> 'Amount'))` |
 | SQL Server | Computed column + index: `ALTER TABLE Events ADD Amount AS JSON_VALUE(Payload, '$.Amount'); CREATE INDEX ... ON Events(Amount)` |
 
+**`JsonPath` is restricted to a safe dotted-identifier chain** (`$.Amount`,
+`$.Order.Id` — `^\$(\.[A-Za-z_][A-Za-z0-9_]*)+$`), rejected `400` at
+registration otherwise, added this pass while implementing the Schema
+Registry build-plan item. `04-odata-filter-pushdown.md` documents
+`FilterableField.JsonPath` as following RFC 9535 JSONPath generally, but no
+real example anywhere in this design uses bracket notation, wildcards, or a
+filter expression — and a `JsonPath` flows directly into raw provider DDL
+here (the index/computed-column migration above) and, later, into query
+pushdown, so an unrestricted grammar would be a real injection surface, not
+just an unsupported-feature gap. Multi-provider translation for PostgreSQL
+uses `#>>` with a `{segment,segment}` path array (not `->>`, which only
+extracts one level) so a multi-segment path like `$.Order.Id` still
+translates correctly.
+
 This is generated/applied by the Schema Registry Service at field-registration
 time, not part of the baseline EF model — see
 `../05-schema-registry-and-spec-generation.md`.
