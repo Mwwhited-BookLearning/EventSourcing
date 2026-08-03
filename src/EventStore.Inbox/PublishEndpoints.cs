@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
@@ -26,7 +27,7 @@ public static class PublishEndpoints
                 PublishResult.UnresolvedParent p => Results.BadRequest(new { error = "parent event not found", missingParentEventIds = p.MissingParentEventIds }),
                 _ => Results.Problem(statusCode: 500),
             };
-        });
+        }).RequireAuthorization("events:publish");
 
         return app;
     }

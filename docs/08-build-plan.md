@@ -64,7 +64,7 @@ provider they apply to — not "code written."
 | 3 | [Publish API](#publish-api) | Schema Registry | Done |
 | 4 | [Lineage API (read side)](#lineage-api-read-side) | Publish API | Done |
 | 5 | [Follow API + Filter Pushdown](#follow-api--filter-pushdown) | Publish API | Done |
-| 6 | [Auth (OIDC/OpenIddict) + Orchestration](#auth-oidcopeniddict--orchestration) | Lineage API, Follow API + Filter Pushdown | Not started |
+| 6 | [Auth (OIDC/OpenIddict) + Orchestration](#auth-oidcopeniddict--orchestration) | Lineage API, Follow API + Filter Pushdown | Done |
 | 7 | [Event-Type Security](#event-type-security) | Auth + Orchestration | Not started |
 | 8 | [Derived/Materialized Event Types (deferred)](#derivedmaterialized-event-types-deferred) | Event-Type Security | Not started |
 | 9 | [Property-Level Masking](#property-level-masking-data-enforcement) | Event-Type Security, Follow API + Filter Pushdown | Not started |
@@ -147,14 +147,20 @@ SPIFFE/SPIRE, one added edge onto GraphQL-Only Query Layer from Hardening
 Binary Attachments removed as ungrounded) — each one traced to specific
 ADR text during the rework and explained at the point it's used below.
 
+**Diagram fill color tracks the same status as the "Implementation
+status" table above, updated in lockstep**: no fill = `Not started`,
+`#palegoldenrod` = `In progress` (set the moment work starts on that
+item), `#palegreen` = `Done`. Keep both in sync in the same pass — don't
+let the table move without the diagram, or vice versa.
+
 ```plantuml
 @startuml BuildPlan_CorePhases
-state "Scaffolding & Persistence" as p0
-state "Schema Registry" as p1
-state "Publish API" as p2
-state "Lineage API" as p3
-state "Follow API + Filter Pushdown" as p4
-state "Auth + Orchestration" as p5
+state "Scaffolding & Persistence" as p0 #palegreen
+state "Schema Registry" as p1 #palegreen
+state "Publish API" as p2 #palegreen
+state "Lineage API" as p3 #palegreen
+state "Follow API + Filter Pushdown" as p4 #palegreen
+state "Auth + Orchestration" as p5 #palegoldenrod
 state "Event-Type Security" as p6
 state "Derived Event Types (deferred)" as p7
 state "Property-Level Masking" as p8
@@ -770,7 +776,30 @@ trace view, and the OTLP export target is config-driven, not hardcoded.
 `ADR-006` is already Accepted — this item verifies it end-to-end, does
 not decide it.
 
-## Event-Type Security
+**Note — verified two different ways, with one real gap between them**:
+the 401/403/201/CORS/anonymous-spec-endpoint behavior is fully proven by
+`EventStore.IntegrationTests`' `AuthSqliteTests` — two real
+`WebApplicationFactory` TestServers (`EventStore.DevIdp` issuing a real
+signed token via its real `/connect/token`, `EventStore.Host.Sqlite`
+validating it via real JwtBearer middleware against a real fetched
+discovery document + JWKS) — not a shortcut around any of it. Actually
+running `aspire run` against `EventStore.Host.Postgres` surfaced and
+fixed five further, genuinely real bugs no test above could catch (wrong
+`AddDatabase` connection-string-key naming, a missing `WaitFor(db)`
+startup race, `RequireHttpsMetadata` needing an explicit override for
+Aspire's plain-HTTP `Authority` injection, a missing migrate-on-startup
+step, and a stale `EventStore.DevIdp/Properties/launchSettings.json`
+whose hardcoded port Aspire's own endpoint-reference resolution used in
+place of the real dynamically-assigned one) — each fixed and confirmed
+individually. **One further issue found this same pass is still open**:
+`AddDatabase("Postgres")`'s own documented "the database being created
+... automatically as part of the resource lifecycle" did not reliably
+complete before `EventStore.Host.Postgres`'s first connection attempt in
+this environment (`Aspire.Hosting.PostgreSql` 13.4.6), so the live,
+fully-orchestrated `aspire run` → real `/connect/token` → real protected
+endpoint round trip was not itself completed end-to-end, only DevIdp's
+own token issuance in isolation. Tracked in `TODO.md` rather than
+silently claimed fixed.
 
 **Scope**: per `ADR-008` **as originally decided** — a single
 `RequiredPublishClaim`/`RequiredReadClaim` string per direction on

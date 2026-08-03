@@ -248,6 +248,16 @@ re-derive the process from scratch:
   own prerequisite items instead of a phase number, so adding one never
   requires renumbering anything else. Cite an item by name
   (`` `08-build-plan.md`, "Event-Type Security" ``), never by a number.
+- **`08-build-plan.md`'s two dependency-order PlantUML diagrams
+  (`BuildPlan_CorePhases`, `BuildPlan_Additions`) track build status by
+  fill color, kept in lockstep with the "Implementation status" table's
+  own `Status` column, in the same pass, every item, not just at the end
+  of a session:** no fill = `Not started`, `#palegoldenrod` = `In
+  progress` (set the moment work starts on that item), `#palegreen` =
+  `Done`. This is now itself a standing implementation-tracking
+  requirement, not a one-time diagram edit — update both the table row
+  and that item's `state` line's fill together whenever its status
+  changes.
 
 ## Standing requirements, now attached to a written ADR
 

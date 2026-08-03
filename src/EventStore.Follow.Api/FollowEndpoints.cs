@@ -49,7 +49,7 @@ public static class FollowEndpoints
                     }
                     break;
             }
-        });
+        }).RequireAuthorization("events:follow");
 
         return app;
     }

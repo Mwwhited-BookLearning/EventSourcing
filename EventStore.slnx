@@ -1,5 +1,7 @@
 <Solution>
   <Folder Name="/src/">
+    <Project Path="src/EventStore.AppHost/EventStore.AppHost.csproj" />
+    <Project Path="src/EventStore.DevIdp/EventStore.DevIdp.csproj" />
     <Project Path="src/EventStore.Domain/EventStore.Domain.csproj" />
     <Project Path="src/EventStore.Follow.Api/EventStore.Follow.Api.csproj" />
     <Project Path="src/EventStore.Host.Core/EventStore.Host.Core.csproj" />
@@ -13,6 +15,7 @@
     <Project Path="src/EventStore.Persistence.Migrations.SqlServer/EventStore.Persistence.Migrations.SqlServer.csproj" />
     <Project Path="src/EventStore.Persistence/EventStore.Persistence.csproj" />
     <Project Path="src/EventStore.SchemaRegistry/EventStore.SchemaRegistry.csproj" />
+    <Project Path="src/EventStore.ServiceDefaults/EventStore.ServiceDefaults.csproj" />
     <Project Path="src/EventStore.SpecGeneration/EventStore.SpecGeneration.csproj" />
   </Folder>
   <Folder Name="/tests/">

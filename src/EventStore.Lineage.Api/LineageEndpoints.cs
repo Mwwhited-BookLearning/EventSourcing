@@ -31,6 +31,6 @@ public static class LineageEndpoints
 
             var nodes = await resolve(service, id, request?.Top, request?.Skip, ct);
             return Results.Ok(nodes.Select(n => new { n.EventId, n.EventType, n.SequenceNumber, n.OccurredAt, n.Resolved }));
-        });
+        }).RequireAuthorization("events:lineage:read");
     }
 }

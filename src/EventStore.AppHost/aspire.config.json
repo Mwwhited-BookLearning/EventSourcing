@@ -1,0 +1,5 @@
+{
+  "appHost": {
+    "path": "EventStore.AppHost.csproj"
+  }
+}

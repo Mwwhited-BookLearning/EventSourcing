@@ -1,0 +1,61 @@
+# ADR-026: the production deployment path, not a CI/no-Aspire-CLI fallback --
+# ordinary app images, no Aspire-specific machinery. `EventStore.AppHost` is
+# the separate, local-dev-only orchestration story (docs/06-solution-
+# structure.md). Swap `eventstore`'s build context/Dockerfile to a different
+# EventStore.Host.<Provider> project to target a different database
+# (ADR-001 -- one deployable per provider, no env-var provider switch).
+#
+# EVENTSTORE_JWT_AUTHORITY/POSTGRES_PASSWORD have no defaults here
+# deliberately (ADR-026's consequence: this file must be genuinely
+# deployment-ready, not dev-convenience defaults) -- supply them via a
+# .env file or the deployment environment.
+services:
+  postgres:
+    image: postgres:18-alpine
+    environment:
+      POSTGRES_USER: eventstore
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}
+      POSTGRES_DB: eventstore
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U eventstore"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  devidp:
+    build:
+      context: .
+      dockerfile: src/EventStore.DevIdp/Dockerfile
+    environment:
+      ASPNETCORE_URLS: http://+:8080
+    # EventStore.DevIdp is explicitly dev/POC-only (ADR-006) -- a real
+    # deployment replaces this service with a production IdP entirely
+    # (Entra ID, Auth0, Keycloak, ...), config-only on the eventstore
+    # service below (Authentication__Authority), per that ADR's own story.
+
+  eventstore:
+    build:
+      context: .
+      dockerfile: src/EventStore.Host.Postgres/Dockerfile
+    environment:
+      ASPNETCORE_URLS: http://+:8080
+      ConnectionStrings__Postgres: "Host=postgres;Port=5432;Database=eventstore;Username=eventstore;Password=${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}"
+      Authentication__Authority: ${EVENTSTORE_JWT_AUTHORITY:-http://devidp:8080}
+      # Only appropriate while Authentication__Authority points at the
+      # dev-only devidp service above (plain HTTP, no TLS inside the
+      # compose network) -- set to "true" once swapped to a real,
+      # TLS-terminated production IdP.
+      Authentication__RequireHttpsMetadata: "false"
+      Cors__AllowedOrigins__0: ${EVENTSTORE_CORS_ALLOWED_ORIGIN:-}
+    ports:
+      - "8080:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      devidp:
+        condition: service_started
+
+volumes:
+  postgres-data:

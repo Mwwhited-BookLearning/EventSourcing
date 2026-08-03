@@ -91,8 +91,23 @@ stale numbers here are worse than none)*
   restricted parent's ID being omitted depends on the same not-yet-built
   `RequiredClaims`, and is called out in the build-plan's own text as
   *not* part of this item's exit bar.
-- **Next up**: item 6, "Auth (OIDC/OpenIddict) + Orchestration" — now
-  unblocked (needs both item 4 and item 5, both now Done).
+- **Item 6, "Auth (OIDC/OpenIddict) + Orchestration," is Done** —
+  `EventStore.DevIdp` (real OpenIddict 7.6.0 Client Credentials server, EF
+  Core InMemory store, `DevIdpSeeder`'s 3 clients), `ScopeRequirement`/
+  `ScopeAuthorizationHandler` (`EventStore.Host.Core`, space-delimited
+  `scope` claim matching), JwtBearer + CORS wiring in
+  `HostCoreExtensions`, `RequireAuthorization(...)` on every Publish/
+  Registry/Follow/Lineage endpoint, `EventStore.ServiceDefaults`/
+  `EventStore.AppHost` (.NET Aspire, real templates) per `ADR-026`, and a
+  root `docker-compose.yml`. `EventStore.IntegrationTests` has 16 passing
+  tests (up from 15) — the new `AuthSqliteTests` drives two real
+  `WebApplicationFactory` TestServers (DevIdp issuing a real token,
+  Host.Sqlite validating it via real JwtBearer middleware against a real
+  fetched discovery doc/JWKS) through 7 scenarios (401/403/201/CORS/
+  anonymous spec endpoints) — auth is pipeline/middleware behavior, only
+  provably correct end-to-end, unlike every other item's direct-
+  service-call test style.
+- **Next up**: item 7, "Event-Type Security" — depends only on item 6.
 
 ## How to resume cold
 
@@ -107,7 +122,7 @@ stale numbers here are worse than none)*
    narrative.
 5. `dotnet build EventStore.slnx` and `dotnet test tests/EventStore.IntegrationTests` —
    confirm the build/test baseline the last session left still holds
-   before adding to it (15 tests should pass). Requires Docker running
+   before adding to it (16 tests should pass). Requires Docker running
    (Testcontainers for Postgres/SQL Server) and the SDK pinned in
    `global.json`.
 
@@ -128,10 +143,10 @@ stale numbers here are worse than none)*
   expires. **Commits happen only when the user actually says so** — this
   session did not commit unprompted between items 1 and 2; only started
   doing so once explicitly asked, and has kept committing after every
-  item since (items 2, 3, 4 all committed; item 5's commit is pending
+  item since (items 2, 3, 4, 5 all committed; item 6's commit is pending
   as of this snapshot — "check off work as you go. then continue" is
-  the standing instruction currently in effect, so item 5 is being
-  committed and item 6 started without waiting for a fresh prompt).
+  the standing instruction currently in effect, so item 6 is being
+  committed and item 7 started without waiting for a fresh prompt).
 - **Always actually run new code against every provider it's built for
   before calling an item done.** Every real bug found this session (the
   `ExecuteSqlRawAsync` brace-parsing issue, an unquoted Postgres column,
