@@ -1,5 +1,6 @@
 using EventStore.Host.Core;
 using EventStore.Inbox;
+using EventStore.Lineage.Api;
 using EventStore.Persistence;
 using EventStore.Persistence.Migrations.Sqlite;
 using EventStore.SchemaRegistry;
@@ -15,13 +16,16 @@ builder.Services.AddDbContext<EventStoreContext>(options => options.UseSqlite(
 builder.Services.AddScoped<IJsonPathTranslator, SqliteJsonPathTranslator>();
 builder.Services.AddScoped<IFilterableFieldIndexDdlGenerator, SqliteFilterableFieldIndexDdlGenerator>();
 builder.Services.AddScoped<IUniqueConstraintViolationDetector, SqliteUniqueConstraintViolationDetector>();
+builder.Services.AddScoped<IEventLineageQueryProvider, SqliteEventLineageQueryProvider>();
 builder.Services.AddSchemaRegistry();
 builder.Services.AddInbox();
 builder.Services.AddSpecGeneration();
+builder.Services.AddLineageApi();
 
 var app = builder.Build();
 app.MapEventStoreCommonEndpoints();
 app.MapSchemaRegistryEndpoints();
 app.MapPublishEndpoints();
 app.MapSpecGenerationEndpoints();
+app.MapLineageEndpoints();
 app.Run();

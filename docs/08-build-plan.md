@@ -62,7 +62,7 @@ provider they apply to — not "code written."
 | 1 | [Scaffolding & Persistence](#scaffolding--persistence) | nothing | Done |
 | 2 | [Schema Registry](#schema-registry) | Scaffolding & Persistence | Done |
 | 3 | [Publish API](#publish-api) | Schema Registry | Done |
-| 4 | [Lineage API (read side)](#lineage-api-read-side) | Publish API | Not started |
+| 4 | [Lineage API (read side)](#lineage-api-read-side) | Publish API | Done |
 | 5 | [Follow API + Filter Pushdown](#follow-api--filter-pushdown) | Publish API | Not started |
 | 6 | [Auth (OIDC/OpenIddict) + Orchestration](#auth-oidcopeniddict--orchestration) | Lineage API, Follow API + Filter Pushdown | Not started |
 | 7 | [Event-Type Security](#event-type-security) | Auth + Orchestration | Not started |
