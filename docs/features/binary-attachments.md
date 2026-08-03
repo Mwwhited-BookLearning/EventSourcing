@@ -6,8 +6,8 @@ Context: data model in [`../data/streaming-and-attachments.md`](../data/streamin
 pattern write-ups (not yet standalone docs) in `../patterns/README.md`'s
 "Content-addressable storage" catalog entry. The `Attachment Service`
 container and `Attachment Store` database appear in
-`../01-c4-architecture.md`; build sequencing is Phase 15 in
-`../08-build-plan.md`. This is the first feature doc for `ADR-032` —
+`../01-c4-architecture.md`; build sequencing is `../08-build-plan.md`'s
+"Binary Attachments" item. This is the first feature doc for `ADR-032` —
 there is no prior version to supersede, so unlike several other
 `features/*.md` files this one carries no stale-scenario banner.
 

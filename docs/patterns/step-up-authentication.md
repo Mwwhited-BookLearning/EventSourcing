@@ -97,7 +97,7 @@ other.
 `ADR-066` adopts RFC 9470 directly, unmodified, for **digital sign-off on
 regulated actions**: an `EventTypeDefinition` gains an optional
 `RequiredSignature` (`{ AcrValues: [...], MaxAge: ... }`, registered the
-same way `RequiredPublishClaim` already is). A publish targeting a
+same way a `RequiredClaims` entry already is, `ADR-050`). A publish targeting a
 signature-required event type, from a caller whose current token doesn't
 satisfy the configured `AcrValues`/`MaxAge`, gets RFC 9470's challenge
 back instead of being accepted — the client redirects through

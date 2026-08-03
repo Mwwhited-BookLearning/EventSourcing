@@ -139,6 +139,47 @@ registration time, unlike `StoredEvent`'s soft references to this table
 `../data/schema-registry.md` — this diagram shows only what registration's
 own scenarios below actually touch.
 
+## Control-plane actions are reserved events in the same Event Log (ADR-067)
+
+Registering a schema isn't only the `EventTypeDefinition` write shown in
+the sequence diagram above — it also publishes a reserved, platform-level
+`SchemaRegistered` event into the *same* Event Log every business event
+uses, same `StoredEvent` shape, same hash chain (`ADR-019`), carrying the
+registering caller's `ActorId` ([`auth.md`](auth.md), `ADR-064`). It's
+reserved the same way `ADR-020`'s `EventUpcastFailed` already is: no
+operator ever registers `SchemaRegistered` itself via `PUT /registry/
+{event-type}`, it's built into the platform. `EventTypeDefinition` is
+folded from this reserved event stream, the same relationship
+`EntityStoreRow` already has to ordinary business events (`ADR-021`) —
+registration's own validation/persistence above is unchanged, this is an
+additional, always-fired side effect of a successful registration, not a
+replacement for it. Because it's an ordinary `StoredEvent`, it's traceable
+through the existing Lineage API and can be linked via `parentEventIds`
+(`ADR-005`) wherever a genuine causal relationship to a specific business
+event exists — not a blanket requirement that every business event link
+back to its own schema registration (`SchemaVersion` already captures
+that relationship without lineage).
+
+## PCI-SAD registration boundary (ADR-071)
+
+A schema author declaring the reserved `x-masking.regulatoryClassification`
+value `"PCI-SAD"` on any field makes registration — not publish — hard-
+reject the event type outright with `400`. This is scoped narrowly to the
+specific data PCI-DSS Requirement 3.2/3.2.2 prohibits storing under any
+circumstances, including encrypted: CVV2/CVC2/CID, full magnetic-
+stripe/track data, and PIN blocks. It's deliberately **not** a rejection
+of full PAN (the card number itself) — a full PAN is ordinary `"PCI"`
+classification, already fully covered by `ADR-009`'s masking and
+`ADR-057`'s crypto-shredding, no different from any other classified
+field. `PCI-SAD` exists precisely because those two mechanisms both still
+write the real value into `Payload` before protecting it, which is
+incompatible with a rule that the value must never be persisted at all —
+so the only correct enforcement point is registration, before the event
+type is ever active, not publish. Like every other
+`regulatoryClassification` value, this relies on honest self-declaration
+by the schema author; this framework cannot reliably detect "this field
+holds a CVV" by inspection.
+
 ## Salt (UI mockup)
 
 Not applicable — no admin UI is in scope for v1; the registry is an API only
@@ -254,6 +295,45 @@ Feature: Schema registry
       """
     Then "/openapi.json" should include a path "/publish/OrderPlaced"
     And AppId "demo"'s GraphQL schema should include a Subscription field "onOrderPlaced"
+
+  Scenario: Registering a schema publishes a traceable, hash-chained SchemaRegistered reserved event (ADR-067)
+    When I PUT "/registry/OrderPlaced" with body:
+      """
+      {
+        "jsonSchema": { "type": "object", "properties": { "Amount": { "type": "number" } }, "required": ["Amount"] },
+        "filterableFields": [],
+        "changeKind": "Full",
+        "entityIdField": "$.OrderId"
+      }
+      """
+    Then the response status should be 201
+    And a reserved "SchemaRegistered" event for "demo:OrderPlaced" version 1 should exist in the Event Log
+    And that event's ActorId should be the registering caller's verified identity
+    And that event should be hash-chained into the same Event Log as ordinary business events
+    And the Lineage API should be able to trace that reserved event like any other
+
+  Scenario: Registering an event type declaring a PCI-SAD field is hard-rejected at registration (ADR-071)
+    When I PUT "/registry/CardAuthorization" with body:
+      """
+      {
+        "jsonSchema": {
+          "type": "object",
+          "properties": {
+            "Amount": { "type": "number" },
+            "Cvv": { "type": "string", "x-masking": { "regulatoryClassification": "PCI-SAD" } }
+          },
+          "required": ["Amount", "Cvv"]
+        },
+        "filterableFields": [],
+        "changeKind": "Full",
+        "entityIdField": "$.AuthorizationId"
+      }
+      """
+    Then the response status should be 400
+    And "demo:CardAuthorization" should never become an active event type
+    # Full PAN is unaffected -- an ordinary "PCI"-classified field (not
+    # "PCI-SAD") registers and publishes exactly as ADR-009/ADR-057 already
+    # describe for any other classified field.
 
   Scenario: Listing registered event types via the GraphQL registry-listing query (ADR-037)
     Given AppId "demo" has "OrderPlaced", "OrderCancelled", "PaymentReceived" each registered with a minimal schema

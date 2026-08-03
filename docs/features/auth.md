@@ -10,7 +10,9 @@
 > sequence diagram and ER sketch below), `ADR-047` (claims augmentation
 > for a federated external IdP), `ADR-048` (SPIFFE/SPIRE internal workload
 > identity, its own new section below, distinguished from the external
-> caller identity this file otherwise covers), the stale publish-success
+> caller identity this file otherwise covers), `ADR-064` (`ActorId`
+> captured on every event, its own new section below, distinguished from
+> the separate `AttestedActorId` field), the stale publish-success
 > `201` (→ `202` + `SchemaStatus`, `ADR-023`), and the Follow-specific
 > browser-SSE framing (now a GraphQL Subscription document, `ADR-037`,
 > matching `follow-subscribe.md`'s own shape) are now integrated. Still
@@ -51,6 +53,30 @@ else token valid and scope present
 end
 @enduml
 ```
+
+## `ActorId` captured on every event (ADR-064)
+
+The "operation proceeds" step at the end of the token-flow diagram above
+is where `ADR-064` adds its one piece of behavior for a publish: the
+verified token subject (`sub`, or the composite `iss`+`sub` mapping
+`ADR-047` establishes for a federated identity) is captured onto the
+resulting `StoredEvent` as `ActorId` — for *every* event, regardless of
+path, not just self-attested ones. This is populated from a value the
+auth check above (validate JWT, check scope) has already established
+before the request reaches the publish handler at all, so it's blocking,
+not advisory — there's no "unresolved `ActorId`" state the way there is
+for the separate, self-attested `AttestedActorId` field (`ADR-035`).
+
+The two fields are kept deliberately separate, never conflated:
+`ActorId` answers "who did the platform's own auth layer verify,"
+`AttestedActorId` answers "who does the submitter *claim* to be" —
+advisory, unverified until `AuthorityStatus` resolves. A self-attested
+publish (`ADR-035`) still gets an `ActorId`, set to whatever identity
+the verifying flow actually resolved (which may be the same value as
+`AttestedActorId`, if no stronger identity is available) — but the two
+columns on `StoredEvent` ([`../data/event-log.md`](../data/event-log.md))
+are never merged into one. Conflating them would silently upgrade an
+unverified claim into a verified fact.
 
 ## Sequence diagram — RBAC role expansion and federated-IdP claims augmentation (ADR-046, ADR-047)
 
@@ -302,6 +328,19 @@ Feature: OAuth2/OIDC bearer-token authentication and scope-based authorization
     Then the issued token's claims should include "events:publish"
     # No explicit-deny concept exists anywhere in this model -- a
     # permission present via ANY source (direct grant or role) is granted.
+
+  Scenario: An authenticated publish records the caller's verified identity as ActorId, distinct from AttestedActorId (ADR-064)
+    Given I have a Bearer token for client "publisher-client" whose verified subject is "sub-publisher-1"
+    When I POST to "/publish/OrderPlaced" with body:
+      """
+      { "payload": { "Amount": 150.00 } }
+      """
+    Then the response status should be 202
+    And the resulting StoredEvent's ActorId should be "sub-publisher-1"
+    And the resulting StoredEvent's AttestedActorId should not be set to "sub-publisher-1" as a verified fact
+    # ActorId is always populated from the platform's own verified token
+    # subject (ADR-064); AttestedActorId is a wholly separate, self-attested
+    # field (ADR-035) that this ordinary authenticated publish never touches.
 
   Scenario: A federated user's externally-issued token is augmented, never replaced (ADR-047)
     Given issuer "https://login.example-corp.com" asserts sub "sub-42" for a first-time caller

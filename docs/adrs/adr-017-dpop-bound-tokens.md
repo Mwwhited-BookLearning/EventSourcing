@@ -2,8 +2,8 @@
 
 # ADR-017: DPoP-bound access tokens (RFC 9449)
 
-Status: Accepted — hardens `ADR-006`; built in Phase 10
-(`08-build-plan.md`).
+Status: Accepted — hardens `ADR-006`; built in `08-build-plan.md`'s
+"Hardening & Evolution" item.
 
 Context: `ADR-006` issues plain OAuth2 bearer tokens (Client Credentials
 Grant, RFC 6749 §4.4; Bearer Token Usage, RFC 6750). `ADR-012` already

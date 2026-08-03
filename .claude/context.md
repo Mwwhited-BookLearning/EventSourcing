@@ -46,18 +46,46 @@ stale numbers here are worse than none)*
   `docs/changes/2026-07-30.md` through `2026-08-03.md` — not repeated
   here; skim the latest one or two for what actually happened, this
   section only tracks what's still open.
-- **`TODO.md` is down to 3 small, mutually-independent items**, found
-  mid-session rather than pre-planned — read `TODO.md` directly, don't
-  rely on this summary: `docs/features/masking.md`'s wrapper needs
-  `ADR-057`'s `erased` branch (bundled with a genuine unresolved
-  contradiction over how many masking strategies v1 actually supports);
-  `docs/features/*.md` has zero coverage for `ADR-054`–`074` (needs its
-  own scoping pass on full-doc-vs-section before starting, not yet done);
-  and `RequiredPublishClaim`/`RequiredReadClaim` (pre-`ADR-050` naming)
-  is still presented as current in several domain feature docs, `05-
-  schema-registry-and-spec-generation.md`'s body, `ADR-013`'s error
-  table, and `streaming-and-attachments.md`'s `TelemetryChannel` field —
-  not yet scoped with a full repo grep.
+- **Two of the three small mid-session-found TODO items are now also
+  done** (user directed the order: 2, 3, 1). `docs/features/*.md` gained
+  7 new full feature docs and 9 sections covering `ADR-054`–`093`
+  (`rate-limiting.md`, `feature-flags.md`, `device-input.md`,
+  `webhooks.md`, `digital-signoff.md`, `bulk-ingestion-and-interchange-
+  adapters.md`, `lineage-export-and-playback.md`, plus sections in
+  `spec-generation.md`/`schema-registry.md`/`replication-and-
+  sharding.md`/`multi-tenancy.md`/`auth.md`/`mvvm-client.md`) — dispatched
+  as 4 parallel agents, consolidation caught and fixed a real cross-doc
+  bug `03-api-contracts.md` itself had (`exportLineage`/`playbackAsOf`
+  used the wrong parameter shape, checked against `ADR-068`'s actual text
+  and corrected) plus a pre-existing, never-propagated data-model gap
+  (`ADR-068`'s `OriginalSequenceNumber`/`OriginalChainHash`/`ImportedFrom`,
+  added to `docs/data/event-log.md`). The `RequiredPublishClaim`/
+  `RequiredReadClaim` naming sweep is also done — full repo grep,
+  classified every hit (pre-`ADR-050` ADRs correctly left as historical
+  narration, two post-`ADR-050` ADRs — `066`/`068` — had a genuine
+  citation error and got a correction marker), and one real undecided
+  case (`TelemetryChannel.RequiredReadClaim`) resolved by leaving it and
+  documenting why rather than guessing. Full narrative in `docs/changes/
+  2026-08-03.md`.
+- **All three mid-session-found TODO items are now done except one.**
+  `masking.md`'s "strategy contradiction" turned out not to be a real
+  contradiction at all — `ADR-009` already carries an in-place amendment
+  promoting `PartialReveal`/`Hash` out of its own "Future" proposal into
+  the real decision (struck-through text, easy to miss skimming instead
+  of reading closely); `06-solution-structure.md`'s three registered
+  `IMaskingStrategy` classes were right all along, `masking.md` was the
+  stale one. Rewrote it: three-way `value`/`masked`/`erased` wrapper
+  (`ADR-057`), all three strategies, a previously-wrong Gherkin scenario
+  fixed (asserted `PartialReveal` registration is rejected — it's
+  accepted), new scenarios for `PartialReveal`/`Hash` behavior and the
+  `erased` branch. No new ADR needed. **Lesson**: when a TODO item frames
+  something as "an unresolved contradiction," check whether the *ADR
+  itself* already resolved it via an in-place amendment before assuming a
+  new decision is needed — struck-through text reads easy to skip.
+  `TODO.md` is down to its last item: `ADR-013`'s stale error table
+  (needs additive-history treatment — a correction marker, not an
+  ordinary edit — not yet done). Full narrative in `docs/changes/
+  2026-08-03.md`.
 - **Lessons from this session worth carrying forward, not re-learning**:
   **(1)** verify a propagation claim against the actual file, never trust
   an ADR's own Consequences section saying something "is done"; **(2)**

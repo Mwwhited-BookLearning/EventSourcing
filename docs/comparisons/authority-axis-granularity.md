@@ -107,7 +107,7 @@ maps onto):
   raised. Every path that establishes permission in this design resolves
   it **synchronously, before persistence, as a blocking gate** — an
   ordinary `ADR-006` bearer token's scope check (`ADR-008`'s
-  `RequiredPublishClaim`) is a real `401`/`403` at the API boundary, and
+  `RequiredClaims`, `ADR-050`) is a real `401`/`403` at the API boundary, and
   a UCAN's delegation-chain validity (`ADR-036`, capped per `ADR-043`)
   is checked at token-exchange time, also synchronously, also pass/fail.
   `ADR-023` states this directly: persist-everything is "specifically

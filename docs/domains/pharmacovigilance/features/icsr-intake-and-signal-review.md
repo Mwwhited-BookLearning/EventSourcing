@@ -155,8 +155,8 @@ loop for each event, strictly in SequenceNumber (arrival) order
   end
 end
 note right of playback
-  Same masking/RequiredReadClaim enforcement
-  (ADR-008/ADR-009) and AccessLogEntry write
+  Same masking/RequiredClaims enforcement
+  (ADR-008/ADR-009/ADR-050) and AccessLogEntry write
   (ADR-045) as any other read -- no bypass for
   a playback query (ADR-068).
 end note
@@ -209,7 +209,7 @@ entity "EntityStoreRow" as auth {
 
 event "1" --> "0..1" parent : "an IcsrFollowUp's\nParentEventId = the original\nIcsrReported's EventId (ADR-005) --\na causal DAG, never a copy"
 event "*" --> "1" live : "folds into immediately,\ngate-free (ADR-042)"
-event "*" --> "0..1" auth : "folds into ONLY once\nAuthorityStatus reaches\n\"accepted\" (ADR-042)"
+event "*" --> "0..1" auth : "folds into ONLY once\nAuthorityStatus reaches\n'accepted' (ADR-042)"
 
 note right of live
   "pv:IcsrCase:icsr-2031" appears here the
@@ -340,7 +340,7 @@ the reviewer's own causality-assessment decision for that one case.
   { "Causality Assessment" | [ "Probable (WHO-UMC)" ] }
   ..
   { [Step-up & Sign: Accept] | [Step-up & Sign: Reject] | [View lineage] }
-  "Sign-off requires RFC 9470 step-up (ADR-066), Signature Meaning \"causality_assessment\""
+  "Sign-off requires RFC 9470 step-up (ADR-066), Signature Meaning 'causality_assessment'"
 }
 @endsalt
 ```

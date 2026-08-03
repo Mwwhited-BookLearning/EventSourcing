@@ -99,6 +99,52 @@ already free once `EntityId` existed (`ADR-030`'s own Consequences say so
 explicitly); the registry lookup above is the one place this ADR actually
 adds new behavior.
 
+## Tenant-to-tenant federation mapping (ADR-082)
+
+Every scenario above covers one tenant's own siloed deployment
+(`ADR-075`). `ADR-082` addresses a different case: two *separate*
+tenants, each with their own independently-versioned deployment and
+schema registry, federating data between them. This needs no new
+mechanism on either axis this doc or `auth.md` already covers — it's
+**transport**: tenant A's deployment authenticates to tenant B's
+deployment using the exact same `client_credentials` flow
+([`auth.md`](auth.md), `ADR-006`) any other service-to-service caller
+already uses, scoped and revocable the same way. There is no new
+credential type, and no shared cross-tenant identity mechanism.
+
+**Shape mapping stays accepted as bespoke, per-tenant-pair integration
+code** — since neither tenant's native schema is anchored to an
+externally standardized format the way `ADR-072`'s built-in interchange
+adapters are, there's no shared spec to map to automatically. That
+bespoke mapping doesn't need a new interface, though: it can be written
+as an ordinary custom `IInterchangeFormatAdapter` implementation,
+registered per tenant pair in that tenant's own composition root — see
+`docs/features/bulk-ingestion-and-interchange-adapters.md` for that
+seam's general shape; this doc only covers the transport half.
+
+```plantuml
+@startuml MultiTenancy_Federation_Sequence
+autonumber
+participant "Tenant A's deployment\n(publishing system)" as tenantA
+participant "Tenant B's DevIdp\n(client_credentials, ADR-006)" as bIdp
+participant "Tenant B's Publish API" as bApi
+participant "Tenant B's custom\nIInterchangeFormatAdapter\n(bespoke, per-pair, ADR-082)" as adapter
+database "Tenant B's Event Log" as bLog
+
+tenantA -> bIdp: POST /connect/token\ngrant_type=client_credentials\nclient_id, client_secret\n(a credential Tenant B issued to Tenant A specifically)
+bIdp --> tenantA: 200 { access_token }
+tenantA -> bApi: POST /publish/{event-type}\nAuthorization: Bearer <access_token>\n{ Tenant A's own native event shape }
+bApi -> adapter: map(Tenant A's shape) -> Tenant B's registered event shape
+adapter --> bApi: mapped payload
+bApi -> bLog: publish mapped event into Tenant B's own Event Log\n(ordinary publish path, ADR-023, unchanged)
+bApi --> tenantA: 202 { status, schemaStatus }
+@enduml
+```
+
+No new component appears in this diagram beyond a per-pair adapter
+implementation and a `client_credentials` client — both are reuses of
+existing framework surface, exactly as `ADR-082` states.
+
 ## Data model (ER diagram)
 
 ```plantuml
@@ -247,6 +293,15 @@ Feature: Multi-tenancy (AppId-scoped schemas and entities)
     Then both responses should be 202 with schemaStatus "conformant"
     And neither AppId's registry entry, schema, or Entity Store rows should reference the other AppId's event type name at all
     And nothing in the core engine's own request-handling code should reference "OrderPlaced", "StockAdjusted", "Amount", "Sku", or any other domain-specific name -- both are ordinary registered data, not special cases
+
+  Scenario: A federating tenant authenticates via client_credentials and publishes a mapped event into another tenant's Event Log (ADR-082)
+    Given Tenant "tenant-b" has issued a client_credentials credential to Tenant "tenant-a" specifically
+    And Tenant "tenant-b" has registered a custom IInterchangeFormatAdapter mapping Tenant "tenant-a"'s native "ShipmentDispatched" shape to its own "OrderShipped" event type
+    When Tenant "tenant-a" requests a token from Tenant "tenant-b"'s deployment using that credential
+    And Tenant "tenant-a" publishes a "ShipmentDispatched" event to Tenant "tenant-b"'s Publish API using that token
+    Then the response status should be 202
+    And Tenant "tenant-b"'s Event Log should contain a mapped "OrderShipped" event, not a raw "ShipmentDispatched" one
+    And no new authentication mechanism beyond ordinary client_credentials was involved
 
   Scenario: Generated API documentation is scoped per AppId, never leaking another AppId's types
     Given AppId "app-a" has registered "OrderPlaced" version 1

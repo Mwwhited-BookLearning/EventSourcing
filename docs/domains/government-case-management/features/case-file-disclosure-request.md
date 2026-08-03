@@ -26,8 +26,8 @@ shapes referenced below come from
 This doc covers only what's specific to a disclosure request's own
 workflow. It deliberately does **not** re-derive:
 - The `x-masking` wrapper's shape, its three strategies
-  (`FixedValue`/`PartialReveal`/`Hash`), or the `RequiredReadClaim`
-  ordering rule — those are `ADR-009`/`ADR-008` and are already walked
+  (`FixedValue`/`PartialReveal`/`Hash`), or the `RequiredClaims`
+  ordering rule — those are `ADR-009`/`ADR-008`/`ADR-050` and are already walked
   through end-to-end in
   [`../../../features/masking.md`](../../../features/masking.md) and
   [`../../../features/event-security.md`](../../../features/event-security.md).

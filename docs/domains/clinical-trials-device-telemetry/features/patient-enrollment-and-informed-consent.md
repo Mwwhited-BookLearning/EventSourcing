@@ -47,7 +47,7 @@ This doc deliberately does **not** re-derive:
   scanned, signed consent document; not how `POST /attachments` itself
   works.
 - **RFC 9470 step-up mechanics themselves, or the general
-  `RequiredPublishClaim`/`RequiredReadClaim` check** (`ADR-066`/`ADR-008`)
+  `RequiredClaims` check** (`ADR-066`/`ADR-008`/`ADR-050`)
   — both are shown here in the one place they matter (the investigator's
   countersignature), but their general mechanics are fully owned by
   [`adverse-event-capture-and-review.md`](adverse-event-capture-and-review.md)
