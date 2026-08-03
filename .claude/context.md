@@ -36,15 +36,28 @@ stale numbers here are worse than none)*
   it's still current — re-check `git log`/`git status`).
 - **`TODO.md`'s Active section is EMPTY. `docs/10-open-questions.md` is
   also EMPTY.** Every item tracked anywhere in either file this session
-  has been resolved — the original 6-phase restructuring plan (quick
-  fixes → data-model → diagrams → GraphQL/API-contract cluster →
-  build-plan restructuring → 13-domain Salt-mockup rework) and every
-  smaller item found along the way, most recently `ADR-013`'s stale
-  error-response table. **This is a milestone, not a steady state** — the
-  next session's job is finding the next real item, not assuming there
-  isn't one. Full narrative across `docs/changes/2026-07-30.md` through
-  `2026-08-03.md`; skim the latest one or two, don't re-derive from this
-  summary.
+  has been resolved — the original 6-phase restructuring plan, every
+  smaller item found along the way, and a follow-up implementation-
+  readiness survey's 5 findings (a grep for every ADR's own "flagged as
+  remaining propagation work"-shaped marker, since `TODO.md` only ever
+  tracked what was explicitly logged): `01-c4-architecture.md`'s GraphQL
+  diagram gained `ADR-068`'s export/playback resolver nodes;
+  `06-solution-structure.md` gained `ADR-072`'s MLLP-listener project and
+  `ADR-068`'s offline-player build target; `ADR-093`'s own "the
+  ticket-exchange secret needs a new entity" claim was checked against
+  `ADR-040` and found wrong — corrected in place, no entity added, none
+  needed (the secret is either DevIdp-side OAuth2 `client_secret` state
+  or a never-persisted `one_time_secret`); `docs/features/ticket-
+  exchange.md` written (`ADR-040` had zero feature-doc coverage, having
+  predated the `ADR-054`+ backfill); `docker-compose.yml`'s absence was
+  removed from `TODO.md` rather than left open, since it's the expected
+  consequence of no `src/` existing yet, not a doc gap. Also confirmed,
+  on request: every ADR/core-feature-doc/domain-feature-doc filename
+  matches its content — no mismatches found. **This is a milestone, not
+  a steady state** — the next session's job is finding the next real
+  item, not assuming there isn't one. Full narrative across `docs/
+  changes/2026-07-30.md` through `2026-08-03.md`; skim the latest one or
+  two, don't re-derive from this summary.
 - **`08-build-plan.md` no longer uses fixed `Phase N` numbering** — cite
   its items by name only (`` `08-build-plan.md`, "Event-Type Security" ``,
   never a number). All 93 ADRs are Accepted.
@@ -60,6 +73,10 @@ stale numbers here are worse than none)*
   of bug is invisible in a transcript read-through and needs an actual
   render check to catch reliably; don't treat a clean-looking PlantUML
   block as verified just because the prose around it is accurate.
+  Confirmed the lesson stuck: caught my own fresh instance of the exact
+  same bug while writing `ticket-exchange.md`'s Salt mockup immediately
+  afterward, by actually checking for it rather than assuming a
+  just-written diagram was fine.
 - **Other lessons from this session worth carrying forward**:
   **(1)** verify a propagation claim against the actual file, never trust
   an ADR's own Consequences section saying something "is done"; **(2)**
