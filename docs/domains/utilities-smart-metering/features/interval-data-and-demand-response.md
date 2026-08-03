@@ -257,14 +257,16 @@ end note
 @enduml
 ```
 
-## Salt (UI mockup)
+## Salt (UI mockup) — triage-to-dispatch flow, across the grid-ops queue, reviewer's decision, and dispatched-record screens
 
-A grid-operations dashboard: recent interval readings for one meter, and
-a triage list of demand-response events by `AuthorityStatus`/lifecycle
-state. This is a `LiveEntityStoreRow`-backed view (`isAuthoritative:
-false`, `ADR-042`) for the pending row and rows read from the
-authoritative `MeterEntityStoreRow`/Event Log otherwise — the same
-generic flag-rendering convention `ADR-024`/`ADR-035` already established
+### Screen 1: Grid-operations dashboard — interval data and demand-response triage queue
+
+Recent interval readings for one meter, and a triage list of
+demand-response events by `AuthorityStatus`/lifecycle state. Pending
+rows are a `LiveEntityStoreRow`-backed view (`isAuthoritative: false`,
+`ADR-042`); the others are read from the authoritative
+`MeterEntityStoreRow`/Event Log — the same generic flag-rendering
+convention `ADR-024`/`ADR-035` already established
 (`entity-concept.md`), not a bespoke indicator per concern.
 
 ```plantuml
@@ -279,15 +281,68 @@ generic flag-rendering convention `ADR-024`/`ADR-035` already established
   | 2026-07-30 14:45     | 4.21  |
   ..
   { "Demand-response events" }
-  | Event         | Meter  | Status            | isAuthoritative |
-  | dr-2026-07-30-1 | m-482 | PendingValidation | false           |
-  | dr-2026-07-29-9 | m-317 | Dispatched        | true            |
-  | dr-2026-07-28-4 | m-091 | Rejected          | true            |
-  ..
-  [ Accept ] | [ Reject ] | [ View interval data ]
+  | Event           | Meter  | Status            | isAuthoritative |
+  | dr-2026-07-30-1 | m-482  | PendingValidation | false           |
+  | dr-2026-07-29-9 | m-317  | Dispatched        | true            |
+  | dr-2026-07-28-4 | m-091  | Rejected          | true            |
 }
 @endsalt
 ```
+
+`dr-2026-07-30-1` is the `DemandResponseTriggered` event from the second
+sequence diagram, still `pending_review`; it would not appear at all if
+this screen only read the authoritative `MeterEntityStoreRow`. Clicking
+that row opens Screen 2, the reviewer's decision screen for that one
+event.
+
+### Screen 2: Grid-ops reviewer's decision screen
+
+```plantuml
+@startsalt
+{
+  { "dr-2026-07-30-1 -- Review  (Live View, isAuthoritative: false)" }
+  ..
+  { "Meter"             | "m-482"                                       }
+  { "ThresholdKw"       | "950"                                         }
+  { "ObservedKw"        | "987.4"                                       }
+  { "TelemetryPointer"  | "meter-482-kwh-interval @ 2026-07-30T14:15:00Z" }
+  ..
+  [ View interval data ]
+  ..
+  { "Reason:" | "[                                        ]" }
+  [ Accept ] | [ Reject ]
+}
+@endsalt
+```
+
+"View interval data" resolves the event's own `TelemetryPointer` back to
+the channel window that triggered it, the same channel Screen 1 already
+tails. Clicking **Accept** publishes an `authorityDecision` with
+`decision: "accept"` (e.g. "confirmed against feeder load, dispatching
+DR"); **Reject** publishes `decision: "reject"` (e.g. a meter-bypass
+tamper finding). Either click dispatches the publish and moves the flow
+to Screen 3 — the record's fate diverges there, not before.
+
+### Screen 3: Meter record after the authoritative fold
+
+```plantuml
+@startsalt
+{
+  { "m-482 -- Demand Response Record  (Entity Store, isAuthoritative: true)" }
+  ..
+  { "ActiveDemandResponseStatus" | "Dispatched"                                        }
+  { "Decided by"                 | "reviewer-88, 2026-07-30 (confirmed against feeder load)" }
+  { "Notified"                   | "downstream via webhook, if a subscription is registered (ADR-060)" }
+}
+@endsalt
+```
+
+This screen is only reached on an **Accept** decision: the
+`MeterEntityStoreRow` now folds `ActiveDemandResponseStatus`, which
+advances `Accepted → Dispatched` per the state diagram above. A
+**Reject** decision instead never reaches this screen at all — the
+event stays visible only on Screen 1/2, re-labeled `Rejected`, never
+deleted (this domain's `README.md`'s governing principle).
 
 ## Gherkin
 

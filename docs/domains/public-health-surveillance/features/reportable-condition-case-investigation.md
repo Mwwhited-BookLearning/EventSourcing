@@ -333,37 +333,83 @@ end note
 @enduml
 ```
 
-## Salt (UI mockup)
+## Salt (UI mockup) — intake-to-report user flow, across the investigator's queue, decision, and post-fold record screens
+
+### Screen 1: Case Investigation Queue — Live View, ungated
 
 ```plantuml
 @startsalt
 {
-  { "Case Investigation Queue -- Jurisdiction: state-example (us-east)" }
+  { "Case Investigation Queue -- Jurisdiction: state-example (us-east)  (Live View, isAuthoritative: false)" }
   ..
-  | Case ID   | Condition Code       | Reporting Facility | AuthorityStatus     | isAuthoritative |
-  | case-9001 | "A36.9 (Diphtheria)"  | "Riverside General" | [pending_review]    | [ ! false ]      |
-  | case-9002 | "A36.9 (Diphtheria)"  | "Lakeview Clinic"    | [pending_review]    | [ ! false ]      |
-  | case-8994 | "A15.0 (TB, pulmonary)" | "Riverside General" | [accepted]         | [ true ]         |
+  | Case ID   | Condition Code          | Reporting Facility  | AuthorityStatus  |
+  | case-9001 | "A36.9 (Diphtheria)"    | "Riverside General" | pending_review   |
+  | case-9002 | "A36.9 (Diphtheria)"    | "Lakeview Clinic"    | pending_review   |
+  | case-8994 | "A15.0 (TB, pulmonary)" | "Riverside General" | accepted         |
+}
+@endsalt
+```
+
+Every row is a `CaseLiveEntityStoreRow`, not `CaseEntityStoreRow` — `case-
+9001`/`case-9002` are still `pending_review` and, per `ADR-042`'s gate,
+would not appear at all if this screen only read the authoritative Entity
+Store. The `isAuthoritative: false` marker is shown once, at the
+whole-view level, reusing `non-authoritative-capture.md`'s convention
+directly. Clicking the `case-9001` row opens Screen 2, the investigator's
+own classification decision for that one case.
+
+### Screen 2: Investigator's classification decision screen
+
+```plantuml
+@startsalt
+{
+  { "case-9001 -- Case Classification (Live View, isAuthoritative: false)" }
   ..
-  { "Selected: case-9001" }
-  | Field            | Value                                                    |
-  | Condition Code    | "A36.9 (Diphtheria)"                                    |
-  | Case Definition   | "Confirmed: culture-positive C. diphtheriae from a clinical specimen" |
-  | Patient Identifier | "***"  ( masked -- no phi:view claim )                 |
-  | Jurisdiction       | [ us-east ]                                             |
-  | Classification     | { ^Confirmed^ | Probable | Suspect | Not a Case }       |
+  { "Condition Code" | "A36.9 (Diphtheria)" }
+  { "Case Definition" | "Confirmed: culture-positive C. diphtheriae from a clinical specimen" }
+  { "Patient Identifier" | "***"  ( masked -- no phi:view claim ) }
+  { "Jurisdiction" | [ us-east ] }
+  ..
+  "Classification:" | { ^Confirmed^ | Probable | Suspect | Not a Case }
   ..
   [ Submit classification ] | [ View change history ] | [ View contact tracing links ]
 }
 @endsalt
 ```
 
-The `pending_review`/`isAuthoritative` badges reuse `non-authoritative-
-capture.md`'s Live-View-labeling convention directly, not a second
-indicator invented for this domain; the masked `Patient Identifier` reads
-off `ADR-009` applied to a caller without `phi:view`, per `masking.md`.
-Which UI architecture actually renders this screen (`ADR-039`'s MVVM, or a
-named fallback) is out of scope here — see
+The masked `Patient Identifier` reads off `ADR-009` applied to a caller
+without `phi:view`, per `masking.md` — not re-derived here. **Submit
+classification** publishes the `authorityDecision` this doc's first
+sequence diagram shows: `Confirmed`/`Probable`/`Suspect` all resolve to
+`decision: "confirmed"`-shaped acceptance and move the flow to Screen 3;
+`Not a Case` resolves to `decision: "not_a_case"` and the record instead
+stays on Screen 1, relabeled `rejected`, never reaching Screen 3 at all
+(`ADR-042`).
+
+### Screen 3: Confirmed case record — authoritative, after region-pinned replication and upstream reporting
+
+```plantuml
+@startsalt
+{
+  { "case-9001 -- Confirmed Case Record (Entity Store, isAuthoritative: true)" }
+  ..
+  { "Condition Code" | "A36.9 (Diphtheria)" }
+  { "Classification" | "Confirmed" }
+  { "Jurisdiction" | "us-east" }
+  ..
+  { "Region-pinned replication" | "synced to site-east (us-east) -- never queued to site-west (us-west), ADR-061" }
+  { "Upstream regulatory report" | "delivered to State PHIN via HL7v2/MLLP, ADR-072/ADR-060" }
+}
+@endsalt
+```
+
+This is the same `state-example:Case:case-9001` record, now read from the
+authoritative Entity Store rather than the Live View, folded there by this
+doc's own `ADR-042` catch-up mechanism the moment classification is
+accepted — and carried through this doc's second sequence diagram's own
+region-pinning filter and `Hl7V2Adapter` delivery, exactly as shown there.
+Which UI architecture actually renders any of these three screens
+(`ADR-039`'s MVVM, or a named fallback) is out of scope here — see
 [`../../../features/mvvm-client.md`](../../../features/mvvm-client.md).
 
 ## Gherkin

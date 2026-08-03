@@ -311,11 +311,59 @@ mentioned here for completeness only; the upload handoff and
 [`../../../data/streaming-and-attachments.md`](../../../data/streaming-and-attachments.md)'s
 territory, not repeated in this diagram.
 
-## Salt (UI mockup)
+## Salt (UI mockup) — handoff capture, cross-site exception filing, and the dispatcher's timeline
 
-A dispatcher/compliance officer's shipment custody timeline: the handoff
-chain in order, with an exception rendered against the specific leg it
-concerns rather than floating unattached.
+### Screen 1: Warehouse scanner's handoff capture (Rotterdam, origin site)
+
+```plantuml
+@startsalt
+{
+  { "Custody Handoff -- Rotterdam Site" }
+  ..
+  { "Shipment ID" | "^shp-4471^" }
+  { "Handoff type" | "^OriginWarehouseToCarrier^" }
+  { "From party" | "^Acme Warehouse^" }
+  { "To party" | "^Swift Freight^" }
+  { "Location" | "^Rotterdam^" }
+  ..
+  [ Scan and Publish CustodyHandoff ] | [ Cancel ]
+}
+@endsalt
+```
+
+**Scan and Publish CustodyHandoff** is the first sequence diagram's
+publish, appended once at Rotterdam with its own `ChainHash` (`ADR-019`)
+and then carried across `ADR-033`'s Peer Sync Outbox to the Hamburg peer
+in the background — the scanner operator never waits on that
+replication. Once a later leg's handoff is discovered damaged, the flow
+continues on Screen 2, filed by whichever site holds the concern.
+
+### Screen 2: Customs officer's cross-site exception report (Hamburg, different site than the handoff)
+
+```plantuml
+@startsalt
+{
+  { "Report Custody Exception -- Hamburg Site" }
+  ..
+  { "Shipment ID" | "^shp-4471^" }
+  { "Concerning handoff" | "^evt-handoff-118  (Acme Warehouse -> Swift Freight)^" }
+  { "Local sync status" | "not yet received at this site" }
+  { "Description" | "^customs seal missing^" }
+  ..
+  [ File CrossSiteCustodyException ] | [ Cancel ]
+}
+@endsalt
+```
+
+**File CrossSiteCustodyException** is the second sequence diagram's
+`Permissive`-mode branch — the officer names `evt-handoff-118` as the
+parent even though Rotterdam's handoff hasn't replicated to Hamburg yet;
+the publish is accepted anyway rather than rejected, the reason this
+event type uses `Permissive`, not `Strict`, in the first place
+(`ADR-005`/`ADR-033`). Filing this exception is what puts the
+"awaiting sync" row on Screen 3, the dispatcher's timeline.
+
+### Screen 3: Dispatcher/compliance officer's shipment custody timeline
 
 ```plantuml
 @startsalt
@@ -337,11 +385,14 @@ concerns rather than floating unattached.
 The exception row under Leg 2 is rendered directly against that leg
 because the client resolved `parentEventIds` via the Lineage API
 (`ADR-005`, transport per `ADR-012`/`ADR-037`) — not because the UI
-infers it from ordering or timing. The second flagged line shows a
-`CrossSiteCustodyException` whose parent hasn't resolved locally yet
-(`resolved: false`, `Permissive` mode, `ADR-005`/`ADR-033`) — rendered as
-"awaiting sync" rather than hidden, matching this design's general
-preference for visible-but-labeled over silently dropped.
+infers it from ordering or timing. The "Cross-site report" line is the
+exception filed on Screen 2, shown here at Hamburg before Rotterdam's own
+`evt-handoff-118` has replicated over — `resolved: false`, `Permissive`
+mode (`ADR-005`/`ADR-033`) — rendered as "awaiting sync" rather than
+hidden, matching this design's general preference for visible-but-labeled
+over silently dropped. Once that handoff itself arrives via peer sync,
+this same row flips to resolved without the underlying `EventParents`
+row ever being rewritten.
 
 ## Gherkin
 

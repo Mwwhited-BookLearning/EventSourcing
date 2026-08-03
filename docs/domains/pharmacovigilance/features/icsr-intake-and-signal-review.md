@@ -301,40 +301,107 @@ end note
 @enduml
 ```
 
-## Salt (UI mockup)
+## Salt (UI mockup) — intake-to-signal-review user flow, across the reviewer's queue, decision, post-fold record, and playback screens
+
+### Screen 1: ICSR Case Review Queue — Live View, ungated
 
 ```plantuml
 @startsalt
 {
   { "ICSR Case Review Queue -- Live View (isAuthoritative: false)" }
   ..
-  | ReportId    | SuspectDrug | ReactionTerm  | Seriousness   | AuthorityStatus      |
-  | "icsr-2031" | "DrugX"     | "Angioedema"  | "serious"     | ( ) pending_review   |
-  | "icsr-2044" | "DrugY"     | "Rash"        | "non-serious" | ( ) pending_review   |
-  | "icsr-1998" | "DrugX"     | "Anaphylaxis" | "serious"     | (X) rejected         |
-  ..
-  { "Selected case: icsr-2031  --  isAuthoritative: false" }
-  ..
-  | Field                 | Value                                    |
-  | ReporterType          | "prescriber"                             |
-  | MedDraCode            | "10002424 (Angioedema, PT)"               |
-  | Causality Assessment  | [ "Probable (WHO-UMC)"                  ] |
-  | Signature Meaning     | "causality_assessment"                    |
-  ..
-  { [Step-up & Sign: Accept] | [Step-up & Sign: Reject] | [View lineage] | [System-time playback] }
+  | ReportId    | SuspectDrug | ReactionTerm  | Seriousness   | AuthorityStatus |
+  | "icsr-2031" | "DrugX"     | "Angioedema"  | "serious"     | pending_review  |
+  | "icsr-2044" | "DrugY"     | "Rash"        | "non-serious" | pending_review  |
+  | "icsr-1998" | "DrugX"     | "Anaphylaxis" | "serious"     | rejected        |
 }
 @endsalt
 ```
 
-`AuthorityStatus`'s badge and the `isAuthoritative: false` banner reuse
-the exact same flag-rendering convention `mvvm-client.md`'s generic
-fallback view already shows for `ConflictFlag`/`LateArrivalFlag` — this
-screen is one concrete `ViewDefinition` an ICSR case's `EntityType` would
-bind to, not a new rendering mechanism; the "Step-up & Sign" actions are
-what triggers `ADR-066`'s RFC 9470 challenge shown in this doc's first
-sequence diagram, not a bespoke re-auth flow. "System-time playback"
-opens the second sequence diagram's query as its own view, out of scope
-to mock up further here.
+Every row is a `LiveEntityStoreRow`, not `EntityStoreRow` — `icsr-2031`/
+`icsr-2044` are still `pending_review` and, per `ADR-042`'s gate, would
+not yet exist in the authoritative Entity Store at all; `icsr-1998` shows
+this queue's rejected rows staying visible, relabeled, never deleted
+(`README.md`'s governing principle). The `isAuthoritative: false` marker
+is shown once, at the whole-view level, reusing `non-authoritative-
+capture.md`'s convention directly. Clicking `icsr-2031` opens Screen 2,
+the reviewer's own causality-assessment decision for that one case.
+
+### Screen 2: Safety reviewer's causality-assessment and sign-off screen
+
+```plantuml
+@startsalt
+{
+  { "icsr-2031 -- Case Review (Live View, isAuthoritative: false)" }
+  ..
+  { "SuspectDrug" | "DrugX" } | { "ReactionTerm" | "Angioedema" } | { "Seriousness" | "serious" }
+  { "ReporterType" | "prescriber" } | { "MedDraCode" | "10002424 (Angioedema, PT)" }
+  ..
+  { "Causality Assessment" | [ "Probable (WHO-UMC)" ] }
+  ..
+  { [Step-up & Sign: Accept] | [Step-up & Sign: Reject] | [View lineage] }
+  "Sign-off requires RFC 9470 step-up (ADR-066), Signature Meaning \"causality_assessment\""
+}
+@endsalt
+```
+
+**Step-up & Sign: Accept** dispatches the `authorityDecision` publish
+this doc's first sequence diagram shows; a token that doesn't already
+satisfy `RequiredSignature`'s `acr`/`max_age` is turned away with a 401
+challenge before the click actually completes, exactly as that diagram's
+`idp` round-trip shows — only then does the flow move to Screen 3.
+**Step-up & Sign: Reject** instead leaves the case on Screen 1, relabeled
+`rejected`, never reaching Screen 3 (`ADR-042`).
+
+### Screen 3: Confirmed case record — authoritative, outbound-reporting eligible
+
+```plantuml
+@startsalt
+{
+  { "icsr-2031 -- Confirmed Case Record (Entity Store, isAuthoritative: true)" }
+  ..
+  { "SuspectDrug" | "DrugX" } | { "ReactionTerm" | "Angioedema" } | { "Seriousness" | "serious" }
+  { "Causality Assessment" | "Probable (WHO-UMC)" }
+  { "Signed off by" | "reviewer-9, Meaning: causality_assessment, Acr: urn:pv:step-up" }
+  ..
+  { "Outbound reporting" | "eligible for IchE2bR3Adapter -> EudraVigilance/FAERS (ADR-072/ADR-060)" }
+  { [System-time playback] }
+}
+@endsalt
+```
+
+This is the same `pv:IcsrCase:icsr-2031` record, now read from the
+authoritative Entity Store rather than the Live View, folded there by
+`ADR-042`'s catch-up mechanism the moment the reviewer's signed decision
+is accepted; outbound `E2B(R3)`/webhook delivery is noted here only as
+the next stage this doc's Context section already scopes out, not
+redesigned. **System-time playback** opens Screen 4, the second sequence
+diagram's own bitemporal reconstruction query, as a real view.
+
+### Screen 4: Regulator's bitemporal system-time playback
+
+```plantuml
+@startsalt
+{
+  { "icsr-3050 -- System-Time Playback (asOfSequenceNumber: 4102)" }
+  ..
+  | SequenceNumber | OccurredAt   | LateArrivalFlag | Seriousness   |
+  | 4088            | "2026-01-03" | false           | "non-serious" |
+  | 4102            | "2026-01-02" | true            | "serious"     |
+}
+@endsalt
+```
+
+This dramatizes this doc's own second sequence diagram verbatim, using
+the same example case (`icsr-3050`, `SequenceNumber` 4088/4102) its
+bitemporal Gherkin scenario exercises: the seq=4102 correction lands *in
+place*, at the position it actually arrived, rather than smoothed
+backward to its earlier `OccurredAt` — the deliberate opposite of the
+authoritative Entity Store's valid-time-corrected fold (`ADR-068`/
+`ADR-029`). Which UI architecture actually renders any of these four
+screens (`ADR-039`'s MVVM, or a named fallback) is out of scope here;
+this screen's own `ViewDefinition` binding reuses `mvvm-client.md`'s
+generic fallback rendering for `LateArrivalFlag`, not a new mechanism.
 
 ## Gherkin
 

@@ -235,9 +235,11 @@ re-derive the process from scratch:
   explicit "ask before a seventh" gut-check this convention calls for;
   flagged, not undone, since the fit is genuine on inspection). If an
   eighth comes up, ask what question it specifically answers first.
-- **A new capability gets a Phase in `08-build-plan.md`.** Build-plan
-  propagation for everything past `ADR-050` is currently behind — see
-  `TODO.md`.
+- **A new capability gets a named item in `08-build-plan.md`.** That file
+  moved off fixed `Phase N` numbering this session — each item names its
+  own prerequisite items instead of a phase number, so adding one never
+  requires renumbering anything else. Cite an item by name
+  (`` `08-build-plan.md`, "Event-Type Security" ``), never by a number.
 
 ## Standing requirements, now attached to a written ADR
 

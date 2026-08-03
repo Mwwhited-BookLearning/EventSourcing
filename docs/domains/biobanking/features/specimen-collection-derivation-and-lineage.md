@@ -301,12 +301,14 @@ end note
 @enduml
 ```
 
-## Salt (UI mockup)
+## Salt (UI mockup) — internal lineage review, grant issuance, and the researcher's scoped read
+
+### Screen 1: Biobank staff's internal lineage viewer, unmasked
 
 ```plantuml
 @startsalt
 {
-  { "Specimen Lineage Viewer -- spec-001-dna" }
+  { "Specimen Lineage Viewer -- spec-001-dna  (staff-12, holds clearance:specimen-data)" }
   ..
   { "Ancestors" | "This specimen" | "Derived children" }
   ..
@@ -316,23 +318,77 @@ end note
   ..
   | Property        | Value                          |
   | SpecimenType     | "DNA Extract"                  |
-  | DonorReference   | "***"  ( masked -- no clearance:specimen-data ) |
+  | DonorReference   | "donor-77"  ( unmasked -- staff-12 holds clearance:specimen-data ) |
   | CollectionDate   | "2026-07-03"                    |
   ..
-  { [ Request Access ] | "Pending IRB-approved grant: staff-12 -> did:key:z6Mk...researcher  [ Awaiting IRB ]" }
-  ..
-  [ View full ancestor chain ] | [ Close ]
+  [ Grant external researcher access ] | [ View full ancestor chain ]
 }
 @endsalt
 ```
 
-The lineage tree, masked `DonorReference`, and "Request Access"/pending-
-grant indicator all read directly off the mechanisms shown in this doc's
-sequence diagrams — the tree from the Lineage query, the mask from
-`ADR-009` applied to a caller without `clearance:specimen-data`, and the
-pending-grant row from an issued-but-not-yet-IRB-approved `accessGrant`.
-Which UI architecture actually renders this screen (`ADR-039`'s MVVM, or
-a named fallback) is out of scope here — see
+This is the first sequence diagram's Lineage query, read by an internal
+caller who already holds `clearance:specimen-data` — `DonorReference`
+shows the real value, not `ADR-009`'s masked wrapper, the same way
+`ADR-009` applies to any claim-holder. Clicking **Grant external
+researcher access** opens Screen 2, the IRB-approved grant-issuance form
+from the second sequence diagram.
+
+### Screen 2: Issuing the IRB-approved, entity-scoped grant
+
+```plantuml
+@startsalt
+{
+  { "Grant External Access -- spec-001-dna" }
+  ..
+  { "Grantee DID" | "^did:key:z6Mk...researcher^" }
+  { "Delegated claim" | "clearance:specimen-data" }
+  { "Entity scope" | "biobank:Specimen:spec-001-dna  (this specimen only)" }
+  { "Expires" | "2026-08-06T00:00:00Z" }
+  ..
+  "IRB approval reference: IRB-2026-0091"
+  ..
+  [ Issue Grant ] | [ Cancel ]
+}
+@endsalt
+```
+
+**Issue Grant** publishes the `accessGrant` event shown in the second
+sequence diagram — capped to `staff-12`'s own `clearance:specimen-data`
+claim (`ADR-036`'s UCAN cap invariant) and scoped to exactly
+`biobank:Specimen:spec-001-dna`, never every specimen at this site
+(`ADR-043`). Once the researcher exchanges the resulting UCAN for a
+bearer JWT (`did-ucan-attestation.md`, not re-shown here), the flow
+continues on Screen 3 — the researcher's own view, not staff-12's.
+
+### Screen 3: The external researcher's scoped read, in and out of grant
+
+```plantuml
+@startsalt
+{
+  { "Specimen Record -- did:key:z6Mk...researcher's session" }
+  ..
+  { "Query: biobank:Specimen:spec-001-dna" }
+  | Property        | Value                          |
+  | SpecimenType     | "DNA Extract"                  |
+  | DonorReference   | "donor-77"  ( unmasked -- entityScope matches this grant ) |
+  | CollectionDate   | "2026-07-03"                    |
+  ..
+  { "Query: biobank:Specimen:spec-002" }
+  { "403 -- clearance:specimen-data does not apply to this EntityId" }
+}
+@endsalt
+```
+
+The top panel is the successful, in-scope read from the second sequence
+diagram's `alt` branch — the researcher's exchanged JWT carries
+`entityScope: "biobank:Specimen:spec-001-dna"`, so `DonorReference`
+resolves unmasked for *this* specimen only. The bottom panel is the same
+diagram's other branch: the identical token queried against
+`spec-002` fails with `403`, because the claim is present but the
+`entityScope` doesn't match — both reads write an `AccessLogEntry`
+(`ADR-045`), not shown here since it's not a user-visible screen. Which
+UI architecture actually renders any of these three screens (`ADR-039`'s
+MVVM, or a named fallback) is out of scope here — see
 [`../../../features/mvvm-client.md`](../../../features/mvvm-client.md).
 
 ## Gherkin

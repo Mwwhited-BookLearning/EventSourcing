@@ -26,7 +26,8 @@ for the full prior-art search and reasoning.
 The `Streaming Channel Service` container appears in
 `../01-c4-architecture.md` (its component diagram is flagged there as
 still outstanding — the container itself, and everything this doc
-describes, is real); build sequencing is Phase 14 in `../08-build-plan.md`.
+describes, is real); build sequencing is "Streaming Channels" in
+`../08-build-plan.md`.
 This is the first feature doc for `ADR-031` — there is no prior version to
 supersede, so unlike several other `features/*.md` files this one carries
 no stale-scenario banner.

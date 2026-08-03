@@ -608,20 +608,32 @@ the recursive term.
 ## Event upcasting (`ADR-018`)
 
 Unlike `IJsonPathTranslator`, there is no per-`(EventType, FromVersion)`
-class to write. `upcastFromPrevious` (registered per version,
-`05-schema-registry-and-spec-generation.md`) is an OData `compute()`
-expression list — **data**, not code — so `UpcastChain` is one generic
-executor that evaluates it via `Microsoft.OData.UriParser`. **This is a
-schema-mapping DSL, not the query surface `ADR-037` moved to GraphQL** —
-`upcastFromPrevious` was never part of `$filter`/Follow/Lineage, so it
-keeps using OData's `compute()` grammar unchanged; see `04-odata-filter-
-pushdown.md`'s "Historical" section for the shared `Microsoft.OData.
-UriParser` grammar this expression list still borrows:
+class to write. **Corrected in this pass — the previous version of this
+section was wrong**: it described `upcastFromPrevious` as an OData
+`compute()` expression evaluated via `Microsoft.OData.UriParser`, but
+`ADR-037` explicitly moved upcast mapping *off* OData `compute()` — that
+choice originally justified itself by reusing the OData parser `$filter`
+already needed, and with OData gone from the query surface entirely, that
+reuse argument no longer holds. `upcastFromPrevious` is now an
+engine-agnostic expression *string* — **data**, not code — evaluated by a
+pluggable `IUpcastExpressionEvaluator` (`ADR-053`; `UpcastChain` itself,
+`ADR-018`, depends only on the interface, resolved via the explicit
+composition root, `ADR-041`): **CEL by default** for the common
+declarative case, **JSONata** a documented, swappable alternative
+(neither array-aggregation vs. maturity trade-off forces a permanent
+choice), and sandboxed **Jint** as the separate, always-available escape
+hatch for the rare complex case neither declarative engine covers. See
+`docs/comparisons/upcast-transform-language.md` and
+`docs/libraries/dotnet/cel-dotnet.md`/`jint.md` for the full reasoning;
+`04-odata-filter-pushdown.md`'s "Historical" section is *not* what this
+mechanism uses anymore — that section is preserved for the unrelated
+`$filter` surface only, don't confuse the two:
 
 ```csharp
 public class UpcastChain
 {
     private readonly ISchemaRegistryReader _registry;
+    private readonly IUpcastExpressionEvaluator _evaluator; // resolved via DI, ADR-053 -- CEL by default
 
     public async Task<JsonNode> ApplyAsync(string eventType, int storedVersion, int currentVersion, JsonNode payload)
     {
@@ -629,8 +641,8 @@ public class UpcastChain
         for (var v = storedVersion; v < currentVersion; v++)
         {
             var definition = await _registry.GetVersionAsync(eventType, v + 1);
-            if (definition.UpcastFromPrevious is { } compute)
-                node = ComputeEvaluator.Evaluate(compute, node); // parses + evaluates "expr as alias, ..." via Microsoft.OData.UriParser
+            if (definition.UpcastFromPrevious is { } expression)
+                node = await _evaluator.EvaluateAsync(expression, node); // engine-agnostic text in, transformed JsonNode out
             // no upcastFromPrevious registered for this hop -- passed through as-is (ADR-018's accepted risk)
         }
         return node;

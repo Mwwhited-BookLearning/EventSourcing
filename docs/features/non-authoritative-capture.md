@@ -1,14 +1,5 @@
 # Feature: Non-authoritative capture (`AuthorityStatus` as a trust axis)
 
-> **Partially superseded, per `ADR-042`.** An `unattested`/
-> `pending_review` event no longer folds into the authoritative Entity
-> Store identically to an `accepted` one — it only folds once
-> `AuthorityStatus` reaches `accepted`. A separate `LiveEntityStoreRow`
-> (`../data/entity-store.md`) reflects it immediately instead, explicitly
-> labeled `isAuthoritative: false`. The scenarios below are updated to
-> reflect this; the `authorityDecision`/`RejectionBehavior` mechanics
-> themselves are unchanged.
-
 Context: decision record `ADR-035` in `../07-adrs.md`, revised by
 `ADR-042` for the gated-fold/Live-View split; the annotate-only vs.
 compensating-patch fork is worked out in full in

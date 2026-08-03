@@ -161,7 +161,8 @@ source, not a link to a file that still exists.
   primary system — a caller lacking a field-specific claim would receive
   `{"masked": "***"}` instead of `{"value": ...}` for that field (any
   scalar field, including required ones — see `ADR-009`), but this is a
-  deliberate priority call (`08-build-plan.md`, Phase 8), not an unresolved
+  deliberate priority call (`08-build-plan.md`, "Property-Level
+  Masking"), not an unresolved
   design question like derived event types above. Richer masking-content
   strategies than the fixed placeholder (`PartialReveal`/`Hash`) are a
   further, undecided proposal on top of that.

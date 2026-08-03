@@ -70,4 +70,5 @@ Consequences:
 `ADR-038`'s N-1/N+1 rollback-safety promise in practice — a migration
 bundle applying only expand-style changes means a rolled-back binary
 still finds a database shape it fully understands, exactly the rollback
-drill `08-build-plan.md`'s Phase 19 exit criterion already names.
+drill `08-build-plan.md`'s "Compatibility & Deployment Discipline" exit
+criterion already names.

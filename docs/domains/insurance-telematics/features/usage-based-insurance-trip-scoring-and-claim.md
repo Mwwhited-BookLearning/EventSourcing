@@ -374,7 +374,30 @@ end note
 @enduml
 ```
 
-## Salt (UI mockup)
+## Salt (UI mockup) — trip-to-claim review flow, across the adjuster's queue, decision, delegated-read, and dispute-playback screens
+
+### Screen 1: Adjuster A's claim queue
+
+```plantuml
+@startsalt
+{
+  { "Claims Queue -- Adjuster A" }
+  ..
+  | Claim ID   | Policy | Trip     | Risk Score | Claim Amount | Status        |
+  | claim-9911 | pol-55 | trip-482 | 72         | $4,200.00    | under_review  |
+  | claim-8800 | pol-31 | trip-410 | 38         | $1,150.00    | approved      |
+  | claim-7765 | pol-55 | trip-399 | 91         | $9,800.00    | disputed      |
+}
+@endsalt
+```
+
+Every row is `PolicyholderClaimRecord` data folded from a `ClaimFiled`
+event; `RiskScoreAtFiling` was copied in at fold time from the parented
+`TripScored` event (`ADR-005`), not joined live against telemetry by
+this screen. Clicking the `claim-9911` row opens Screen 2, the same
+claim Adjuster A is reviewing in the first sequence diagram above.
+
+### Screen 2: Adjuster A's claim review and decision screen
 
 ```plantuml
 @startsalt
@@ -390,9 +413,9 @@ end note
   [ View raw telemetry window (trip-482, t=0..612s) ]
   ..
   { "Secondary opinion" }
-  { "Grant to:" | "[                    ] (grantee DID or user)" }
-  { "Claim:"    | "^claims:read^"                              }
-  { "Expires:"  | "[ 2026-08-01 ]"                              }
+  { "Grant to:" | "[ did:key:zAdjusterB ]" }
+  { "Claim:"    | "^claims:read^"        }
+  { "Expires:"  | "[ 2026-08-01 ]"       }
   [ Grant secondary-opinion access ] | [ Revoke existing grant ]
   ..
   [ Approve ] | [ Deny ] | [ File dispute export ]
@@ -405,9 +428,69 @@ end note
 window `streaming-channels.md`'s deep-linking/Media-Fragments-URI
 mechanism already serves (`ADR-031`); this screen doesn't reimplement
 that lookup, it just links to it. "Grant secondary-opinion access"
-publishes the `AccessGrant` event shown in the sequence diagram above;
-"File dispute export" is the entry point into the second sequence
-diagram's lineage-export/playback flow.
+publishes the `AccessGrant` event from the first sequence diagram,
+entity-scoped to exactly `acme-ubi:Claim:claim-9911` — it doesn't itself
+change `ClaimStatus`, but it's what makes Screen 3 reachable, by a
+different actor, once that actor exchanges the grant. "File dispute
+export" is the entry point into Screen 4.
+
+### Screen 3: Adjuster B's delegated, entity-scoped secondary-opinion read
+
+```plantuml
+@startsalt
+{
+  { "Claim claim-9911 -- secondary opinion  (Adjuster B, read-only)" }
+  ..
+  { "Access"     | "claims:read, scoped to acme-ubi:Claim:claim-9911 only" }
+  { "Granted by" | "Adjuster A, expires 2026-08-01"                        }
+  ..
+  { "Risk score at filing" | "72 / 100"     }
+  { "Claim amount"         | "$4,200.00"    }
+  { "Status"               | "under_review" }
+  ..
+  "Attempting to open claim-8800 with this token: rejected -- entityScope does not cover a different claim"
+}
+@endsalt
+```
+
+Reached only after Adjuster B exchanges the UCAN delegation for a bearer
+JWT via token-exchange (`ADR-036`, reused by `ADR-043`) — this screen is
+literally what the gateway's entity-scope check in the first sequence
+diagram returns, nothing more. Unlike Screen 2, there is no
+approve/deny/grant control here: the grant is `claims:read` only. The
+claim's `SecondaryOpinionGranted → UnderReview` transition (state
+machine above) happens off-screen once the opinion is communicated back
+to Adjuster A — this doc doesn't define a separate "record opinion"
+event — and review continues back on Screen 2.
+
+### Screen 4: Compliance officer's dispute export and system-time playback
+
+```plantuml
+@startsalt
+{
+  { "Claim claim-9911 -- Dispute Export & Playback  (Compliance Officer)" }
+  ..
+  { "Lineage"  | "ClaimFiled -> TripScored -> veh-773-obd2 window" }
+  { "Manifest" | "SHA-256 over ordered ChainHash values"           }
+  [ Download portable bundle ]
+  ..
+  { "System-time playback  asOfSequenceNumber:" | "[ 641 ]" }
+  { "RiskScoreAtFiling (as observed)"           | "81  (was 72 as of SequenceNumber 500)" }
+  { "LateArrivalFlag"                            | "true -- corrected TripScored landed here" }
+  [ << Step back ] | [ Step forward >> ]
+}
+@endsalt
+```
+
+Reached from Screen 2's "File dispute export," this dramatizes the
+second sequence diagram directly: "Download portable bundle" builds the
+NDJSON export with the self-verifying manifest hash (masking substituted
+for any field the officer lacks a claim for, per `ADR-009`, same as any
+other read); the playback slider steps through `SequenceNumber`s in
+arrival order rather than the valid-time-corrected view, so stepping
+from `501` to `641` visibly shows the `LateArrivalFlag`'d correction
+landing in place — the one view where the earlier, since-corrected
+`RiskScore` of `72` is ever shown at all (`ADR-068`).
 
 ## Gherkin
 

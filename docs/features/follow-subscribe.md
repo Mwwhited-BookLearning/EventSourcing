@@ -1,28 +1,25 @@
-# Feature: Follow an event type via SSE
+# Feature: Follow an event type via a GraphQL Subscription over SSE
 
-> **Surface superseded, per `ADR-037`.** `QUERY /follow/{event-type}`
-> (bare SSE) is replaced by a GraphQL Subscription served through the
-> GraphQL Gateway — same `mode`/`fromSequenceNumber` tail-vs-replay
-> semantics (`ADR-010`), same HTTP `QUERY` method for the same PII-in-URL
-> reason, just a GraphQL subscription document instead of a bare `$filter`
-> string, and a GraphQL-transport response instead of a standalone SSE
-> stream. Scenario rewriting is tracked as outstanding propagation work
-> (`CLAUDE.md`), not done in this pass.
-
-Context: full contract in `../03-api-contracts.md`; the `$filter` pushdown
+Context: full contract in `../03-api-contracts.md`, "Follow — GraphQL
+Subscription over SSE" (`ADR-037`); the `where`-argument pushdown
 mechanics (per-provider SQL translation) are covered in depth in
 [`filter-pushdown.md`](filter-pushdown.md), not repeated here; auth
 requirements, including the browser `fetch()`-based SSE story, in
 [`auth.md`](auth.md); the `mode`/`fromSequenceNumber` tail-vs-replay design
 in `ADR-010` (`../07-adrs.md`) and `../06-solution-structure.md`.
 
-**Note on notation**: per `ADR-012`, Follow is `QUERY /follow/{event-type}`,
-not `GET` — `$filter`, `mode`, and `fromSequenceNumber` travel in the
-`QUERY` request body (`application/x-www-form-urlencoded`), not a literal
-URL query string. This doc (and the other feature docs referencing Follow)
-still write them as `?$filter=...&mode=...` throughout, purely as
-shorthand for "these parameter values" — read every such string as body
-content, not a URL.
+**Transport, post-`ADR-037`**: Follow is a GraphQL **Subscription**,
+served through the GraphQL Gateway over the [GraphQL over Server-Sent
+Events Protocol](https://github.com/enisdenjo/graphql-sse/blob/master/PROTOCOL.md)
+("distinct connections mode" — one SSE connection per subscription
+operation), which HotChocolate implements natively. The connection is
+opened with `QUERY /graphql` (`ADR-012`), carrying the subscription
+document as the request body — never `GET`, since a `where` argument can
+carry PII/PHI. `mode`/`fromSequenceNumber` (`ADR-010`) are ordinary
+subscription-field arguments now, not URL-shaped query-string
+parameters; there is no more bare `QUERY /follow/{event-type}` endpoint.
+This doc writes every request as a literal GraphQL document rather than
+the pre-`ADR-037` `?$filter=...&mode=...` shorthand.
 
 ## Sequence diagram
 
@@ -30,44 +27,44 @@ content, not a URL.
 @startuml Follow_Sequence
 autonumber
 actor "Consuming System" as follower
-participant "Follow API\n(FollowEndpoint)" as endpoint
+participant "GraphQL Gateway\n(HotChocolate, graphql-sse over SSE)" as gateway
 participant "Auth\n(JWT Bearer + scope policy)" as auth
-participant "ODataFilterParser" as parser
-participant "PredicateTranslator" as translator
+participant "[UseFiltering]\n(see filter-pushdown.md)" as filtering
 participant "EventTailReader" as tailReader
 database "Event & Schema Store" as db
 
-follower -> endpoint: QUERY /follow/{event-type}\nAuthorization: Bearer <JWT>\nbody: $filter=...&mode=tail|replay[&fromSequenceNumber=N]
-endpoint -> auth: validate token (header only -- no query-string fallback, ADR-012) + events:follow scope
+follower -> gateway: QUERY /graphql\nAuthorization: Bearer <JWT>\nbody: subscription { onOrderPlaced(where: {...}, mode: TAIL[, fromSequenceNumber: N]) { ... } }
+gateway -> auth: validate token (header only -- no query-string fallback, ADR-012) + events:follow scope
 alt missing/invalid token
   auth --> follower: connection rejected 401
 else valid token, missing scope
   auth --> follower: connection rejected 403
 else authorized
-  endpoint -> parser: parse $filter (if present)
-  alt event-type unknown
-    endpoint --> follower: connection rejected 404
-  else $filter references a field not in FilterableFields
-    parser --> follower: connection rejected 400
-  else fromSequenceNumber given with mode=tail (or default)
-    endpoint --> follower: connection rejected 400 (see ADR-010)
-  else filter valid or absent, mode valid
-    endpoint -> translator: build predicate against declared FilterableFields
-    endpoint -> endpoint: initialize lastSeen (see follow-tail-vs-replay-cursor\nin 06-solution-structure.md):\nmode=tail -> current max SequenceNumber\nmode=replay -> fromSequenceNumber ?? 0
-    endpoint -> follower: SSE connection open (200)
+  alt event type has no corresponding subscription field in this AppId's schema
+    gateway --> follower: GraphQL validation error -- unknown field, rejected\nbefore any resolver runs (ADR-037: schema is composed\nonly from registered event types)
+  else where references a field not declared FilterableField
+    gateway --> follower: GraphQL validation error -- field not present on the\ngenerated filter-input type (ADR-037; see filter-pushdown.md),\nrejected before any resolver runs
+  else a Read-direction RequiredClaims entry is configured and\ncaller's token holds none of them
+    gateway --> follower: connection rejected 403 (ADR-008/ADR-050)
+  else fromSequenceNumber given with mode=TAIL (or default)
+    gateway --> follower: subscription rejected -- invalid mode/fromSequenceNumber\ncombination (ADR-010)
+  else where valid or absent, mode valid
+    gateway -> filtering: build predicate against declared FilterableFields
+    gateway -> gateway: initialize lastSeen (see follow-tail-vs-replay-cursor\nin 06-solution-structure.md):\nmode=TAIL -> current max SequenceNumber\nmode=REPLAY -> fromSequenceNumber ?? 0
+    gateway -> follower: graphql-sse "distinct connections" SSE stream open (200)
     loop every poll interval, while connection open
-      endpoint -> tailReader: poll WHERE SequenceNumber > lastSeen AND predicate
+      gateway -> tailReader: poll WHERE SequenceNumber > lastSeen AND predicate
       tailReader -> db: SELECT ... (predicate pushed down, see filter-pushdown.md)
       db --> tailReader: matching StoredEvent rows (if any)
-      tailReader --> endpoint: matching events
-      endpoint -> follower: SSE event(s): headers{eventId, sequenceNumber,\nparentEventIds (any restricted parent omitted, ADR-008)}, data{payload}
+      tailReader --> gateway: matching events
+      gateway -> follower: SSE "next" event(s): data{ onOrderPlaced: { ...selected fields,\nparentEventIds (any restricted parent omitted, ADR-008) } }
     end
   end
 end
 @enduml
 ```
 
-`mode=replay` and `mode=tail` (the default) share this exact loop; only
+`mode: REPLAY` and `mode: TAIL` (the default) share this exact loop; only
 `lastSeen`'s initial value differs — see `ADR-010` and
 `06-solution-structure.md`, "Follow: tail vs replay cursor".
 
@@ -109,9 +106,11 @@ etd ||--o{ ff : "(Name, Version) = (EventTypeName, EventTypeVersion)"
 etd ..> event : "logical only -- EventType/SchemaVersion,\nNOT a DB foreign key"
 
 note right of ff
-  $filter may only reference a JsonPath
-  declared here (400 otherwise -- see
-  filter-pushdown.md).
+  A where argument may only reference a JsonPath
+  declared here -- a client cannot even construct a
+  query referencing an undeclared field, since the
+  per-AppId filter-input type only exposes declared
+  FilterableFields (ADR-037; see filter-pushdown.md).
 end note
 @enduml
 ```
@@ -121,13 +120,14 @@ the follow/tail path reads.
 
 ## Salt (UI mockup)
 
-Not applicable — following is a machine-to-machine (or browser-`fetch()`,
-per `ADR-012`) API with no UI surface in scope.
+Not applicable — following (a GraphQL Subscription, `ADR-037`) is a
+machine-to-machine (or browser-`fetch()`, per `ADR-012`) API with no UI
+surface in scope.
 
 ## Gherkin
 
 ```gherkin
-Feature: Follow an event type via SSE
+Feature: Follow an event type via a GraphQL Subscription over SSE
   As a consuming system
   I want to subscribe to a stream of events of a given type
   So that I receive matching events as they are published
@@ -146,69 +146,111 @@ Feature: Follow an event type via SSE
       | $.Amount   | Number   | true      |
       | $.Status   | String   | false     |
 
-  Scenario: Connecting without a filter streams all events of the type
-    Given I open an SSE connection to "/follow/OrderPlaced"
+  Scenario: Connecting without a where argument streams all events of the type
+    Given I open a GraphQL Subscription connection with document:
+      """
+      subscription { onOrderPlaced { amount status } }
+      """
     When an "OrderPlaced" event with body {"Amount": 50, "Status": "Paid"} is published
     Then I should receive that event on the SSE stream
 
-  Scenario: Connecting with a filter only streams matching events
-    Given I open an SSE connection to "/follow/OrderPlaced?$filter=Amount gt 100"
+  Scenario: Connecting with a where argument only streams matching events
+    Given I open a GraphQL Subscription connection with document:
+      """
+      subscription { onOrderPlaced(where: { amount: { gt: 100 } }) { amount status } }
+      """
     When an "OrderPlaced" event with body {"Amount": 50, "Status": "Paid"} is published
     And an "OrderPlaced" event with body {"Amount": 150, "Status": "Paid"} is published
     Then I should receive only the event with Amount 150 on the SSE stream
 
-  Scenario: Filtering on a field not marked filterable is rejected at connection time
-    When I open an SSE connection to "/follow/OrderPlaced?$filter=InternalNotes eq 'x'"
-    Then the connection should be rejected with 400
-    And the response should state "InternalNotes" is not a filterable field
+  Scenario: Filtering on a field not marked filterable cannot even be constructed
+    When I open a GraphQL Subscription connection with document:
+      """
+      subscription { onOrderPlaced(where: { internalNotes: { eq: "x" } }) { amount } }
+      """
+    Then the subscription should be rejected as a GraphQL validation error
+    And the error should state "internalNotes" is not a field on the OrderPlaced filter-input type
+    # Unlike the pre-ADR-037 400-at-parse-time behavior, this field never
+    # existed on the generated schema at all -- see filter-pushdown.md.
 
   Scenario: Filtering combines multiple conditions
-    Given I open an SSE connection to "/follow/OrderPlaced?$filter=Amount gt 100 and Status eq 'Paid'"
+    Given I open a GraphQL Subscription connection with document:
+      """
+      subscription { onOrderPlaced(where: { and: [{ amount: { gt: 100 } }, { status: { eq: "Paid" } }] }) { amount status } }
+      """
     When an "OrderPlaced" event with body {"Amount": 150, "Status": "Pending"} is published
     And an "OrderPlaced" event with body {"Amount": 150, "Status": "Paid"} is published
     Then I should receive only the second event on the SSE stream
 
-  Scenario: Connecting to an unknown event type is rejected
-    When I open an SSE connection to "/follow/NonExistentType"
-    Then the connection should be rejected with 404
+  Scenario: Connecting to an unknown event type cannot even be constructed
+    When I open a GraphQL Subscription connection with document:
+      """
+      subscription { onNonExistentType { eventId } }
+      """
+    Then the subscription should be rejected as a GraphQL validation error
+    And the error should state no field "onNonExistentType" exists on the Subscription type
+    # The per-AppId schema (ADR-037) only ever composes a subscription field
+    # for a type actually registered -- there is no separate 404 branch to
+    # reach, the same schema-shape guarantee filter-pushdown.md describes
+    # for undeclared filter fields.
 
   Scenario: A restricted parent's ID is omitted from the envelope, not exposed unresolved
     Given the event type "PatientAdmitted" is registered with read claim "clearance:phi"
     And a "PatientAdmitted" event "admit-1" was published with body {"PatientId": "abc-123"}
-    And I open an SSE connection to "/follow/OrderPlaced" with no additional claims
+    And I open a GraphQL Subscription connection with document:
+      """
+      subscription { onOrderPlaced { amount status parentEventIds } }
+      """
+      with no additional claims
     When an "OrderPlaced" event with body {"Amount": 50, "Status": "Paid"} parented off "admit-1" is published
     Then I should receive that event on the SSE stream
     And its parentEventIds should not include "admit-1"
-    # order-1 itself streams normally -- lacking access to its parent's type
-    # never blocks the event whose type you can see (ADR-008).
+    # the OrderPlaced event itself streams normally -- lacking access to its
+    # parent's type never blocks the event whose type you can see (ADR-008).
 
-  Scenario: Connecting with mode=replay streams matching history, then tails new events with no gap
+  Scenario: Connecting with mode: REPLAY streams matching history, then tails new events with no gap
     Given an "OrderPlaced" event with body {"Amount": 50, "Status": "Paid"} was published
     And an "OrderPlaced" event with body {"Amount": 150, "Status": "Paid"} was published
-    When I open an SSE connection to "/follow/OrderPlaced?mode=replay"
+    When I open a GraphQL Subscription connection with document:
+      """
+      subscription { onOrderPlaced(mode: REPLAY) { amount status } }
+      """
     Then I should receive both existing events on the SSE stream
     When an "OrderPlaced" event with body {"Amount": 75, "Status": "Paid"} is published
     Then I should receive that new event too, without a gap or a duplicate
 
-  Scenario: Connecting with mode=replay and fromSequenceNumber only replays events after that point
+  Scenario: Connecting with mode: REPLAY and fromSequenceNumber only replays events after that point
     Given an "OrderPlaced" event "order-1" with body {"Amount": 50, "Status": "Paid"} was published
     And an "OrderPlaced" event "order-2" with body {"Amount": 150, "Status": "Paid"} was published
-    When I open an SSE connection to "/follow/OrderPlaced?mode=replay&fromSequenceNumber={order-1's SequenceNumber}"
+    When I open a GraphQL Subscription connection with document:
+      """
+      subscription { onOrderPlaced(mode: REPLAY, fromSequenceNumber: {order-1's SequenceNumber}) { amount status } }
+      """
     Then I should receive "order-2" on the SSE stream
     And I should not receive "order-1" on the SSE stream
 
-  Scenario: mode=replay combines with $filter, replaying only matching history
+  Scenario: mode: REPLAY combines with a where argument, replaying only matching history
     Given an "OrderPlaced" event with body {"Amount": 50, "Status": "Paid"} was published
     And an "OrderPlaced" event with body {"Amount": 150, "Status": "Paid"} was published
-    When I open an SSE connection to "/follow/OrderPlaced?mode=replay&$filter=Amount gt 100"
+    When I open a GraphQL Subscription connection with document:
+      """
+      subscription { onOrderPlaced(mode: REPLAY, where: { amount: { gt: 100 } }) { amount status } }
+      """
     Then I should receive only the event with Amount 150 from the replay
 
   Scenario: Connecting without mode defaults to tail-only, unchanged from before ADR-010
     Given an "OrderPlaced" event with body {"Amount": 50, "Status": "Paid"} was published
-    When I open an SSE connection to "/follow/OrderPlaced"
+    When I open a GraphQL Subscription connection with document:
+      """
+      subscription { onOrderPlaced { amount status } }
+      """
     Then I should not receive that pre-existing event on the SSE stream
 
-  Scenario: Supplying fromSequenceNumber without mode=replay is rejected
-    When I open an SSE connection to "/follow/OrderPlaced?fromSequenceNumber=0"
-    Then the connection should be rejected with 400
+  Scenario: Supplying fromSequenceNumber without mode: REPLAY is rejected
+    When I open a GraphQL Subscription connection with document:
+      """
+      subscription { onOrderPlaced(fromSequenceNumber: 0) { amount } }
+      """
+    Then the subscription should be rejected with a GraphQL error stating
+      fromSequenceNumber is only valid alongside mode: REPLAY
 ```
