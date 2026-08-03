@@ -160,7 +160,7 @@ state "Schema Registry" as p1 #palegreen
 state "Publish API" as p2 #palegreen
 state "Lineage API" as p3 #palegreen
 state "Follow API + Filter Pushdown" as p4 #palegreen
-state "Auth + Orchestration" as p5 #palegoldenrod
+state "Auth + Orchestration" as p5 #palegreen
 state "Event-Type Security" as p6
 state "Derived Event Types (deferred)" as p7
 state "Property-Level Masking" as p8
