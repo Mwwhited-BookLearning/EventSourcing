@@ -1,5 +1,6 @@
 using EventStore.Host.Core;
 using EventStore.Inbox;
+using EventStore.Lineage.Api;
 using EventStore.Persistence;
 using EventStore.Persistence.Migrations.Postgres;
 using EventStore.SchemaRegistry;
@@ -15,13 +16,16 @@ builder.Services.AddDbContext<EventStoreContext>(options => options.UseNpgsql(
 builder.Services.AddScoped<IJsonPathTranslator, PostgresJsonPathTranslator>();
 builder.Services.AddScoped<IFilterableFieldIndexDdlGenerator, PostgresFilterableFieldIndexDdlGenerator>();
 builder.Services.AddScoped<IUniqueConstraintViolationDetector, PostgresUniqueConstraintViolationDetector>();
+builder.Services.AddScoped<IEventLineageQueryProvider, PostgresEventLineageQueryProvider>();
 builder.Services.AddSchemaRegistry();
 builder.Services.AddInbox();
 builder.Services.AddSpecGeneration();
+builder.Services.AddLineageApi();
 
 var app = builder.Build();
 app.MapEventStoreCommonEndpoints();
 app.MapSchemaRegistryEndpoints();
 app.MapPublishEndpoints();
 app.MapSpecGenerationEndpoints();
+app.MapLineageEndpoints();
 app.Run();

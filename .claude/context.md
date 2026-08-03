@@ -36,48 +36,43 @@ stale numbers here are worse than none)*
   `docs/changes/2026-08-03.md`.
 - **Implementation started this same session** (direct request: "start
   converting the build plan to your active TODO... let's do this," then
-  "keep going," then "Commit work and then keep going"). `docs/08-build-
-  plan.md`'s "Implementation status" table (near its top) is the
+  "keep going," then "Commit work and then keep going," repeated). `docs/
+  08-build-plan.md`'s "Implementation status" table (near its top) is the
   authoritative tracker of which of the 48 items is Done/In progress/Not
   started — don't restate its contents here.
-- **Items 1, 2, and 3 are Done**: "Scaffolding & Persistence" (solution/
-  project skeleton, full `EventStoreContext` model, migrations verified
-  on all three providers), "Schema Registry" (`PUT`/`GET /registry/
-  {event-type}`, a temporary pre-GraphQL `QUERY /registry` listing
-  endpoint, structural validation, per-provider index DDL), and "Publish
-  API" (`POST /publish/{event-type}` — this build stage's own pre-
-  `ADR-023` semantics: synchronous blocking validation, `201`/`400`/`404`/
-  `409`, not the later always-`202` posture; `EventStore.Inbox`), plus
-  `/openapi.json` generation (`EventStore.SpecGeneration`, real
-  `Microsoft.OpenApi` 3.9.0 usage, cache-invalidated on registration).
-  `EventStore.IntegrationTests` has 9 passing tests across SQLite/
-  PostgreSQL/SQL Server (Testcontainers for the latter two). Two commits
-  so far on branch `dev/build-framework`: `5c5fd6e` (item 1) and `c30781e`
-  (item 2); item 3 not yet committed as of this snapshot — commit it
-  before trusting `git log` alone to reflect current state.
-- **Two more real bugs/corrections found this item, same "run against
-  every provider" discipline as item 2** (full narrative in
-  `docs/changes/2026-08-03.md`, not repeated here): `IJsonPathTranslator`/
-  `IFilterableFieldIndexDdlGenerator` needed no further changes, but a
-  **new** per-provider seam, `IUniqueConstraintViolationDetector`, was
-  added for ADR-011's concurrent-retry race (three real implementations
-  in the `.Persistence.Migrations.<Provider>` projects, since only those
-  reference each provider's actual ADO.NET exception types — not
-  `EventStore.Persistence` itself, which stays provider-agnostic).
-  `ChainHash`/`EntityId` are stored as empty-string placeholders for now
-  (owned by "Hardening & Evolution"/"Entity-Centric Core Rebuild"
-  respectively, not this item) — don't mistake that for a bug later.
-- **A real, self-aware build-plan design** confirmed working as intended:
-  "Publish API"'s own text already explicitly translates
-  `features/publish-event.md`'s post-`ADR-023` `202`-always Gherkin into
-  this item's pre-`ADR-023` `201`/`400`/`404`/`409` codes — unlike Schema
-  Registry's exit-criteria overclaim (item 2), no correction was needed
-  here; the build-plan had already anticipated this exact doc/build-stage
-  gap. Good precedent: check for this kind of explicit self-aware
-  translation note before assuming a doc/build-plan mismatch needs fixing.
-- **Next up**: item 4, "Lineage API (read side)" — now unblocked
-  (`Follow API + Filter Pushdown`, item 5, is independently unblocked
-  too — both depend only on Publish API, can be done in either order).
+- **Items 1–4 are Done**: "Scaffolding & Persistence," "Schema Registry,"
+  "Publish API" (`EventStore.Inbox`, plus `/openapi.json` generation via
+  `EventStore.SpecGeneration`), and "Lineage API (read side)" — this
+  build stage's own pre-GraphQL `QUERY /events/{id}/parents|children|
+  ancestors|descendants` surface (`EventStore.Lineage.Api`), **not**
+  `features/event-chains.md`'s current GraphQL `event(eventId){...}`
+  shape, which belongs to "GraphQL-Only Query Layer" much later.
+  `EventStore.IntegrationTests` has 12 passing tests across SQLite/
+  PostgreSQL/SQL Server (Testcontainers for the latter two). Commits on
+  `dev/build-framework`: `5c5fd6e` (item 1), `c30781e` (item 2), `0886194`
+  (item 3); item 4 not yet committed as of this snapshot.
+- **One real, provider-specific bug in item 4's recursive CTEs, caught
+  only on SQL Server**: "Types don't match between the anchor and the
+  recursive part" — SQL Server infers a fixed-length `NVARCHAR(n)` for
+  the anchor's path-tracking column from its literal expression alone,
+  which doesn't match the recursive part's longer, growing concatenation.
+  Fixed by explicitly `CAST`ing the anchor's expression to
+  `NVARCHAR(MAX)`. SQLite (dynamically typed) and PostgreSQL (`TEXT` has
+  no length to mismatch) never hit this — a SQL-Server-only class of
+  recursive-CTE bug worth remembering for any future recursive query.
+  `IEventLineageQueryProvider`'s three implementations otherwise needed
+  no further correction (`IJsonPathTranslator`'s stub, from item 1, is
+  still untouched/deferred to "Follow API + Filter Pushdown").
+- **`resolved` is implemented; `restricted` deliberately is not** — the
+  GraphQL Lineage response shape names both, but `restricted` depends on
+  `RequiredClaims` enforcement, which needs "Event-Type Security" (not
+  yet built). This item's own scope/exit-criteria never mention
+  `restricted` either, so this is confirmed in-scope-as-designed, not an
+  oversight to fix later without checking first.
+- **Next up**: item 5, "Follow API + Filter Pushdown" — now unblocked
+  (was already independently unblocked alongside item 4; both depend
+  only on Publish API). After that, item 6 "Auth (OIDC/OpenIddict) +
+  Orchestration" needs both item 4 and item 5 done first.
 
 ## How to resume cold
 
@@ -92,7 +87,7 @@ stale numbers here are worse than none)*
    narrative.
 5. `dotnet build EventStore.slnx` and `dotnet test tests/EventStore.IntegrationTests` —
    confirm the build/test baseline the last session left still holds
-   before adding to it (9 tests should pass). Requires Docker running
+   before adding to it (12 tests should pass). Requires Docker running
    (Testcontainers for Postgres/SQL Server) and the SDK pinned in
    `global.json`.
 
@@ -106,36 +101,40 @@ stale numbers here are worse than none)*
 - **Implementation pacing**: "let's do this" started item 1; a plain
   "keep going" continued into item 2 with no further scoping needed;
   "Commit work and then keep going" both confirmed committing between
-  items is welcome when asked and continued into item 3. Read "keep
-  going" as "continue the same build-plan momentum, one item at a time,
-  verified end to end before moving to the next" — not as license to
-  skip running the tests, and not a one-time authorization that expires.
-  **Commits happen only when the user actually says so** — this session
-  did not commit unprompted between items 1 and 2; only did so once asked.
+  items is welcome when asked, and continued into items 3 and 4. Read
+  "keep going" as "continue the same build-plan momentum, one item at a
+  time, verified end to end before moving to the next" — not as license
+  to skip running the tests, and not a one-time authorization that
+  expires. **Commits happen only when the user actually says so** — this
+  session did not commit unprompted between items 1 and 2; only started
+  doing so once explicitly asked, and has kept committing after every
+  item since (items 2, 3; item 4 still pending as of this snapshot).
 - **Always actually run new code against every provider it's built for
   before calling an item done.** Every real bug found this session (the
   `ExecuteSqlRawAsync` brace-parsing issue, an unquoted Postgres column,
-  the JsonSchema.Net incompatibility) was caught by running tests against
-  real engines, not by reading the code back. Item 3 shipped clean on the
-  first run — likely *because* items 1/2's lessons (quoting, avoiding
-  `ExecuteSqlRaw`, hand-written JSON checks) were already applied
-  up front, not because the discipline stopped being necessary.
+  the JsonSchema.Net incompatibility, the SQL Server recursive-CTE type
+  mismatch) was caught by running tests against real engines, not by
+  reading the code back. Item 3 shipped clean on the first run; item 4
+  didn't (a genuinely new SQL-Server-specific class of bug, not a
+  repeat) — the discipline keeps paying for itself differently each time,
+  never assume a clean run on one item means the next needs less rigor.
+- **A recurring, genuine doc/build-stage split, not a bug each time**:
+  items 2 and 4 both build a *temporary* pre-GraphQL/pre-`ADR-023`-shaped
+  surface that a current feature doc's Gherkin no longer describes (it
+  was rewritten to the GraphQL end state). Before assuming a feature
+  doc/build-plan mismatch needs a correction note, check whether the
+  build-plan item's own text already self-declares the translation (item
+  3, "Publish API," already did — no note needed there); only add a
+  correction when the exit criteria actually overclaim a scenario that no
+  longer exists (items 2 and, so far, not 4 — item 4's own exit criteria
+  were written in this item's own prose terms, not by citing a specific
+  now-superseded Gherkin scenario name).
 - **`docs/06-solution-structure.md`'s code sketches are "concept accurate,
-  exact wiring unverified" by its own banner** — confirmed true a third
-  time: every new web-facing project (`EventStore.Host.Core`,
-  `.SchemaRegistry`, `.Inbox`, `.SpecGeneration`) has needed an explicit
+  exact wiring unverified" by its own banner** — confirmed true a fourth
+  time: every new web-facing project has needed an explicit
   `FrameworkReference` to `Microsoft.AspNetCore.App` the doc's sketches
-  never show. Expect this for every future project touching ASP.NET Core
-  types from a plain class library.
-- **Microsoft.OpenApi 3.9.0's actual API doesn't match
-  `06-solution-structure.md`'s code sketch** (different namespace —
-  `Microsoft.OpenApi`, not `Microsoft.OpenApi.Models` — and
-  `OpenApiSchemaJsonConverter` supersedes any hand-rolled schema
-  conversion the sketch implies) — verified against the installed
-  package's own XML docs before writing code, not assumed from the
-  sketch. Its `OpenApiSchemaJsonConverter`/`Extensions` bag tolerates
-  unknown keywords like `x-masking` fine — unlike JsonSchema.Net, no
-  compatibility problem here.
+  never show, and `Microsoft.OpenApi`'s real 3.9.0 API/namespace doesn't
+  match the sketch's pre-v2 shape either (item 3).
 - A full repo-wide doc staleness review beyond what ADR-focused passes
   have covered is still genuinely open, unscheduled — now doubly relevant
   since code keeps surfacing more data-model drift as it's written
