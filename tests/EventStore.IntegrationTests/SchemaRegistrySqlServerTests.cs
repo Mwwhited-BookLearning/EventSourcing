@@ -1,6 +1,7 @@
 using EventStore.Persistence;
 using EventStore.SchemaRegistry;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Caching.Memory;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using Testcontainers.MsSql;
 
@@ -35,7 +36,7 @@ public class SchemaRegistrySqlServerTests
     }
 
     private static SchemaRegistryService CreateService(EventStoreContext db) =>
-        new(db, new SqlServerFilterableFieldIndexDdlGenerator());
+        new(db, new SqlServerFilterableFieldIndexDdlGenerator(), new MemoryCache(new MemoryCacheOptions()));
 
     [TestMethod]
     public async Task AllSchemaRegistryScenarios()
