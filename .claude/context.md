@@ -34,33 +34,49 @@ stale numbers here are worse than none)*
   several times via commits not made by this conversation (an external
   process/terminal checkpointing the work; harmless, just don't assume
   it's still current — re-check `git log`/`git status`).
-- **`TODO.md`'s Active section is EMPTY. `docs/10-open-questions.md` is
-  also EMPTY.** Every item tracked anywhere in either file this session
-  has been resolved — the original 6-phase restructuring plan, every
-  smaller item found along the way, and a follow-up implementation-
-  readiness survey's 5 findings (a grep for every ADR's own "flagged as
-  remaining propagation work"-shaped marker, since `TODO.md` only ever
-  tracked what was explicitly logged): `01-c4-architecture.md`'s GraphQL
-  diagram gained `ADR-068`'s export/playback resolver nodes;
-  `06-solution-structure.md` gained `ADR-072`'s MLLP-listener project and
-  `ADR-068`'s offline-player build target; `ADR-093`'s own "the
-  ticket-exchange secret needs a new entity" claim was checked against
-  `ADR-040` and found wrong — corrected in place, no entity added, none
-  needed (the secret is either DevIdp-side OAuth2 `client_secret` state
-  or a never-persisted `one_time_secret`); `docs/features/ticket-
-  exchange.md` written (`ADR-040` had zero feature-doc coverage, having
-  predated the `ADR-054`+ backfill); `docker-compose.yml`'s absence was
-  removed from `TODO.md` rather than left open, since it's the expected
-  consequence of no `src/` existing yet, not a doc gap. Also confirmed,
-  on request: every ADR/core-feature-doc/domain-feature-doc filename
-  matches its content — no mismatches found. **This is a milestone, not
-  a steady state** — the next session's job is finding the next real
-  item, not assuming there isn't one. Full narrative across `docs/
-  changes/2026-07-30.md` through `2026-08-03.md`; skim the latest one or
-  two, don't re-derive from this summary.
-- **`08-build-plan.md` no longer uses fixed `Phase N` numbering** — cite
-  its items by name only (`` `08-build-plan.md`, "Event-Type Security" ``,
-  never a number). All 93 ADRs are Accepted.
+- **`TODO.md`'s Active section has 10 items again, all surfaced by the
+  `08-build-plan.md` rework below — not a regression, a real find.**
+  `docs/10-open-questions.md` is still EMPTY. Before this rework,
+  everything tracked anywhere in either file had been resolved (the
+  original 6-phase restructuring plan, every smaller item found along the
+  way, and a follow-up implementation-readiness survey's 5 findings):
+  `01-c4-architecture.md`'s GraphQL diagram gained `ADR-068`'s export/
+  playback resolver nodes; `06-solution-structure.md` gained `ADR-072`'s
+  MLLP-listener project and `ADR-068`'s offline-player build target;
+  `ADR-093`'s own "the ticket-exchange secret needs a new entity" claim
+  was checked against `ADR-040` and found wrong — corrected in place, no
+  entity added, none needed; `docs/features/ticket-exchange.md` written;
+  `docker-compose.yml`'s absence was removed from `TODO.md` rather than
+  left open. Also confirmed, on request: every ADR/core-feature-doc/
+  domain-feature-doc filename matches its content — no mismatches found.
+  Full narrative across `docs/changes/2026-07-30.md` through
+  `2026-08-03.md`; skim the latest one or two, don't re-derive from this
+  summary.
+- **`08-build-plan.md` was reworked from scratch this session** (direct
+  request, user chose "fresh rebuild for confidence" over a lighter-touch
+  option): all 48 items' Scope/Depends-on/Exit-criteria re-derived
+  directly from their source ADR(s) via 10 parallel background agents
+  (5 items each, scratch-file-per-batch to avoid a shared-file race),
+  hand-consolidated into one file with both PlantUML dependency diagrams
+  rebuilt. This found and fixed a real, sizeable set of missing
+  dependency edges (MVVM Client's dependency set was substantially
+  wrong — CQRS Projections/Streaming Channels/Binary Attachments removed
+  as ungrounded, Sharding & Replication added as the single most
+  load-bearing one it was missing; Signing Secret Rotation's Scope line
+  had drifted back to `ADR-093`'s pre-correction wrong framing) plus an
+  ordering bug caught before finalizing (Tenant Federation Mapping had
+  been placed before the item it now correctly depends on, Bulk
+  Ingestion). Ten genuine doc/coverage gaps this pass found — not
+  build-plan structure — are now `TODO.md`'s 10 active items; see that
+  file for the list (an `ADR-087` i18n propagation gap, several missing
+  Gherkin scenarios, and one still-unresolved mystery: a background
+  agent reported receiving a mid-task instruction to create a
+  `docs/develop/{epic}/{feature}.md`-shaped file with no defined
+  taxonomy, source unclear, surfaced to the user rather than guessed at
+  — not yet answered). **`08-build-plan.md` still doesn't use fixed
+  `Phase N` numbering** — cite its items by name only (`` `08-build-
+  plan.md`, "Event-Type Security" ``, never a number). All 93 ADRs are
+  Accepted.
 - **A real PlantUML syntax bug, found by the user (not caught by review),
   turned out to be systemic**: backslash-escaped quotes (`\"`) inside a
   quoted diagram-element name break PlantUML's parser (it terminates the
