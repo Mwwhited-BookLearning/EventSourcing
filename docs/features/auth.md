@@ -221,6 +221,50 @@ entity "UserPermission" as perm {
 @enduml
 ```
 
+## Sequence diagram — RBAC/trust-root grants as reserved events (ADR-046, ADR-044, ADR-067)
+
+The ER diagram above shows what `Role`/`UserPermission` fold *into*; this
+diagram shows the write path that produces the fold input — the same
+"reserved event, same `StoredEvent` shape, same hash chain" mechanism
+`schema-registry.md`'s own `SchemaRegistered` sequence diagram already
+shows for a different reserved event type, applied here to RBAC grants
+and `AppTrustRoot` registration instead.
+
+```plantuml
+@startuml Auth_RbacTrustRootReservedEvents_Sequence
+autonumber
+actor "Platform/App operator" as operator
+participant "API\n(role/permission/trust-root admin endpoint)" as api
+participant "Auth\n(JWT Bearer + scope policy)" as auth
+database "Event Log" as eventLog
+participant "Role / UserPermission / AppTrustRoot\n(folded read models, ADR-067)" as rbac
+
+operator -> api: grant/revoke a role, grant a direct permission,\nor register an AppTrustRoot
+api -> auth: validate token + registry:admin (RBAC grants) or\nregistry:trust-admin (AppTrustRoot, ADR-044 -- a\ndeliberately separate scope, not implied by registry:admin)
+alt missing/invalid token or scope
+  auth --> operator: 401 / 403
+else authorized
+  api -> eventLog: append reserved "RoleGranted" / "RoleRevoked" /\n"PermissionGranted" (ADR-046) or\n"AppTrustRootRegistered" (ADR-044) event\n-- ActorId = operator's verified identity (ADR-064);\nsame StoredEvent shape, same hash chain (ADR-019/067)
+  eventLog -> rbac: fold applies the new event\n(same relationship EntityStoreRow already\nhas to business events, ADR-021)
+  api --> operator: 201 (or 200 for a revoke)
+end
+note over eventLog, rbac
+  None of these four event types is ever registered via
+  PUT /registry/{event-type} -- reserved the same way
+  ADR-020's EventUpcastFailed already is (ADR-067). Each
+  is traceable through the ordinary Lineage API and
+  linkable via parentEventIds (ADR-005) wherever a genuine
+  causal relationship to a business event exists.
+end note
+@enduml
+```
+
+A role/permission grant or an `AppTrustRoot` registration is therefore
+never a plain CRUD write against `Role`/`UserPermission`/`AppTrustRoot` —
+each first lands as its own reserved event in the same Event Log every
+business event uses, and the CRUD-shaped table is only ever the *folded
+result*, never written to directly (`ADR-067`).
+
 ## Seeded clients (dev)
 
 Seeded in code by `EventStore.DevIdp`'s `DevIdpSeeder` at startup — no
@@ -328,6 +372,76 @@ Feature: OAuth2/OIDC bearer-token authentication and scope-based authorization
     Then the issued token's claims should include "events:publish"
     # No explicit-deny concept exists anywhere in this model -- a
     # permission present via ANY source (direct grant or role) is granted.
+
+  Scenario: Granting a role publishes a traceable, hash-chained RoleGranted reserved event (ADR-046, ADR-067)
+    When operator "operator-1" grants user "u-3" role "SchemaAdmin" for app "demo"
+    Then a reserved "RoleGranted" event for "demo:role:SchemaAdmin" naming grantee "u-3" should exist in the Event Log
+    And that event's ActorId should be "operator-1"
+    And that event should be hash-chained into the same Event Log as ordinary business events
+    And that event should never have been registrable via PUT /registry/RoleGranted
+    And the Lineage API should be able to trace that reserved event like any other
+    # Same mechanism schema-registry.md's SchemaRegistered scenario already
+    # exercises for a different reserved event type -- ADR-067 reuses one
+    # publish path for every control-plane mutation, not a bespoke one per type.
+
+  Scenario: Revoking a role publishes a traceable RoleRevoked reserved event, enforced at next token issuance, not retroactively (ADR-046, ADR-067)
+    Given user "u-3" was granted role "SchemaAdmin" for app "demo"
+    When operator "operator-1" revokes role "SchemaAdmin" from user "u-3" for app "demo"
+    Then a reserved "RoleRevoked" event for "demo:role:SchemaAdmin" naming grantee "u-3" should exist in the Event Log
+    And that event's ActorId should be "operator-1"
+    And that event should be hash-chained into the same Event Log as ordinary business events
+    When user "u-3" requests a new token
+    Then the issued token's claims should not include "registry:admin"
+    # Enforcement is "don't flatten the permission into a newly-issued
+    # token" (ADR-046's issuance-time-only expansion) -- a token already
+    # issued before the revocation keeps whatever lifetime it was given,
+    # the same non-retroactive posture ADR-044 states for AppTrustRoot
+    # de-registration.
+
+  Scenario: A direct permission grant publishes a traceable, hash-chained PermissionGranted reserved event (ADR-046, ADR-067)
+    When operator "operator-1" directly grants user "u-2" permission "events:publish" for app "demo"
+    Then a reserved "PermissionGranted" event naming ActorId "u-2" and permission "events:publish" for app "demo" should exist in the Event Log
+    And that event's ActorId (the granting operator's own identity) should be "operator-1"
+    And that event should be hash-chained into the same Event Log as ordinary business events
+    And that event should never have been registrable via PUT /registry/PermissionGranted
+    And the Lineage API should be able to trace that reserved event like any other
+
+  Scenario: Registering an AppTrustRoot publishes a traceable, hash-chained AppTrustRootRegistered reserved event, gated by its own registry:trust-admin scope (ADR-044, ADR-067)
+    Given user "trust-admin-1" has been directly granted permission "registry:trust-admin" for app "demo"
+    But user "trust-admin-1" holds no "registry:admin" permission for app "demo"
+    When user "trust-admin-1" registers DID "did:key:z6MkhaXgBZDvotDkL5257faiztiGiC2QtKLGpbnnEGta2doK" as a trust root for app "demo"
+    Then the response status should be 201
+    And a reserved "AppTrustRootRegistered" event naming IssuerDid "did:key:z6MkhaXgBZDvotDkL5257faiztiGiC2QtKLGpbnnEGta2doK" for app "demo" should exist in the Event Log
+    And that event's ActorId should be "trust-admin-1"
+    And that event should never have been registrable via PUT /registry/AppTrustRootRegistered
+    And the Lineage API should be able to trace that reserved event like any other
+    # registry:trust-admin is deliberately its own scope, never implied by
+    # registry:admin (ADR-044's Consequences,
+    # ../comparisons/trust-root-registration-gate.md) -- holding registry:admin
+    # alone is insufficient here, the mirror image of the next scenario.
+
+  Scenario: Registering an AppTrustRoot is rejected without registry:trust-admin, even for a registry:admin holder (ADR-044)
+    Given user "u-1" is assigned role "SchemaAdmin" for app "demo"
+    And user "u-1" holds no "registry:trust-admin" permission for app "demo"
+    When user "u-1" attempts to register DID "did:key:zNotTrustAdmin" as a trust root for app "demo"
+    Then the response status should be 403
+    And no "AppTrustRootRegistered" event should be appended to the Event Log
+
+  Scenario: Role and UserPermission state rebuilds identically from a full replay of the reserved events, not just from a live grant (ADR-067)
+    Given a "RoleGranted" event assigned role "SchemaAdmin" to user "u-4" for app "demo" at SequenceNumber 501
+    And a "PermissionGranted" event directly granted "events:publish" to user "u-5" for app "demo" at SequenceNumber 502
+    And a "RoleRevoked" event later removed role "SchemaAdmin" from user "u-3" for app "demo" at SequenceNumber 503
+    When the Role and UserPermission read models are dropped and rebuilt by replaying the Event Log from SequenceNumber 0, with none of the pre-rebuild live state available to the rebuild
+    Then the rebuilt state should show user "u-4" holding role "SchemaAdmin" for app "demo"
+    And the rebuilt state should show user "u-5" holding directly-granted permission "events:publish" for app "demo"
+    And the rebuilt state should show user "u-3" no longer holding role "SchemaAdmin" for app "demo"
+    And a token subsequently issued to "u-4" should carry claim "registry:admin", identical to what it would have carried before the rebuild
+    # Role/UserPermission fold from these reserved events the exact same
+    # way EntityStoreRow folds business events (ADR-021, restated for
+    # control-plane data by ADR-067) -- a full replay is not a special
+    # case for RBAC state. This scenario is the concrete replay-rebuild
+    # coverage 08-build-plan.md's "Control-Plane Actions as Reserved
+    # Events" entry previously flagged as missing.
 
   Scenario: An authenticated publish records the caller's verified identity as ActorId, distinct from AttestedActorId (ADR-064)
     Given I have a Bearer token for client "publisher-client" whose verified subject is "sub-publisher-1"

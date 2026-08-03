@@ -173,8 +173,17 @@ alt matching ViewDefinition found
   registry --> vm: TemplateContent (HTML+JS, content-addressed, ADR-039)
   vm -> webengine: push entity state via native/JS bridge
   webengine -> webengine: render template, bind fields
+  webengine -> webengine: resolve translation keys in bound text\nfor the negotiated locale (Accept-Language, ADR-087)
   webengine -> webengine: render Extensions/flags via generic\nconvention where the template has no field for them
   webengine --> User: rendered entity view
+  note right of webengine
+    Base stylesheet uses CSS Logical
+    Properties (margin-inline-start, not
+    margin-left) so this same template
+    renders correctly under an RTL locale
+    without a second, mirrored stylesheet
+    -- ADR-087.
+  end note
   User -> webengine: interacts (click, input)
   webengine -> vm: post message through bridge -> dispatch command\n(same downstream event a native control would produce)
 else no matching ViewDefinition (unknown entity type/version)
@@ -202,6 +211,8 @@ entity "ViewDefinition" as viewdef {
   CompatibleSchemaVersions : string
   TemplateContent : text
   ' HTML+JS, content-addressed
+  ' rendered text references translation
+  ' keys, never a hardcoded literal, ADR-087
   Hash : string
   EffectiveFrom : datetimeoffset
   DeprecatedAt : datetimeoffset <<nullable>>
@@ -251,6 +262,17 @@ note bottom of cache
   (different EntityType/subscription
   targets) never share outbox or cache
   state, per ADR-039.
+end note
+
+note right of viewdef
+  TemplateContent's rendered text is
+  required to reference a translation
+  key, never a hardcoded literal --
+  ADR-087. The string a key resolves to
+  for a given locale is domain-owned
+  content, not part of this framework
+  schema (no TMS/resource format is
+  adopted here).
 end note
 @enduml
 ```
@@ -322,6 +344,56 @@ convention (`ConflictFlag`/`LateArrivalFlag`/`AuthorityStatus`, shown in
 the mockup above) or a template-backed `ViewDefinition`'s own markup is
 exempt merely for being a fallback or being content-addressed — both are
 screens a real user reads.
+
+## Internationalization & localization (ADR-087)
+
+`ADR-087` draws the same separation for i18n/l10n that `ADR-073` already
+draws for accessibility, immediately above: this framework states an
+architectural *requirement/shape*; the actual translated strings are
+domain-owned content the framework never ships itself, the same way a
+domain's own `docs/domains/{domain}/README.md#glossary` is
+domain-specific terminology this framework never tries to own. Three
+requirements apply to every `ViewDefinition` this doc's rendering
+sequence diagram (above) shows, and to the client generally:
+
+- **Translation-key discipline in `TemplateContent`.** A `ViewDefinition`'s
+  rendered text must reference a translation key, never a hardcoded
+  literal — the ER diagram's `viewdef` entity and its attached note
+  above mark exactly this. `ADR-087` states the requirement; the concrete
+  resource-key convention itself belongs in `ADR-039`'s view-definition
+  format, which `ADR-087`'s own Consequences section flags as not yet
+  written there — this doc treats the requirement as already governing
+  `ViewDefinition` rendering today regardless, the same way the
+  Accessibility section above treats WCAG 2.1 AA as already governing
+  every screen before every implementation detail is filled in.
+- **Locale-aware formatting via built-in culture APIs.** Any date/number/
+  currency value a `ViewDefinition` template binds renders through the
+  `Intl` API (`Intl.DateTimeFormat`, `Intl.NumberFormat`) in the embedded
+  web engine — never hand-rolled formatting logic — per `ADR-087`.
+- **RTL layout via CSS Logical Properties**, so the same `TemplateContent`
+  renders correctly under a right-to-left locale without a second,
+  mirrored stylesheet — the note attached to `webengine` in the rendering
+  sequence diagram above marks where this applies (`margin-inline-start`,
+  not `margin-left`).
+
+Locale itself is negotiated via the standard `Accept-Language` header
+(RFC 9110 §12), not a bespoke query parameter — the same negotiated
+value this doc's rendering sequence diagram uses to resolve a template's
+translation keys. `ADR-087` names the GraphQL Gateway (`ADR-037`) and
+every `EventStore.Host.<Provider>` as the components reading that header
+for locale-sensitive server content; this doc does not re-derive that
+server-side selection, only the client-side consequence of it (which
+locale a rendered `ViewDefinition` resolves its keys against).
+
+**Honest, named gap**: `ADR-087`'s translation-key requirement is stated
+specifically for `ADR-039`'s view-definition format. The native generic
+fallback mockup above (`## Salt (UI mockup)`) labels its rows with raw,
+untranslated property names (`EntityType`, `Amount`, `Carrier`, ...) —
+schema field names surfaced generically, not `ViewDefinition` template
+content — and `ADR-087`'s text does not say whether that fallback's own
+labels are in scope. This doc does not extend the translation-key
+requirement to the fallback on its own authority; flagged here as a real
+open point rather than silently assumed either way.
 
 ## Gherkin
 
@@ -416,6 +488,22 @@ Feature: MVVM client (entity views, client-local outbox, native/JS bridge)
     # (native/JS bridge, ViewDefinition template, generic fallback) governs
     # how each screen satisfies it -- neither screen is exempt for being a
     # fallback or being content-addressed.
+
+  Scenario: A ViewDefinition's translation keys resolve for the client's negotiated locale (ADR-087)
+    Given Order "o-1"'s ViewDefinition TemplateContent references translation key "order.field.amount" for its Amount label, not a hardcoded literal
+    And client instance "A" negotiated locale "fr-FR" via the Accept-Language header
+    When client instance "A" renders Order "o-1"
+    Then "order.field.amount" should resolve to its "fr-FR" translated string
+    And no hardcoded English literal should render in its place
+    # ADR-087 states the translation-key requirement; the resolved
+    # string itself is domain-owned content this framework never ships.
+
+  Scenario: A ViewDefinition's CSS logical-property layout renders correctly under an RTL locale (ADR-087)
+    Given Order "o-1"'s ViewDefinition template's base stylesheet uses CSS logical properties (e.g. margin-inline-start) rather than physical properties (e.g. margin-left)
+    And client instance "A" negotiated locale "ar-SA", a right-to-left locale
+    When client instance "A" renders Order "o-1"
+    Then the rendered layout should mirror correctly for the right-to-left reading direction
+    And no second, RTL-specific mirrored stylesheet should be required to achieve it
 
   Scenario: The web client is installable
     When the web client is opened in a browser that supports installation

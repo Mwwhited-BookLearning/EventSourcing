@@ -144,6 +144,8 @@ entity "StoredEvent" as event {
   EventType : string
   ExpectedVersion : bigint?
   ConflictFlag : bool
+  LateArrivalFlag : bool
+  OccurredAt : datetimeoffset
   SchemaStatus : string?
   Status : string
   Payload : text
@@ -158,6 +160,7 @@ entity "EntityStoreRow" as entityStore {
   Extensions : text
   SchemaVersion : int
   LastAppliedSequenceNumber : bigint
+  LastAppliedLogicalTime : datetimeoffset
 }
 
 etd ..> event : "EntityIdField resolves\nEntityId at fold time\n-- logical only, not a DB FK"
@@ -171,6 +174,22 @@ note right of entityStore
   Version bumps only when Data actually
   changes; ExpectedVersion on the event is
   compared against this column at fold time.
+end note
+
+note right of event
+  ConflictFlag and LateArrivalFlag answer two
+  different questions at fold time (ADR-029;
+  see also docs/patterns/interactions/fold-
+  ordering-and-conflict.md): ConflictFlag
+  compares ExpectedVersion against
+  EntityStoreRow.Version (a stale causal
+  basis) and never blocks the write.
+  LateArrivalFlag compares OccurredAt against
+  EntityStoreRow.LastAppliedLogicalTime (a
+  chronologically-stale event) and DOES
+  withhold that event's change from the
+  affected property. A single event can set
+  both, independently.
 end note
 @enduml
 ```
@@ -260,6 +279,41 @@ Feature: Entities (EntityId, the always-on Entity Store, ExpectedVersion)
     And the EntityStoreRow for "demo:Order:o-1" should still advance to Version 3 with Carrier "FedEx"
     # ExpectedVersion never blocks or rejects a fold -- it only flags the later
     # event as conflicting (ADR-024). The earlier event is never retroactively touched.
+
+  Scenario: An event with an older OccurredAt arriving after a logically newer one already folded sets LateArrivalFlag and does not overwrite
+    Given an "OrderPlaced" event was published for "o-1" with body { "OrderId": "o-1", "CustomerName": "A. Smith", "Amount": 42.00 }
+    And an "OrderShipped" event "e-B" was published and folded for "o-1" with OccurredAt "2026-08-01T12:00:00Z" and body { "OrderId": "o-1", "Carrier": "UPS" }
+    And its fold advanced EntityStoreRow "demo:Order:o-1"'s LastAppliedLogicalTime to "2026-08-01T12:00:00Z"
+    When an "OrderShipped" event "e-A" is published for "o-1" with OccurredAt "2026-08-01T11:00:00Z" (earlier than the high-water mark) and body { "OrderId": "o-1", "Carrier": "FedEx" }
+    Then the response status should still be 202
+    And eventually "e-A"'s stored event should have LateArrivalFlag true
+    And "e-A"'s ConflictFlag should be false
+    And the EntityStoreRow for "demo:Order:o-1" Data should still have Carrier "UPS", never "FedEx"
+    And the EntityStoreRow's LastAppliedSequenceNumber should have advanced past "e-A", but its Version should not have incremented
+    # LateArrivalFlag (ADR-029) is a distinct question from ConflictFlag (ADR-024):
+    # "e-A" carries no stale ExpectedVersion at all here -- it's flagged purely
+    # because its OccurredAt is behind EntityStoreRow.LastAppliedLogicalTime, i.e.
+    # it logically happened before "e-B", which already won the Carrier property.
+    # Unlike ConflictFlag, LateArrivalFlag actually withholds the change -- applying
+    # it would silently revert already-folded newer state (see
+    # docs/patterns/interactions/fold-ordering-and-conflict.md).
+
+  Scenario: An event that is both a stale-ExpectedVersion conflict and a late arrival sets both flags independently
+    Given an "OrderPlaced" event was published for "o-1" with body { "OrderId": "o-1", "CustomerName": "A. Smith", "Amount": 42.00 }
+    And an "OrderShipped" event was published and folded for "o-1" with OccurredAt "2026-08-01T12:00:00Z" and body { "OrderId": "o-1", "Carrier": "UPS" }, advancing EntityStoreRow "demo:Order:o-1" to Version 2 and LastAppliedLogicalTime to "2026-08-01T12:00:00Z"
+    When an "OrderShipped" event is published with body { "OrderId": "o-1", "Carrier": "FedEx" }, expectedVersion 1 (stale -- actual Version is 2), and OccurredAt "2026-08-01T11:00:00Z" (earlier than the high-water mark)
+    Then the response status should still be 202
+    And eventually the stored event's ConflictFlag should be true
+    And the stored event's LateArrivalFlag should be true
+    And the EntityStoreRow for "demo:Order:o-1" Data should still have Carrier "UPS", not "FedEx"
+    And the EntityStoreRow's Version should remain 2
+    # The "Fail/Fail" row of docs/patterns/interactions/fold-ordering-and-conflict.md's
+    # table: ConflictFlag's stale-ExpectedVersion check and LateArrivalFlag's
+    # OccurredAt-vs-high-water-mark check run independently in the same fold step
+    # and can both fire on one event without either being aware of the other.
+    # Because LateArrivalFlag gates the write, Version stays at 2 here -- if only
+    # ConflictFlag had fired (this doc's earlier scenario), the write would have
+    # gone through and Version would have advanced to 3 instead.
 
   Scenario: Publishing without ExpectedVersion applies unconditionally, with no conflict detection
     Given an "OrderPlaced" event was published for "o-1" with body { "OrderId": "o-1", "CustomerName": "A. Smith", "Amount": 42.00 }
