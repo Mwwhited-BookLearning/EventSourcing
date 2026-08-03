@@ -8,6 +8,7 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" Version="10.0.10" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.10">
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
       <PrivateAssets>all</PrivateAssets>
@@ -31,6 +32,11 @@
     <ProjectReference Include="..\..\src\EventStore.SpecGeneration\EventStore.SpecGeneration.csproj" />
     <ProjectReference Include="..\..\src\EventStore.Lineage.Api\EventStore.Lineage.Api.csproj" />
     <ProjectReference Include="..\..\src\EventStore.Follow.Api\EventStore.Follow.Api.csproj" />
+    <ProjectReference Include="..\..\src\EventStore.Host.Sqlite\EventStore.Host.Sqlite.csproj" />
+    <!-- Aliased: both this project and EventStore.Host.Sqlite generate a
+         top-level-statement `Program` class in the global namespace,
+         so referencing both unaliased is an ambiguous-type compile error. -->
+    <ProjectReference Include="..\..\src\EventStore.DevIdp\EventStore.DevIdp.csproj" Aliases="DevIdpAssembly" />
   </ItemGroup>
 
 </Project>
