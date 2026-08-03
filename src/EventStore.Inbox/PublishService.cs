@@ -15,7 +15,8 @@ public class PublishService(
     SchemaRegistryService schemaRegistry,
     IUniqueConstraintViolationDetector uniqueConstraintViolationDetector)
 {
-    public async Task<PublishResult> PublishAsync(string eventTypeName, PublishEventRequest request, ClaimsPrincipal user, CancellationToken ct = default)
+    public async Task<PublishResult> PublishAsync(
+        string eventTypeName, PublishEventRequest request, ClaimsPrincipal user, CancellationToken ct = default, int derivationHopCount = 0)
     {
         var normalizedName = eventTypeName.ToLowerInvariant();
         var parentEventIds = request.ParentEventIds ?? [];
@@ -78,6 +79,7 @@ public class PublishService(
             Status = "applied", // this build stage validates fully synchronously; ADR-023's advisory Status split isn't built yet
             OccurredAt = DateTimeOffset.UtcNow,
             ActorId = "unauthenticated", // "Auth + Orchestration" hasn't landed yet
+            DerivationHopCount = derivationHopCount, // 0 for every ordinary publish; only DerivationWorker ever supplies non-zero (ADR-007, deferred)
         };
         db.Events.Add(storedEvent);
 

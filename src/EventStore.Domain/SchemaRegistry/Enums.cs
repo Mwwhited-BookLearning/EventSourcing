@@ -19,3 +19,15 @@ public enum RejectionBehavior
 }
 
 public enum FilterableFieldType { String, Number, Boolean, DateTimeOffset }
+
+public enum JoinTriggerMode
+{
+    FireOnce,             // wait for one event per source per join key, emit once, key closes (ADR-007)
+    ContinuousEnrichment  // any new arrival on any source re-emits, joined against the current latest state of the others (ADR-007)
+}
+
+public enum BackfillMode
+{
+    FromHistory, // the derivation worker starts by tailing each source from SequenceNumber 0
+    FromNow      // the derivation worker starts tailing each source from its SequenceNumber as of registration
+}

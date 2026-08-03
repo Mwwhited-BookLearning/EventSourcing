@@ -33,6 +33,7 @@ public class StoredEvent
     public long? OriginalSequenceNumber { get; set; }      // set only on an event imported via ADR-068's lineage-export bundle format -- this environment's own SequenceNumber/ChainHash above are freshly computed (it IS a new append here); these three fields record provenance, never presented as if organically published here (ADR-068)
     public string? OriginalChainHash { get; set; }         // the exporting environment's own ChainHash for this event, at export time (ADR-068)
     public string? ImportedFrom { get; set; }              // identifies the exporting environment (ADR-068) -- a seventh distinct relationship-shaped envelope field, answering "where did this event actually originate" as opposed to OriginId (ADR-033/090, which peer/site in THIS deployment's own multi-site mesh)
+    public int DerivationHopCount { get; set; }             // 0 for an ordinarily-published event; incremented by one each time a derivation worker's republish is itself the triggering event for another derivation (ADR-007, deferred) -- belt-and-suspenders runtime cap against the residual race a derivation-definition registration-time cycle check can't fully close, see docs/data/schema-registry.md's "Derived/materialized event types" section
 }
 
 // Left behind in the primary table when a segment of StoredEvent rows is
