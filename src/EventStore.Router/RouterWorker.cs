@@ -101,6 +101,35 @@ public class RouterWorker(IServiceScopeFactory scopeFactory, ILogger<RouterWorke
             return;
         }
 
+        // ADR-021 -- identity resolution is a per-event-TYPE decision, stable
+        // across versions, computed against the ACTIVE definition -- hoisted
+        // ahead of the schema-status check below, since "Compatibility &
+        // Deployment Discipline"'s rollback gate needs it too.
+        var activeDefinition = await schemaRegistry.GetActiveAsync(storedEvent.AppId, storedEvent.EventType, ct);
+        var declaredDefinition = await schemaRegistry.GetVersionAsync(storedEvent.AppId, storedEvent.EventType, storedEvent.SchemaVersion, ct);
+
+        // "Compatibility & Deployment Discipline" (ADR-038) -- an event
+        // tagged with a schema version genuinely AHEAD of anything this
+        // deployment's own registry has ever seen (declaredDefinition null
+        // AND newer than the active version) is exactly what "a rolled-back
+        // deployment" means: this deployment predates that shape entirely.
+        // Left at Status "received" rather than advanced to "applied" --
+        // ADR-023's own status envelope already keeps "durably persisted"
+        // (true the moment PublishService appended it) separate from
+        // "successfully routed" (this), so nothing is lost, only deferred.
+        // Deliberately narrower than "declaredDefinition is null" alone: an
+        // OLD/never-registered version (SchemaVersion <= active) is the
+        // ordinary, already-covered "unknown schema, advisory-only" case
+        // below -- SchemaStatus "unknown" but Status still reaches "applied"
+        // per ADR-023's own "never gates Status" rule, unaffected by this
+        // gate. The next tick's "received" query (RunOnceAsync above)
+        // naturally retries this event forever, so no separate backlog-
+        // reconciliation mechanism is needed -- it becomes routable the
+        // moment a LATER registration raises the active version to cover
+        // it, with no other code change.
+        if (declaredDefinition is null && storedEvent.SchemaVersion > (activeDefinition?.Version ?? 0))
+            return;
+
         var payloadNode = JsonNode.Parse(storedEvent.Payload) as JsonObject ?? new JsonObject();
 
         // ADR-023 -- schema validation against the event's OWN declared
@@ -114,7 +143,6 @@ public class RouterWorker(IServiceScopeFactory scopeFactory, ILogger<RouterWorke
         JsonObject known;
         JsonObject unknownProperties;
         ChangeKind changeKind;
-        var declaredDefinition = await schemaRegistry.GetVersionAsync(storedEvent.AppId, storedEvent.EventType, storedEvent.SchemaVersion, ct);
         if (declaredDefinition is not null)
         {
             var schemaNode = JsonNode.Parse(declaredDefinition.JsonSchema);
@@ -138,8 +166,8 @@ public class RouterWorker(IServiceScopeFactory scopeFactory, ILogger<RouterWorke
         // version's -- but always THIS event's own AppId, never a tie-broken
         // guess. EntityType (not storedEvent.EventType) is what makes
         // OrderPlaced and OrderShipped fold into the SAME entity -- they're
-        // different event types patching one logical "Order".
-        var activeDefinition = await schemaRegistry.GetActiveAsync(storedEvent.AppId, storedEvent.EventType, ct);
+        // different event types patching one logical "Order". activeDefinition
+        // itself was already resolved above, ahead of the rollback gate.
         if (activeDefinition is not null)
         {
             var uniqueId = EntityIdResolver.ResolveUniqueId(payloadNode, activeDefinition.EntityIdField);

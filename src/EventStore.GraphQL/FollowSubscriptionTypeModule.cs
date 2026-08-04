@@ -98,7 +98,8 @@ public class FollowSubscriptionTypeModule : ITypeModule, ISchemaChangeNotifier
 
             var payloadConfig = new ObjectTypeConfiguration(payloadTypeName);
             foreach (var property in EventTypeSchemaReader.GetTopLevelProperties(definition.JsonSchema))
-                payloadConfig.Fields.Add(BuildPayloadField(property));
+                foreach (var field in BuildPayloadFields(property))
+                    payloadConfig.Fields.Add(field);
             var payloadType = ObjectType.CreateUnsafe(payloadConfig);
             types.Add(payloadType);
 
@@ -118,7 +119,14 @@ public class FollowSubscriptionTypeModule : ITypeModule, ISchemaChangeNotifier
     private static string FieldNameFor(string jsonPropertyName) =>
         jsonPropertyName.Length == 0 ? jsonPropertyName : char.ToLowerInvariant(jsonPropertyName[0]) + jsonPropertyName[1..];
 
-    private static ObjectFieldConfiguration BuildPayloadField(EventPayloadProperty property)
+    // Returns one field for an ordinary/masked property, or two -- the value
+    // field plus a sibling "{name}Known" Boolean -- for an x-enum-fallback
+    // property (ADR-038's enum-fallback contract, docs/features/
+    // compatibility-and-versioning.md's Scenario 1: "the response should
+    // equal { status, statusKnown }"). EnumFallbackSchemaValidator already
+    // guarantees x-enum-fallback and x-masking never both apply to the same
+    // property, so the two branches below never need to combine.
+    private static IEnumerable<ObjectFieldConfiguration> BuildPayloadFields(EventPayloadProperty property)
     {
         var fieldName = FieldNameFor(property.Name);
         if (property.IsMaskable)
@@ -130,10 +138,11 @@ public class FollowSubscriptionTypeModule : ITypeModule, ISchemaChangeNotifier
                 GraphQlScalarKind.DateTimeOffset => "MaskedDateTimeOffset",
                 _ => "MaskedString",
             };
-            return new ObjectFieldConfiguration(fieldName, type: TypeReference.Parse(maskedTypeName))
+            yield return new ObjectFieldConfiguration(fieldName, type: TypeReference.Parse(maskedTypeName))
             {
                 PureResolver = ctx => BuildMasked(ctx.Parent<FollowedEvent>().MaskedPayload as JsonObject, property),
             };
+            yield break;
         }
 
         var scalarName = property.Kind switch
@@ -143,10 +152,23 @@ public class FollowSubscriptionTypeModule : ITypeModule, ISchemaChangeNotifier
             GraphQlScalarKind.DateTimeOffset => "DateTimeOffset",
             _ => "String",
         };
-        return new ObjectFieldConfiguration(fieldName, type: TypeReference.Parse(scalarName))
+        yield return new ObjectFieldConfiguration(fieldName, type: TypeReference.Parse(scalarName))
         {
             PureResolver = ctx => ExtractScalar((ctx.Parent<FollowedEvent>().MaskedPayload as JsonObject)?[property.Name], property.Kind),
         };
+
+        if (property.EnumFallback)
+        {
+            var knownValues = property.KnownValues ?? (IReadOnlySet<string>)new HashSet<string>();
+            yield return new ObjectFieldConfiguration($"{fieldName}Known", type: TypeReference.Parse("Boolean"))
+            {
+                PureResolver = ctx =>
+                {
+                    var raw = (ctx.Parent<FollowedEvent>().MaskedPayload as JsonObject)?[property.Name]?.GetValue<string>();
+                    return raw is not null && knownValues.Contains(raw);
+                },
+            };
+        }
     }
 
     private static object? BuildMasked(JsonObject? payload, EventPayloadProperty property)

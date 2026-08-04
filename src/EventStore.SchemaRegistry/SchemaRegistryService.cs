@@ -88,7 +88,10 @@ public class SchemaRegistryService(
         }
 
         if (schemaNode is JsonObject schemaObject)
+        {
             MaskingSchemaValidator.Validate(schemaObject, errors);
+            EnumFallbackSchemaValidator.Validate(schemaObject, errors);
+        }
 
         // ADR-018 -- an alias that doesn't name an actual property of the
         // destination (this registration's own) schema, or an expression that

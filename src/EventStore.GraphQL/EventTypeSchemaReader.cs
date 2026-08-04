@@ -4,7 +4,14 @@ namespace EventStore.GraphQL;
 
 public enum GraphQlScalarKind { String, Float, Boolean, DateTimeOffset }
 
-public record EventPayloadProperty(string Name, GraphQlScalarKind Kind, bool IsMaskable);
+// EnumFallback/KnownValues -- "Compatibility & Deployment Discipline"
+// (ADR-038's enum-fallback contract): a per-field, registration-time opt-in
+// via "x-enum-fallback": true alongside JSON Schema's own standard "enum"
+// keyword (EnumFallbackSchemaValidator enforces both are present together,
+// and only on a string-typed property). KnownValues is that property's own
+// declared "enum" list, carried through so the dynamically-built payload
+// field can report whether a since-arrived value is still recognized.
+public record EventPayloadProperty(string Name, GraphQlScalarKind Kind, bool IsMaskable, bool EnumFallback, IReadOnlySet<string>? KnownValues);
 
 // Reads a registered EventTypeDefinition's own JsonSchema to drive
 // FollowSubscriptionTypeModule's dynamic payload-type construction.
@@ -32,7 +39,11 @@ public static class EventTypeSchemaReader
                 continue; // object/array-typed property -- not exposed dynamically, see this class's own note
 
             var isMaskable = propertyObject.ContainsKey("x-masking");
-            results.Add(new EventPayloadProperty(name, kind.Value, isMaskable));
+            var enumFallback = propertyObject["x-enum-fallback"]?.GetValue<bool>() ?? false;
+            var knownValues = enumFallback && propertyObject["enum"] is JsonArray enumArray
+                ? enumArray.Select(v => v?.GetValue<string>()).OfType<string>().ToHashSet()
+                : null;
+            results.Add(new EventPayloadProperty(name, kind.Value, isMaskable, enumFallback, knownValues));
         }
         return results;
     }
