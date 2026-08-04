@@ -12,4 +12,6 @@ internal static class UpcastingTestSupport
     public static IUpcastExpressionEvaluator CreateEvaluator() => new CelUpcastExpressionEvaluator();
 
     public static UpcastChain CreateChain() => new(CreateEvaluator());
+
+    public static DowncastChain CreateDowncastChain() => new(CreateEvaluator());
 }

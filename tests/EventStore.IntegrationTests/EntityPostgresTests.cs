@@ -43,16 +43,17 @@ public class EntityPostgresTests
         using var db = CreateContext();
         var registry = new SchemaRegistryService(db, new PostgresFilterableFieldIndexDdlGenerator(), new MemoryCache(new MemoryCacheOptions()), UpcastingTestSupport.CreateEvaluator());
         var publish = new PublishService(db, registry, new PostgresUniqueConstraintViolationDetector());
+        var upcastChain = UpcastingTestSupport.CreateChain();
 
-        await EntityScenarioAssertions.PublishingAnEventThatResolvesToABrandNewEntityIdCreatesAnEntityStoreRow(registry, publish, db);
-        await EntityScenarioAssertions.PublishingASecondEventForTheSameEntityIdUpdatesTheRowAndIncrementsVersion(registry, publish, db);
-        await EntityScenarioAssertions.AFullEventsPayloadReplacesTheEntityStoreRowsDataWholesale(registry, publish, db);
-        await EntityScenarioAssertions.APartialEventsUnknownPropertyIsFoldedIntoExtensionsBagNotDropped(registry, publish, db);
-        await EntityScenarioAssertions.PublishingWithAStaleExpectedVersionSetsConflictFlagButStillPersistsAndFolds(registry, publish, db);
-        await EntityScenarioAssertions.AnEventWithAnOlderOccurredAtArrivingAfterALogicallyNewerOneAlreadyFoldedSetsLateArrivalFlagAndDoesNotOverwrite(registry, publish, db);
-        await EntityScenarioAssertions.AnEventThatIsBothAStaleExpectedVersionConflictAndALateArrivalSetsBothFlagsIndependently(registry, publish, db);
-        await EntityScenarioAssertions.PublishingWithoutExpectedVersionAppliesUnconditionallyWithNoConflictDetection(registry, publish, db);
-        await EntityScenarioAssertions.ASchemaInvalidPublishPersistsWith202AndSchemaStatusInvalidAndKnownPropertiesStillFold(registry, publish, db);
-        await EntityScenarioAssertions.PublishingAgainstADeclaredVersionBehindTheActiveOneStillValidatesAgainstTheDeclaredVersion(registry, publish, db);
+        await EntityScenarioAssertions.PublishingAnEventThatResolvesToABrandNewEntityIdCreatesAnEntityStoreRow(registry, publish, db, upcastChain);
+        await EntityScenarioAssertions.PublishingASecondEventForTheSameEntityIdUpdatesTheRowAndIncrementsVersion(registry, publish, db, upcastChain);
+        await EntityScenarioAssertions.AFullEventsPayloadReplacesTheEntityStoreRowsDataWholesale(registry, publish, db, upcastChain);
+        await EntityScenarioAssertions.APartialEventsUnknownPropertyIsFoldedIntoExtensionsBagNotDropped(registry, publish, db, upcastChain);
+        await EntityScenarioAssertions.PublishingWithAStaleExpectedVersionSetsConflictFlagButStillPersistsAndFolds(registry, publish, db, upcastChain);
+        await EntityScenarioAssertions.AnEventWithAnOlderOccurredAtArrivingAfterALogicallyNewerOneAlreadyFoldedSetsLateArrivalFlagAndDoesNotOverwrite(registry, publish, db, upcastChain);
+        await EntityScenarioAssertions.AnEventThatIsBothAStaleExpectedVersionConflictAndALateArrivalSetsBothFlagsIndependently(registry, publish, db, upcastChain);
+        await EntityScenarioAssertions.PublishingWithoutExpectedVersionAppliesUnconditionallyWithNoConflictDetection(registry, publish, db, upcastChain);
+        await EntityScenarioAssertions.ASchemaInvalidPublishPersistsWith202AndSchemaStatusInvalidAndKnownPropertiesStillFold(registry, publish, db, upcastChain);
+        await EntityScenarioAssertions.PublishingAgainstADeclaredVersionBehindTheActiveOneStillValidatesAgainstTheDeclaredVersion(registry, publish, db, upcastChain);
     }
 }

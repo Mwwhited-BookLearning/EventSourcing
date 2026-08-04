@@ -284,13 +284,54 @@ stale numbers here are worse than none)*
   in both the test helper and `FollowClient`'s own production code. Full
   narrative in `docs/changes/2026-08-04.md`. `EventStore.IntegrationTests`
   still has 26 `[TestMethod]`s (existing methods gained one scenario each).
-- **Next up**: item 14, "Upcast Materialization + Downcast" (`ADR-027`/
-  `028`/`053`) — now unblocked (depends on Hardening & Evolution,
-  Entity-Centric Core Rebuild, both Done). This is where the upcast-aware
-  fold `RouterWorker` deliberately skipped in item 12 (it validates a
-  declared `SchemaVersion` against its own schema only, never upcasts to
-  the active version before folding)
-  is meant to land.
+- **Item 14, "Upcast Materialization + Downcast," is Done — same day,
+  continuing directly from item 13.** New `EventStore.Persistence/
+  EventAppender.cs` (the hash-chain-aware insert extracted out of
+  `PublishService`, shared with the materializer below). `UpcastMaterializer`
+  (`EventStore.Router`) implements both `ADR-027` triggers: Trigger 1 fires
+  inline in `RouterWorker.ProcessEventAsync` right after entity resolution,
+  when a just-validated publish is conformant against its own declared
+  version but behind the active one; Trigger 2 (`ReconcileBacklogAsync`)
+  runs every `RouterWorker` tick, scanning for any active multi-version
+  type with unmaterialized backlog. Both call `EventAppender.AppendAsync`
+  directly rather than `PublishService.PublishAsync` — going through the
+  ordinary publish path would re-run `RequiredClaims` enforcement against
+  an empty system principal, wrongly `Forbidden`-ing the materialization of
+  any claim-gated type. `DowncastChain` (`EventStore.Upcasting`, `ADR-028`)
+  mirrors `UpcastChain` but with no safe pass-through — a missing hop is a
+  hard `Failed`. `JsonataUpcastExpressionEvaluator` (`ADR-053`'s second,
+  swappable engine) rounds-trips through JSON text against
+  `Jsonata.Net.Native`'s own JSON DOM, and wraps the source payload under a
+  synthetic top-level `"event"` key so the *same* registered expression
+  text (e.g. `"event.Amount as Amount"`) resolves identically under both
+  CEL and JSONata — genuinely proven by a shared unit test, not just
+  visually similar output. `FollowRequest` gained `AsOfSchemaVersion`;
+  `FollowService.ConnectAsync` validates every hop down to it exists
+  *before* connecting (400 otherwise); `EventTailReader` applies
+  `DowncastChain` after `UpcastChain`, masking against the requested (not
+  active) version's schema.
+  **A real correctness bug found only by running the full suite, not by
+  reading the code back**: `EventTailReader` was delivering
+  `EventKind.UpcastMaterialization` rows as independent new SSE events,
+  double-delivering one logical fact — caught by `ProjectionsSqliteTests`
+  (a test this item never touched) failing only once repeated
+  re-registration of the same schema in that test's own setup pushed one
+  of its event types past `Version` 1, for real, activating Trigger 2 for
+  the first time in that suite. `ADR-027`'s own text already named the
+  fix: Follow's *default* is "consume only `Original` events, always
+  upcasting live" — a materialization is an optional, opt-in-only
+  optimization for other readers, never a second delivery of the same
+  event. Fixed by filtering `EventKind == Original` in `EventTailReader`'s
+  own query. `docs/features/upcast-materialization-and-downcast.md`'s two
+  Trigger diagrams were also corrected in the same pass — they still
+  showed the pre-`ADR-023` synchronous-Inbox and Follow-tailing/
+  `PublishEndpoint`-republishing shapes, not what actually got built.
+  `EventStore.IntegrationTests` now has 33 `[TestMethod]`s (up from 26) —
+  all pass across SQLite/PostgreSQL/SQL Server, twice in a row for
+  stability.
+- **Next up**: item 15, "Streaming Channels" (`ADR-031`/`052`) — depends
+  on Auth + Orchestration, Entity-Centric Core Rebuild, and Property-Level
+  Masking, all Done.
 
 ## How to resume cold
 
@@ -305,7 +346,7 @@ stale numbers here are worse than none)*
    narrative.
 5. `dotnet build EventStore.slnx` and `dotnet test tests/EventStore.IntegrationTests` —
    confirm the build/test baseline the last session left still holds
-   before adding to it (26 tests should pass). Requires Docker running
+   before adding to it (33 tests should pass). Requires Docker running
    (Testcontainers for Postgres/SQL Server) and the SDK pinned in
    `global.json`.
 
@@ -332,7 +373,7 @@ stale numbers here are worse than none)*
   treated as this session's own action; items 7 through 10 all committed —
   "check off work as you go. then continue" is the standing instruction
   currently in effect, so each item is committed without waiting for a
-  fresh prompt; items 11 and 12 now done too, per the same rhythm).
+  fresh prompt; items 11 through 14 now done too, per the same rhythm).
 - **Always actually run new code against every provider it's built for
   before calling an item done.** Every real bug found this session (the
   `ExecuteSqlRawAsync` brace-parsing issue, an unquoted Postgres column,

@@ -46,7 +46,7 @@ public class MaskingPostgresTests
         var registry = new SchemaRegistryService(db, new PostgresFilterableFieldIndexDdlGenerator(), cache, UpcastingTestSupport.CreateEvaluator());
         var publish = new PublishService(db, registry, new PostgresUniqueConstraintViolationDetector());
         var (payloadMasker, logs) = MaskingTestSupport.CreatePayloadMasker();
-        var follow = new FollowService(db, new EventTailReader(db, registry, payloadMasker, UpcastingTestSupport.CreateChain()));
+        var follow = new FollowService(db, registry, new EventTailReader(db, registry, payloadMasker, UpcastingTestSupport.CreateChain(), UpcastingTestSupport.CreateDowncastChain()));
 
         await MaskingScenarioAssertions.AFollowerWithoutTheMaskingClaimSeesMaskedAndWithItSeesValue(registry, publish, follow);
         await MaskingScenarioAssertions.ALogCallTouchingAClassifiedFieldIsVerifiedRedactedNotJustTheResponsePath(logs);

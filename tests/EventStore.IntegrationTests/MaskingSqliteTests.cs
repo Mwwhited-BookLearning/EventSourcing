@@ -47,7 +47,7 @@ public class MaskingSqliteTests
         var registry = new SchemaRegistryService(db, new SqliteFilterableFieldIndexDdlGenerator(), cache, UpcastingTestSupport.CreateEvaluator());
         var publish = new PublishService(db, registry, new SqliteUniqueConstraintViolationDetector());
         var (payloadMasker, logs) = MaskingTestSupport.CreatePayloadMasker();
-        var follow = new FollowService(db, new EventTailReader(db, registry, payloadMasker, UpcastingTestSupport.CreateChain()));
+        var follow = new FollowService(db, registry, new EventTailReader(db, registry, payloadMasker, UpcastingTestSupport.CreateChain(), UpcastingTestSupport.CreateDowncastChain()));
 
         await MaskingScenarioAssertions.AFollowerWithoutTheMaskingClaimSeesMaskedAndWithItSeesValue(registry, publish, follow);
         await MaskingScenarioAssertions.ALogCallTouchingAClassifiedFieldIsVerifiedRedactedNotJustTheResponsePath(logs);

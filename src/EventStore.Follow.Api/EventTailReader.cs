@@ -16,21 +16,28 @@ namespace EventStore.Follow.Api;
 // (ADR-010) -- only lastSeen's initial value differs at the call site
 // (docs/06-solution-structure.md, "Follow: tail vs replay cursor").
 public class EventTailReader(
-    EventStoreContext db, SchemaRegistryService schemaRegistry, IPayloadMasker payloadMasker, UpcastChain upcastChain)
+    EventStoreContext db, SchemaRegistryService schemaRegistry, IPayloadMasker payloadMasker,
+    UpcastChain upcastChain, DowncastChain downcastChain)
 {
     public async IAsyncEnumerable<FollowedEvent> TailAsync(
         string eventTypeName,
         Expression<Func<StoredEvent, bool>> predicate,
         long lastSeen,
+        int? asOfSchemaVersion,
         TimeSpan pollInterval,
         ClaimsPrincipal user,
         [EnumeratorCancellation] CancellationToken ct)
     {
         while (!ct.IsCancellationRequested)
         {
+            // ADR-027 -- "consuming only originals and always upcasting live
+            // remains equally correct" is this design's DEFAULT, not an
+            // opt-in; a materialization is a reshaped COPY of an original
+            // already delivered once, so surfacing it too would double-
+            // deliver one logical fact as two distinct events.
             var matching = await db.Events
                 .AsNoTracking()
-                .Where(e => e.EventType == eventTypeName && e.SequenceNumber > lastSeen)
+                .Where(e => e.EventType == eventTypeName && e.EventKind == EventKind.Original && e.SequenceNumber > lastSeen)
                 .Where(predicate)
                 .OrderBy(e => e.SequenceNumber)
                 .ToListAsync(ct);
@@ -44,15 +51,23 @@ public class EventTailReader(
                 // just the versions literally present among these events.
                 var activeDefinition = await schemaRegistry.GetActiveDefinitionByNameAsync(eventTypeName, ct);
                 var activeVersion = activeDefinition?.Version ?? matching.Max(e => e.SchemaVersion);
-                var minVersion = matching.Min(e => e.SchemaVersion);
-                var versionsNeeded = Enumerable.Range(minVersion, Math.Max(1, activeVersion - minVersion + 1)).ToList();
+                var minVersion = Math.Min(matching.Min(e => e.SchemaVersion), asOfSchemaVersion ?? activeVersion);
+                var maxVersion = Math.Max(activeVersion, asOfSchemaVersion ?? activeVersion);
+                var versionsNeeded = Enumerable.Range(minVersion, Math.Max(1, maxVersion - minVersion + 1)).ToList();
                 var schemasByVersion = await schemaRegistry.GetVersionsByNameAsync(eventTypeName, versionsNeeded, ct);
+
+                // ADR-028 -- the shape ultimately served to the caller is the
+                // requested (asOfSchemaVersion) shape when one was asked for,
+                // never the active one -- FollowService.ConnectAsync already
+                // confirmed every hop down to it exists before this loop starts.
+                var targetVersion = asOfSchemaVersion ?? activeVersion;
 
                 foreach (var storedEvent in matching)
                 {
                     var visibleParentIds = await GetVisibleParentEventIdsAsync(storedEvent.EventId, user, ct);
-                    var currentPayload = UpcastPayload(storedEvent, activeVersion, schemasByVersion);
-                    var maskedPayload = MaskPayload(currentPayload, activeVersion, schemasByVersion, user);
+                    var upcastPayload = UpcastPayload(storedEvent, activeVersion, schemasByVersion);
+                    var currentPayload = DowncastPayload(upcastPayload, activeVersion, targetVersion, schemasByVersion);
+                    var maskedPayload = MaskPayload(currentPayload, targetVersion, schemasByVersion, user);
                     yield return new FollowedEvent(storedEvent, visibleParentIds, maskedPayload);
                     lastSeen = storedEvent.SequenceNumber;
                 }
@@ -82,6 +97,25 @@ public class EventTailReader(
             kv => kv.Key, kv => new UpcastableVersion(kv.Value.Version, kv.Value.UpcastFromPrevious));
         var outcome = upcastChain.Apply(definitionsByVersion, storedEvent.SchemaVersion, activeVersion, payloadNode);
         return outcome is UpcastOutcome.Success success ? success.Payload : payloadNode;
+    }
+
+    // ADR-028 -- applied after UpcastPayload's own reshape, walking backward
+    // from the active version to the caller's requested (older) targetVersion.
+    // FollowService.ConnectAsync already confirmed every hop has a registered
+    // DowncastToPrevious before this reader's loop ever starts; a hop that
+    // still fails to evaluate against this particular payload's real data
+    // fails open to the upcasted (active-shape) payload, the same read-time
+    // posture UpcastPayload itself already takes for its own hop failures.
+    private JsonNode DowncastPayload(
+        JsonNode upcastPayload, int activeVersion, int targetVersion, IReadOnlyDictionary<int, EventTypeDefinition> schemasByVersion)
+    {
+        if (targetVersion >= activeVersion)
+            return upcastPayload;
+
+        var definitionsByVersion = schemasByVersion.ToDictionary(
+            kv => kv.Key, kv => new DowncastableVersion(kv.Value.Version, kv.Value.DowncastToPrevious));
+        var outcome = downcastChain.Apply(definitionsByVersion, activeVersion, targetVersion, upcastPayload);
+        return outcome is UpcastOutcome.Success success ? success.Payload : upcastPayload;
     }
 
     // ADR-009 -- the transform is a pure (schema, data, hasClaim) -> data

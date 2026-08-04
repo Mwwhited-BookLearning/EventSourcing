@@ -3,11 +3,12 @@ using System.Linq.Expressions;
 using System.Security.Claims;
 using EventStore.Domain.SchemaRegistry;
 using EventStore.Persistence;
+using EventStore.SchemaRegistry;
 using Microsoft.EntityFrameworkCore;
 
 namespace EventStore.Follow.Api;
 
-public class FollowService(EventStoreContext db, EventTailReader tailReader)
+public class FollowService(EventStoreContext db, SchemaRegistryService schemaRegistry, EventTailReader tailReader)
 {
     private static readonly TimeSpan PollInterval = TimeSpan.FromMilliseconds(200);
 
@@ -34,6 +35,28 @@ public class FollowService(EventStoreContext db, EventTailReader tailReader)
         if (request.FromSequenceNumber is not null && mode != FollowMode.Replay)
             return new FollowResult.ValidationFailed("fromSequenceNumber is only valid alongside mode: Replay");
 
+        // ADR-028 -- downcast is read-time-only with no safe pass-through: every
+        // hop between the requested (older) version and the active one must have
+        // a registered DowncastToPrevious, checked once here at connect time
+        // rather than discovered mid-stream.
+        if (request.AsOfSchemaVersion is { } asOfVersion)
+        {
+            if (asOfVersion > definition.Version)
+                return new FollowResult.ValidationFailed(
+                    $"asOfSchemaVersion {asOfVersion} is newer than the active version {definition.Version}");
+
+            if (asOfVersion < definition.Version)
+            {
+                var hopVersions = Enumerable.Range(asOfVersion + 1, definition.Version - asOfVersion).ToList();
+                var hopDefinitions = await schemaRegistry.GetVersionsByNameAsync(normalizedName, hopVersions, ct);
+                var missingHop = hopVersions.FirstOrDefault(v =>
+                    !hopDefinitions.TryGetValue(v, out var hopDefinition) || string.IsNullOrEmpty(hopDefinition.DowncastToPrevious));
+                if (missingHop != 0)
+                    return new FollowResult.ValidationFailed(
+                        $"no downcastToPrevious registered for version {missingHop} -- cannot serve asOfSchemaVersion {asOfVersion}");
+            }
+        }
+
         Expression<Func<Domain.EventLog.StoredEvent, bool>> predicate;
         try
         {
@@ -53,7 +76,7 @@ public class FollowService(EventStoreContext db, EventTailReader tailReader)
             _ => throw new UnreachableException(),
         };
 
-        var events = tailReader.TailAsync(normalizedName, predicate, lastSeen, PollInterval, user, ct);
+        var events = tailReader.TailAsync(normalizedName, predicate, lastSeen, request.AsOfSchemaVersion, PollInterval, user, ct);
         return new FollowResult.Connected(events);
     }
 }

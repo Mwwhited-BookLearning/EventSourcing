@@ -6,6 +6,7 @@ using EventStore.Domain.EventLog;
 using EventStore.Domain.SchemaRegistry;
 using EventStore.Persistence;
 using EventStore.SchemaRegistry;
+using EventStore.Upcasting;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -38,7 +39,8 @@ public class RouterWorker(IServiceScopeFactory scopeFactory, ILogger<RouterWorke
                 using var scope = scopeFactory.CreateScope();
                 var db = scope.ServiceProvider.GetRequiredService<EventStoreContext>();
                 var schemaRegistry = scope.ServiceProvider.GetRequiredService<SchemaRegistryService>();
-                await RunOnceAsync(db, schemaRegistry, stoppingToken);
+                var upcastChain = scope.ServiceProvider.GetRequiredService<UpcastChain>();
+                await RunOnceAsync(db, schemaRegistry, upcastChain, stoppingToken);
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
             {
@@ -59,8 +61,10 @@ public class RouterWorker(IServiceScopeFactory scopeFactory, ILogger<RouterWorke
     // One tick's worth of work, factored out of ExecuteAsync's loop so tests
     // can drive it directly against a provider-backed context, the same
     // pattern DerivationWorker.RunOnceAsync already established. Returns the
-    // number of events processed this tick.
-    public static async Task<int> RunOnceAsync(EventStoreContext db, SchemaRegistryService schemaRegistry, CancellationToken ct = default)
+    // number of events processed this tick (received events only -- ADR-027's
+    // Trigger 2 backlog reconciliation runs every tick too, but isn't counted
+    // here since it's not driven by "received" events at all).
+    public static async Task<int> RunOnceAsync(EventStoreContext db, SchemaRegistryService schemaRegistry, UpcastChain upcastChain, CancellationToken ct = default)
     {
         var received = await db.Events
             .Where(e => e.Status == "received")
@@ -68,16 +72,35 @@ public class RouterWorker(IServiceScopeFactory scopeFactory, ILogger<RouterWorke
             .ToListAsync(ct);
 
         foreach (var storedEvent in received)
-            await ProcessEventAsync(db, schemaRegistry, storedEvent, ct);
+            await ProcessEventAsync(db, schemaRegistry, upcastChain, storedEvent, ct);
 
         if (received.Count > 0)
             await db.SaveChangesAsync(ct);
 
+        // ADR-027 Trigger 2 -- catches up any backlog left by a mapping that
+        // didn't exist yet when its events originally folded.
+        await UpcastMaterializer.ReconcileBacklogAsync(db, schemaRegistry, upcastChain, ct);
+
         return received.Count;
     }
 
-    private static async Task ProcessEventAsync(EventStoreContext db, SchemaRegistryService schemaRegistry, StoredEvent storedEvent, CancellationToken ct)
+    private static async Task ProcessEventAsync(
+        EventStoreContext db, SchemaRegistryService schemaRegistry, UpcastChain upcastChain, StoredEvent storedEvent, CancellationToken ct)
     {
+        // ADR-027's critical invariant -- a materialization is never folded
+        // and never re-materialized. Its shape was already fully validated as
+        // part of the upcast success check that created it (UpcastMaterializer),
+        // and it's inserted with Status "applied" directly, so in practice this
+        // branch is never reached via the "received" query above -- kept as an
+        // explicit, defensive check against that invariant regardless of how a
+        // materialization might ever end up "received" some other way.
+        if (storedEvent.EventKind == EventKind.UpcastMaterialization)
+        {
+            storedEvent.SchemaStatus = "conformant";
+            storedEvent.Status = "applied";
+            return;
+        }
+
         var payloadNode = JsonNode.Parse(storedEvent.Payload) as JsonObject ?? new JsonObject();
 
         // ADR-023 -- schema validation against the event's OWN declared
@@ -126,6 +149,15 @@ public class RouterWorker(IServiceScopeFactory scopeFactory, ILogger<RouterWorke
                 storedEvent.EntityId = entityId;
                 await FoldAsync(db, entityId, storedEvent, activeDefinition.EntityType, changeKind, known, unknownProperties, ct);
             }
+
+            // ADR-027 Trigger 1 -- a lagging publish that's already conformant
+            // against its OWN declared version gets its upcast-to-active
+            // result materialized immediately, using this real, just-validated
+            // payload as the test case (ADR-020's own framing, still true here
+            // even though the publish-time BLOCKING half of that check was
+            // retired by "Entity-Centric Core Rebuild").
+            if (storedEvent.SchemaStatus == "conformant" && storedEvent.SchemaVersion < activeDefinition.Version)
+                await UpcastMaterializer.TryMaterializeAsync(db, schemaRegistry, upcastChain, storedEvent, activeDefinition, ct);
         }
 
         storedEvent.Status = "applied";
