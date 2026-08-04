@@ -5,7 +5,12 @@ namespace EventStore.Inbox;
 // ("Entity-Centric Core Rebuild" introduces that, much later).
 public abstract record PublishResult
 {
-    public sealed record Created(Guid EventId, long SequenceNumber, int SchemaVersion) : PublishResult;
+    // EventType is the type actually stored -- normally the caller's own
+    // (lowercased) event type, but ADR-020's EventUpcastFailed dead-letter
+    // path stores a different, reserved type in the caller's place, and the
+    // response must say so rather than silently claiming the caller's own
+    // type was written.
+    public sealed record Created(Guid EventId, long SequenceNumber, int SchemaVersion, string EventType) : PublishResult;
 
     public sealed record IdempotentReplay(Guid EventId, long SequenceNumber, int SchemaVersion) : PublishResult;
 

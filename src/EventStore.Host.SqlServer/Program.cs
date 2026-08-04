@@ -8,6 +8,7 @@ using EventStore.Persistence;
 using EventStore.Persistence.Migrations.SqlServer;
 using EventStore.SchemaRegistry;
 using EventStore.SpecGeneration;
+using EventStore.Upcasting;
 using Microsoft.EntityFrameworkCore;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -21,6 +22,7 @@ builder.Services.AddScoped<IJsonPathTranslator, SqlServerJsonPathTranslator>();
 builder.Services.AddScoped<IFilterableFieldIndexDdlGenerator, SqlServerFilterableFieldIndexDdlGenerator>();
 builder.Services.AddScoped<IUniqueConstraintViolationDetector, SqlServerUniqueConstraintViolationDetector>();
 builder.Services.AddScoped<IEventLineageQueryProvider, SqlServerEventLineageQueryProvider>();
+builder.Services.AddUpcasting();
 builder.Services.AddSchemaRegistry();
 builder.Services.AddInbox();
 builder.Services.AddDerivation();

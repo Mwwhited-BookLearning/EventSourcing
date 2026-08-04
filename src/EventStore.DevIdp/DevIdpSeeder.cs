@@ -1,3 +1,5 @@
+using System.Collections.Concurrent;
+using EventStore.Dpop;
 using Microsoft.Extensions.DependencyInjection;
 using OpenIddict.Abstractions;
 
@@ -17,12 +19,26 @@ public static class DevIdpSeeder
         ("projections-client", "projections-client-secret", ["events:follow"]), // "CQRS Read-Model Projections" -- ProjectionHost is a Follow caller like any other (ADR-015)
     ];
 
+    // ADR-017 -- "each of the four OAuth2 clients generates its own
+    // asymmetric key pair." No separate client process exists in this repo
+    // (every client is simulated by a test/demo harness), so this seeder
+    // plays that role too: one key pair per client, generated once at
+    // startup and held here for whoever is acting as that client to sign
+    // DPoP proofs with. The token endpoint itself never reads this map --
+    // it validates whatever proof is actually submitted, self-contained,
+    // exactly as RFC 9449 requires.
+    private static readonly ConcurrentDictionary<string, DpopKeyPair> ClientKeys = new();
+
+    public static DpopKeyPair GetClientKeyPair(string clientId) => ClientKeys[clientId];
+
     public static async Task SeedAsync(IServiceProvider services)
     {
         var manager = services.GetRequiredService<IOpenIddictApplicationManager>();
 
         foreach (var (clientId, clientSecret, scopes) in Clients)
         {
+            ClientKeys.TryAdd(clientId, DpopKeyPair.Generate());
+
             if (await manager.FindByClientIdAsync(clientId) is not null)
                 continue;
 

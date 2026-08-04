@@ -1,3 +1,4 @@
+using EventStore.Dpop;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Builder;
@@ -30,6 +31,10 @@ public static class HostCoreExtensions
                 options.TokenValidationParameters.ValidateAudience = false;
             });
 
+        // ADR-017 -- one replay cache per Host process; dev/POC scale, per
+        // IDpopReplayCache's own accepted-cost note.
+        builder.Services.AddSingleton<IDpopReplayCache, InMemoryDpopReplayCache>();
+
         builder.Services.AddSingleton<IAuthorizationHandler, ScopeAuthorizationHandler>();
         builder.Services.AddAuthorizationBuilder()
             .AddPolicy("events:publish", p => p.Requirements.Add(new ScopeRequirement("events:publish")))
@@ -54,6 +59,7 @@ public static class HostCoreExtensions
     {
         app.UseCors(CorsPolicyName);
         app.UseAuthentication();
+        app.UseDpopValidation(); // ADR-017 -- after authentication (needs the validated bearer's cnf.jkt), before authorization (short-circuits a DPoP failure before any scope policy could otherwise let it through)
         app.UseAuthorization();
         return app;
     }

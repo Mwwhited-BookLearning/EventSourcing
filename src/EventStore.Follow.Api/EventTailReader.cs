@@ -7,6 +7,7 @@ using EventStore.Domain.SchemaRegistry;
 using EventStore.Masking;
 using EventStore.Persistence;
 using EventStore.SchemaRegistry;
+using EventStore.Upcasting;
 using Microsoft.EntityFrameworkCore;
 
 namespace EventStore.Follow.Api;
@@ -14,7 +15,8 @@ namespace EventStore.Follow.Api;
 // One continuous poll loop drives both mode=tail (default) and mode=replay
 // (ADR-010) -- only lastSeen's initial value differs at the call site
 // (docs/06-solution-structure.md, "Follow: tail vs replay cursor").
-public class EventTailReader(EventStoreContext db, SchemaRegistryService schemaRegistry, IPayloadMasker payloadMasker)
+public class EventTailReader(
+    EventStoreContext db, SchemaRegistryService schemaRegistry, IPayloadMasker payloadMasker, UpcastChain upcastChain)
 {
     public async IAsyncEnumerable<FollowedEvent> TailAsync(
         string eventTypeName,
@@ -33,20 +35,27 @@ public class EventTailReader(EventStoreContext db, SchemaRegistryService schemaR
                 .OrderBy(e => e.SequenceNumber)
                 .ToListAsync(ct);
 
-            // One batched lookup per poll, not one per event -- ADR-009's masking
-            // must apply against each event's own SchemaVersion (the shape it was
-            // actually validated against), which can span more than one distinct
-            // version within a single batch after a schema evolution.
-            var schemasByVersion = matching.Count == 0
-                ? new Dictionary<int, EventTypeDefinition>()
-                : await schemaRegistry.GetVersionsByNameAsync(eventTypeName, matching.Select(e => e.SchemaVersion).Distinct().ToList(), ct);
-
-            foreach (var storedEvent in matching)
+            if (matching.Count > 0)
             {
-                var visibleParentIds = await GetVisibleParentEventIdsAsync(storedEvent.EventId, user, ct);
-                var maskedPayload = MaskPayload(storedEvent, schemasByVersion, user);
-                yield return new FollowedEvent(storedEvent, visibleParentIds, maskedPayload);
-                lastSeen = storedEvent.SequenceNumber;
+                // ADR-018 -- a mode=replay burst can span every version this type
+                // has ever had; the destination is always the CURRENT active
+                // version, not whichever version happens to appear in this batch,
+                // so every intermediate hop's own definition is fetched too, not
+                // just the versions literally present among these events.
+                var activeDefinition = await schemaRegistry.GetActiveDefinitionByNameAsync(eventTypeName, ct);
+                var activeVersion = activeDefinition?.Version ?? matching.Max(e => e.SchemaVersion);
+                var minVersion = matching.Min(e => e.SchemaVersion);
+                var versionsNeeded = Enumerable.Range(minVersion, Math.Max(1, activeVersion - minVersion + 1)).ToList();
+                var schemasByVersion = await schemaRegistry.GetVersionsByNameAsync(eventTypeName, versionsNeeded, ct);
+
+                foreach (var storedEvent in matching)
+                {
+                    var visibleParentIds = await GetVisibleParentEventIdsAsync(storedEvent.EventId, user, ct);
+                    var currentPayload = UpcastPayload(storedEvent, activeVersion, schemasByVersion);
+                    var maskedPayload = MaskPayload(currentPayload, activeVersion, schemasByVersion, user);
+                    yield return new FollowedEvent(storedEvent, visibleParentIds, maskedPayload);
+                    lastSeen = storedEvent.SequenceNumber;
+                }
             }
 
             if (matching.Count == 0)
@@ -54,22 +63,42 @@ public class EventTailReader(EventStoreContext db, SchemaRegistryService schemaR
         }
     }
 
+    // ADR-018 -- applied before masking's own transform (ADR-009), per that
+    // item's own ordering note: masking must see the payload already reshaped
+    // into the active version's fields, not the original stored shape, or its
+    // x-masking annotations (declared against the active schema) would be
+    // checked against the wrong field names entirely. Fails open to the
+    // original, non-upcasted payload if a hop fails -- ADR-020's publish-time
+    // validation is what actually prevents a *newly* broken hop; a read-time
+    // failure here (e.g. a hop no lagging publish has ever exercised) drops
+    // the caller back to the stored shape rather than losing the event.
+    private JsonNode UpcastPayload(StoredEvent storedEvent, int activeVersion, IReadOnlyDictionary<int, EventTypeDefinition> schemasByVersion)
+    {
+        var payloadNode = JsonNode.Parse(storedEvent.Payload)!;
+        if (storedEvent.SchemaVersion >= activeVersion)
+            return payloadNode;
+
+        var definitionsByVersion = schemasByVersion.ToDictionary(
+            kv => kv.Key, kv => new UpcastableVersion(kv.Value.Version, kv.Value.UpcastFromPrevious));
+        var outcome = upcastChain.Apply(definitionsByVersion, storedEvent.SchemaVersion, activeVersion, payloadNode);
+        return outcome is UpcastOutcome.Success success ? success.Payload : payloadNode;
+    }
+
     // ADR-009 -- the transform is a pure (schema, data, hasClaim) -> data
     // function; hasClaim reuses ADR-008's own "type:value" claim-checking
     // primitive (RequiredClaimEvaluator.HasClaim), deliberately, per that
     // ADR's own "the two features share one claim-checking primitive" text.
-    // Fails open to the raw, unmasked payload if the event's own SchemaVersion
-    // can't be resolved (shouldn't happen) -- losing the event entirely would
-    // be a worse failure mode than an unmasked field for a version that
-    // somehow no longer resolves.
-    private JsonNode? MaskPayload(StoredEvent storedEvent, IReadOnlyDictionary<int, EventTypeDefinition> schemasByVersion, ClaimsPrincipal user)
+    // Masks against the active version's own schema, matching whichever shape
+    // currentPayload is actually in after UpcastPayload above -- not
+    // storedEvent.SchemaVersion's schema, which may no longer match.
+    private JsonNode? MaskPayload(
+        JsonNode currentPayload, int activeVersion, IReadOnlyDictionary<int, EventTypeDefinition> schemasByVersion, ClaimsPrincipal user)
     {
-        var payloadNode = JsonNode.Parse(storedEvent.Payload);
-        if (!schemasByVersion.TryGetValue(storedEvent.SchemaVersion, out var definition))
-            return payloadNode;
+        if (!schemasByVersion.TryGetValue(activeVersion, out var definition))
+            return currentPayload;
 
         var schemaNode = JsonNode.Parse(definition.JsonSchema)!;
-        return payloadMasker.Mask(schemaNode, payloadNode, claim => RequiredClaimEvaluator.HasClaim(user, claim));
+        return payloadMasker.Mask(schemaNode, currentPayload, claim => RequiredClaimEvaluator.HasClaim(user, claim));
     }
 
     // ADR-008 -- a restricted parent's ID is omitted from the envelope without

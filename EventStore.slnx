@@ -4,6 +4,7 @@
     <Project Path="src/EventStore.DevIdp/EventStore.DevIdp.csproj" />
     <Project Path="src/EventStore.Derivation/EventStore.Derivation.csproj" />
     <Project Path="src/EventStore.Domain/EventStore.Domain.csproj" />
+    <Project Path="src/EventStore.Dpop/EventStore.Dpop.csproj" />
     <Project Path="src/EventStore.Follow.Api/EventStore.Follow.Api.csproj" />
     <Project Path="src/EventStore.Host.Core/EventStore.Host.Core.csproj" />
     <Project Path="src/EventStore.Host.Postgres/EventStore.Host.Postgres.csproj" />
@@ -20,6 +21,7 @@
     <Project Path="src/EventStore.Projections.Host/EventStore.Projections.Host.csproj" />
     <Project Path="src/EventStore.SchemaRegistry/EventStore.SchemaRegistry.csproj" />
     <Project Path="src/EventStore.ServiceDefaults/EventStore.ServiceDefaults.csproj" />
+    <Project Path="src/EventStore.Upcasting/EventStore.Upcasting.csproj" />
     <Project Path="src/EventStore.SpecGeneration/EventStore.SpecGeneration.csproj" />
   </Folder>
   <Folder Name="/tests/">

@@ -69,7 +69,7 @@ provider they apply to — not "code written."
 | 8 | [Derived/Materialized Event Types (deferred)](#derivedmaterialized-event-types-deferred) | Event-Type Security | Done |
 | 9 | [Property-Level Masking](#property-level-masking-data-enforcement) | Event-Type Security, Follow API + Filter Pushdown | Done |
 | 10 | [CQRS Read-Model Projections](#cqrs-read-model-projections-worked-example) | Follow API + Filter Pushdown, Auth + Orchestration | Done |
-| 11 | [Hardening & Evolution](#hardening--evolution-dpop-event-upcasting-hash-chained-tamper-evidence) | Auth + Orchestration, Publish API, Follow API + Filter Pushdown, CQRS Read-Model Projections | Not started |
+| 11 | [Hardening & Evolution](#hardening--evolution-dpop-event-upcasting-hash-chained-tamper-evidence) | Auth + Orchestration, Publish API, Follow API + Filter Pushdown, CQRS Read-Model Projections | Done |
 | 12 | [Entity-Centric Core Rebuild](#entity-centric-core-rebuild) | Event-Type Security | Not started |
 | 13 | [Multi-Tenancy](#multi-tenancy) | Schema Registry, Entity-Centric Core Rebuild | Not started |
 | 14 | [Upcast Materialization + Downcast](#upcast-materialization--downcast) | Hardening & Evolution, Entity-Centric Core Rebuild | Not started |
@@ -165,7 +165,7 @@ state "Event-Type Security" as p6 #palegreen
 state "Derived Event Types (deferred)" as p7 #palegreen
 state "Property-Level Masking" as p8 #palegreen
 state "CQRS Projections" as p9 #palegreen
-state "Hardening & Evolution" as p10
+state "Hardening & Evolution" as p10 #palegreen
 state "Entity-Centric Core Rebuild" as p11
 state "Multi-Tenancy" as p12
 state "Upcast Materialization + Downcast" as p13

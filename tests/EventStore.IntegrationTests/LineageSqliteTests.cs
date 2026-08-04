@@ -43,8 +43,8 @@ public class LineageSqliteTests
     public async Task AllLineageScenarios()
     {
         using var db = CreateContext();
-        var registry = new SchemaRegistryService(db, new SqliteFilterableFieldIndexDdlGenerator(), new MemoryCache(new MemoryCacheOptions()));
-        var publish = new PublishService(db, registry, new SqliteUniqueConstraintViolationDetector());
+        var registry = new SchemaRegistryService(db, new SqliteFilterableFieldIndexDdlGenerator(), new MemoryCache(new MemoryCacheOptions()), UpcastingTestSupport.CreateEvaluator());
+        var publish = new PublishService(db, registry, new SqliteUniqueConstraintViolationDetector(), UpcastingTestSupport.CreateChain());
         var lineage = new LineageService(db, new SqliteEventLineageQueryProvider(), registry);
 
         await LineageScenarioAssertions.PublishingAnOriginEventShowsNoParents(registry, publish, lineage);

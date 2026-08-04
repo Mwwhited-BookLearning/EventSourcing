@@ -91,5 +91,9 @@ public class AuthSqliteTests
         await AuthScenarioAssertions.OpenApiAndAsyncApiStayAnonymouslyReadable(_hostClient);
         await AuthScenarioAssertions.AnAllowedOriginGetsCorsHeadersAndADisallowedOriginDoesNot(
             _hostClient, allowedOrigin: "http://localhost:5173", disallowedOrigin: "http://evil.example");
+
+        await AuthScenarioAssertions.ARequestWithAValidBearerTokenButNoDpopProofIsRejectedWith401(_hostClient, _devIdpClient);
+        await AuthScenarioAssertions.ARequestWithADpopProofSignedByADifferentKeyIsRejectedWith401(_hostClient, _devIdpClient);
+        await AuthScenarioAssertions.ReplayingAnAlreadyUsedDpopProofIsRejectedWith401(_hostClient, _devIdpClient);
     }
 }

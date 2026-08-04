@@ -37,7 +37,7 @@ public class SchemaRegistrySqliteTests
     }
 
     private static SchemaRegistryService CreateService(EventStoreContext db) =>
-        new(db, new SqliteFilterableFieldIndexDdlGenerator(), new MemoryCache(new MemoryCacheOptions()));
+        new(db, new SqliteFilterableFieldIndexDdlGenerator(), new MemoryCache(new MemoryCacheOptions()), UpcastingTestSupport.CreateEvaluator());
 
     [TestMethod]
     public async Task AllSchemaRegistryScenarios()

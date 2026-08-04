@@ -4,6 +4,7 @@ using System.Net.Http.Json;
 using System.Runtime.CompilerServices;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using EventStore.Dpop;
 using Microsoft.Extensions.Options;
 
 namespace EventStore.Projections.Host;
@@ -17,6 +18,13 @@ public class FollowClient(IHttpClientFactory httpClientFactory, IOptions<FollowC
 {
     private static readonly HttpMethod QueryMethod = new("QUERY");
     private static readonly JsonSerializerOptions EnvelopeJsonOptions = new() { PropertyNameCaseInsensitive = true };
+
+    // ADR-017 -- "each of the four OAuth2 clients generates its own
+    // asymmetric key pair." projections-client is the one client this repo
+    // actually implements as real, running code (every other seeded client
+    // is only ever driven directly from test code) -- so it's this class,
+    // not a seeder, that generates and holds the key.
+    private readonly DpopKeyPair _keyPair = DpopKeyPair.Generate();
 
     // ADR-010 -- mode: Replay, fromSequenceNumber: <checkpoint> always, per
     // ADR-015's "always replay, never tail" (no reason to track two code
@@ -33,7 +41,7 @@ public class FollowClient(IHttpClientFactory httpClientFactory, IOptions<FollowC
         {
             Content = JsonContent.Create(new { appId, mode = "Replay", fromSequenceNumber }),
         };
-        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+        AttachAuth(request, followClient, token);
 
         using var response = await followClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, ct);
         // A RequiredClaims Read-direction gate this client's own token doesn't
@@ -67,7 +75,7 @@ public class FollowClient(IHttpClientFactory httpClientFactory, IOptions<FollowC
         var followClient = httpClientFactory.CreateClient("Follow");
 
         using var request = new HttpRequestMessage(HttpMethod.Get, $"/registry/{eventTypeName}/change-kind");
-        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+        AttachAuth(request, followClient, token);
 
         using var response = await followClient.SendAsync(request, ct);
         response.EnsureSuccessStatusCode();
@@ -75,16 +83,31 @@ public class FollowClient(IHttpClientFactory httpClientFactory, IOptions<FollowC
         return Enum.Parse<ChangeKind>(body["changeKind"]!.GetValue<string>());
     }
 
+    private void AttachAuth(HttpRequestMessage request, HttpClient followClient, string token)
+    {
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+        var absoluteUri = new Uri(followClient.BaseAddress!, request.RequestUri!).ToString();
+        request.Headers.Add("DPoP", _keyPair.CreateProof(request.Method.Method, absoluteUri, token));
+    }
+
     private async Task<string> GetAccessTokenAsync(CancellationToken ct)
     {
         var devIdpClient = httpClientFactory.CreateClient("DevIdp");
-        var response = await devIdpClient.PostAsync("/connect/token", new FormUrlEncodedContent(new Dictionary<string, string>
+        var tokenUrl = new Uri(devIdpClient.BaseAddress!, "/connect/token").ToString();
+
+        using var request = new HttpRequestMessage(HttpMethod.Post, "/connect/token")
         {
-            ["grant_type"] = "client_credentials",
-            ["client_id"] = options.Value.ClientId,
-            ["client_secret"] = options.Value.ClientSecret,
-            ["scope"] = options.Value.Scope,
-        }), ct);
+            Content = new FormUrlEncodedContent(new Dictionary<string, string>
+            {
+                ["grant_type"] = "client_credentials",
+                ["client_id"] = options.Value.ClientId,
+                ["client_secret"] = options.Value.ClientSecret,
+                ["scope"] = options.Value.Scope,
+            }),
+        };
+        request.Headers.Add("DPoP", _keyPair.CreateProof("POST", tokenUrl));
+
+        var response = await devIdpClient.SendAsync(request, ct);
         response.EnsureSuccessStatusCode();
         var body = JsonNode.Parse(await response.Content.ReadAsStringAsync(ct))!;
         return body["access_token"]!.GetValue<string>();

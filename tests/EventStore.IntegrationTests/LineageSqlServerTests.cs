@@ -42,8 +42,8 @@ public class LineageSqlServerTests
     public async Task AllLineageScenarios()
     {
         using var db = CreateContext();
-        var registry = new SchemaRegistryService(db, new SqlServerFilterableFieldIndexDdlGenerator(), new MemoryCache(new MemoryCacheOptions()));
-        var publish = new PublishService(db, registry, new SqlServerUniqueConstraintViolationDetector());
+        var registry = new SchemaRegistryService(db, new SqlServerFilterableFieldIndexDdlGenerator(), new MemoryCache(new MemoryCacheOptions()), UpcastingTestSupport.CreateEvaluator());
+        var publish = new PublishService(db, registry, new SqlServerUniqueConstraintViolationDetector(), UpcastingTestSupport.CreateChain());
         var lineage = new LineageService(db, new SqlServerEventLineageQueryProvider(), registry);
 
         await LineageScenarioAssertions.PublishingAnOriginEventShowsNoParents(registry, publish, lineage);

@@ -44,10 +44,10 @@ public class FollowSqlServerTests
     {
         using var db = CreateContext();
         var cache = new MemoryCache(new MemoryCacheOptions());
-        var registry = new SchemaRegistryService(db, new SqlServerFilterableFieldIndexDdlGenerator(), cache);
-        var publish = new PublishService(db, registry, new SqlServerUniqueConstraintViolationDetector());
+        var registry = new SchemaRegistryService(db, new SqlServerFilterableFieldIndexDdlGenerator(), cache, UpcastingTestSupport.CreateEvaluator());
+        var publish = new PublishService(db, registry, new SqlServerUniqueConstraintViolationDetector(), UpcastingTestSupport.CreateChain());
         var (payloadMasker, _) = MaskingTestSupport.CreatePayloadMasker();
-        var follow = new FollowService(db, new EventTailReader(db, registry, payloadMasker));
+        var follow = new FollowService(db, new EventTailReader(db, registry, payloadMasker, UpcastingTestSupport.CreateChain()));
         var specBuilder = new AsyncApiDocumentBuilder(db, new EventSchemaConverter(), new MaskingSchemaTransformer(), cache);
 
         await FollowScenarioAssertions.ConnectingWithNoFilterInReplayModeStreamsEveryEventOfTheType(registry, publish, follow);
@@ -61,6 +61,9 @@ public class FollowSqlServerTests
         await FollowScenarioAssertions.ConnectingToAnUnregisteredEventTypeIsRejected(follow);
         await FollowScenarioAssertions.ConnectingWithoutTheRequiredReadClaimIsRejectedWith403(registry, publish, follow);
         await FollowScenarioAssertions.ARestrictedParentsIdIsOmittedFromParentEventIdsWithoutBlockingTheEventItself(registry, publish, follow);
+
+        await UpcastingScenarioAssertions.AV1StoredEventIsPresentedUpcastedToTheActiveV2ShapeOnReplay(registry, publish, follow);
+        await UpcastingScenarioAssertions.AV1StoredEventSpanningTwoVersionHopsAppliesBothInOrder(registry, publish, follow);
 
         await AsyncApiScenarioAssertions.AsyncApiDocumentIncludesTheFollowChannelForARegisteredType(registry, specBuilder);
         await AsyncApiScenarioAssertions.RegisteringANewTypeInvalidatesTheCachedAsyncApiDocument(registry, specBuilder);

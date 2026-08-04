@@ -36,7 +36,7 @@ public class SchemaRegistrySqlServerTests
     }
 
     private static SchemaRegistryService CreateService(EventStoreContext db) =>
-        new(db, new SqlServerFilterableFieldIndexDdlGenerator(), new MemoryCache(new MemoryCacheOptions()));
+        new(db, new SqlServerFilterableFieldIndexDdlGenerator(), new MemoryCache(new MemoryCacheOptions()), UpcastingTestSupport.CreateEvaluator());
 
     [TestMethod]
     public async Task AllSchemaRegistryScenarios()

@@ -36,7 +36,7 @@ public class SchemaRegistryPostgresTests
     }
 
     private static SchemaRegistryService CreateService(EventStoreContext db) =>
-        new(db, new PostgresFilterableFieldIndexDdlGenerator(), new MemoryCache(new MemoryCacheOptions()));
+        new(db, new PostgresFilterableFieldIndexDdlGenerator(), new MemoryCache(new MemoryCacheOptions()), UpcastingTestSupport.CreateEvaluator());
 
     [TestMethod]
     public async Task AllSchemaRegistryScenarios()

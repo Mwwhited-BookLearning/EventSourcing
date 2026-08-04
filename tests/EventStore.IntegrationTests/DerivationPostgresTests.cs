@@ -43,8 +43,8 @@ public class DerivationPostgresTests
     {
         using var db = CreateContext();
         var cache = new MemoryCache(new MemoryCacheOptions());
-        var registry = new SchemaRegistryService(db, new PostgresFilterableFieldIndexDdlGenerator(), cache);
-        var publish = new PublishService(db, registry, new PostgresUniqueConstraintViolationDetector());
+        var registry = new SchemaRegistryService(db, new PostgresFilterableFieldIndexDdlGenerator(), cache, UpcastingTestSupport.CreateEvaluator());
+        var publish = new PublishService(db, registry, new PostgresUniqueConstraintViolationDetector(), UpcastingTestSupport.CreateChain());
         var derivationRegistry = new DerivationRegistrationService(db, registry);
 
         await DerivationScenarioAssertions.RegisteringAValidDerivationSucceeds(registry, derivationRegistry);
