@@ -11,4 +11,5 @@ public record PublishEventRequest(
     int SchemaVersion,
     string Payload,
     List<Guid>? ParentEventIds,
-    Guid? EventId);
+    Guid? EventId,
+    long? ExpectedVersion = null);

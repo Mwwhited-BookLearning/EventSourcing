@@ -6,6 +6,7 @@ using EventStore.Lineage.Api;
 using EventStore.Masking;
 using EventStore.Persistence;
 using EventStore.Persistence.Migrations.Postgres;
+using EventStore.Router;
 using EventStore.SchemaRegistry;
 using EventStore.SpecGeneration;
 using EventStore.Upcasting;
@@ -25,6 +26,7 @@ builder.Services.AddScoped<IEventLineageQueryProvider, PostgresEventLineageQuery
 builder.Services.AddUpcasting();
 builder.Services.AddSchemaRegistry();
 builder.Services.AddInbox();
+builder.Services.AddRouter();
 builder.Services.AddDerivation();
 builder.Services.AddSpecGeneration();
 builder.Services.AddLineageApi();

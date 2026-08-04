@@ -145,7 +145,7 @@ internal static class DerivationScenarioAssertions
 
         var parentIds = await db.EventParents.Where(p => p.ChildEventId == derived.EventId).Select(p => p.ParentEventId).ToListAsync();
         CollectionAssert.AreEquivalent(
-            new[] { orderPlacedCreated.EventId, paymentReceivedCreated.EventId }, parentIds);
+            new[] { orderPlacedCreated.CorrelationId, paymentReceivedCreated.CorrelationId }, parentIds);
 
         // The completed join's PendingJoinState row is removed, not left behind.
         Assert.IsFalse(await db.PendingJoinStates.AnyAsync(p => p.DerivationName == "orderpaid5"));
@@ -274,11 +274,9 @@ internal static class DerivationScenarioAssertions
         Assert.AreEqual("hop_limit_exceeded", deadLetter.ExpiredReason);
     }
 
-    private static PublishResult.Created AssertCreated(PublishResult result)
+    private static PublishResult.Accepted AssertCreated(PublishResult result)
     {
-        if (result is PublishResult.ValidationFailed vf)
-            Assert.Fail("Unexpected validation errors: " + string.Join(" | ", vf.Errors));
-        Assert.IsInstanceOfType<PublishResult.Created>(result);
-        return (PublishResult.Created)result;
+        Assert.IsInstanceOfType<PublishResult.Accepted>(result);
+        return (PublishResult.Accepted)result;
     }
 }

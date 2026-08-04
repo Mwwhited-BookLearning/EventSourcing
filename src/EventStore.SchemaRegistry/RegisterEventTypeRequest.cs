@@ -17,7 +17,8 @@ public record RegisterEventTypeRequest(
     string? ParentValidationMode,
     List<RequiredClaimRequest>? RequiredClaims,
     string? UpcastFromPrevious,
-    string? DowncastToPrevious);
+    string? DowncastToPrevious,
+    string? EntityType = null);
 
 public record FilterableFieldRequest(string JsonPath, string DataType, bool IsIndexed);
 

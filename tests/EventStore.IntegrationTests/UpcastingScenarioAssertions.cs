@@ -46,9 +46,8 @@ internal static class UpcastingScenarioAssertions
             ChangeKind: "Full", EntityIdField: "$.Id",
             ParentValidationMode: null, RequiredClaims: null, UpcastFromPrevious: null, DowncastToPrevious: null));
 
-        var created = (PublishResult.Created)await publish.PublishAsync(typeName, new PublishEventRequest(
+        var created = (PublishResult.Accepted)await publish.PublishAsync(typeName, new PublishEventRequest(
             appId, 1, """{ "Amount": 100 }""", null, null), TestClaimsPrincipal.None);
-        Assert.AreEqual(1, created.SchemaVersion);
 
         var v2Schema = """{ "type": "object", "properties": { "Amount": { "type": "number" }, "Status": { "type": "string" } }, "required": ["Amount", "Status"] }""";
         await registry.RegisterAsync(typeName, new RegisterEventTypeRequest(
@@ -59,7 +58,7 @@ internal static class UpcastingScenarioAssertions
 
         var followed = await ConnectReplayAndCollectOne(follow, appId, typeName);
 
-        Assert.AreEqual(created.EventId, followed.Event.EventId);
+        Assert.AreEqual(created.CorrelationId, followed.Event.EventId);
         Assert.AreEqual(1, followed.Event.SchemaVersion, "the stored row itself is untouched -- only the served payload is upcasted");
         Assert.AreEqual(100L, (long)followed.MaskedPayload!["Amount"]!);
         Assert.AreEqual("Unknown", (string)followed.MaskedPayload!["Status"]!);
@@ -77,7 +76,7 @@ internal static class UpcastingScenarioAssertions
             ChangeKind: "Full", EntityIdField: "$.Id",
             ParentValidationMode: null, RequiredClaims: null, UpcastFromPrevious: null, DowncastToPrevious: null));
 
-        var created = (PublishResult.Created)await publish.PublishAsync(typeName, new PublishEventRequest(
+        var created = (PublishResult.Accepted)await publish.PublishAsync(typeName, new PublishEventRequest(
             appId, 1, """{ "Amount": 50 }""", null, null), TestClaimsPrincipal.None);
 
         var v2Schema = """{ "type": "object", "properties": { "Amount": { "type": "number" }, "Status": { "type": "string" } }, "required": ["Amount", "Status"] }""";
@@ -96,7 +95,7 @@ internal static class UpcastingScenarioAssertions
 
         var followed = await ConnectReplayAndCollectOne(follow, appId, typeName);
 
-        Assert.AreEqual(created.EventId, followed.Event.EventId);
+        Assert.AreEqual(created.CorrelationId, followed.Event.EventId);
         Assert.AreEqual(50L, (long)followed.MaskedPayload!["Amount"]!);
         Assert.AreEqual("Unknown", (string)followed.MaskedPayload!["Status"]!);
         Assert.AreEqual("USD", (string)followed.MaskedPayload!["Currency"]!);

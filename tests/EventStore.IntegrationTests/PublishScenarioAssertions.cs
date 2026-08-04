@@ -5,12 +5,17 @@ using Microsoft.VisualStudio.TestTools.UnitTesting;
 namespace EventStore.IntegrationTests;
 
 // Shared scenarios for "Publish API" (docs/08-build-plan.md), mirroring
-// docs/features/publish-event.md and the publish-side scenarios in
-// docs/features/event-chains.md -- translated to this item's own
-// pre-ADR-023 status codes (201/409/400/404), per that build-plan item's
-// own explicit "Clarification" note. The querying-side event-chains.md
-// scenarios (ancestors/descendants/parents/children reads) belong to the
-// later "Lineage API" item, not exercised here.
+// docs/features/publish-event.md's ADR-023 (persist-everything) contract --
+// rewritten for "Entity-Centric Core Rebuild" (build-plan item 12): every
+// syntactically-parseable, authorized, non-conflicting publish now returns
+// PublishResult.Accepted (202) regardless of schema validity; only an
+// unregistered event type, a Strict-mode unresolved parent, an eventId
+// content conflict, and missing scope/claims remain real rejections. What
+// used to be PublishResult.ValidationFailed scenarios here are now
+// PublishResult.Accepted scenarios instead -- whether the payload actually
+// conforms to its schema becomes an ASYNC, advisory SchemaStatus the Router
+// sets afterward, covered by EntityScenarioAssertions.cs (which has the
+// db/router access this file deliberately doesn't).
 internal static class PublishScenarioAssertions
 {
     private const string OrderPlacedSchemaV1 = """
@@ -31,12 +36,12 @@ internal static class PublishScenarioAssertions
             AppId: "publish-demo-1", SchemaVersion: 1, Payload: """{ "Amount": 150.00, "Status": "Paid" }""",
             ParentEventIds: null, EventId: null), TestClaimsPrincipal.None);
 
-        AssertCreated(result, out var created);
-        Assert.AreEqual(1, created.SchemaVersion);
-        Assert.IsGreaterThan(0, created.SequenceNumber);
+        AssertAccepted(result, out var accepted);
+        Assert.AreEqual("received", accepted.Status, "the Router hasn't run yet at this synchronous point");
+        Assert.IsGreaterThan(0, accepted.SequenceNumber);
     }
 
-    public static async Task PublishingAnEventMissingARequiredFieldIsRejected(SchemaRegistryService registry, PublishService publish)
+    public static async Task PublishingAnEventMissingARequiredFieldIsPersistedNotRejected(SchemaRegistryService registry, PublishService publish)
     {
         await RegisterOrderPlacedV1(registry, "publish-demo-2");
 
@@ -44,10 +49,11 @@ internal static class PublishScenarioAssertions
             AppId: "publish-demo-2", SchemaVersion: 1, Payload: """{ "Amount": 150.00 }""",
             ParentEventIds: null, EventId: null), TestClaimsPrincipal.None);
 
-        Assert.IsInstanceOfType<PublishResult.ValidationFailed>(result);
+        AssertAccepted(result, out var accepted);
+        Assert.IsNull(accepted.SchemaStatus, "not yet evaluated by the Router at this synchronous point");
     }
 
-    public static async Task PublishingAnEventWithAWrongShapedFieldIsRejected(SchemaRegistryService registry, PublishService publish)
+    public static async Task PublishingAnEventWithAWrongShapedFieldIsPersistedNotRejected(SchemaRegistryService registry, PublishService publish)
     {
         await RegisterOrderPlacedV1(registry, "publish-demo-3");
 
@@ -55,7 +61,7 @@ internal static class PublishScenarioAssertions
             AppId: "publish-demo-3", SchemaVersion: 1, Payload: """{ "Amount": "not-a-number", "Status": "Paid" }""",
             ParentEventIds: null, EventId: null), TestClaimsPrincipal.None);
 
-        Assert.IsInstanceOfType<PublishResult.ValidationFailed>(result);
+        AssertAccepted(result, out _);
     }
 
     public static async Task PublishingAgainstAnUnregisteredEventTypeIsRejected(PublishService publish)
@@ -65,34 +71,6 @@ internal static class PublishScenarioAssertions
             ParentEventIds: null, EventId: null), TestClaimsPrincipal.None);
 
         Assert.IsInstanceOfType<PublishResult.UnregisteredEventType>(result);
-    }
-
-    public static async Task PublishingValidatesAgainstTheDeclaredVersionNotWhicheverIsActive(SchemaRegistryService registry, PublishService publish)
-    {
-        const string appId = "publish-demo-5";
-        await RegisterOrderPlacedV1(registry, appId);
-        var v2Schema = """
-            { "type": "object", "properties": { "Amount": { "type": "number" }, "Status": { "type": "string" }, "Currency": { "type": "string" } }, "required": ["Amount", "Status", "Currency"] }
-            """;
-        // A real upcastFromPrevious mapping (not null) -- ADR-020's publish-time
-        // compatibility check now runs the v1-shaped payload below through this
-        // mapping and validates the result against v2, so v2 must actually be
-        // reachable from v1 or this scenario's own "still validates against the
-        // declared version" assertion would be masked by an unrelated dead-letter.
-        await registry.RegisterAsync("OrderPlaced", new RegisterEventTypeRequest(
-            AppId: appId, JsonSchema: v2Schema, FilterableFields: [],
-            ChangeKind: "Full", EntityIdField: "$.OrderId",
-            ParentValidationMode: null, RequiredClaims: null,
-            UpcastFromPrevious: "event.Amount as Amount, event.Status as Status, 'USD' as Currency", DowncastToPrevious: "Amount, Status"));
-        // v2 is now active and requires "Currency" -- a v1-shaped payload declaring
-        // schemaVersion 1 explicitly must still validate against v1, not "whichever is active".
-
-        var result = await publish.PublishAsync("OrderPlaced", new PublishEventRequest(
-            AppId: appId, SchemaVersion: 1, Payload: """{ "Amount": 150.00, "Status": "Paid" }""",
-            ParentEventIds: null, EventId: null), TestClaimsPrincipal.None);
-
-        AssertCreated(result, out var created);
-        Assert.AreEqual(1, created.SchemaVersion);
     }
 
     public static async Task RetryingWithSameEventIdAndIdenticalContentReplaysWithNoNewWrite(SchemaRegistryService registry, PublishService publish)
@@ -105,13 +83,12 @@ internal static class PublishScenarioAssertions
             ParentEventIds: null, EventId: eventId);
 
         var first = await publish.PublishAsync("OrderPlaced", request, TestClaimsPrincipal.None, CancellationToken.None);
-        AssertCreated(first, out var firstCreated);
+        AssertAccepted(first, out var firstAccepted);
 
         var second = await publish.PublishAsync("OrderPlaced", request, TestClaimsPrincipal.None, CancellationToken.None);
-        Assert.IsInstanceOfType<PublishResult.IdempotentReplay>(second);
-        var replay = (PublishResult.IdempotentReplay)second;
-        Assert.AreEqual(firstCreated.EventId, replay.EventId);
-        Assert.AreEqual(firstCreated.SequenceNumber, replay.SequenceNumber);
+        AssertAccepted(second, out var secondAccepted);
+        Assert.AreEqual(firstAccepted.CorrelationId, secondAccepted.CorrelationId);
+        Assert.AreEqual(firstAccepted.SequenceNumber, secondAccepted.SequenceNumber);
     }
 
     public static async Task RetryingWithSameEventIdButDifferentContentIsAConflict(SchemaRegistryService registry, PublishService publish)
@@ -123,7 +100,7 @@ internal static class PublishScenarioAssertions
         var first = await publish.PublishAsync("OrderPlaced", new PublishEventRequest(
             AppId: appId, SchemaVersion: 1, Payload: """{ "Amount": 150.00, "Status": "Paid" }""",
             ParentEventIds: null, EventId: eventId), TestClaimsPrincipal.None, CancellationToken.None);
-        AssertCreated(first, out _);
+        AssertAccepted(first, out _);
 
         var second = await publish.PublishAsync("OrderPlaced", new PublishEventRequest(
             AppId: appId, SchemaVersion: 1, Payload: """{ "Amount": 999.00, "Status": "Paid" }""",
@@ -142,10 +119,10 @@ internal static class PublishScenarioAssertions
 
         var first = await publish.PublishAsync("OrderPlaced", request, TestClaimsPrincipal.None, CancellationToken.None);
         var second = await publish.PublishAsync("OrderPlaced", request, TestClaimsPrincipal.None, CancellationToken.None);
-        AssertCreated(first, out var firstCreated);
-        AssertCreated(second, out var secondCreated);
+        AssertAccepted(first, out var firstAccepted);
+        AssertAccepted(second, out var secondAccepted);
 
-        Assert.AreNotEqual(firstCreated.EventId, secondCreated.EventId);
+        Assert.AreNotEqual(firstAccepted.CorrelationId, secondAccepted.CorrelationId);
     }
 
     public static async Task PublishingAnOriginEventHasNoParents(SchemaRegistryService registry, PublishService publish)
@@ -157,7 +134,7 @@ internal static class PublishScenarioAssertions
             AppId: appId, SchemaVersion: 1, Payload: """{ "Amount": 150.00, "Status": "Paid" }""",
             ParentEventIds: null, EventId: null), TestClaimsPrincipal.None);
 
-        AssertCreated(result, out _);
+        AssertAccepted(result, out _);
     }
 
     public static async Task PublishingAChildEventParentedOffAPriorEventSucceeds(SchemaRegistryService registry, PublishService publish)
@@ -168,12 +145,12 @@ internal static class PublishScenarioAssertions
         var parent = await publish.PublishAsync("OrderPlaced", new PublishEventRequest(
             AppId: appId, SchemaVersion: 1, Payload: """{ "Amount": 150.00, "Status": "Paid" }""",
             ParentEventIds: null, EventId: null), TestClaimsPrincipal.None);
-        AssertCreated(parent, out var parentCreated);
+        AssertAccepted(parent, out var parentAccepted);
 
         var child = await publish.PublishAsync("OrderPlaced", new PublishEventRequest(
             AppId: appId, SchemaVersion: 1, Payload: """{ "Amount": 150.00, "Status": "Shipped" }""",
-            ParentEventIds: [parentCreated.EventId], EventId: null), TestClaimsPrincipal.None);
-        AssertCreated(child, out _);
+            ParentEventIds: [parentAccepted.CorrelationId], EventId: null), TestClaimsPrincipal.None);
+        AssertAccepted(child, out _);
     }
 
     public static async Task StrictParentValidationRejectsAnUnresolvedParent(SchemaRegistryService registry, PublishService publish)
@@ -203,7 +180,7 @@ internal static class PublishScenarioAssertions
             AppId: appId, SchemaVersion: 1, Payload: """{ "Carrier": "UPS" }""",
             ParentEventIds: [Guid.Empty], EventId: null), TestClaimsPrincipal.None);
 
-        AssertCreated(result, out _);
+        AssertAccepted(result, out _);
     }
 
     public static async Task PublishingAClaimGatedTypeWithoutTheClaimIsRejectedWith403AndWithItSucceeds(SchemaRegistryService registry, PublishService publish)
@@ -221,7 +198,7 @@ internal static class PublishScenarioAssertions
 
         var withClaim = await publish.PublishAsync("PatientAdmitted", new PublishEventRequest(
             AppId: appId, SchemaVersion: 1, Payload: """{ "Amount": 1 }""", ParentEventIds: null, EventId: null), TestClaimsPrincipal.With("clearance:phi"));
-        AssertCreated(withClaim, out _);
+        AssertAccepted(withClaim, out _);
     }
 
     // Publish- and Read-direction claims for the same event type are independent
@@ -247,63 +224,12 @@ internal static class PublishScenarioAssertions
         // Holds the Publish claim (and only that) -- publish must succeed.
         var withPublishClaim = await publish.PublishAsync("LabResultRecorded", new PublishEventRequest(
             AppId: appId, SchemaVersion: 1, Payload: """{ "Amount": 1 }""", ParentEventIds: null, EventId: null), TestClaimsPrincipal.With("role:lab-tech"));
-        AssertCreated(withPublishClaim, out _);
+        AssertAccepted(withPublishClaim, out _);
     }
 
-    // ADR-020 -- a declared schemaVersion behind the active one is run through
-    // UpcastChain right now, against this real payload, as a live compatibility
-    // check. A real upcastFromPrevious mapping that actually reaches the active
-    // version's shape must let the original publish through unchanged.
-    public static async Task PublishingALaggingVersionWithACompatibleUpcastStoresTheOriginalPayloadUnchanged(
-        SchemaRegistryService registry, PublishService publish)
+    private static void AssertAccepted(PublishResult result, out PublishResult.Accepted accepted)
     {
-        const string appId = "publish-demo-15";
-        await RegisterOrderPlacedV1(registry, appId);
-        var v2Schema = """{ "type": "object", "properties": { "Amount": { "type": "number" }, "Status": { "type": "string" }, "Currency": { "type": "string" } }, "required": ["Amount", "Status", "Currency"] }""";
-        await registry.RegisterAsync("OrderPlaced", new RegisterEventTypeRequest(
-            AppId: appId, JsonSchema: v2Schema, FilterableFields: [],
-            ChangeKind: "Full", EntityIdField: "$.OrderId",
-            ParentValidationMode: null, RequiredClaims: null,
-            UpcastFromPrevious: "event.Amount as Amount, event.Status as Status, 'USD' as Currency", DowncastToPrevious: "Amount, Status"));
-
-        var result = await publish.PublishAsync("OrderPlaced", new PublishEventRequest(
-            AppId: appId, SchemaVersion: 1, Payload: """{ "Amount": 150.00, "Status": "Paid" }""",
-            ParentEventIds: null, EventId: null), TestClaimsPrincipal.None);
-
-        AssertCreated(result, out var created);
-        Assert.AreEqual(1, created.SchemaVersion, "the event is stored exactly as declared -- Payload is never transformed before storage");
-        Assert.AreEqual("orderplaced", created.EventType);
-    }
-
-    // ADR-020's dead-letter path -- a lagging publish whose upcast hop fails
-    // (here: no upcastFromPrevious mapping at all onto a version that added a
-    // new required field, so the passed-through payload can never satisfy v2)
-    // is not rejected outright and is not silently stored as if nothing were
-    // wrong -- it's stored as the reserved EventUpcastFailed type instead.
-    public static async Task PublishingALaggingVersionWithAFailingUpcastStoresEventUpcastFailedInstead(
-        SchemaRegistryService registry, PublishService publish)
-    {
-        const string appId = "publish-demo-16";
-        await RegisterOrderPlacedV1(registry, appId);
-        var v2Schema = """{ "type": "object", "properties": { "Amount": { "type": "number" }, "Status": { "type": "string" }, "Currency": { "type": "string" } }, "required": ["Amount", "Status", "Currency"] }""";
-        await registry.RegisterAsync("OrderPlaced", new RegisterEventTypeRequest(
-            AppId: appId, JsonSchema: v2Schema, FilterableFields: [],
-            ChangeKind: "Full", EntityIdField: "$.OrderId",
-            ParentValidationMode: null, RequiredClaims: null, UpcastFromPrevious: null, DowncastToPrevious: null));
-
-        var result = await publish.PublishAsync("OrderPlaced", new PublishEventRequest(
-            AppId: appId, SchemaVersion: 1, Payload: """{ "Amount": 150.00, "Status": "Paid" }""",
-            ParentEventIds: null, EventId: null), TestClaimsPrincipal.None);
-
-        AssertCreated(result, out var created);
-        Assert.AreEqual(PublishService.EventUpcastFailedEventType, created.EventType);
-    }
-
-    private static void AssertCreated(PublishResult result, out PublishResult.Created created)
-    {
-        if (result is PublishResult.ValidationFailed vf)
-            Assert.Fail("Unexpected validation errors: " + string.Join(" | ", vf.Errors));
-        Assert.IsInstanceOfType<PublishResult.Created>(result);
-        created = (PublishResult.Created)result;
+        Assert.IsInstanceOfType<PublishResult.Accepted>(result);
+        accepted = (PublishResult.Accepted)result;
     }
 }

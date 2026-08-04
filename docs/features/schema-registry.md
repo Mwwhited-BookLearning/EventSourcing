@@ -45,7 +45,7 @@ participant "IJsonPathTranslator\n(impl per provider)" as jsonPath
 participant "IUpcastExpressionEvaluator\n(CEL by default, ADR-053)" as evaluator
 database "Event & Schema Store" as db
 
-operator -> endpoint: PUT /registry/{event-type}\nAuthorization: Bearer <JWT>\n{ jsonSchema, filterableFields, changeKind,\n  entityIdField, parentValidationMode?,\n  upcastFromPrevious?, downcastToPrevious? }
+operator -> endpoint: PUT /registry/{event-type}\nAuthorization: Bearer <JWT>\n{ jsonSchema, filterableFields, changeKind,\n  entityIdField, entityType?, parentValidationMode?,\n  upcastFromPrevious?, downcastToPrevious? }
 endpoint -> auth: validate token + registry:admin OR registry:admin:{appId} scope (ADR-030)
 alt missing/invalid token
   auth --> operator: 401

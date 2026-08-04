@@ -1,29 +1,42 @@
 namespace EventStore.Inbox;
 
-// Pre-ADR-023 status codes, per docs/08-build-plan.md's "Publish API" item's
-// own "Clarification": 201/409/400/404, not the later always-202 posture
-// ("Entity-Centric Core Rebuild" introduces that, much later).
+// ADR-023's persist-everything posture -- superseding this file's own
+// pre-rebuild shape (ValidationFailed/Created no longer exist; see
+// docs/changes/2026-08-04.md's "Entity-Centric Core Rebuild" entry). Only
+// two blocking rejections survive as real errors (both still genuinely
+// "there is no event to persist against at all," not a content problem):
+// an entirely unregistered event type, and a Strict-mode publish naming an
+// unresolved parent. A missing/invalid token or scope/claim is still a real
+// 401/403 too (ADR-023's own consequence: this posture is about *content*,
+// never about whether the caller may call the endpoint at all).
 public abstract record PublishResult
 {
-    // EventType is the type actually stored -- normally the caller's own
-    // (lowercased) event type, but ADR-020's EventUpcastFailed dead-letter
-    // path stores a different, reserved type in the caller's place, and the
-    // response must say so rather than silently claiming the caller's own
-    // type was written.
-    public sealed record Created(Guid EventId, long SequenceNumber, int SchemaVersion, string EventType) : PublishResult;
+    // Every syntactically-parseable, authorized, non-conflicting publish
+    // reaches this branch and returns 202 -- regardless of schema/entity
+    // validity, which the async Router determines afterward and never
+    // gates this response on. SchemaStatus/EntityId/ConflictFlag reflect
+    // whatever is already known AT THIS SYNCHRONOUS MOMENT: null/""/false
+    // for a freshly-inserted event (the Router hasn't run yet), or the
+    // event's current, already-processed values for an idempotent replay
+    // of a request the Router has since caught up with.
+    public sealed record Accepted(
+        Guid CorrelationId,
+        long SequenceNumber,
+        string Status,
+        string EntityId,
+        string? SchemaStatus,
+        string AuthorityStatus,
+        bool ConflictFlag,
+        string? Reason) : PublishResult;
 
-    public sealed record IdempotentReplay(Guid EventId, long SequenceNumber, int SchemaVersion) : PublishResult;
+    public sealed record Conflict : PublishResult; // 409 -- eventId reused w/ different content (ADR-011, unaffected by ADR-023)
 
-    public sealed record Conflict : PublishResult;
+    public sealed record UnregisteredEventType : PublishResult; // 404 -- ADR-023 doesn't cover this: no schema/AppId context to persist against at all
 
-    public sealed record UnregisteredEventType : PublishResult;
-
-    // ADR-008/050 -- caller lacks any Publish-direction RequiredClaims entry.
+    // ADR-008/050 -- caller lacks any Publish-direction RequiredClaims entry, or the events:publish scope itself (checked one level up, at the endpoint).
     public sealed record Forbidden : PublishResult;
 
-    public sealed record ValidationFailed(IReadOnlyList<string> Errors) : PublishResult;
-
-    public sealed record UnresolvedParent(IReadOnlyList<Guid> MissingParentEventIds) : PublishResult;
+    public sealed record UnresolvedParent(IReadOnlyList<Guid> MissingParentEventIds) : PublishResult; // 400 -- Strict-mode parent link, ADR-005, unaffected by ADR-023
 
     private PublishResult() { }
 }

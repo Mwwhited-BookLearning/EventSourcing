@@ -138,6 +138,7 @@ public class SchemaRegistryService(
             RequiredClaims = requiredClaims,
             ChangeKind = changeKind,
             EntityIdField = request.EntityIdField ?? "",
+            EntityType = string.IsNullOrEmpty(request.EntityType) ? normalizedName : request.EntityType.ToLowerInvariant(),
             UpcastFromPrevious = request.UpcastFromPrevious,
             DowncastToPrevious = request.DowncastToPrevious,
             FilterableFields = filterableFields,

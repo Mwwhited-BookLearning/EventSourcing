@@ -10,15 +10,20 @@ namespace EventStore.Projections.Host;
 // keeps hard (docs/06-solution-structure.md).
 public enum ChangeKind { Full, Partial }
 
-// docs/09-cqrs-read-models.md's own sketch, verbatim -- the pre-ADR-022
-// whole-payload merge rule (build-plan item 10's own explicit scope: no
-// Optional<T> per-property patches, no explicit-null-clears-a-field, both
-// later revisions). Applied once, centrally, per ADR-016: Full replaces a
-// key's whole snapshot; Partial overwrites only the keys actually PRESENT
-// in the incoming payload (RFC 7396's overwrite-if-present half only) --
-// a key present with value null still overwrites to null (an ordinary
-// value, not a delete signal); a key absent from the payload entirely is
-// left untouched in the existing snapshot.
+// docs/09-cqrs-read-models.md's own sketch, verbatim. Applied once,
+// centrally, per ADR-016: Full replaces a key's whole snapshot; Partial
+// overwrites only the keys actually PRESENT in the incoming payload
+// (RFC 7396's overwrite-if-present half only). Confirmed against ADR-022's
+// later, more precise three-state framing ("Entity-Centric Core Rebuild")
+// that this JsonNode-based merge already implements it correctly, with no
+// logic change needed: `foreach (var (key, value) in patchObject)` only
+// ever visits PRESENT keys, so an absent key is Unspecified (left
+// untouched) automatically; a present key whose value is JSON null enumerates
+// with a null CLR reference, so `result[key] = value` is Specified(null)
+// (an explicit Clear); a present key with a real value is Specified(value)
+// (Overwrite). ADR-022's actual new content is the Optional<T> C# wrapper
+// type for strongly-typed DTOs elsewhere in this design -- this JsonNode
+// merge never needed one to already be correct.
 public static class SnapshotMerger
 {
     public static JsonNode Merge(ChangeKind changeKind, JsonNode? existingSnapshot, JsonNode incomingPayload) =>

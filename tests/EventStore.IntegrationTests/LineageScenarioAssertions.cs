@@ -35,7 +35,7 @@ internal static class LineageScenarioAssertions
 
         var result = await publish.PublishAsync("OrderPlaced", new PublishEventRequest(
             appId, 1, """{ "Amount": 1 }""", null, null), TestClaimsPrincipal.None);
-        var eventId = ((PublishResult.Created)result).EventId;
+        var eventId = ((PublishResult.Accepted)result).CorrelationId;
 
         var parents = await lineage.GetParentsAsync(eventId, TestClaimsPrincipal.None, null, null);
         Assert.IsEmpty(parents);
@@ -48,10 +48,10 @@ internal static class LineageScenarioAssertions
         await RegisterSimpleType(registry, appId, "OrderShipped");
 
         var parentResult = await publish.PublishAsync("OrderPlaced", new PublishEventRequest(appId, 1, """{ "Amount": 1 }""", null, null), TestClaimsPrincipal.None);
-        var parentId = ((PublishResult.Created)parentResult).EventId;
+        var parentId = ((PublishResult.Accepted)parentResult).CorrelationId;
 
         var childResult = await publish.PublishAsync("OrderShipped", new PublishEventRequest(appId, 1, """{ "Amount": 1 }""", [parentId], null), TestClaimsPrincipal.None);
-        var childId = ((PublishResult.Created)childResult).EventId;
+        var childId = ((PublishResult.Accepted)childResult).CorrelationId;
 
         var children = await lineage.GetChildrenAsync(parentId, TestClaimsPrincipal.None, null, null);
         Assert.HasCount(1, children);
@@ -71,7 +71,7 @@ internal static class LineageScenarioAssertions
 
         var result = await publish.PublishAsync("OrderShipped", new PublishEventRequest(
             appId, 1, """{ "Amount": 1 }""", [danglingParentId], null), TestClaimsPrincipal.None);
-        var eventId = ((PublishResult.Created)result).EventId;
+        var eventId = ((PublishResult.Accepted)result).CorrelationId;
 
         var parents = await lineage.GetParentsAsync(eventId, TestClaimsPrincipal.None, null, null);
         Assert.HasCount(1, parents);
@@ -108,13 +108,13 @@ internal static class LineageScenarioAssertions
         await RegisterSimpleType(registry, appId, "OrderShipped");
 
         var orderResult = await publish.PublishAsync("OrderPlaced", new PublishEventRequest(appId, 1, """{ "Amount": 1 }""", null, null), TestClaimsPrincipal.None);
-        var orderId = ((PublishResult.Created)orderResult).EventId;
+        var orderId = ((PublishResult.Accepted)orderResult).CorrelationId;
 
         var paymentResult = await publish.PublishAsync("PaymentReceived", new PublishEventRequest(appId, 1, """{ "Amount": 1 }""", [orderId], null), TestClaimsPrincipal.None);
-        var paymentId = ((PublishResult.Created)paymentResult).EventId;
+        var paymentId = ((PublishResult.Accepted)paymentResult).CorrelationId;
 
         var shipResult = await publish.PublishAsync("OrderShipped", new PublishEventRequest(appId, 1, """{ "Amount": 1 }""", [paymentId], null), TestClaimsPrincipal.None);
-        var shipId = ((PublishResult.Created)shipResult).EventId;
+        var shipId = ((PublishResult.Accepted)shipResult).CorrelationId;
 
         var ancestors = await lineage.GetAncestorsAsync(shipId, TestClaimsPrincipal.None, null, null);
         Assert.AreEqual(1, ancestors.Count(a => a.EventId == paymentId));
@@ -133,7 +133,7 @@ internal static class LineageScenarioAssertions
         await RegisterSimpleType(registry, appId, "OrderShipped");
 
         var orderResult = await publish.PublishAsync("OrderPlaced", new PublishEventRequest(appId, 1, """{ "Amount": 1 }""", null, null), TestClaimsPrincipal.None);
-        var orderId = ((PublishResult.Created)orderResult).EventId;
+        var orderId = ((PublishResult.Accepted)orderResult).CorrelationId;
 
         for (var i = 0; i < 5; i++)
             await publish.PublishAsync("OrderShipped", new PublishEventRequest(appId, 1, """{ "Amount": 1 }""", [orderId], null), TestClaimsPrincipal.None);
@@ -152,7 +152,7 @@ internal static class LineageScenarioAssertions
         await RegisterReadClaimGatedType(registry, appId, typeName);
 
         var result = await publish.PublishAsync(typeName, new PublishEventRequest(appId, 1, """{ "Amount": 1 }""", null, null), TestClaimsPrincipal.None);
-        var eventId = ((PublishResult.Created)result).EventId;
+        var eventId = ((PublishResult.Accepted)result).CorrelationId;
 
         Assert.AreEqual(LineageRootCheck.Forbidden, await lineage.CheckRootAsync(eventId, TestClaimsPrincipal.None));
         Assert.AreEqual(LineageRootCheck.Ok, await lineage.CheckRootAsync(eventId, TestClaimsPrincipal.With("clearance:phi")));
@@ -172,13 +172,13 @@ internal static class LineageScenarioAssertions
         await RegisterSimpleType(registry, appId, "OrderShipped");
 
         var orderResult = await publish.PublishAsync("OrderPlaced", new PublishEventRequest(appId, 1, """{ "Amount": 1 }""", null, null), TestClaimsPrincipal.None);
-        var orderId = ((PublishResult.Created)orderResult).EventId;
+        var orderId = ((PublishResult.Accepted)orderResult).CorrelationId;
 
         var paymentResult = await publish.PublishAsync("RestrictedPayment", new PublishEventRequest(appId, 1, """{ "Amount": 1 }""", [orderId], null), TestClaimsPrincipal.None);
-        var paymentId = ((PublishResult.Created)paymentResult).EventId;
+        var paymentId = ((PublishResult.Accepted)paymentResult).CorrelationId;
 
         var shipResult = await publish.PublishAsync("OrderShipped", new PublishEventRequest(appId, 1, """{ "Amount": 1 }""", [paymentId], null), TestClaimsPrincipal.None);
-        var shipId = ((PublishResult.Created)shipResult).EventId;
+        var shipId = ((PublishResult.Accepted)shipResult).CorrelationId;
 
         var ancestors = await lineage.GetAncestorsAsync(shipId, TestClaimsPrincipal.None, null, null);
 
@@ -205,13 +205,13 @@ internal static class LineageScenarioAssertions
         await RegisterReadClaimGatedType(registry, appId, "RestrictedPayment");
 
         var orderResult = await publish.PublishAsync("OrderPlaced", new PublishEventRequest(appId, 1, """{ "Amount": 1 }""", null, null), TestClaimsPrincipal.None);
-        var orderId = ((PublishResult.Created)orderResult).EventId;
+        var orderId = ((PublishResult.Accepted)orderResult).CorrelationId;
 
         var shipResult = await publish.PublishAsync("OrderShipped", new PublishEventRequest(appId, 1, """{ "Amount": 1 }""", [orderId], null), TestClaimsPrincipal.None);
-        var shipId = ((PublishResult.Created)shipResult).EventId;
+        var shipId = ((PublishResult.Accepted)shipResult).CorrelationId;
 
         var paymentResult = await publish.PublishAsync("RestrictedPayment", new PublishEventRequest(appId, 1, """{ "Amount": 1 }""", [orderId], null), TestClaimsPrincipal.None);
-        var paymentId = ((PublishResult.Created)paymentResult).EventId;
+        var paymentId = ((PublishResult.Accepted)paymentResult).CorrelationId;
 
         var children = await lineage.GetChildrenAsync(orderId, TestClaimsPrincipal.None, null, null);
         Assert.HasCount(2, children);

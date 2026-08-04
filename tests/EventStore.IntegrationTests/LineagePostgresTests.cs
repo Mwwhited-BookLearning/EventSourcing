@@ -43,7 +43,7 @@ public class LineagePostgresTests
     {
         using var db = CreateContext();
         var registry = new SchemaRegistryService(db, new PostgresFilterableFieldIndexDdlGenerator(), new MemoryCache(new MemoryCacheOptions()), UpcastingTestSupport.CreateEvaluator());
-        var publish = new PublishService(db, registry, new PostgresUniqueConstraintViolationDetector(), UpcastingTestSupport.CreateChain());
+        var publish = new PublishService(db, registry, new PostgresUniqueConstraintViolationDetector());
         var lineage = new LineageService(db, new PostgresEventLineageQueryProvider(), registry);
 
         await LineageScenarioAssertions.PublishingAnOriginEventShowsNoParents(registry, publish, lineage);

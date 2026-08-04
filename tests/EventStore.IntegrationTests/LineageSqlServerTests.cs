@@ -43,7 +43,7 @@ public class LineageSqlServerTests
     {
         using var db = CreateContext();
         var registry = new SchemaRegistryService(db, new SqlServerFilterableFieldIndexDdlGenerator(), new MemoryCache(new MemoryCacheOptions()), UpcastingTestSupport.CreateEvaluator());
-        var publish = new PublishService(db, registry, new SqlServerUniqueConstraintViolationDetector(), UpcastingTestSupport.CreateChain());
+        var publish = new PublishService(db, registry, new SqlServerUniqueConstraintViolationDetector());
         var lineage = new LineageService(db, new SqlServerEventLineageQueryProvider(), registry);
 
         await LineageScenarioAssertions.PublishingAnOriginEventShowsNoParents(registry, publish, lineage);

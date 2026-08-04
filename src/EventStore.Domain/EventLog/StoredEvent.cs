@@ -10,6 +10,7 @@ public class StoredEvent
     public string? OriginId { get; set; }
     public string? LogicalClock { get; set; }
     public Guid EventId { get; set; }
+    public string AppId { get; set; } = default!;
     public string EntityId { get; set; } = default!;
     public string EventType { get; set; } = default!;
     public int SchemaVersion { get; set; }

@@ -112,7 +112,7 @@ internal static class AuthScenarioAssertions
         };
         AttachAuth(publishRequest, hostClient, publisherToken, publisherKey);
         var publishResponse = await hostClient.SendAsync(publishRequest);
-        Assert.AreEqual(HttpStatusCode.Created, publishResponse.StatusCode, await publishResponse.Content.ReadAsStringAsync());
+        Assert.AreEqual(HttpStatusCode.Accepted, publishResponse.StatusCode, await publishResponse.Content.ReadAsStringAsync());
     }
 
     public static async Task RegistryPutWithoutRegistryAdminScopeIsRejectedWith403(HttpClient hostClient, HttpClient devIdpClient)

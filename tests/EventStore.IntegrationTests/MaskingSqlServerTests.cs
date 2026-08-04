@@ -44,7 +44,7 @@ public class MaskingSqlServerTests
         using var db = CreateContext();
         var cache = new MemoryCache(new MemoryCacheOptions());
         var registry = new SchemaRegistryService(db, new SqlServerFilterableFieldIndexDdlGenerator(), cache, UpcastingTestSupport.CreateEvaluator());
-        var publish = new PublishService(db, registry, new SqlServerUniqueConstraintViolationDetector(), UpcastingTestSupport.CreateChain());
+        var publish = new PublishService(db, registry, new SqlServerUniqueConstraintViolationDetector());
         var (payloadMasker, logs) = MaskingTestSupport.CreatePayloadMasker();
         var follow = new FollowService(db, new EventTailReader(db, registry, payloadMasker, UpcastingTestSupport.CreateChain()));
 

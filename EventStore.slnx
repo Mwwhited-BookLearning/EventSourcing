@@ -19,6 +19,7 @@
     <Project Path="src/EventStore.Persistence/EventStore.Persistence.csproj" />
     <Project Path="src/EventStore.Projections.Abstractions/EventStore.Projections.Abstractions.csproj" />
     <Project Path="src/EventStore.Projections.Host/EventStore.Projections.Host.csproj" />
+    <Project Path="src/EventStore.Router/EventStore.Router.csproj" />
     <Project Path="src/EventStore.SchemaRegistry/EventStore.SchemaRegistry.csproj" />
     <Project Path="src/EventStore.ServiceDefaults/EventStore.ServiceDefaults.csproj" />
     <Project Path="src/EventStore.Upcasting/EventStore.Upcasting.csproj" />

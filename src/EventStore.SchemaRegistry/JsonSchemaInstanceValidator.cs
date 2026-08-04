@@ -1,7 +1,7 @@
 using System.Text.Json;
 using System.Text.Json.Nodes;
 
-namespace EventStore.Inbox;
+namespace EventStore.SchemaRegistry;
 
 // Hand-written, not JsonSchema.Net -- same reasoning as
 // EventStore.SchemaRegistry.MaskingSchemaValidator's own structural check
@@ -11,7 +11,11 @@ namespace EventStore.Inbox;
 // schema (required/type/properties/items) -- a different job from
 // SchemaRegistryService's schema-DOCUMENT well-formedness check, but the
 // same "tolerate any unrecognized keyword" posture, for the same reason.
-internal static class JsonSchemaInstanceValidator
+// Public and living here (not EventStore.Inbox, its original home) so both
+// EventStore.Inbox and EventStore.Router can use the identical check without
+// either depending on the other (build-plan item 12, "Entity-Centric Core
+// Rebuild": the Router, not the Inbox, is what actually calls this now).
+public static class JsonSchemaInstanceValidator
 {
     public static bool Validate(JsonNode? schema, JsonNode? payload, List<string> errors, string path = "$")
     {
