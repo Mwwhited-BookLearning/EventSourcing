@@ -30,6 +30,8 @@ public class EventStoreContext(DbContextOptions<EventStoreContext> options, IJso
     public DbSet<TelemetryChannel> TelemetryChannels => Set<TelemetryChannel>();
     public DbSet<TelemetrySample> TelemetrySamples => Set<TelemetrySample>();
     public DbSet<RedactedRange> RedactedRanges => Set<RedactedRange>();
+    public DbSet<Attachment> Attachments => Set<Attachment>();
+    public DbSet<AttachmentRef> AttachmentRefs => Set<AttachmentRef>();
 
     protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder) =>
         optionsBuilder.ReplaceService<IModelCacheKeyFactory, ProviderAwareModelCacheKeyFactory>();
@@ -147,6 +149,23 @@ public class EventStoreContext(DbContextOptions<EventStoreContext> options, IJso
         modelBuilder.Entity<RedactedRange>(e =>
         {
             e.HasKey(x => new { x.ChannelId, x.FromTimestamp });
+        });
+
+        modelBuilder.Entity<Attachment>(e =>
+        {
+            e.HasKey(x => x.ContentHash);
+
+            e.Property(x => x.ChunkIndex)
+                .HasConversion(JsonValueConverter.ForNullable<List<ChunkRef>>())
+                .Metadata.SetValueComparer(JsonValueConverter.ListComparer<List<ChunkRef>>());
+        });
+
+        modelBuilder.Entity<AttachmentRef>(e =>
+        {
+            e.HasKey(x => x.Id);
+            e.HasIndex(x => x.ContentHash); // ADR-032 -- an attachment is many-to-many with events/entities by construction
+            e.HasIndex(x => x.EntityId);
+            e.HasIndex(x => x.EventId);
         });
     }
 

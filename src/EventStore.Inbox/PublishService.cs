@@ -2,6 +2,7 @@ using System.Security.Claims;
 using System.Text.Json;
 using EventStore.Domain.EventLog;
 using EventStore.Domain.SchemaRegistry;
+using EventStore.Domain.Streaming;
 using EventStore.Persistence;
 using EventStore.SchemaRegistry;
 using Microsoft.EntityFrameworkCore;
@@ -104,6 +105,17 @@ public class PublishService(
             var winner = await db.Events.AsNoTracking().SingleAsync(e => e.EventId == eventId, ct);
             return ReplayOrConflict(winner, payloadHash);
         }
+
+        // ADR-032 -- completes the two-step handoff: POST /attachments already
+        // returned this ContentHash; linking it here creates the AttachmentRef
+        // row without ever putting the raw bytes in Payload. EntityId is left
+        // null -- entity resolution is the async Router's job (ADR-021), not
+        // the synchronous Inbox's, the same reason StoredEvent.EntityId itself
+        // starts empty above.
+        foreach (var contentHash in request.AttachmentContentHashes ?? [])
+            db.AttachmentRefs.Add(new AttachmentRef { ContentHash = contentHash, EntityId = null, EventId = storedEvent.EventId });
+        if (request.AttachmentContentHashes is { Count: > 0 })
+            await db.SaveChangesAsync(ct);
 
         return ToAccepted(storedEvent);
     }

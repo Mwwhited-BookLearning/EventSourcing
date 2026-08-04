@@ -400,6 +400,77 @@ namespace EventStore.Persistence.Migrations.Sqlite.Migrations
                     b.ToTable("PendingJoinStates");
                 });
 
+            modelBuilder.Entity("EventStore.Domain.Streaming.Attachment", b =>
+                {
+                    b.Property<string>("ContentHash")
+                        .HasColumnType("TEXT");
+
+                    b.Property<byte[]>("Bytes")
+                        .HasColumnType("BLOB");
+
+                    b.Property<string>("ChunkIndex")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ContentProviderKey")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ContentProviderRef")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("FileName")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTimeOffset>("LastAccessedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("MimeType")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("RequiredPublishClaim")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("RequiredReadClaim")
+                        .HasColumnType("TEXT");
+
+                    b.Property<long>("SizeBytes")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTimeOffset>("UploadedAt")
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("ContentHash");
+
+                    b.ToTable("Attachments");
+                });
+
+            modelBuilder.Entity("EventStore.Domain.Streaming.AttachmentRef", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("ContentHash")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("EntityId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid?>("EventId")
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ContentHash");
+
+                    b.HasIndex("EntityId");
+
+                    b.HasIndex("EventId");
+
+                    b.ToTable("AttachmentRefs");
+                });
+
             modelBuilder.Entity("EventStore.Domain.Streaming.RedactedRange", b =>
                 {
                     b.Property<string>("ChannelId")
