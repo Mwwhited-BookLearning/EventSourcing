@@ -317,7 +317,7 @@ model concern, so it isn't specified further here.
 ```csharp
 public class LeaderLease
 {
-    public string WorkerRole { get; set; } = default!;  // "Router" | "UpcastMaterializer" | "PeerSyncOutboxPump" | "WebhookOutboxPump" — primary key
+    public string WorkerRole { get; set; } = default!;  // "Router" | "UpcastMaterializer" | "PeerSyncOutboxPump" | "WebhookOutboxPump" | "ExpectedResponseWatcher" (ADR-094) — primary key
     public string LeaseHolderId { get; set; } = default!; // this instance's own identity (host name + process id, or similar)
     public DateTimeOffset LeaseExpiresAt { get; set; }
 }
