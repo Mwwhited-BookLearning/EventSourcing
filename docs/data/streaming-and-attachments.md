@@ -74,6 +74,8 @@ public class Attachment
     public string? ContentProviderRef { get; set; }          // opaque, provider-specific locator (a blob path/key) within that backend -- ADR-032; unused once ChunkIndex is populated
     public DateTimeOffset LastAccessedAt { get; set; }        // updated on every read -- the concrete field the tiering mover's "access-pattern threshold" checks (ADR-032)
     public List<ChunkRef>? ChunkIndex { get; set; }           // optional, only populated above a configurable size threshold -- content-defined chunking, ADR-032. When populated, this Attachment's own ContentProviderKey/Ref are unused -- each chunk is independently addressed instead
+    public string? RequiredReadClaim { get; set; }             // ADR-032's "Standalone attachments and direct permissions" -- reuses ADR-008's "type:value" format. A direct claim here always governs if set, even over a linked event/entity's own claim; propagated to this file only now, alongside "Binary Attachments"' own build pass -- named in that ADR's prose since Accepted but never added here until this item actually needed the field
+    public string? RequiredPublishClaim { get; set; }          // same ADR/section -- gates re-upload of identical bytes (a ContentHash collision) once an Attachment already exists, not the first upload that creates it
 }
 
 public class ChunkRef
@@ -87,6 +89,7 @@ public class ChunkRef
 
 public class AttachmentRef
 {
+    public long Id { get; set; }                              // surrogate PK -- EntityId/EventId are both independently nullable, so there's no clean natural composite key the way EventParent has one (added alongside "Binary Attachments"' own build pass; not shown as a PK marker anywhere earlier, since none was actually designed until this item needed a real table)
     public string ContentHash { get; set; } = default!;     // FK -> Attachment
     public string? EntityId { get; set; }                    // ADR-021 -- either/both may be set
     public Guid? EventId { get; set; }                        // -- links to a specific event, not just its entity generally

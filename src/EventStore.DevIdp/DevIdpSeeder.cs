@@ -21,6 +21,7 @@ public static class DevIdpSeeder
         ("projections-client", "projections-client-secret", ["events:follow"]), // "CQRS Read-Model Projections" -- ProjectionHost is a Follow caller like any other (ADR-015)
         ("tenant-a-operator-client", "tenant-a-operator-client-secret", ["registry:admin:tenant-a"]), // "Multi-Tenancy" (ADR-030) -- a caller scoped to exactly one AppId, not the unscoped framework-operator form
         ("telemetry-client", "telemetry-client-secret", ["telemetry:ingest", "telemetry:read"]), // "Streaming Channels" (ADR-031) -- a producer/detector client, holding both since this repo's tests drive both roles from one caller
+        ("attachments-client", "attachments-client-secret", ["attachments:ingest", "attachments:read"]), // "Binary Attachments" (ADR-032) -- same both-roles-in-one-caller posture as telemetry-client
     ];
 
     // ADR-017 -- "each of the four OAuth2 clients generates its own

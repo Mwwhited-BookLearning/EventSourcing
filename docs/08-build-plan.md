@@ -74,7 +74,7 @@ provider they apply to — not "code written."
 | 13 | [Multi-Tenancy](#multi-tenancy) | Schema Registry, Entity-Centric Core Rebuild | Done |
 | 14 | [Upcast Materialization + Downcast](#upcast-materialization--downcast) | Hardening & Evolution, Entity-Centric Core Rebuild | Done |
 | 15 | [Streaming Channels](#streaming-channels) | Auth + Orchestration, Entity-Centric Core Rebuild, Property-Level Masking | Done |
-| 16 | [Binary Attachments](#binary-attachments) | Auth + Orchestration, Entity-Centric Core Rebuild | Not started |
+| 16 | [Binary Attachments](#binary-attachments) | Auth + Orchestration, Entity-Centric Core Rebuild | Done |
 | 17 | [Sharding & Replication](#sharding--replication) | Entity-Centric Core Rebuild | Not started |
 | 18 | [Non-Authoritative Capture](#non-authoritative-capture) | Entity-Centric Core Rebuild, Auth + Orchestration, Binary Attachments | Not started |
 | 19 | [GraphQL-Only Query Layer](#graphql-only-query-layer) | Entity-Centric Core Rebuild, Multi-Tenancy, Hardening & Evolution | Not started |
@@ -170,7 +170,7 @@ state "Entity-Centric Core Rebuild" as p11 #palegreen
 state "Multi-Tenancy" as p12 #palegreen
 state "Upcast Materialization + Downcast" as p13 #palegreen
 state "Streaming Channels" as p14 #palegreen
-state "Binary Attachments" as p15
+state "Binary Attachments" as p15 #palegreen
 state "Sharding & Replication" as p16
 state "Non-Authoritative Capture" as p17
 state "GraphQL-Only Query Layer" as p18
@@ -1326,6 +1326,17 @@ Partial Content` for exactly the requested byte range. The GraphQL-
 browse scenario (`contentHash`/`filename`/`mimeType`/`sizeBytes` listing)
 is deferred to be re-verified once "GraphQL-Only Query Layer" lands, per
 the note above.
+
+**Built-scope note**: `ADR-032`'s Consequences additionally describe a
+hot/cool/cold tiering mover and content-defined chunking (`ChunkIndex`)
+for large attachments — real, decided mechanisms, but not part of this
+item's own Scope line above and not built at this stage. What *is* built:
+`IAttachmentContentStore` itself (the keyed-DI seam "Event Log/AccessLog
+Archival Segment Detachment" later depends on, reused unchanged) with one
+registered dev/POC backend, and the `Attachment.ChunkIndex`/`ChunkRef`
+fields exist in the data model but are never populated — no background
+mover, no rolling-hash chunking logic. Honestly flagged, not silently
+dropped; revisit if a later item's own scope actually needs either.
 
 ## Sharding & Replication
 

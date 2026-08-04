@@ -409,6 +409,79 @@ namespace EventStore.Persistence.Migrations.Postgres.Migrations
                     b.ToTable("PendingJoinStates");
                 });
 
+            modelBuilder.Entity("EventStore.Domain.Streaming.Attachment", b =>
+                {
+                    b.Property<string>("ContentHash")
+                        .HasColumnType("text");
+
+                    b.Property<byte[]>("Bytes")
+                        .HasColumnType("bytea");
+
+                    b.Property<string>("ChunkIndex")
+                        .HasColumnType("text");
+
+                    b.Property<string>("ContentProviderKey")
+                        .HasColumnType("text");
+
+                    b.Property<string>("ContentProviderRef")
+                        .HasColumnType("text");
+
+                    b.Property<string>("FileName")
+                        .HasColumnType("text");
+
+                    b.Property<DateTimeOffset>("LastAccessedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("MimeType")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("RequiredPublishClaim")
+                        .HasColumnType("text");
+
+                    b.Property<string>("RequiredReadClaim")
+                        .HasColumnType("text");
+
+                    b.Property<long>("SizeBytes")
+                        .HasColumnType("bigint");
+
+                    b.Property<DateTimeOffset>("UploadedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("ContentHash");
+
+                    b.ToTable("Attachments");
+                });
+
+            modelBuilder.Entity("EventStore.Domain.Streaming.AttachmentRef", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<string>("ContentHash")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("EntityId")
+                        .HasColumnType("text");
+
+                    b.Property<Guid?>("EventId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ContentHash");
+
+                    b.HasIndex("EntityId");
+
+                    b.HasIndex("EventId");
+
+                    b.ToTable("AttachmentRefs");
+                });
+
             modelBuilder.Entity("EventStore.Domain.Streaming.RedactedRange", b =>
                 {
                     b.Property<string>("ChannelId")

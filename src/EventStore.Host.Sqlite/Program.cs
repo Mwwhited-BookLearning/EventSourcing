@@ -9,6 +9,7 @@ using EventStore.Persistence.Migrations.Sqlite;
 using EventStore.Router;
 using EventStore.SchemaRegistry;
 using EventStore.SpecGeneration;
+using EventStore.Attachments;
 using EventStore.Streaming;
 using EventStore.Upcasting;
 using Microsoft.EntityFrameworkCore;
@@ -35,6 +36,7 @@ builder.Services.AddMasking(
     builder.Configuration.GetSection("Masking:HmacKeys").GetChildren().ToDictionary(c => c.Key, c => c.Value!));
 builder.Services.AddFollowApi();
 builder.Services.AddStreaming();
+builder.Services.AddAttachments();
 
 var app = builder.Build();
 
@@ -55,6 +57,7 @@ app.MapSpecGenerationEndpoints();
 app.MapLineageEndpoints();
 app.MapFollowEndpoints();
 app.MapStreamingEndpoints();
+app.MapAttachmentEndpoints();
 app.Run();
 
 public partial class Program;

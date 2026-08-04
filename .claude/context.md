@@ -385,13 +385,53 @@ stale numbers here are worse than none)*
   `StreamingHttpSqliteTests` for the Range-request/206 behavior
   specifically (only observable through the actual ASP.NET Core pipeline),
   run twice in a row for stability.
-- **Next up**: item 16, "Binary Attachments" (`ADR-032`) — depends on
-  Auth + Orchestration and Entity-Centric Core Rebuild, both Done. Its own
-  build-plan section already flags a real forward dependency: its
-  "GraphQL browsing of an entity's linked attachments" exit criterion
-  can't actually be exercised until "GraphQL-Only Query Layer" lands much
-  later — build the upload/content-hash-retrieval half now, re-verify the
-  GraphQL-browse half then.
+- **Item 16, "Binary Attachments," is Done — same day, continuing directly
+  from item 15.** Smaller than the last several items. New
+  `EventStore.Domain/Streaming/Attachment.cs` (`Attachment`/`ChunkRef`/
+  `AttachmentRef` — same `Streaming` namespace as item 15's types, per
+  `docs/data/streaming-and-attachments.md`'s own single-file grouping,
+  even though `ADR-032` is its own decision) and a new `EventStore.
+  Attachments` project — `AttachmentService` (`UploadAsync` with real
+  SHA-256-based dedup, `RetrieveAsync`, `LinkAsync` creating `AttachmentRef`
+  rows), `AttachmentEndpoints` (`POST /attachments` raw-bytes upload,
+  `GET /attachments/{contentHash}` reusing the identical
+  `Results.Bytes(enableRangeProcessing: true)` mechanism item 15 already
+  proved for Media playback). `PublishEventRequest` gained
+  `AttachmentContentHashes` — completes `ADR-032`'s two-step handoff by
+  linking through the ordinary publish path, the same envelope-field
+  pattern `TelemetryPointer` already established. New `attachments:ingest`/
+  `attachments:read` scopes + a seeded `attachments-client` in DevIdp.
+  **A real, pre-existing doc/ADR drift found and fixed while building
+  against this ADR, not caused by this pass**: `ADR-032`'s own "Standalone
+  attachments and direct permissions" section clearly decided `Attachment`
+  needs `RequiredReadClaim`/`RequiredPublishClaim` fields, but
+  `docs/data/streaming-and-attachments.md`'s `Attachment` class never
+  actually carried them — added in this same pass, per this repo's own
+  "the ADR that decides a field is that field's naming/shape authority"
+  rule. Also added a surrogate `AttachmentRef.Id` (no natural composite
+  key exists once `EntityId`/`EventId` are both independently nullable).
+  Built `IAttachmentContentStore` for real (the keyed-DI seam "Event Log/
+  AccessLog Archival Segment Detachment" later depends on, reused
+  unchanged) with one dev/POC in-memory backend — deliberately NOT wired
+  into the default upload path yet, since `ADR-032`'s own "`ContentProviderKey`:
+  null means this table" framing makes `Attachment.Bytes` itself the v1
+  storage; the seam exists and is registrable/testable, ready for a real
+  backend or a future tiering mover to use. The tiering mover itself and
+  content-defined chunking (`ChunkIndex`) are explicitly NOT built at this
+  stage — flagged in the build-plan section, not silently dropped, same
+  treatment as item 15's unimplemented `TransformKind`s. GraphQL-browse
+  exit criterion remains deferred to "GraphQL-Only Query Layer," per this
+  item's own pre-existing note.
+  `EventStore.IntegrationTests` now has 41 `[TestMethod]`s (up from 37) —
+  all pass across SQLite/PostgreSQL/SQL Server (`AttachmentSqliteTests`/
+  `Postgres`/`SqlServer`, 7 scenarios each) plus one dedicated real-HTTP
+  `AttachmentHttpSqliteTests` for the Range-request/206 behavior, run
+  twice in a row for stability.
+- **Next up**: item 17, "Sharding & Replication" (`ADR-033`/`034`/`051`) —
+  depends on Entity-Centric Core Rebuild (Done). A large item: gossip
+  topology, `OriginId`/`LogicalClock` (already on `StoredEvent`, unused
+  until this item), the fault/abend/restart-tolerant peer-sync outbox/
+  inbox, Merkle-tree catch-up, peer discovery.
 
 ## How to resume cold
 
@@ -406,7 +446,7 @@ stale numbers here are worse than none)*
    narrative.
 5. `dotnet build EventStore.slnx` and `dotnet test tests/EventStore.IntegrationTests` —
    confirm the build/test baseline the last session left still holds
-   before adding to it (37 tests should pass). Requires Docker running
+   before adding to it (41 tests should pass). Requires Docker running
    (Testcontainers for Postgres/SQL Server) and the SDK pinned in
    `global.json`.
 
@@ -433,7 +473,7 @@ stale numbers here are worse than none)*
   treated as this session's own action; items 7 through 10 all committed —
   "check off work as you go. then continue" is the standing instruction
   currently in effect, so each item is committed without waiting for a
-  fresh prompt; items 11 through 15 now done too, per the same rhythm).
+  fresh prompt; items 11 through 16 now done too, per the same rhythm).
 - **Always actually run new code against every provider it's built for
   before calling an item done.** Every real bug found this session (the
   `ExecuteSqlRawAsync` brace-parsing issue, an unquoted Postgres column,
