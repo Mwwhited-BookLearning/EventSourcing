@@ -1,5 +1,6 @@
 using EventStore.Domain.EntityStore;
 using EventStore.Domain.EventLog;
+using EventStore.Domain.Replication;
 using EventStore.Domain.SchemaRegistry;
 using EventStore.Domain.Streaming;
 using Microsoft.EntityFrameworkCore;
@@ -32,6 +33,7 @@ public class EventStoreContext(DbContextOptions<EventStoreContext> options, IJso
     public DbSet<RedactedRange> RedactedRanges => Set<RedactedRange>();
     public DbSet<Attachment> Attachments => Set<Attachment>();
     public DbSet<AttachmentRef> AttachmentRefs => Set<AttachmentRef>();
+    public DbSet<PeerSyncCursor> PeerSyncCursors => Set<PeerSyncCursor>();
 
     protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder) =>
         optionsBuilder.ReplaceService<IModelCacheKeyFactory, ProviderAwareModelCacheKeyFactory>();
@@ -166,6 +168,11 @@ public class EventStoreContext(DbContextOptions<EventStoreContext> options, IJso
             e.HasIndex(x => x.ContentHash); // ADR-032 -- an attachment is many-to-many with events/entities by construction
             e.HasIndex(x => x.EntityId);
             e.HasIndex(x => x.EventId);
+        });
+
+        modelBuilder.Entity<PeerSyncCursor>(e =>
+        {
+            e.HasKey(x => x.PeerId);
         });
     }
 

@@ -44,7 +44,8 @@ public static class HostCoreExtensions
             .AddPolicy("telemetry:ingest", p => p.Requirements.Add(new ScopeRequirement("telemetry:ingest")))
             .AddPolicy("telemetry:read", p => p.Requirements.Add(new ScopeRequirement("telemetry:read")))
             .AddPolicy("attachments:ingest", p => p.Requirements.Add(new ScopeRequirement("attachments:ingest")))
-            .AddPolicy("attachments:read", p => p.Requirements.Add(new ScopeRequirement("attachments:read")));
+            .AddPolicy("attachments:read", p => p.Requirements.Add(new ScopeRequirement("attachments:read")))
+            .AddPolicy("peer:sync", p => p.Requirements.Add(new ScopeRequirement("peer:sync")));
 
         // ADR-014: deny by default -- an empty/missing Cors:AllowedOrigins means
         // no cross-origin browser call ever succeeds (server-to-server traffic,

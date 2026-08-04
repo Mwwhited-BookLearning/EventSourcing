@@ -10,6 +10,7 @@ using EventStore.Router;
 using EventStore.SchemaRegistry;
 using EventStore.SpecGeneration;
 using EventStore.Attachments;
+using EventStore.Replication;
 using EventStore.Streaming;
 using EventStore.Upcasting;
 using Microsoft.EntityFrameworkCore;
@@ -37,6 +38,12 @@ builder.Services.AddMasking(
 builder.Services.AddFollowApi();
 builder.Services.AddStreaming();
 builder.Services.AddAttachments();
+builder.Services.AddReplication();
+builder.Services.Configure<OriginIdOptions>(builder.Configuration.GetSection("OriginId"));
+builder.Services.Configure<PeerSyncOptions>(builder.Configuration.GetSection("PeerSync"));
+builder.Services.Configure<PeerSyncClientOptions>(builder.Configuration.GetSection("PeerSyncClient"));
+builder.Services.AddHttpClient("DevIdp", c => c.BaseAddress = new Uri(builder.Configuration["Authentication:Authority"]!));
+builder.Services.AddHttpClient("PeerSync"); // no fixed BaseAddress -- PeerSyncClient dials each peer's own absolute address
 
 var app = builder.Build();
 
@@ -58,6 +65,7 @@ app.MapLineageEndpoints();
 app.MapFollowEndpoints();
 app.MapStreamingEndpoints();
 app.MapAttachmentEndpoints();
+app.MapPeerSyncEndpoints();
 app.Run();
 
 public partial class Program;
