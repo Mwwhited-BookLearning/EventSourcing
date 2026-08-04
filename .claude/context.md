@@ -692,11 +692,62 @@ stale numbers here are worse than none)*
   resource-contention flake already tracked in `TODO.md` (a different
   rotating class each time, confirmed unrelated to this item's own
   changes).
-- **Next up**: item 20, "Compatibility & Deployment Discipline"
-  (`ADR-038`) — depends on GraphQL-Only Query Layer (Done): enum unknown-
-  value fallback contracts, version-discovery capability negotiation,
-  Expand/Contract migration discipline, and the N-1/N+1 compatibility
-  window/rollback-drill exit criterion.
+- **Item 20, "Compatibility & Deployment Discipline," is Done — same day,
+  continuing directly from item 19.** Much smaller than 19: `ADR-038`'s
+  own Consequences already said "no new mechanism is introduced here that
+  this design didn't already have a piece of," and that held for three of
+  its four pieces. The one genuinely new production-code change: `EventStore.
+  Router/RouterWorker.cs`'s `ProcessEventAsync` now resolves
+  `activeDefinition` before the schema-status check (hoisted up from
+  further down the method, unchanged otherwise) and, when an event's own
+  declared `SchemaVersion` is both unregistered AND newer than the active
+  version, leaves it at `Status: received` and returns early instead of
+  advancing to `applied` — this is the literal rollback-drill exit
+  criterion, realized as a narrow forward-incompatibility gate rather than
+  a new backlog-reconciliation mechanism: the very next `RunOnceAsync` tick
+  already re-queries `Status == "received"`, so the same event is simply
+  picked up again, this time successfully, once a later registration
+  raises the active version to cover it. Deliberately narrower than
+  "declaredDefinition is null" alone — an old/never-registered version
+  (`SchemaVersion <= active`) is the ordinary, already-covered "unknown
+  schema, advisory-only" case and is untouched by this gate, confirmed by a
+  dedicated regression scenario. New `EnumFallbackSchemaValidator`
+  (`EventStore.SchemaRegistry`, mirroring `MaskingSchemaValidator`'s own
+  shape) validates `x-enum-fallback` at registration time (must be boolean,
+  string-typed property only, requires a non-empty `"enum"` array on the
+  same property, mutually exclusive with `x-masking`). `EventTypeSchemaReader`/
+  `FollowSubscriptionTypeModule` (`EventStore.GraphQL`) read that
+  annotation and add a sibling `{name}Known` Boolean field alongside the
+  ordinary value field in Follow's dynamically-built Subscription payload
+  type — the enum-fallback contract's `{status, statusKnown}` shape.  New
+  `CapabilitiesQueries.cs` (`EventStore.GraphQL`) — a small, self-contained
+  `capabilities(appId, name, supportedSchemaVersions)` static Query field
+  (gated by `events:follow`, the same scope Follow's own connect-time check
+  uses), computing a fixed numeric `[active-1, active, active+1]` window
+  and throwing a `GraphQLException` when the caller's declared versions
+  don't overlap it — deliberately NOT threaded through
+  `FollowSubscriptionTypeModule`'s own already-intricate dynamic
+  Subscription field (which the feature doc's own diagram is itself
+  flagged as "this doc's own structural choice, not a shape ADR-038
+  states"). Expand/Contract migration discipline needed no code at all —
+  every migration in this repo has already been purely additive.
+  `EventStore.IntegrationTests` now has 61 `[TestMethod]`s (up from 56) —
+  `CompatibilitySqliteTests`/`Postgres`/`SqlServer` (one
+  `AllCompatibilityScenarios` method each, 2 scenarios: the rollback drill
+  itself, and the old-version-is-unaffected regression check) plus
+  `CompatibilityGraphQlHttpSqliteTests` (2 real-HTTP scenarios: the enum-
+  fallback sibling field over a real SSE-streamed Subscription, and
+  `capabilities` accepting a client inside the N-1/N+1 window while
+  rejecting one outside it). All pass reliably alone and in the SQLite-only
+  subset; the full multi-provider run hit the same pre-existing, unrelated
+  SQL Server Testcontainers resource-contention flake already tracked in
+  `TODO.md` — this item's own 3 `CompatibilitySqliteTests`/`Postgres`/
+  `SqlServer` runs all passed cleanly.
+- **Next up**: item 21, "MVVM Client" (`ADR-039`) — depends on
+  Multi-Tenancy (Done) and Sharding & Replication (Done): View/ViewModel/
+  command-dispatch-to-outbox layering, a client-local durable outbox,
+  HTML+JS entity view definitions, the native/JS bridge, offline-first
+  caching.
 
 ## How to resume cold
 
@@ -711,7 +762,7 @@ stale numbers here are worse than none)*
    narrative.
 5. `dotnet build EventStore.slnx` and `dotnet test tests/EventStore.IntegrationTests` —
    confirm the build/test baseline the last session left still holds
-   before adding to it (56 tests should pass). Requires Docker running
+   before adding to it (61 tests should pass). Requires Docker running
    (Testcontainers for Postgres/SQL Server) and the SDK pinned in
    `global.json`. A full multi-provider run has a known, pre-existing,
    unrelated flake — see `TODO.md`'s entry — where one or two SQL Server
@@ -743,7 +794,7 @@ stale numbers here are worse than none)*
   treated as this session's own action; items 7 through 10 all committed —
   "check off work as you go. then continue" is the standing instruction
   currently in effect, so each item is committed without waiting for a
-  fresh prompt; items 11 through 19 now done too, per the same rhythm).
+  fresh prompt; items 11 through 20 now done too, per the same rhythm).
 - **Always actually run new code against every provider it's built for
   before calling an item done.** Every real bug found this session (the
   `ExecuteSqlRawAsync` brace-parsing issue, an unquoted Postgres column,

@@ -78,7 +78,7 @@ provider they apply to — not "code written."
 | 17 | [Sharding & Replication](#sharding--replication) | Entity-Centric Core Rebuild | Done |
 | 18 | [Non-Authoritative Capture](#non-authoritative-capture) | Entity-Centric Core Rebuild, Auth + Orchestration, Binary Attachments | Done |
 | 19 | [GraphQL-Only Query Layer](#graphql-only-query-layer) | Entity-Centric Core Rebuild, Multi-Tenancy, Hardening & Evolution | Done |
-| 20 | [Compatibility & Deployment Discipline](#compatibility--deployment-discipline) | GraphQL-Only Query Layer | Not started |
+| 20 | [Compatibility & Deployment Discipline](#compatibility--deployment-discipline) | GraphQL-Only Query Layer | Done |
 | 21 | [MVVM Client](#mvvm-client) | Multi-Tenancy, Sharding & Replication | Not started |
 | 22 | [Ticket Exchange for Header-Incapable Clients](#ticket-exchange-for-header-incapable-clients) | Streaming Channels, Binary Attachments, Non-Authoritative Capture | Not started |
 | 23 | [Delegated Grants, RBAC, Federated Claims & Read Audit Logging](#delegated-grants-rbac-federated-claims--read-audit-logging) | Non-Authoritative Capture, Event-Type Security, Multi-Tenancy, Hardening & Evolution | Not started |
@@ -174,7 +174,7 @@ state "Binary Attachments" as p15 #palegreen
 state "Sharding & Replication" as p16 #palegreen
 state "Non-Authoritative Capture" as p17 #palegreen
 state "GraphQL-Only Query Layer" as p18 #palegreen
-state "Compatibility & Deployment Discipline" as p19
+state "Compatibility & Deployment Discipline" as p19 #palegreen
 state "MVVM Client" as p20
 state "Ticket Exchange" as p21
 state "Delegated Grants, RBAC & Read Audit Logging" as p22
@@ -1579,6 +1579,43 @@ event tagged with it, roll back to a deployment that doesn't know that
 version, confirm the event sits `received` (not lost), confirm re-
 forward-deploying makes it routable again with no data loss and no
 database restore.
+
+**Built-scope note**: the rollback drill needed one real, narrow addition
+to `EventStore.Router`'s `ProcessEventAsync`: an event tagged with a
+schema version genuinely AHEAD of anything the deployment's own registry
+has ever seen (`declaredDefinition is null` **and** newer than the active
+version) is now left at `Status: received` rather than advanced to
+`applied` — this is deliberately narrower than "declaredDefinition is
+null" alone, so the ordinary, already-covered backward-compatible case (an
+old/never-registered version, `SchemaVersion <= active`) is untouched:
+`SchemaStatus` still reaches `unknown` and `Status` still reaches
+`applied`, per `ADR-023`'s own "advisory, never gates Status" rule. No
+separate backlog-reconciliation mechanism was needed for the "becomes
+routable again" half — the existing `RunOnceAsync` polling loop already
+re-queries `Status == "received"` every tick, so the same event is simply
+picked up again, this time successfully, the moment a later registration
+raises the active version to cover it. Enum fallback and capability
+negotiation, by contrast, needed no change to that shared fold path at
+all: `x-enum-fallback` (paired with JSON Schema's own standard `"enum"`
+keyword, validated at registration time by the new
+`EnumFallbackSchemaValidator`, mutually exclusive with `x-masking` on the
+same property) adds a sibling `{name}Known` Boolean field to
+`FollowSubscriptionTypeModule`'s dynamically-built Subscription payload
+type; a new, self-contained `capabilities(appId, name,
+supportedSchemaVersions)` GraphQL query field (`CapabilitiesQueries`,
+gated by the same `events:follow` scope Follow's own connect-time check
+uses) reports `activeVersion`/`supportedWindow` for the N-1/N+1 window,
+computed as a fixed numeric `[active-1, active, active+1]` band rather
+than filtered against which versions actually have a registered row —
+this design's own registration model has no "registered but not yet
+active" state for a future version to occupy (registering a version
+always immediately activates it), an honest narrowing of
+`compatibility-and-versioning.md`'s own "version 4 not yet active"
+diagram framing, which this repo's actual mechanics can't literally
+produce. Expand/Contract migration discipline needed no new code at
+all — every migration in this repo has already been purely additive
+(`ADR-038`'s own Consequences: "no new mechanism is introduced here that
+this design didn't already have a piece of").
 
 ## MVVM Client
 
