@@ -275,6 +275,8 @@ realm-export file, no admin console:
 | `publisher-client` | `client_credentials` | `events:publish` |
 | `follower-client` | `client_credentials` | `events:follow events:lineage:read` |
 | `operator-client` | `client_credentials` | `registry:admin` |
+| `projections-client` | `client_credentials` | `events:follow` — `ProjectionHost`'s own client (`ADR-015`); never actually landed here until this pass, despite `09-cqrs-read-models.md` saying it would |
+| `expected-response-watcher-client` | `client_credentials` | `events:follow events:publish` — `ExpectedResponseWatcher`'s own client (`ADR-094`) |
 
 ## Salt (UI mockup)
 
