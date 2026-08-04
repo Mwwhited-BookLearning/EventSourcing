@@ -1,6 +1,5 @@
 using System.Security.Claims;
 using System.Text.Json;
-using System.Text.Json.Nodes;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
@@ -48,7 +47,7 @@ public static class FollowEndpoints
                             sequenceNumber = storedEvent.SequenceNumber,
                             occurredAt = storedEvent.OccurredAt,
                             parentEventIds = followedEvent.VisibleParentEventIds, // ADR-008 -- a restricted parent's ID is omitted here
-                            payload = JsonNode.Parse(storedEvent.Payload),
+                            payload = followedEvent.MaskedPayload, // ADR-009 -- any x-masking-annotated field is now a {value:...}/{masked:...} wrapper
                         });
                         await context.Response.WriteAsync($"data: {envelope}\n\n", context.RequestAborted);
                         await context.Response.Body.FlushAsync(context.RequestAborted);

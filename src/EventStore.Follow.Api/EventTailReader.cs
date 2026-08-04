@@ -1,8 +1,10 @@
 using System.Linq.Expressions;
 using System.Runtime.CompilerServices;
 using System.Security.Claims;
+using System.Text.Json.Nodes;
 using EventStore.Domain.EventLog;
 using EventStore.Domain.SchemaRegistry;
+using EventStore.Masking;
 using EventStore.Persistence;
 using EventStore.SchemaRegistry;
 using Microsoft.EntityFrameworkCore;
@@ -12,7 +14,7 @@ namespace EventStore.Follow.Api;
 // One continuous poll loop drives both mode=tail (default) and mode=replay
 // (ADR-010) -- only lastSeen's initial value differs at the call site
 // (docs/06-solution-structure.md, "Follow: tail vs replay cursor").
-public class EventTailReader(EventStoreContext db, SchemaRegistryService schemaRegistry)
+public class EventTailReader(EventStoreContext db, SchemaRegistryService schemaRegistry, IPayloadMasker payloadMasker)
 {
     public async IAsyncEnumerable<FollowedEvent> TailAsync(
         string eventTypeName,
@@ -31,16 +33,43 @@ public class EventTailReader(EventStoreContext db, SchemaRegistryService schemaR
                 .OrderBy(e => e.SequenceNumber)
                 .ToListAsync(ct);
 
+            // One batched lookup per poll, not one per event -- ADR-009's masking
+            // must apply against each event's own SchemaVersion (the shape it was
+            // actually validated against), which can span more than one distinct
+            // version within a single batch after a schema evolution.
+            var schemasByVersion = matching.Count == 0
+                ? new Dictionary<int, EventTypeDefinition>()
+                : await schemaRegistry.GetVersionsByNameAsync(eventTypeName, matching.Select(e => e.SchemaVersion).Distinct().ToList(), ct);
+
             foreach (var storedEvent in matching)
             {
                 var visibleParentIds = await GetVisibleParentEventIdsAsync(storedEvent.EventId, user, ct);
-                yield return new FollowedEvent(storedEvent, visibleParentIds);
+                var maskedPayload = MaskPayload(storedEvent, schemasByVersion, user);
+                yield return new FollowedEvent(storedEvent, visibleParentIds, maskedPayload);
                 lastSeen = storedEvent.SequenceNumber;
             }
 
             if (matching.Count == 0)
                 await Task.Delay(pollInterval, ct);
         }
+    }
+
+    // ADR-009 -- the transform is a pure (schema, data, hasClaim) -> data
+    // function; hasClaim reuses ADR-008's own "type:value" claim-checking
+    // primitive (RequiredClaimEvaluator.HasClaim), deliberately, per that
+    // ADR's own "the two features share one claim-checking primitive" text.
+    // Fails open to the raw, unmasked payload if the event's own SchemaVersion
+    // can't be resolved (shouldn't happen) -- losing the event entirely would
+    // be a worse failure mode than an unmasked field for a version that
+    // somehow no longer resolves.
+    private JsonNode? MaskPayload(StoredEvent storedEvent, IReadOnlyDictionary<int, EventTypeDefinition> schemasByVersion, ClaimsPrincipal user)
+    {
+        var payloadNode = JsonNode.Parse(storedEvent.Payload);
+        if (!schemasByVersion.TryGetValue(storedEvent.SchemaVersion, out var definition))
+            return payloadNode;
+
+        var schemaNode = JsonNode.Parse(definition.JsonSchema)!;
+        return payloadMasker.Mask(schemaNode, payloadNode, claim => RequiredClaimEvaluator.HasClaim(user, claim));
     }
 
     // ADR-008 -- a restricted parent's ID is omitted from the envelope without
@@ -76,4 +105,4 @@ public class EventTailReader(EventStoreContext db, SchemaRegistryService schemaR
     }
 }
 
-public record FollowedEvent(StoredEvent Event, IReadOnlyList<Guid> VisibleParentEventIds);
+public record FollowedEvent(StoredEvent Event, IReadOnlyList<Guid> VisibleParentEventIds, JsonNode? MaskedPayload);

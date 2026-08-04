@@ -3,6 +3,7 @@ using EventStore.Follow.Api;
 using EventStore.Host.Core;
 using EventStore.Inbox;
 using EventStore.Lineage.Api;
+using EventStore.Masking;
 using EventStore.Persistence;
 using EventStore.Persistence.Migrations.SqlServer;
 using EventStore.SchemaRegistry;
@@ -25,6 +26,8 @@ builder.Services.AddInbox();
 builder.Services.AddDerivation();
 builder.Services.AddSpecGeneration();
 builder.Services.AddLineageApi();
+builder.Services.AddMasking(
+    builder.Configuration.GetSection("Masking:HmacKeys").GetChildren().ToDictionary(c => c.Key, c => c.Value!));
 builder.Services.AddFollowApi();
 
 var app = builder.Build();

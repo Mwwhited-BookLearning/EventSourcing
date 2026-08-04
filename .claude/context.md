@@ -170,8 +170,36 @@ stale numbers here are worse than none)*
   `DerivationSqlServerTests`), each running all 10 scenarios (registration
   validation × 4, FireOnce join × 2, ContinuousEnrichment, TTL sweep,
   FromNow backfill, hop-count cap).
-- **Next up**: item 9, "Property-Level Masking (data enforcement)" —
-  depends on Event-Type Security and Follow API + Filter Pushdown.
+- **Item 9, "Property-Level Masking (data enforcement)," is Done** — a new
+  `EventStore.Masking` project: `IPayloadMasker`/`PayloadMasker` (a
+  `(schema, data, hasClaim) -> data` recursive transform), three keyed
+  `IMaskingStrategy` implementations (`FixedValue`/`PartialReveal`/`Hash`,
+  the last a real `Microsoft.Extensions.Compliance.Redaction.HmacRedactor`
+  keyed by `x-masking.keyId`), wired into `EventTailReader.TailAsync`'s
+  per-event pipeline (`FollowedEvent` gained a `MaskedPayload` field).
+  `RequiredClaimEvaluator.HasClaim` promoted to `public` so masking reuses
+  Event-Type Security's exact "type:value" claim primitive, per `ADR-009`'s
+  own explicit instruction to share it. Confirmed empirically (not
+  assumed) that `Microsoft.Extensions.Compliance.Redaction`'s default
+  fallback for any unconfigured classification is `ErasingRedactor` — the
+  log-redaction half (`ADR-050`) leans on this: `PayloadMasker` redacts
+  any `regulatoryClassification`-tagged field through a **second**,
+  deliberately distinct classification taxonomy before logging a
+  diagnostic trace, verified via a capturing `ILoggerProvider` in tests.
+  Only the dynamic log-redaction path was built — the static
+  `[LoggerMessage]`-attribute half has no real call site yet in this
+  codebase; noted as a scoped-down, honestly-flagged simplification, not
+  silently dropped. `EventStore.IntegrationTests` now has 22 passing
+  tests (up from 19) across SQLite/PostgreSQL/SQL Server —
+  `MaskingScenarioAssertions`' 8 scenarios cover the wrapper's
+  value/masked branching, all three strategies, array recursion
+  (scalar-wraps-each-element vs. complex-object-wraps-just-the-property),
+  absent-vs-masked distinction, and the log-redaction verification;
+  registration-time `x-masking` validation and the `oneOf` wrapper's
+  presence in generated docs were already covered by earlier items' own
+  tests, not repeated.
+- **Next up**: item 10, "CQRS Read-Model Projections (worked example)" —
+  depends on Follow API + Filter Pushdown and Auth + Orchestration.
 
 ## How to resume cold
 
@@ -186,7 +214,7 @@ stale numbers here are worse than none)*
    narrative.
 5. `dotnet build EventStore.slnx` and `dotnet test tests/EventStore.IntegrationTests` —
    confirm the build/test baseline the last session left still holds
-   before adding to it (19 tests should pass). Requires Docker running
+   before adding to it (22 tests should pass). Requires Docker running
    (Testcontainers for Postgres/SQL Server) and the SDK pinned in
    `global.json`.
 
@@ -210,10 +238,10 @@ stale numbers here are worse than none)*
   item since (items 2 through 6 all committed -- item 6's own work was
   captured by an external auto-checkpoint commit, `63ff5c7`, not this
   conversation directly, surfaced to the user rather than silently
-  treated as this session's own action; items 7 and 8 both committed —
+  treated as this session's own action; items 7, 8, and 9 all committed —
   "check off work as you go. then continue" is the standing instruction
   currently in effect, so each item is committed without waiting for a
-  fresh prompt; item 9 not yet started as of this snapshot).
+  fresh prompt; item 10 not yet started as of this snapshot).
 - **Always actually run new code against every provider it's built for
   before calling an item done.** Every real bug found this session (the
   `ExecuteSqlRawAsync` brace-parsing issue, an unquoted Postgres column,
