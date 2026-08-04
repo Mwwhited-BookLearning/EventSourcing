@@ -198,6 +198,24 @@ public class SchemaRegistryService(EventStoreContext db, IFilterableFieldIndexDd
             .ToDictionary(g => g.Key, g => (IReadOnlyList<RequiredClaim>)g.First().RequiredClaims);
     }
 
+    // "CQRS Read-Model Projections" -- ProjectionHost needs each followed
+    // event type's ChangeKind (ADR-016) to know Full-replace vs. Partial-merge,
+    // but has no direct service/DB reference at all (docs/06-solution-
+    // structure.md: "its only dependency on the write side is an HTTP client"),
+    // so this must be reachable over HTTP -- see SchemaRegistryEndpoints'
+    // new GET /registry/{eventType}/change-kind. Same bare-name,
+    // tie-break-by-AppId simplification as GetActiveClaimsByNameAsync
+    // (docs/10-open-questions.md row 1).
+    public async Task<ChangeKind?> GetActiveChangeKindByNameAsync(string eventTypeName, CancellationToken ct = default)
+    {
+        var definition = await db.EventTypeDefinitions
+            .AsNoTracking()
+            .Where(e => e.Name == eventTypeName.ToLowerInvariant() && e.IsActive)
+            .OrderBy(e => e.AppId)
+            .FirstOrDefaultAsync(ct);
+        return definition?.ChangeKind;
+    }
+
     // Batch, bare-name-and-version lookup for Follow's per-event masking
     // (docs/10-open-questions.md row 1's same AppId-ambiguity simplification as
     // GetActiveClaimsByNamesAsync above: resolve by (Name, Version) alone,

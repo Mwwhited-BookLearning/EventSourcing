@@ -198,8 +198,43 @@ stale numbers here are worse than none)*
   registration-time `x-masking` validation and the `oneOf` wrapper's
   presence in generated docs were already covered by earlier items' own
   tests, not repeated.
-- **Next up**: item 10, "CQRS Read-Model Projections (worked example)" —
-  depends on Follow API + Filter Pushdown and Auth + Orchestration.
+- **Item 10, "CQRS Read-Model Projections (worked example)," is Done** —
+  three new projects: `EventStore.Projections.Abstractions`
+  (`IProjection<TReadModel>`, no dependencies at all),
+  `EventStore.Projections.Host` (`ProjectionHost<TReadModel>`,
+  `SnapshotMerger`, an abstract `ProjectionsDbContext`, `FollowClient` — a
+  **real** HTTP client issuing the actual `QUERY /follow/{event-type}` verb
+  and parsing its SSE response, plus a real OAuth2 Client Credentials token
+  fetch against `EventStore.DevIdp`; deliberately references none of
+  `EventStore.Persistence`/`Host.Core`/any `Host.<Provider>`, enforced by
+  the project reference graph itself), and `Samples.Orders.Projections`
+  (the actual runnable Worker Service: `OrderSummaryProjection`,
+  `OrderSummary`, `OrdersProjectionsDbContext`). A fourth seeded DevIdp
+  client, `projections-client` (`events:follow`). A real, previously-
+  unanticipated gap found while building: `ChangeKind` isn't carried on
+  Follow's SSE envelope at all (it's a property of the event type's
+  registration), and `ProjectionHost` has no direct DB reference to look
+  it up another way — resolved with a small additive `GET /registry/
+  {eventType}/change-kind` endpoint, gated by `events:follow` rather than
+  the rest of the registry's `registry:admin` (a projections client has no
+  reason to hold that scope). Tests are genuinely different in kind from
+  every prior item's: this is the first item whose only reachable write-
+  side dependency is real HTTP, so `ProjectionsSqliteTests` reuses "Auth +
+  Orchestration"'s own two-`WebApplicationFactory`-TestServer pattern (real
+  tokens, real JwtBearer validation) rather than calling a service
+  directly — and `ProjectionHost<T>.CatchUpOnceAsync(eventType,
+  maxEventsToConsume, idleTimeout, ct)` lets tests drive one bounded
+  catch-up pass deterministically against Follow's inherently-infinite SSE
+  stream, the same "exercise the mechanics directly, with a timeout"
+  pattern this repo's Follow/Masking tests already established. Single-
+  provider only (SQLite) — `docs/09-cqrs-read-models.md`'s own "no
+  per-provider build split here" note, unlike every write-side item's own
+  3-provider matrix. `EventStore.IntegrationTests` now has 23 passing
+  tests (up from 22, +1 `[TestMethod]` covering 7 scenarios).
+- **Next up**: item 11, "Hardening & Evolution (DPoP, event upcasting,
+  hash-chained tamper evidence)" — depends on Auth + Orchestration,
+  Publish API, Follow API + Filter Pushdown, and CQRS Read-Model
+  Projections.
 
 ## How to resume cold
 
@@ -214,7 +249,7 @@ stale numbers here are worse than none)*
    narrative.
 5. `dotnet build EventStore.slnx` and `dotnet test tests/EventStore.IntegrationTests` —
    confirm the build/test baseline the last session left still holds
-   before adding to it (22 tests should pass). Requires Docker running
+   before adding to it (23 tests should pass). Requires Docker running
    (Testcontainers for Postgres/SQL Server) and the SDK pinned in
    `global.json`.
 
@@ -238,10 +273,10 @@ stale numbers here are worse than none)*
   item since (items 2 through 6 all committed -- item 6's own work was
   captured by an external auto-checkpoint commit, `63ff5c7`, not this
   conversation directly, surfaced to the user rather than silently
-  treated as this session's own action; items 7, 8, and 9 all committed —
+  treated as this session's own action; items 7 through 10 all committed —
   "check off work as you go. then continue" is the standing instruction
   currently in effect, so each item is committed without waiting for a
-  fresh prompt; item 10 not yet started as of this snapshot).
+  fresh prompt; item 11 not yet started as of this snapshot).
 - **Always actually run new code against every provider it's built for
   before calling an item done.** Every real bug found this session (the
   `ExecuteSqlRawAsync` brace-parsing issue, an unquoted Postgres column,

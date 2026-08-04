@@ -14,6 +14,7 @@ public static class DevIdpSeeder
         ("publisher-client", "publisher-client-secret", ["events:publish"]),
         ("follower-client", "follower-client-secret", ["events:follow", "events:lineage:read"]),
         ("operator-client", "operator-client-secret", ["registry:admin"]),
+        ("projections-client", "projections-client-secret", ["events:follow"]), // "CQRS Read-Model Projections" -- ProjectionHost is a Follow caller like any other (ADR-015)
     ];
 
     public static async Task SeedAsync(IServiceProvider services)
