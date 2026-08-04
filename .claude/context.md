@@ -56,11 +56,21 @@ stale numbers here are worse than none)*
   `docs/10-open-questions.md` is empty again (row added and resolved
   same session). Full narrative: `docs/changes/2026-08-04.md`.
   `TODO.md`'s Active section is empty as of this session.
-- **Not yet committed** — everything above is staged on
-  `design/service-level-agreement` but no commit has been made yet (an
-  earlier commit attempt was interrupted by the user mid-session, before
-  the ADR-094 direction existed). Confirm with the user before
-  committing/pushing.
+- **`ADR-094` committed and pushed** (three commits on
+  `design/service-level-agreement`, up through `eab72b7`, all pushed to
+  `origin`). Two follow-up audit passes each caught one real, small,
+  pre-existing propagation gap by actually checking files rather than
+  trusting an ADR's own claims (`projections-client`/
+  `expected-response-watcher-client` missing from `auth.md`'s seeded-
+  clients table; `LeaderLease.WorkerRole`'s enum missing
+  `ExpectedResponseWatcher`) — both fixed in place, both pushed.
+- **Workflow D added on direct request, not yet committed**: the
+  clinical-trials domain grew from 4 feature docs/3 workflows to 5/4 —
+  `features/intraoperative-monitoring-and-alert-response.md`, IONM's
+  first real domain-level exercise of `ADR-094`. Propagated into the
+  domain `README.md`, `CLAUDE.md`'s domain-doc bullet, and `ADR-094`'s
+  own Consequences. Full narrative: `docs/changes/2026-08-04.md`.
+  Confirm with the user before committing/pushing this increment.
 - **Standing lessons from the 07-31–08-03 session, still worth carrying
   forward** (condensed — see that range's `docs/changes/*.md` for the
   full incidents): an agent's own "looks right" report on a PlantUML
