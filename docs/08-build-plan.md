@@ -67,7 +67,7 @@ provider they apply to — not "code written."
 | 6 | [Auth (OIDC/OpenIddict) + Orchestration](#auth-oidcopeniddict--orchestration) | Lineage API, Follow API + Filter Pushdown | Done |
 | 7 | [Event-Type Security](#event-type-security) | Auth + Orchestration | Done |
 | 8 | [Derived/Materialized Event Types (deferred)](#derivedmaterialized-event-types-deferred) | Event-Type Security | Done |
-| 9 | [Property-Level Masking](#property-level-masking-data-enforcement) | Event-Type Security, Follow API + Filter Pushdown | Not started |
+| 9 | [Property-Level Masking](#property-level-masking-data-enforcement) | Event-Type Security, Follow API + Filter Pushdown | Done |
 | 10 | [CQRS Read-Model Projections](#cqrs-read-model-projections-worked-example) | Follow API + Filter Pushdown, Auth + Orchestration | Not started |
 | 11 | [Hardening & Evolution](#hardening--evolution-dpop-event-upcasting-hash-chained-tamper-evidence) | Auth + Orchestration, Publish API, Follow API + Filter Pushdown, CQRS Read-Model Projections | Not started |
 | 12 | [Entity-Centric Core Rebuild](#entity-centric-core-rebuild) | Event-Type Security | Not started |
@@ -163,7 +163,7 @@ state "Follow API + Filter Pushdown" as p4 #palegreen
 state "Auth + Orchestration" as p5 #palegreen
 state "Event-Type Security" as p6 #palegreen
 state "Derived Event Types (deferred)" as p7 #palegreen
-state "Property-Level Masking" as p8
+state "Property-Level Masking" as p8 #palegreen
 state "CQRS Projections" as p9
 state "Hardening & Evolution" as p10
 state "Entity-Centric Core Rebuild" as p11
@@ -924,76 +924,85 @@ hop count exceeding `MaxHopCount` skips emission and records a
 
 ## Property-Level Masking (data enforcement)
 
-**Scope**: per `ADR-009` — the **data** half only (`x-masking` structural
-validation → "Schema Registry"; the schema-shape half,
-`MaskingSchemaTransformer` → "Follow API + Filter Pushdown," since
-neither needs claims). `IPayloadMasker`: a pure `(schema, data, hasClaim)
--> data` transform wired into `FollowEndpoint`'s per-event pipeline; the
-per-connection masked-node set computed once at connect time, alongside
-`RequiredReadClaim`; recursive wrapping through arrays (scalar `items`:
-wrap each element; complex-object `items`: wrap only the masked
-properties per element). The wrapper is `oneOf: {value}/{masked}` here —
-`ADR-057`'s third `{erased}` branch is a later revision, not built in
-this item. **Three `IMaskingStrategy` implementations, an explicit
-Strategy-pattern seam**, each a keyed DI registration
-(`AddKeyedSingleton<IMaskingStrategy, ...>("FixedValue"/"PartialReveal"/
-"Hash")`) — `IPayloadMasker` never branches on the strategy name, only
-resolves the matching keyed service per masked leaf: `FixedValue` (a
-configured literal, default `"***"`); `PartialReveal`
-(`{showFirst, showLast, maskChar, preserveSeparators}`, modeled on
-PCI-DSS Requirement 3.3's own plain-language PAN masking); `Hash` (a
-**keyed** HMAC via `Microsoft.Extensions.Compliance.Redaction`'s
-`HmacRedactor` — correlatable across events without being brute-forceable
-the way an unsalted hash would be). Registering any other `strategy`
-value is rejected `400`. `x-masking`'s three optional descriptive fields
-(`regulatoryClassification`, `governanceBody`, `regulationReference`)
-carry no runtime behavior and never appear on the wire.
+**Scope**: per `ADR-009`, now built — the **data** half (`x-masking`
+structural validation was already built by "Schema Registry"; the
+schema-shape half, `MaskingSchemaTransformer`, by "Follow API + Filter
+Pushdown"). A new `EventStore.Masking` project: `IPayloadMasker`/
+`PayloadMasker` — a `(schema, data, hasClaim) -> data` transform, wired
+into `EventTailReader.TailAsync`'s per-event pipeline (masking the
+payload each `FollowedEvent` carries, alongside its already-existing
+`VisibleParentEventIds`), recursive over `properties`/`items` exactly per
+`ADR-009`'s rule (scalar `items`: wrap each element; complex-object
+`items`: wrap only the masked property per element). `hasClaim` reuses
+`ADR-008`'s own `"type:value"` claim-checking primitive
+(`RequiredClaimEvaluator.HasClaim`, promoted to `public` for this reuse)
+rather than a second parser, exactly as `ADR-009` calls for. The wrapper
+is `oneOf: {value}/{masked}` — `ADR-057`'s third `{erased}` branch is a
+later revision, not built here. **Three `IMaskingStrategy`
+implementations, an explicit Strategy-pattern seam**, each a keyed DI
+registration (`EventStore.Masking.AddMasking`, called from every Host's
+`Program.cs`): `FixedValueMaskingStrategy` (a configured literal, default
+`"***"`); `PartialRevealMaskingStrategy` (`{showFirst, showLast,
+maskChar, preserveSeparators}`, modeled on PCI-DSS Requirement 3.3);
+`HashMaskingStrategy` (a **keyed** HMAC via `Microsoft.Extensions.
+Compliance.Redaction`'s real `HmacRedactor`, keyed by `x-masking.keyId`
+against a `"MaskingHmacKey"` classification taxonomy — one registered key
+per `Masking:HmacKeys` configuration entry, supporting rotation by
+registering an old key alongside a new one). `x-masking`'s three
+optional descriptive fields carry no runtime behavior and never appear
+on the wire — verified, not merely asserted.
 
-**Extended by `ADR-050`** (same item, not new): `x-required-claims`/
-`x-masking` guaranteed in generated OpenAPI/AsyncAPI docs;
-`Microsoft.Extensions.Compliance.Redaction` wired into logging via two
-shapes (static `[LoggerMessage]` attributes for typed call sites;
-programmatic `IRedactorProvider.GetRedactor(classification)` for
-schema-driven `Payload`-derived dynamic logging) — exit criterion: a log
-call touching a `clearance:phi`-classified field is verified redacted,
-not just the response path.
+**Extended by `ADR-050`, this pass's own resolution of the log-redaction
+half**: `PayloadMasker` itself, at every masked leaf carrying a
+`regulatoryClassification`, redacts the real value through
+`IRedactorProvider.GetRedactor(...)` against a **second, distinct**
+`"MaskingLogRedaction"` classification taxonomy (deliberately separate
+from `HashMaskingStrategy`'s `"MaskingHmacKey"` taxonomy, so a `keyId`
+string can never collide with an unrelated classification name) before
+logging a diagnostic trace — verified via a capturing `ILoggerProvider`
+in tests, confirming the real value never reaches the captured message.
+**Only the dynamic (`IRedactorProvider.GetRedactor`) half of `ADR-050`'s
+two described shapes is built** — the static `[LoggerMessage]`-attribute
+half has no natural call site yet in this codebase (no existing log call
+site logs a compile-time-typed property that maps to an `x-masking`
+classification); it applies the moment one materializes, same primitive,
+no new mechanism needed. An unconfigured classification (including every
+`"MaskingLogRedaction"` one, since none are ever individually registered)
+falls back to `ErasingRedactor` by default — confirmed empirically, not
+assumed — so a real value can never leak through an unconfigured
+classification either.
 
 **Revised by `ADR-057`**: the `oneOf` wrapper's third `{erased}` branch
 lands in the later "GDPR/CCPA Erasure via Crypto-Shredding" item.
 
-**Note — the `revealField(...)` gap below is now resolved**:
-`ADR-009`'s `revealOnDemand` mechanism names its reveal action as "a
-small, dedicated GraphQL operation (`revealField(...)`, `ADR-037`'s
-transport)" — GraphQL doesn't exist until "GraphQL-Only Query Layer,"
-much later. This item builds `revealOnDemand`'s `displayMask` computation
-only (no GraphQL dependency); the actual `revealField` round-trip is
-homed in "GraphQL-Only Query Layer" below, the first item where GraphQL
-actually exists to carry it.
+**`revealField(...)` still deferred, as originally planned**: `ADR-009`'s
+`revealOnDemand`/`displayMask` mechanism needs GraphQL as its transport
+(`ADR-037`), which doesn't exist until "GraphQL-Only Query Layer" — not
+built in this item; no change from the original scope note.
 
-**Depends on**: Event-Type Security (reuses its claim-checking primitive
-and the connect-time check already happening for `RequiredReadClaim`) and
-Follow API + Filter Pushdown (the shared node-finding helper,
+**Depends on**: Event-Type Security (`RequiredClaimEvaluator.HasClaim`,
+reused directly) and Follow API + Filter Pushdown (`EventTailReader`,
 `MaskingSchemaTransformer`). Independent of Derived/Materialized Event
 Types.
 
-**Exit criteria**: `x-masking` rejected `400` when placed directly on an
-object-typed property; an unsupported strategy value (e.g.
-`"Bucketing"`) rejected `400` at registration, `PartialReveal` and `Hash`
-both succeed (decided, not proposed); a follower without the claim
-receives `{"masked": ...}`, one with the claim receives
-`{"value": <real value>}`, same connection, same type; `PartialReveal`
-reveals only the configured first/last characters, masking the rest, with
-separators preserved when configured; `Hash` masking is correlatable
-(two events sharing the same value produce identical masked HMACs)
-without revealing or being brute-forceable to the real value; a required,
-non-nullable field is still maskable with no null-workaround; a property
-without `x-masking` is never wrapped; a scalar array wraps each element, a
+**Exit criteria** (`MaskingScenarioAssertions` against SQLite/PostgreSQL/
+SQL Server; `x-masking` structural validation and the `oneOf` wrapper's
+own presence in generated docs were already verified by "Schema
+Registry"/"Follow API + Filter Pushdown"'s own tests, not repeated here):
+a follower without the claim receives `{"masked": ...}`, one with the
+claim receives `{"value": <real value>}`; `PartialReveal` reveals only
+the configured first/last characters with separators preserved;
+`HashMaskingStrategy` is correlatable (two events sharing the same real
+value produce identical masked HMACs) without ever containing or
+revealing the real value; a required, non-nullable field (a numeric `0`,
+not `null`) is still maskable with no null-workaround; a property without
+`x-masking` is never wrapped; a scalar array wraps each element, a
 complex-object array wraps only the masked property per element; a
 legitimately-absent field stays absent, not wrapped; masking still
-applies when the type has no `RequiredReadClaim` entry at all; regulatory
-metadata is retrievable from the registry but never appears on the wire;
-a log call touching a `clearance:phi`-classified field is verified
-redacted, not just the response path (`ADR-050`).
+applies when the type has no `RequiredReadClaim` entry at all;
+`regulatoryClassification` is never present in the runtime wrapper; a log
+call touching a `regulatoryClassification`-tagged field is verified
+redacted via a capturing logger, not just the response path (`ADR-050`).
 
 ## CQRS Read-Model Projections (worked example)
 

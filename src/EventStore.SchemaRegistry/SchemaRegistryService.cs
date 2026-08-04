@@ -198,6 +198,27 @@ public class SchemaRegistryService(EventStoreContext db, IFilterableFieldIndexDd
             .ToDictionary(g => g.Key, g => (IReadOnlyList<RequiredClaim>)g.First().RequiredClaims);
     }
 
+    // Batch, bare-name-and-version lookup for Follow's per-event masking
+    // (docs/10-open-questions.md row 1's same AppId-ambiguity simplification as
+    // GetActiveClaimsByNamesAsync above: resolve by (Name, Version) alone,
+    // deterministic-but-arbitrary tie-break ordered by AppId on a genuine
+    // collision). Masking must use each event's own SchemaVersion, not
+    // whichever version is currently active -- a payload's shape always
+    // matches the version it was originally validated against.
+    public async Task<IReadOnlyDictionary<int, EventTypeDefinition>> GetVersionsByNameAsync(
+        string eventTypeName, IReadOnlyCollection<int> versions, CancellationToken ct = default)
+    {
+        var normalizedName = eventTypeName.ToLowerInvariant();
+        var definitions = await db.EventTypeDefinitions
+            .AsNoTracking()
+            .Where(e => e.Name == normalizedName && versions.Contains(e.Version))
+            .OrderBy(e => e.AppId)
+            .ToListAsync(ct);
+        return definitions
+            .GroupBy(e => e.Version)
+            .ToDictionary(g => g.Key, g => g.First());
+    }
+
     // Temporary listing surface for this build stage -- plain HTTP QUERY with
     // $top/$skip (ADR-012), superseded by the GraphQL eventTypes(...) resolver
     // once "GraphQL-Only Query Layer" lands (see the correction note on this

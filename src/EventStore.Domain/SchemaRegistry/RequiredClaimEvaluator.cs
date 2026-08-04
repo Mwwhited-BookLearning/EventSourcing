@@ -14,7 +14,10 @@ public static class RequiredClaimEvaluator
         return forDirection.Count == 0 || forDirection.Any(c => HasClaim(user, c.Claim));
     }
 
-    private static bool HasClaim(ClaimsPrincipal user, string requiredClaim)
+    // Public: ADR-009 deliberately reuses this exact "type:value" primitive at
+    // the property level (x-masking.requiredClaim), not a second parser --
+    // PayloadMasker's caller-supplied hasClaim delegate calls this directly.
+    public static bool HasClaim(ClaimsPrincipal user, string requiredClaim)
     {
         var separatorIndex = requiredClaim.IndexOf(':');
         var type = requiredClaim[..separatorIndex];

@@ -11,6 +11,7 @@
     <Project Path="src/EventStore.Host.SqlServer/EventStore.Host.SqlServer.csproj" />
     <Project Path="src/EventStore.Inbox/EventStore.Inbox.csproj" />
     <Project Path="src/EventStore.Lineage.Api/EventStore.Lineage.Api.csproj" />
+    <Project Path="src/EventStore.Masking/EventStore.Masking.csproj" />
     <Project Path="src/EventStore.Persistence.Migrations.Postgres/EventStore.Persistence.Migrations.Postgres.csproj" />
     <Project Path="src/EventStore.Persistence.Migrations.Sqlite/EventStore.Persistence.Migrations.Sqlite.csproj" />
     <Project Path="src/EventStore.Persistence.Migrations.SqlServer/EventStore.Persistence.Migrations.SqlServer.csproj" />

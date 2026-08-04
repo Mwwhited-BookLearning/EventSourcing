@@ -3,6 +3,7 @@
   <ItemGroup>
     <ProjectReference Include="..\EventStore.Persistence\EventStore.Persistence.csproj" />
     <ProjectReference Include="..\EventStore.SchemaRegistry\EventStore.SchemaRegistry.csproj" />
+    <ProjectReference Include="..\EventStore.Masking\EventStore.Masking.csproj" />
   </ItemGroup>
 
   <ItemGroup>
