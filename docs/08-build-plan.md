@@ -73,7 +73,7 @@ provider they apply to — not "code written."
 | 12 | [Entity-Centric Core Rebuild](#entity-centric-core-rebuild) | Event-Type Security | Done |
 | 13 | [Multi-Tenancy](#multi-tenancy) | Schema Registry, Entity-Centric Core Rebuild | Done |
 | 14 | [Upcast Materialization + Downcast](#upcast-materialization--downcast) | Hardening & Evolution, Entity-Centric Core Rebuild | Done |
-| 15 | [Streaming Channels](#streaming-channels) | Auth + Orchestration, Entity-Centric Core Rebuild, Property-Level Masking | Not started |
+| 15 | [Streaming Channels](#streaming-channels) | Auth + Orchestration, Entity-Centric Core Rebuild, Property-Level Masking | Done |
 | 16 | [Binary Attachments](#binary-attachments) | Auth + Orchestration, Entity-Centric Core Rebuild | Not started |
 | 17 | [Sharding & Replication](#sharding--replication) | Entity-Centric Core Rebuild | Not started |
 | 18 | [Non-Authoritative Capture](#non-authoritative-capture) | Entity-Centric Core Rebuild, Auth + Orchestration, Binary Attachments | Not started |
@@ -169,7 +169,7 @@ state "Hardening & Evolution" as p10 #palegreen
 state "Entity-Centric Core Rebuild" as p11 #palegreen
 state "Multi-Tenancy" as p12 #palegreen
 state "Upcast Materialization + Downcast" as p13 #palegreen
-state "Streaming Channels" as p14
+state "Streaming Channels" as p14 #palegreen
 state "Binary Attachments" as p15
 state "Sharding & Replication" as p16
 state "Non-Authoritative Capture" as p17
@@ -1286,6 +1286,14 @@ where configured) plus the sideband existence flag, never the raw value
 and never a response indistinguishable from "no redaction happened here";
 a session with multiple `ThreadId`-grouped channels renders as one
 grouped view, not N unrelated ones.
+
+**Built-scope note**: of `ADR-031`'s four named `TransformKind` options,
+only `Resample` is actually implemented by `ChannelDerivationWorker` at
+this build stage (a simple decimation — keep the last sample per target-
+rate bucket, not a real anti-aliasing filter). `Filter`/`Aggregate`/
+`Transcode` are accepted as declared values but the worker takes no
+action for them — an honestly-flagged gap (none of this item's own exit
+criteria name them), not a silent no-op passed off as done.
 
 ## Binary Attachments
 

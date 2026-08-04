@@ -24,6 +24,14 @@ public class TelemetryChannel
     public List<string>? SourceChannelIds { get; set; }    // Derived channels only
     public string? TransformKind { get; set; }             // Resample | Filter | Aggregate | Transcode -- Derived channels only
     public string? RequiredReadClaim { get; set; }         // reuses ADR-008's "type:value" format, applied to a channel instead of an event type. Deliberately NOT generalized to EventTypeDefinition.RequiredClaims's list/Direction shape (ADR-050): a channel is read-only ingest (ADR-031, never gated by a Publish-direction claim), so there is no second direction to distinguish, and nothing has asked for OR-multiple-claims on one channel yet. Revisit as its own ADR if that need ever shows up -- not silently widened here.
+
+    // Ingestion's own mutable state, added at build time -- not part of the
+    // channel's own declared/registered shape above, the same distinction
+    // EntityStoreRow draws between its declared identity and its own
+    // LastAppliedLogicalTime (ADR-021/029).
+    public DateTimeOffset LastAppliedLogicalTime { get; set; } // ADR-029's high-water-mark mechanism, reused per-channel (ADR-031) for out-of-order/late-arrival detection
+    public DateTimeOffset? LastBatchReceivedAt { get; set; }    // wall-clock receive time of the last accepted batch -- ADR-031's slow-upload/producer-lag detection compares THIS gap (receive time), not sample Timestamp, against ExpectedInterArrivalInterval
+    public DateTimeOffset? LastSampleTimestampReceived { get; set; } // the last batch's own last sample Timestamp -- carried on a ChannelLagDetected event's TelemetryPointer as "the last sample actually received before the gap"
 }
 
 public enum ContentKind { RawScalar, RawBinary, Media }
