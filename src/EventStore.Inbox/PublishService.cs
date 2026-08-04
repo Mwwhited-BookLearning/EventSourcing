@@ -1,4 +1,5 @@
 using System.Security.Claims;
+using System.Text.Json;
 using EventStore.Domain.EventLog;
 using EventStore.Domain.SchemaRegistry;
 using EventStore.Persistence;
@@ -84,6 +85,11 @@ public class PublishService(
             OccurredAt = DateTimeOffset.UtcNow,
             ActorId = "unauthenticated", // "Auth + Orchestration" doesn't populate this from the token yet
             DerivationHopCount = derivationHopCount, // 0 for every ordinary publish; only DerivationWorker ever supplies non-zero (ADR-007, deferred)
+            // ADR-031/081 -- a detector's TelemetryPointer, JSON-serialized onto the
+            // same plain-text envelope column every other structured metadata field uses.
+            TelemetryPointer = request.TelemetryPointer is { Count: > 0 } pointer
+                ? JsonSerializer.Serialize(pointer, (JsonSerializerOptions?)null)
+                : null,
         };
 
         try

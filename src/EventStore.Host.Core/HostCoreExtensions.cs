@@ -40,7 +40,9 @@ public static class HostCoreExtensions
             .AddPolicy("events:publish", p => p.Requirements.Add(new ScopeRequirement("events:publish")))
             .AddPolicy("events:follow", p => p.Requirements.Add(new ScopeRequirement("events:follow")))
             .AddPolicy("events:lineage:read", p => p.Requirements.Add(new ScopeRequirement("events:lineage:read")))
-            .AddPolicy("registry:admin", p => p.Requirements.Add(new ScopeRequirement("registry:admin")));
+            .AddPolicy("registry:admin", p => p.Requirements.Add(new ScopeRequirement("registry:admin")))
+            .AddPolicy("telemetry:ingest", p => p.Requirements.Add(new ScopeRequirement("telemetry:ingest")))
+            .AddPolicy("telemetry:read", p => p.Requirements.Add(new ScopeRequirement("telemetry:read")));
 
         // ADR-014: deny by default -- an empty/missing Cors:AllowedOrigins means
         // no cross-origin browser call ever succeeds (server-to-server traffic,

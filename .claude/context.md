@@ -329,9 +329,69 @@ stale numbers here are worse than none)*
   `EventStore.IntegrationTests` now has 33 `[TestMethod]`s (up from 26) —
   all pass across SQLite/PostgreSQL/SQL Server, twice in a row for
   stability.
-- **Next up**: item 15, "Streaming Channels" (`ADR-031`/`052`) — depends
-  on Auth + Orchestration, Entity-Centric Core Rebuild, and Property-Level
-  Masking, all Done.
+- **Item 15, "Streaming Channels," is Done — same day, continuing directly
+  from item 14.** A genuinely large item: new `EventStore.Domain/Streaming/`
+  (`TelemetryChannel`/`TelemetrySample`/`RedactedRange`/`TelemetryPointerEntry`,
+  shape straight from `docs/data/streaming-and-attachments.md`) and a new
+  `EventStore.Streaming` project — `ChannelRegistryService`,
+  `TelemetrySampleWriter` (batch ingest, `ADR-029`'s high-water-mark reused
+  per-channel for `LateArrivalFlag`, `ChannelLagDetected` published through
+  the ordinary `PublishService` path on producer lag), `TelemetryTailReader`
+  (`ADR-010`'s tail/replay shape reused for `TelemetrySample`, plus `ADR-081`'s
+  `ThreadId`-grouped multi-channel session view), `ChannelDerivationWorker`
+  (Resample-only at this stage — decimation, not a real anti-aliasing
+  filter; `Filter`/`Aggregate`/`Transcode` accepted but not acted on,
+  flagged in the build-plan section, not silently dropped), a sibling
+  `IStreamRedactionStrategy` seam (`ZeroFillStrategy`/`ToneStrategy`/
+  `BlankFrameStrategy`, plus `PartialRevealStreamRedactionStrategy`
+  genuinely reusing `PartialRevealMaskingStrategy`'s reveal computation via
+  a UTF-8 round trip), and `MediaFragmentUri`/`MediaFragmentResolver` (W3C
+  Media Fragments URI temporal syntax, `#t=b,e`). `StreamingEndpoints`
+  dual-modes one GET route by `Range` header presence: with it,
+  `Results.Bytes(enableRangeProcessing: true)` serves real `206 Partial
+  Content` byte-range playback; without it, the live JSON/SSE tail/replay
+  stream. `PublishEventRequest`/`StoredEvent.TelemetryPointer` wired end to
+  end (the column already existed, unused, since "Scaffolding &
+  Persistence"). New `telemetry:ingest`/`telemetry:read` scopes + a seeded
+  `telemetry-client` in DevIdp.
+  **Two real SQLite-only bugs found by actually running the tests**: (1)
+  SQLite's EF provider cannot translate a `DateTimeOffset` relational
+  comparison (`>`/`<`), `MIN`/`MAX` aggregate, or `ORDER BY` — the exact
+  same class of gap already found once before for `PendingJoinState`'s TTL
+  sweep, this time hitting `TelemetryTailReader`'s cursor queries,
+  `MediaFragmentResolver`'s earliest-sample lookup, and the Range-request
+  handler's byte-concatenation ordering — fixed by filtering on the
+  translatable column only, then ordering/comparing/aggregating
+  client-side in every case; (2) a real DI wiring bug (unrelated to
+  SQLite specifically, just first surfaced by the one test that uses the
+  real Host composition root instead of a hand-built container):
+  `EventStore.Masking.AddMasking()` registers `PartialRevealMaskingStrategy`
+  **keyed** ("PartialReveal"), not plain — `PartialRevealStreamRedactionStrategy`
+  originally depended on it unkeyed and failed to resolve; fixed by
+  constructing it directly instead (it's stateless, no DI needed at all).
+  **One real test-design bug, not a production bug**: two scenario methods
+  shared one literal `"streaming-app"` AppId and each made 2 sequential
+  ingest calls on a 4000-microsecond-interval channel — fine on SQLite's
+  fast in-process round trips, but on a real Postgres/SQL Server container
+  the real wall-clock gap between two awaited calls routinely exceeds the
+  3x-interval lag threshold, so BOTH methods' incidental `ChannelLagDetected`
+  events collided under one shared AppId (`SingleOrDefaultAsync` threw
+  "more than one element") — fixed by giving every scenario its own unique
+  AppId, the convention every other `*ScenarioAssertions.cs` file already
+  follows and this one should have from the start.
+  `EventStore.IntegrationTests` now has 37 `[TestMethod]`s (up from 33) —
+  all pass across SQLite/PostgreSQL/SQL Server (`StreamingSqliteTests`/
+  `Postgres`/`SqlServer`, 11 scenarios each) plus one dedicated real-HTTP
+  `StreamingHttpSqliteTests` for the Range-request/206 behavior
+  specifically (only observable through the actual ASP.NET Core pipeline),
+  run twice in a row for stability.
+- **Next up**: item 16, "Binary Attachments" (`ADR-032`) — depends on
+  Auth + Orchestration and Entity-Centric Core Rebuild, both Done. Its own
+  build-plan section already flags a real forward dependency: its
+  "GraphQL browsing of an entity's linked attachments" exit criterion
+  can't actually be exercised until "GraphQL-Only Query Layer" lands much
+  later — build the upload/content-hash-retrieval half now, re-verify the
+  GraphQL-browse half then.
 
 ## How to resume cold
 
@@ -346,7 +406,7 @@ stale numbers here are worse than none)*
    narrative.
 5. `dotnet build EventStore.slnx` and `dotnet test tests/EventStore.IntegrationTests` —
    confirm the build/test baseline the last session left still holds
-   before adding to it (33 tests should pass). Requires Docker running
+   before adding to it (37 tests should pass). Requires Docker running
    (Testcontainers for Postgres/SQL Server) and the SDK pinned in
    `global.json`.
 
@@ -373,7 +433,7 @@ stale numbers here are worse than none)*
   treated as this session's own action; items 7 through 10 all committed —
   "check off work as you go. then continue" is the standing instruction
   currently in effect, so each item is committed without waiting for a
-  fresh prompt; items 11 through 14 now done too, per the same rhythm).
+  fresh prompt; items 11 through 15 now done too, per the same rhythm).
 - **Always actually run new code against every provider it's built for
   before calling an item done.** Every real bug found this session (the
   `ExecuteSqlRawAsync` brace-parsing issue, an unquoted Postgres column,

@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <ProjectReference Include="..\EventStore.Persistence\EventStore.Persistence.csproj" />
+    <ProjectReference Include="..\EventStore.SchemaRegistry\EventStore.SchemaRegistry.csproj" />
+    <ProjectReference Include="..\EventStore.Masking\EventStore.Masking.csproj" />
+    <ProjectReference Include="..\EventStore.Inbox\EventStore.Inbox.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+</Project>

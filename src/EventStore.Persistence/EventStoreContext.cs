@@ -1,6 +1,7 @@
 using EventStore.Domain.EntityStore;
 using EventStore.Domain.EventLog;
 using EventStore.Domain.SchemaRegistry;
+using EventStore.Domain.Streaming;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Query.SqlExpressions;
@@ -26,6 +27,9 @@ public class EventStoreContext(DbContextOptions<EventStoreContext> options, IJso
     public DbSet<DerivationCursor> DerivationCursors => Set<DerivationCursor>();
     public DbSet<PendingJoinState> PendingJoinStates => Set<PendingJoinState>();
     public DbSet<EntityStoreRow> EntityStore => Set<EntityStoreRow>();
+    public DbSet<TelemetryChannel> TelemetryChannels => Set<TelemetryChannel>();
+    public DbSet<TelemetrySample> TelemetrySamples => Set<TelemetrySample>();
+    public DbSet<RedactedRange> RedactedRanges => Set<RedactedRange>();
 
     protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder) =>
         optionsBuilder.ReplaceService<IModelCacheKeyFactory, ProviderAwareModelCacheKeyFactory>();
@@ -121,6 +125,28 @@ public class EventStoreContext(DbContextOptions<EventStoreContext> options, IJso
         {
             e.HasKey(x => x.EntityId);
             e.HasIndex(x => x.EntityType); // the whole-store, per-entity-type rebuild replay (ADR-021)
+        });
+
+        modelBuilder.Entity<TelemetryChannel>(e =>
+        {
+            e.HasKey(x => x.ChannelId);
+            e.HasIndex(x => x.ThreadId); // ADR-081 -- the ThreadId-scoped grouped session read
+
+            e.Property(x => x.SourceChannelIds)
+                .HasConversion(JsonValueConverter.ForNullable<List<string>>())
+                .Metadata.SetValueComparer(JsonValueConverter.ListComparer<List<string>>());
+        });
+
+        modelBuilder.Entity<TelemetrySample>(e =>
+        {
+            e.HasKey(x => new { x.ChannelId, x.Timestamp });
+
+            e.Property(x => x.Value).IsRequired();
+        });
+
+        modelBuilder.Entity<RedactedRange>(e =>
+        {
+            e.HasKey(x => new { x.ChannelId, x.FromTimestamp });
         });
     }
 

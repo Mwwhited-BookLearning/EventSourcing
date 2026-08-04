@@ -400,6 +400,121 @@ namespace EventStore.Persistence.Migrations.Sqlite.Migrations
                     b.ToTable("PendingJoinStates");
                 });
 
+            modelBuilder.Entity("EventStore.Domain.Streaming.RedactedRange", b =>
+                {
+                    b.Property<string>("ChannelId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTimeOffset>("FromTimestamp")
+                        .HasColumnType("TEXT");
+
+                    b.Property<char?>("MaskChar")
+                        .HasColumnType("TEXT");
+
+                    b.Property<bool>("PreserveSeparators")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("RequiredClaim")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<int?>("ShowFirst")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int?>("ShowLast")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Strategy")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTimeOffset>("ToTimestamp")
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("ChannelId", "FromTimestamp");
+
+                    b.ToTable("RedactedRanges");
+                });
+
+            modelBuilder.Entity("EventStore.Domain.Streaming.TelemetryChannel", b =>
+                {
+                    b.Property<string>("ChannelId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("AppId")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("ContentKind")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("EntityId")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTimeOffset>("LastAppliedLogicalTime")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTimeOffset?>("LastBatchReceivedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTimeOffset?>("LastSampleTimestampReceived")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("MimeType")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("Origin")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("RequiredReadClaim")
+                        .HasColumnType("TEXT");
+
+                    b.Property<long?>("SampleIntervalMicros")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int?>("SampleType")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("SourceChannelIds")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ThreadId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("TransformKind")
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("ChannelId");
+
+                    b.HasIndex("ThreadId");
+
+                    b.ToTable("TelemetryChannels");
+                });
+
+            modelBuilder.Entity("EventStore.Domain.Streaming.TelemetrySample", b =>
+                {
+                    b.Property<string>("ChannelId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTimeOffset>("Timestamp")
+                        .HasColumnType("TEXT");
+
+                    b.Property<bool>("LateArrivalFlag")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<long?>("MonotonicElapsedMicros")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<byte[]>("Value")
+                        .IsRequired()
+                        .HasColumnType("BLOB");
+
+                    b.HasKey("ChannelId", "Timestamp");
+
+                    b.ToTable("TelemetrySamples");
+                });
+
             modelBuilder.Entity("EventStore.Domain.SchemaRegistry.FilterableField", b =>
                 {
                     b.HasOne("EventStore.Domain.SchemaRegistry.EventTypeDefinition", null)

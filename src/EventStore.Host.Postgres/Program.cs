@@ -9,6 +9,7 @@ using EventStore.Persistence.Migrations.Postgres;
 using EventStore.Router;
 using EventStore.SchemaRegistry;
 using EventStore.SpecGeneration;
+using EventStore.Streaming;
 using EventStore.Upcasting;
 using Microsoft.EntityFrameworkCore;
 
@@ -33,6 +34,7 @@ builder.Services.AddLineageApi();
 builder.Services.AddMasking(
     builder.Configuration.GetSection("Masking:HmacKeys").GetChildren().ToDictionary(c => c.Key, c => c.Value!));
 builder.Services.AddFollowApi();
+builder.Services.AddStreaming();
 
 var app = builder.Build();
 
@@ -52,6 +54,7 @@ app.MapDerivationEndpoints();
 app.MapSpecGenerationEndpoints();
 app.MapLineageEndpoints();
 app.MapFollowEndpoints();
+app.MapStreamingEndpoints();
 app.Run();
 
 public partial class Program;

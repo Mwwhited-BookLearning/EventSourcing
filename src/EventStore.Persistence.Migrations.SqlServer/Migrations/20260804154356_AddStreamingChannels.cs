@@ -1,0 +1,92 @@
+﻿using System;
+using Microsoft.EntityFrameworkCore.Migrations;
+
+#nullable disable
+
+namespace EventStore.Persistence.Migrations.SqlServer.Migrations
+{
+    /// <inheritdoc />
+    public partial class AddStreamingChannels : Migration
+    {
+        /// <inheritdoc />
+        protected override void Up(MigrationBuilder migrationBuilder)
+        {
+            migrationBuilder.CreateTable(
+                name: "RedactedRanges",
+                columns: table => new
+                {
+                    ChannelId = table.Column<string>(type: "nvarchar(450)", nullable: false),
+                    FromTimestamp = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: false),
+                    ToTimestamp = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: false),
+                    RequiredClaim = table.Column<string>(type: "nvarchar(max)", nullable: false),
+                    Strategy = table.Column<string>(type: "nvarchar(max)", nullable: false),
+                    ShowFirst = table.Column<int>(type: "int", nullable: true),
+                    ShowLast = table.Column<int>(type: "int", nullable: true),
+                    MaskChar = table.Column<string>(type: "nvarchar(1)", nullable: true),
+                    PreserveSeparators = table.Column<bool>(type: "bit", nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_RedactedRanges", x => new { x.ChannelId, x.FromTimestamp });
+                });
+
+            migrationBuilder.CreateTable(
+                name: "TelemetryChannels",
+                columns: table => new
+                {
+                    ChannelId = table.Column<string>(type: "nvarchar(450)", nullable: false),
+                    AppId = table.Column<string>(type: "nvarchar(max)", nullable: false),
+                    EntityId = table.Column<string>(type: "nvarchar(max)", nullable: false),
+                    ContentKind = table.Column<int>(type: "int", nullable: false),
+                    SampleType = table.Column<int>(type: "int", nullable: true),
+                    MimeType = table.Column<string>(type: "nvarchar(max)", nullable: true),
+                    SampleIntervalMicros = table.Column<long>(type: "bigint", nullable: true),
+                    Origin = table.Column<int>(type: "int", nullable: false),
+                    ThreadId = table.Column<string>(type: "nvarchar(450)", nullable: true),
+                    SourceChannelIds = table.Column<string>(type: "nvarchar(max)", nullable: true),
+                    TransformKind = table.Column<string>(type: "nvarchar(max)", nullable: true),
+                    RequiredReadClaim = table.Column<string>(type: "nvarchar(max)", nullable: true),
+                    LastAppliedLogicalTime = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: false),
+                    LastBatchReceivedAt = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: true),
+                    LastSampleTimestampReceived = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: true)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_TelemetryChannels", x => x.ChannelId);
+                });
+
+            migrationBuilder.CreateTable(
+                name: "TelemetrySamples",
+                columns: table => new
+                {
+                    ChannelId = table.Column<string>(type: "nvarchar(450)", nullable: false),
+                    Timestamp = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: false),
+                    MonotonicElapsedMicros = table.Column<long>(type: "bigint", nullable: true),
+                    Value = table.Column<byte[]>(type: "varbinary(max)", nullable: false),
+                    LateArrivalFlag = table.Column<bool>(type: "bit", nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_TelemetrySamples", x => new { x.ChannelId, x.Timestamp });
+                });
+
+            migrationBuilder.CreateIndex(
+                name: "IX_TelemetryChannels_ThreadId",
+                table: "TelemetryChannels",
+                column: "ThreadId");
+        }
+
+        /// <inheritdoc />
+        protected override void Down(MigrationBuilder migrationBuilder)
+        {
+            migrationBuilder.DropTable(
+                name: "RedactedRanges");
+
+            migrationBuilder.DropTable(
+                name: "TelemetryChannels");
+
+            migrationBuilder.DropTable(
+                name: "TelemetrySamples");
+        }
+    }
+}
