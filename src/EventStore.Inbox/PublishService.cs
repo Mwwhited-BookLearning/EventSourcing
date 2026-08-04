@@ -1,5 +1,6 @@
 using System.Security.Claims;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using EventStore.Domain.EventLog;
 using EventStore.Domain.SchemaRegistry;
 using EventStore.Domain.Streaming;
@@ -76,6 +77,21 @@ public class PublishService(
         var payloadHash = ComputeHash(normalizedName, request.Payload, parentEventIds);
         var eventId = request.EventId ?? Guid.NewGuid();
 
+        // ADR-042 -- AuthorityStatus defaults to "accepted" for an ordinary,
+        // already-authenticated publish (ADR-006 already verified identity/
+        // permission synchronously, nothing left to review). It only starts
+        // lower when the publish itself declares a reason not to trust it
+        // yet: self-attested credentials (ADR-036, "unattested" -- an
+        // identity claim, not yet reviewed at all) or an explicit review-
+        // pending marker a detector uses to flag its own unconfirmed output
+        // ("pending_review" -- a content/confidence case, not an identity
+        // one). The two triggers are deliberately distinguishable in the
+        // starting state, even though both feed the same lifecycle onward.
+        var authorityStatus =
+            request.AttestedActorId is not null || request.AttestedClaims is not null ? "unattested" :
+            request.ReviewPending ? "pending_review" :
+            "accepted";
+
         var storedEvent = new StoredEvent
         {
             EventId = eventId,
@@ -95,6 +111,9 @@ public class PublishService(
             LateArrivalFlag = false, // set by the Router's fold step (ADR-029), never at publish time
             OccurredAt = DateTimeOffset.UtcNow,
             ActorId = "unauthenticated", // "Auth + Orchestration" doesn't populate this from the token yet
+            AttestedActorId = request.AttestedActorId, // ADR-035 -- a CLAIM, never conflated with ActorId above
+            AttestedClaims = request.AttestedClaims?.ToJsonString(),
+            AuthorityStatus = authorityStatus,
             DerivationHopCount = derivationHopCount, // 0 for every ordinary publish; only DerivationWorker ever supplies non-zero (ADR-007, deferred)
             // ADR-031/081 -- a detector's TelemetryPointer, JSON-serialized onto the
             // same plain-text envelope column every other structured metadata field uses.

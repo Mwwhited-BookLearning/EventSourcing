@@ -18,7 +18,8 @@ public record RegisterEventTypeRequest(
     List<RequiredClaimRequest>? RequiredClaims,
     string? UpcastFromPrevious,
     string? DowncastToPrevious,
-    string? EntityType = null);
+    string? EntityType = null,
+    string? RejectionBehavior = null); // Annotate | Compensate -- ADR-035, "Non-Authoritative Capture"; null keeps EventTypeDefinition's own Annotate default
 
 public record FilterableFieldRequest(string JsonPath, string DataType, bool IsIndexed);
 

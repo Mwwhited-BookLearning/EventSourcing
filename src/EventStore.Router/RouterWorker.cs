@@ -147,7 +147,17 @@ public class RouterWorker(IServiceScopeFactory scopeFactory, ILogger<RouterWorke
             {
                 var entityId = $"{storedEvent.AppId}:{activeDefinition.EntityType}:{uniqueId}";
                 storedEvent.EntityId = entityId;
-                await FoldAsync(db, entityId, storedEvent, activeDefinition.EntityType, changeKind, known, unknownProperties, ct);
+
+                // ADR-042 -- the Live View folds every event immediately, no
+                // AuthorityStatus gate; the authoritative Entity Store only
+                // folds once AuthorityStatus reaches "accepted" (the ordinary-
+                // publish default -- see PublishService). An unattested/
+                // pending_review event is fully persisted and queryable in the
+                // Event Log and the Live View, but doesn't yet update the
+                // authoritative store.
+                await FoldLiveAsync(db, entityId, storedEvent, activeDefinition.EntityType, changeKind, known, unknownProperties, ct);
+                if (storedEvent.AuthorityStatus == "accepted")
+                    await FoldAsync(db, entityId, storedEvent, activeDefinition.EntityType, changeKind, known, unknownProperties, ct);
             }
 
             // ADR-027 Trigger 1 -- a lagging publish that's already conformant
@@ -160,7 +170,47 @@ public class RouterWorker(IServiceScopeFactory scopeFactory, ILogger<RouterWorke
                 await UpcastMaterializer.TryMaterializeAsync(db, schemaRegistry, upcastChain, storedEvent, activeDefinition, ct);
         }
 
+        // "Non-Authoritative Capture" -- authorityDecision is an ordinary,
+        // explicitly-registered event type (not a reserved platform type like
+        // EventUpcastFailed), folding into its own entity above like any
+        // other event; this is the ADDITIONAL side effect a dedicated
+        // reactor performs against its TARGET event, the same "special-
+        // purpose reactor" shape ADR-020/027's own handling already use.
+        if (storedEvent.EventType == "authoritydecision")
+            await AuthorityDecisionResolver.ProcessAsync(db, schemaRegistry, storedEvent, ct);
+
         storedEvent.Status = "applied";
+    }
+
+    // "Non-Authoritative Capture" -- the ungated counterpart to FoldAsync
+    // below, folding into LiveEntityStoreRow instead of EntityStoreRow.
+    // Deliberately simpler: no ExpectedVersion/ConflictFlag check (ADR-024's
+    // Version semantics apply to the authoritative store only, per ADR-042's
+    // own Consequences) and no late-arrival ordering guard (LiveEntityStoreRow
+    // has no LastAppliedLogicalTime of its own -- this is the "best current
+    // guess, folded in arrival order" view; late-arrival correctness is
+    // specifically the authoritative view's concern, ADR-029).
+    internal static async Task FoldLiveAsync(
+        EventStoreContext db, string entityId, StoredEvent storedEvent, string entityType, ChangeKind changeKind,
+        JsonObject known, JsonObject unknownProperties, CancellationToken ct)
+    {
+        var row = await db.LiveEntityStore.SingleOrDefaultAsync(r => r.EntityId == entityId, ct);
+        if (row is null)
+        {
+            row = new Domain.EntityStore.LiveEntityStoreRow { EntityId = entityId, EntityType = entityType, Data = "{}", Extensions = "{}" };
+            db.LiveEntityStore.Add(row);
+        }
+
+        var mergedData = changeKind == ChangeKind.Full
+            ? (JsonObject)known.DeepClone()
+            : EntityDataMerger.MergePatch(JsonNode.Parse(row.Data), known);
+        var mergedExtensions = EntityDataMerger.MergePatch(JsonNode.Parse(row.Extensions), unknownProperties);
+
+        row.Data = mergedData.ToJsonString();
+        row.Extensions = mergedExtensions.ToJsonString();
+        row.AuthorityStatus = storedEvent.AuthorityStatus; // the MOST RECENT contributing event's status -- never rolled up/hidden (ADR-042)
+        row.LastAppliedSequenceNumber = storedEvent.SequenceNumber;
+        row.UpdatedAt = DateTimeOffset.UtcNow;
     }
 
     // Splits a payload's own top-level properties into (a) declared in the
@@ -169,7 +219,7 @@ public class RouterWorker(IServiceScopeFactory scopeFactory, ILogger<RouterWorke
     // declared but fails its own validation (e.g. Amount: "not-a-number"
     // against a number schema) is neither: ADR-023 folds known-good data,
     // never a value that's individually invalid for its own known slot.
-    private static (JsonObject Known, JsonObject Unknown) SplitByConformance(JsonNode? schemaNode, JsonObject payload)
+    internal static (JsonObject Known, JsonObject Unknown) SplitByConformance(JsonNode? schemaNode, JsonObject payload)
     {
         var known = new JsonObject();
         var unknown = new JsonObject();
@@ -191,7 +241,7 @@ public class RouterWorker(IServiceScopeFactory scopeFactory, ILogger<RouterWorke
         return (known, unknown);
     }
 
-    private static async Task FoldAsync(
+    internal static async Task FoldAsync(
         EventStoreContext db, string entityId, StoredEvent storedEvent, string entityType, ChangeKind changeKind,
         JsonObject known, JsonObject unknownProperties, CancellationToken ct)
     {

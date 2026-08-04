@@ -21,7 +21,18 @@ public record ReplicatedEventPayload(
     string OriginId,
     string LogicalClock,
     long? ExpectedVersion,
-    List<Guid>? ParentEventIds);
+    List<Guid>? ParentEventIds,
+    // ADR-035/042 -- a faithful replicated copy must preserve the
+    // ORIGINATING site's own trust axis verbatim (e.g. an "unattested"
+    // reading stays unattested at the receiving site too), never silently
+    // reset to StoredEvent's own "accepted" default the way an omitted
+    // field would. Found and fixed while building "Non-Authoritative
+    // Capture" -- absent from this record when "Sharding & Replication"
+    // first shipped it, since no event carried a non-default AuthorityStatus
+    // at that point.
+    string AuthorityStatus,
+    string? AttestedActorId,
+    string? AttestedClaims);
 
 public record PeerSyncPushRequest(string FromPeerId, List<ReplicatedEventPayload> Events, List<KnownPeer> KnownPeers);
 

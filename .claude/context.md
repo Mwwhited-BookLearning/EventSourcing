@@ -492,11 +492,89 @@ stale numbers here are worse than none)*
   Testcontainers `ClassInit` under resource contention from running
   several `MsSqlContainer`s in one process, never the same class twice,
   always passing standalone. Not caused by this item's changes.
-- **Next up**: item 18, "Non-Authoritative Capture" (`ADR-035`/`036`/`042`)
-  — depends on Entity-Centric Core Rebuild, Auth + Orchestration, and
-  Binary Attachments (all Done): `AuthorityStatus`/`authorityDecision`
-  events, DID/UCAN self-attestation + OAuth Token Exchange (RFC 8693), the
-  gated authoritative fold + `LiveEntityStoreRow`.
+- **Item 18, "Non-Authoritative Capture," is Done — same day, continuing
+  directly from item 17.** New `LiveEntityStoreRow`
+  (`EventStore.Domain/EntityStore`, shape straight from
+  `docs/data/entity-store.md`) folded by a new `RouterWorker.FoldLiveAsync`
+  — the ungated counterpart to the existing `FoldAsync`, called
+  unconditionally for every event (no `AuthorityStatus` gate, no late-
+  arrival ordering guard of its own — that's specifically the
+  authoritative view's concern, `ADR-024`/`029`). `RouterWorker.
+  ProcessEventAsync` now only calls the existing `FoldAsync` (the
+  authoritative Entity Store) when `storedEvent.AuthorityStatus ==
+  "accepted"` — an `unattested`/`pending_review` event still reaches the
+  Live View immediately but the authoritative store gets no row at all
+  until acceptance (`ADR-042`'s gate, narrower than `ADR-035`'s original
+  "folds identically" framing). `PublishService`/`PublishEventRequest`
+  gained `AttestedActorId`/`AttestedClaims`/`ReviewPending` and compute
+  `AuthorityStatus` at publish time per `ADR-042`'s two triggers
+  (self-attested claims → `unattested`; an explicit review-pending marker
+  → `pending_review`; otherwise the ordinary-publish default,
+  `"accepted"`). New `EventStore.Router/AuthorityDecisionResolver.cs` — a
+  "special-purpose reactor" (the same shape `ADR-020`'s
+  `EventUpcastFailed` handling and `ADR-027`'s materialization already
+  use) invoked whenever `RouterWorker` processes an `authorityDecision`
+  event (itself just an ordinary, explicitly-registered event type, not a
+  reserved platform one): annotates the target's `AuthorityStatus`/
+  `AuthorityDecisionRef`, catches the authoritative Entity Store up on
+  acceptance (`RouterWorker.FoldAsync`, reused, the same "apply once, on
+  the triggering condition" shape `ADR-027`'s catch-up already
+  established), and — only for the narrow residual case `ADR-042`
+  actually leaves to `RejectionBehavior.Compensate` (already accepted and
+  folded, now reversed) — appends a new compensating-patch `StoredEvent`
+  whose payload explicitly nulls exactly the properties the rejected
+  event itself contributed, folded as `ChangeKind.Partial` regardless of
+  the original type's own `ChangeKind` (`EntityDataMerger`'s existing
+  "an explicit JSON null clears a key" rule, reused exactly as designed
+  for this). `RegisterEventTypeRequest`/`SchemaRegistryService.
+  RegisterAsync` gained `RejectionBehavior` parsing (the
+  `EventTypeDefinition` field and its DB column already existed from
+  earlier scaffolding, just never actually settable at registration until
+  now).
+  **A real, found-and-fixed gap in item 17's own code**: `ReplicatedEventPayload`
+  never carried `AuthorityStatus`/`AttestedActorId`/`AttestedClaims`
+  across the wire — a peer-synced `unattested` event would have silently
+  reset to `StoredEvent`'s own `"accepted"` class default at the
+  receiving site, never caught until an event with a non-default
+  `AuthorityStatus` actually existed to replicate (nothing did, until this
+  item). Fixed by adding all three fields to the payload record and
+  wiring them through `PeerSyncWorker.ToPayload`/`PeerSyncReceiver.
+  ReceiveAsync`.
+  **A real, found doc inconsistency, not caused by this pass**:
+  `comparisons/authority-rejection-behavior.md`'s own "Refinement" section
+  recommends a "targeted single-entity rebuild" mechanism for the
+  Annotate case that neither `ADR-035`'s Decision text, `docs/data/
+  schema-registry.md`'s field comment, nor `docs/features/non-
+  authoritative-capture.md`'s own Gherkin ever adopted or reflect — all
+  three still describe/test the plain, un-refined "flag only" shape,
+  which is what got built (matching the item's own actual exit criteria).
+  Recorded as `docs/10-open-questions.md` row 1 rather than silently
+  picking a side.
+  **Built-scope note**: `ADR-036`'s real DID/UCAN offline chain
+  verification and the actual RFC 8693 OAuth Token Exchange bridge
+  endpoint are NOT built — `AttestedClaims` stores an opaque,
+  credential-agnostic JSON blob, never cryptographically verified,
+  exactly matching the feature doc's own explicit "credential-agnostic"
+  scope. No pre-GraphQL HTTP query surface for the Entity Store/Live View
+  exists either (none did before this item) — tests query
+  `db.EntityStore`/`db.LiveEntityStore` directly, the same "exercise the
+  mechanics directly" posture item 17's own tests already use.
+  `EventStore.IntegrationTests` now has 48 `[TestMethod]`s (up from 45) —
+  `NonAuthoritativeCaptureSqliteTests`/`Postgres`/`SqlServer` (one
+  `AllNonAuthoritativeCaptureScenarios` method each, 9 scenarios). All 48
+  pass reliably alone and as the SQLite-only subset; the full
+  multi-provider run hit the same pre-existing SQL Server Testcontainers
+  resource-contention flake as item 17 (see `TODO.md`) — this pass found
+  the clearest evidence yet of its root cause (`fs.aio-max-nr` kernel AIO-
+  context exhaustion from cumulative `MsSqlContainer` starts this
+  session, not a code defect), confirmed by every affected class passing
+  cleanly standalone.
+- **Next up**: item 19, "GraphQL-Only Query Layer" (`ADR-037`/`053`) —
+  depends on Entity-Centric Core Rebuild, Multi-Tenancy, and Hardening &
+  Evolution (all Done). A large item: the full OData-to-GraphQL swap,
+  per-`AppId` schema composition, mandatory depth/cost limiting,
+  DataLoader batching, and the real `revealField(...)` reveal-on-demand
+  round-trip Property-Level Masking could only build half of.
 
 ## How to resume cold
 
@@ -511,13 +589,14 @@ stale numbers here are worse than none)*
    narrative.
 5. `dotnet build EventStore.slnx` and `dotnet test tests/EventStore.IntegrationTests` —
    confirm the build/test baseline the last session left still holds
-   before adding to it (45 tests should pass). Requires Docker running
+   before adding to it (48 tests should pass). Requires Docker running
    (Testcontainers for Postgres/SQL Server) and the SDK pinned in
    `global.json`. A full multi-provider run has a known, pre-existing,
-   unrelated flake — see `TODO.md`'s entry — where one SQL Server test
-   class occasionally fails its own container `ClassInit` under resource
-   contention; re-running just that class alone always passes. Don't
-   mistake this for a real regression.
+   unrelated flake — see `TODO.md`'s entry — where one or two SQL Server
+   test classes occasionally fail their own container `ClassInit` under
+   host resource contention (`fs.aio-max-nr` exhaustion from cumulative
+   `MsSqlContainer` starts); re-running just that class alone always
+   passes. Don't mistake this for a real regression.
 
 ## Working notes not yet written down elsewhere
 
@@ -542,7 +621,7 @@ stale numbers here are worse than none)*
   treated as this session's own action; items 7 through 10 all committed —
   "check off work as you go. then continue" is the standing instruction
   currently in effect, so each item is committed without waiting for a
-  fresh prompt; items 11 through 17 now done too, per the same rhythm).
+  fresh prompt; items 11 through 18 now done too, per the same rhythm).
 - **Always actually run new code against every provider it's built for
   before calling an item done.** Every real bug found this session (the
   `ExecuteSqlRawAsync` brace-parsing issue, an unquoted Postgres column,

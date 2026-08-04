@@ -1,3 +1,5 @@
+using System.Text.Json.Nodes;
+
 namespace EventStore.Inbox;
 
 // Envelope per docs/features/publish-event.md/03-api-contracts.md.
@@ -21,4 +23,16 @@ public record PublishEventRequest(
     Guid? EventId,
     long? ExpectedVersion = null,
     List<Domain.Streaming.TelemetryPointerEntry>? TelemetryPointer = null,
-    List<string>? AttachmentContentHashes = null);
+    List<string>? AttachmentContentHashes = null,
+    // ADR-035/036/042 -- a self-attested submitter identity and/or its
+    // structured capability claims (e.g. a UCAN invocation). Presence of
+    // either starts AuthorityStatus at "unattested" rather than the
+    // ordinary-publish default "accepted" (ADR-042); credential-agnostic by
+    // design (docs/features/non-authoritative-capture.md) -- the shape of
+    // AttestedClaims is opaque to the core engine, never schema-validated.
+    string? AttestedActorId = null,
+    JsonNode? AttestedClaims = null,
+    // ADR-042's second trigger -- an automated detector's own "not yet
+    // validated" marker, distinct from the identity/self-attestation case
+    // above. Starts AuthorityStatus at "pending_review" instead.
+    bool ReviewPending = false);

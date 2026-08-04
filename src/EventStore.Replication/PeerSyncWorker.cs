@@ -119,5 +119,6 @@ public class PeerSyncWorker(
     // methods already provide.
     public static ReplicatedEventPayload ToPayload(StoredEvent e) => new(
         e.SequenceNumber, e.EventId, e.AppId, e.EventType, e.SchemaVersion, e.Payload, e.PayloadHash,
-        e.OccurredAt, e.ActorId, e.OriginId ?? "unknown", e.LogicalClock ?? "", e.ExpectedVersion, null);
+        e.OccurredAt, e.ActorId, e.OriginId ?? "unknown", e.LogicalClock ?? "", e.ExpectedVersion, null,
+        e.AuthorityStatus, e.AttestedActorId, e.AttestedClaims);
 }
