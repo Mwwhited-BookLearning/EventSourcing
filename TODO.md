@@ -47,3 +47,22 @@ here instead of inlining.
   (OIDC/OpenIddict) + Orchestration" section's own note for the full
   list of *other* real orchestration bugs this same pass found and
   fixed.
+- **`docs/06-solution-structure.md`'s solution layout still names an
+  `EventStore.Bdd/` project ("Reqnroll/SpecFlow-style step definitions
+  for `*.feature` files," extracted from each feature doc's fenced
+  Gherkin block "once implementation starts") that ten build-plan items
+  in (1 through 10, all Done) has never actually been built.** Every
+  item's real tests instead use descriptively-named MSTest
+  `[TestMethod]`s / shared `*ScenarioAssertions.cs` methods calling the
+  services directly (e.g. `PublishScenarioAssertions.
+  PublishingAValidEventSucceeds`) — covering the same Gherkin scenarios'
+  intent, just never as literal parsed `.feature` files with step
+  definitions. This has been consistent across every item so far, not a
+  one-off skip, so it reads as a real (if never explicitly decided)
+  divergence from the solution-structure sketch rather than an oversight
+  still pending — found while doing a doc-consistency sweep after item
+  10, not caused by items 8–10 specifically. Needs an explicit decision:
+  either retrofit `EventStore.Bdd` now (a real, sizeable undertaking
+  across everything already built) or revise `06-solution-structure.md`'s
+  own text to describe the testing approach actually adopted, so the doc
+  stops promising a project that, ten items in, evidently isn't coming.
