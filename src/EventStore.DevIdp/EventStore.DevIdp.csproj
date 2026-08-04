@@ -15,6 +15,7 @@
   <ItemGroup>
     <ProjectReference Include="..\EventStore.ServiceDefaults\EventStore.ServiceDefaults.csproj" />
     <ProjectReference Include="..\EventStore.Dpop\EventStore.Dpop.csproj" />
+    <ProjectReference Include="..\EventStore.TicketExchange\EventStore.TicketExchange.csproj" />
   </ItemGroup>
 
 </Project>

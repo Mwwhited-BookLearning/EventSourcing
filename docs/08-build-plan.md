@@ -80,7 +80,7 @@ provider they apply to — not "code written."
 | 19 | [GraphQL-Only Query Layer](#graphql-only-query-layer) | Entity-Centric Core Rebuild, Multi-Tenancy, Hardening & Evolution | Done |
 | 20 | [Compatibility & Deployment Discipline](#compatibility--deployment-discipline) | GraphQL-Only Query Layer | Done |
 | 21 | [MVVM Client](#mvvm-client) | Multi-Tenancy, Sharding & Replication | Done |
-| 22 | [Ticket Exchange for Header-Incapable Clients](#ticket-exchange-for-header-incapable-clients) | Streaming Channels, Binary Attachments, Non-Authoritative Capture | Not started |
+| 22 | [Ticket Exchange for Header-Incapable Clients](#ticket-exchange-for-header-incapable-clients) | Streaming Channels, Binary Attachments, Non-Authoritative Capture | Done |
 | 23 | [Delegated Grants, RBAC, Federated Claims & Read Audit Logging](#delegated-grants-rbac-federated-claims--read-audit-logging) | Non-Authoritative Capture, Event-Type Security, Multi-Tenancy, Hardening & Evolution | Not started |
 | 24 | [SPIFFE/SPIRE Service Identity & API Gateway](#spiffespire-service-identity--api-gateway) | Auth + Orchestration, Sharding & Replication, Streaming Channels, Binary Attachments, GraphQL-Only Query Layer, Ticket Exchange | Not started |
 | 25 | [Data Lifecycle & Backup/Restore Classification](#data-lifecycle--backuprestore-classification) | Scaffolding & Persistence | Not started |
@@ -175,8 +175,8 @@ state "Sharding & Replication" as p16 #palegreen
 state "Non-Authoritative Capture" as p17 #palegreen
 state "GraphQL-Only Query Layer" as p18 #palegreen
 state "Compatibility & Deployment Discipline" as p19 #palegreen
-state "MVVM Client" as p20
-state "Ticket Exchange" as p21
+state "MVVM Client" as p20 #palegreen
+state "Ticket Exchange" as p21 #palegreen
 state "Delegated Grants, RBAC & Read Audit Logging" as p22
 state "SPIFFE/SPIRE Identity & API Gateway" as p23
 
@@ -1728,6 +1728,53 @@ signature (never a raw bearer token) successfully streams content; the
 same ticket presented a second time is rejected; a ticket presented with
 a signature computed from the wrong shared secret is rejected before any
 content is served.
+
+**Built-scope note**: this item's own "Depends on" text assumed "Non-
+Authoritative Capture" already built RFC 8693 Token Exchange
+infrastructure to reuse — checked and found not true: that item's own
+Built-scope note explicitly named "the actual RFC 8693 OAuth Token
+Exchange bridge endpoint" as NOT built. This item builds it from scratch:
+`EventStore.DevIdp`'s `/connect/token` gains `options.
+AllowTokenExchangeFlow()` (found only by reflecting the real installed
+OpenIddict 7.6.0 assembly -- `AllowCustomFlow` throws for this specific
+grant type, "already assigned to a standard grant type," and its own
+built-in validation handler also rejects an unregistered
+`requested_token_type` until explicitly added via `options.Configure(o
+=> o.RequestedTokenTypes.Add(...))`) plus a `TicketStore` (in-process,
+non-persistent, per `auth.md`'s existing "client/token state lives in
+DevIdp" statement). A second real constraint found only by actually
+running this: OpenIddict's own `/connect/token` pipeline unconditionally
+requires a registered `client_id` for ANY grant type reaching it --
+incompatible with this ADR's own `one_time_secret` path ("never requires
+a registered client_id"). Resolved with a genuinely separate, non-
+OpenIddict-pipeline endpoint (`POST /oauth/ticket-exchange`, reading form
+fields directly, never calling `GetOpenIddictServerRequest()`) sharing
+the same `IssueTicketAsync` core the `client_id` path uses -- an honest,
+found-by-testing split, not a design preference. A third real gap:
+`IOpenIddictApplicationManager` deliberately never exposes a stored
+`client_secret` in plaintext (only `ValidateClientSecretAsync`, correct
+for security but incompatible with recomputing an HMAC server-side at
+introspection time) -- resolved by adding `DevIdpSeeder.GetClientSecret`,
+reading back from the SAME dev-only plaintext source that file's own
+header comment already names, not a second secrets store. The resolution
+hop (step 3) is a new `TicketAuthenticationHandler` (`EventStore.
+TicketExchange`, a second ASP.NET Core authentication scheme, additive to
+JwtBearer/never the default) wired onto exactly the two named header-
+incapable routes (Streaming's byte-range playback mode, Attachment
+retrieval) via `AuthorizeAttribute.AuthenticationSchemes` listing both
+schemes -- every other endpoint's Bearer-only authentication is
+completely unaffected, verified directly. `DpopValidationMiddleware`
+gained one new early-return (skip entirely when
+`AuthenticationType == "Ticket"`) since a ticket-resolved principal is
+never DPoP-bound by design (the ADR's own "consumed one hop earlier"
+framing) and has no `Authorization` header at all to check. Verified with
+Attachment retrieval as the concrete header-incapable target (an `<img
+src>`/`<a href>`, named equally alongside `<video src>` by the ADR
+itself) -- Streaming's byte-range playback mode shares the identical
+wiring and isn't re-proven a second time. `ADR-045`'s `AccessLogEntry`
+audit-write half of the Gherkin's "same pipeline as any other read"
+scenario is deferred to "Delegated Grants, RBAC, Federated Claims & Read
+Audit Logging," the item that actually builds that table.
 
 ## Delegated Grants, RBAC, Federated Claims & Read Audit Logging
 

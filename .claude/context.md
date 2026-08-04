@@ -796,10 +796,63 @@ stale numbers here are worse than none)*
   -- the Vitest suite proves the mechanics, the build/dev-server check
   proves the app is real, but an actual live GraphQL round trip through a
   browser is not exercised this pass.
-- **Next up**: item 22, "Ticket Exchange for Header-Incapable Clients"
-  (`ADR-040`) — a short-lived, single-use, opaque ticket + client-signed
-  URL for callers that can't set an `Authorization` header at all (RFC 8693
-  issuance, RFC 7662-shaped resolution).
+- **Item 22, "Ticket Exchange for Header-Incapable Clients," is Done —
+  same day, continuing directly from item 21.** This item's own "Depends
+  on" text assumed "Non-Authoritative Capture" already built RFC 8693
+  Token Exchange infrastructure to reuse -- checked and found NOT true
+  (that item's own Built-scope note explicitly named the bridge endpoint
+  as not built); this item builds it from scratch. `EventStore.DevIdp`'s
+  `/connect/token` gains `options.AllowTokenExchangeFlow()` (found only by
+  reflecting the real installed OpenIddict 7.6.0 assembly -- `AllowCustomFlow`
+  throws for this specific grant type, "already assigned to a standard
+  grant type") plus `options.Configure(o => o.RequestedTokenTypes.Add(...))`
+  (OpenIddict's own built-in validation otherwise rejects an unregistered
+  `requested_token_type`), and a new `TicketStore` (in-process, non-
+  persistent, per `auth.md`'s existing "client/token state lives in
+  DevIdp" statement). **Two more real constraints found only by actually
+  running this against OpenIddict's real pipeline**: (1) `/connect/token`
+  unconditionally requires a registered `client_id` for ANY grant type
+  reaching it -- incompatible with `ADR-040`'s own `one_time_secret` path
+  ("never requires a registered client_id"); resolved with a genuinely
+  separate, non-OpenIddict-pipeline endpoint (`POST /oauth/ticket-exchange`)
+  sharing the same `IssueTicketAsync` core the `client_id` path uses; (2)
+  `IOpenIddictApplicationManager` never exposes a stored `client_secret`
+  in plaintext (only validates a provided one, correctly) -- incompatible
+  with recomputing an HMAC server-side at introspection time; resolved by
+  adding `DevIdpSeeder.GetClientSecret`, reading back from the same
+  dev-only plaintext source that file's own header comment already names.
+  The resolution hop is a new `EventStore.TicketExchange` project
+  (`HmacSigner`, `TicketAuthenticationHandler` -- a second ASP.NET Core
+  authentication scheme, additive to JwtBearer, never the default) wired
+  onto exactly the two named header-incapable routes (Streaming's
+  byte-range playback mode, Attachment retrieval) via `AuthorizeAttribute.
+  AuthenticationSchemes` listing both schemes. `DpopValidationMiddleware`
+  gained one new early-return (skip when `AuthenticationType == "Ticket"`)
+  since a ticket-resolved principal is never DPoP-bound by design and has
+  no `Authorization` header to check at all. A new seeded DevIdp client,
+  `clinician-spa-client` (named after the ADR/feature-doc's own running
+  example), holds the new `Permissions.GrantTypes.TokenExchange`
+  permission -- every other seeded client's permissions are unchanged.
+  Verified with Attachment retrieval as the concrete header-incapable
+  target (an `<img src>`/`<a href>`, named equally alongside `<video src>`
+  by the ADR itself); Streaming's byte-range playback mode shares the
+  identical wiring, not re-proven a second time. `EventStore.
+  IntegrationTests` now has 72 `[TestMethod]`s (up from 66) --
+  `TicketExchangeHttpSqliteTests` (6 real-HTTP/direct scenarios: issuance +
+  signing + resolution with no Authorization header at all, single-use
+  rejection on reuse, wrong-signature rejection that does NOT burn the
+  ticket for a later correct retry, the `one_time_secret` path, expiry
+  driven directly against `TicketStore`, and confirming an ordinary
+  Bearer-authenticated request to the same route is completely
+  unaffected). All pass reliably; the full multi-provider run hit the
+  same pre-existing SQL Server Testcontainers resource-contention flake
+  already tracked in `TODO.md` (4 unrelated classes this run -- Derivation,
+  ViewDefinition, Compatibility, Replication -- none touching this item's
+  own code).
+- **Next up**: item 23, "Delegated Grants, RBAC, Federated Claims & Read
+  Audit Logging" (`ADR-043`/`044`/`045`/`046`/`047`) — depends on
+  Non-Authoritative Capture (Done, UCAN exchange infrastructure), Event-
+  Type Security (Done), Multi-Tenancy (Done), Hardening & Evolution (Done).
 
 ## How to resume cold
 
@@ -814,7 +867,7 @@ stale numbers here are worse than none)*
    narrative.
 5. `dotnet build EventStore.slnx` and `dotnet test tests/EventStore.IntegrationTests` —
    confirm the build/test baseline the last session left still holds
-   before adding to it (61 tests should pass). Requires Docker running
+   before adding to it (72 tests should pass). Requires Docker running
    (Testcontainers for Postgres/SQL Server) and the SDK pinned in
    `global.json`. A full multi-provider run has a known, pre-existing,
    unrelated flake — see `TODO.md`'s entry — where one or two SQL Server
@@ -846,7 +899,7 @@ stale numbers here are worse than none)*
   treated as this session's own action; items 7 through 10 all committed —
   "check off work as you go. then continue" is the standing instruction
   currently in effect, so each item is committed without waiting for a
-  fresh prompt; items 11 through 20 now done too, per the same rhythm).
+  fresh prompt; items 11 through 22 now done too, per the same rhythm).
 - **Always actually run new code against every provider it's built for
   before calling an item done.** Every real bug found this session (the
   `ExecuteSqlRawAsync` brace-parsing issue, an unquoted Postgres column,

@@ -1,4 +1,7 @@
 using System.Security.Claims;
+using EventStore.TicketExchange;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
@@ -39,7 +42,10 @@ public static class AttachmentEndpoints
 
         // ADR-031's Range-request support, reused unchanged (RFC 7233) --
         // the same seekable-retrieval reasoning that applies to a large
-        // PDF/image as it does to Media channel playback.
+        // PDF/image as it does to Media channel playback. ADR-040's own
+        // second named header-incapable target (an <img src>/<a href>) --
+        // gated by BOTH schemes, same reasoning as StreamingEndpoints'
+        // playback route.
         app.MapGet("/attachments/{contentHash}", async (
             string contentHash, AttachmentService service, ClaimsPrincipal user, CancellationToken ct) =>
         {
@@ -51,7 +57,11 @@ public static class AttachmentEndpoints
                 RetrieveAttachmentResult.Forbidden => Results.Forbid(),
                 _ => Results.Problem(statusCode: 500),
             };
-        }).RequireAuthorization("attachments:read");
+        }).RequireAuthorization(new AuthorizeAttribute
+        {
+            AuthenticationSchemes = $"{JwtBearerDefaults.AuthenticationScheme},{TicketAuthenticationDefaults.AuthenticationScheme}",
+            Policy = "attachments:read",
+        });
 
         return app;
     }
