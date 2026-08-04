@@ -214,17 +214,30 @@ one patient's record across all three.
   fold — the difference is entirely in how each application configures
   and consumes the same two-channel shape, not in the framework.
 - **Whether an escalated event demands a tracked, timed acknowledgment
-  is a real, related, and separately-decided question — deliberately
-  left to the application for now.** An IONM alert (above) is exactly
-  the case where "did anyone see this in time" matters as much as "was
-  it recorded" — but this design doesn't (yet) have a framework-level
-  concept of an event type that expects a response within a window, only
-  the building blocks an application already has to construct one
-  itself (an ordinary reference field, the same shape `authorityDecision.
-  targetEventId` already uses; a `ProjectionHost`-shaped watcher). See
+  is a real, related, and now separately-decided question.** An IONM
+  alert (above) is exactly the case where "did anyone see this in time"
+  matters as much as "was it recorded" — `ADR-094` gives this a generic,
+  framework-level answer: an `IonmAlertRaised` event type declares
+  `EventTypeDefinition.ExpectedResponse { ResponseEventType:
+  "IonmAlertAcknowledged", Within: <a domain-chosen, same-session
+  duration> }`; the neurotechnologist's or surgeon's acknowledgment
+  publishes an `IonmAlertAcknowledged` event whose envelope
+  `RespondsToEventId` names the alert's `EventId`; if nothing satisfies
+  the expectation within the window, the framework-provided
+  `ExpectedResponseWatcher` publishes a reserved `ExpectedResponseMissing`
+  event — an ordinary, `Follow`-able fact this domain's own escalation
+  process (paging a backup, sounding a different alarm) reacts to,
+  exactly like `ChannelLagDetected` today. What's generic (the
+  correlation field, the opt-in deadline, the missing-response detection)
+  is framework-level; what's specific to IONM (the event type names, the
+  actual `Within` duration, what happens on a miss) is this domain's own
+  configuration, never baked into the mechanism. See `ADR-094` and
+  [`docs/patterns/request-reply-correlation.md`](../../patterns/request-reply-correlation.md)
+  for the full mechanism, and
   [`docs/comparisons/event-response-acknowledgment.md`](../../comparisons/event-response-acknowledgment.md)
-  for the full trade-off and `docs/10-open-questions.md` for the
-  back-burnered fork this leaves open.
+  for the trade-off this decision was weighed against. Polysomnography
+  (above) needs none of this — its scoring workflow has no
+  "escalate if unanswered" requirement.
 
 ## Feature docs
 
@@ -269,8 +282,9 @@ one):
   neurotechnologist alert the surgical team the moment neural compromise
   looks imminent so corrective action can happen before injury becomes
   irreversible — the low-latency end of this domain's dual-channel
-  live-safety concern, above, and the concrete case motivating the
-  event-acknowledgment open question in "Special concerns."
+  live-safety concern, above, and the concrete case motivating `ADR-094`'s
+  expected-response tracking, configured for this domain in "Special
+  concerns."
 - **Investigator / Principal Investigator (PI)** — The person
   responsible for conducting the trial at a site and for the medical
   decisions and record approvals — including `ADR-066`'s CRF sign-off —

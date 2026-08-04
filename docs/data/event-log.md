@@ -33,6 +33,7 @@ public class StoredEvent
     public long? OriginalSequenceNumber { get; set; }      // set only on an event imported via ADR-068's lineage-export bundle format -- this environment's own SequenceNumber/ChainHash above are freshly computed (it IS a new append here); these three fields record provenance, never presented as if organically published here (ADR-068)
     public string? OriginalChainHash { get; set; }         // the exporting environment's own ChainHash for this event, at export time (ADR-068)
     public string? ImportedFrom { get; set; }              // identifies the exporting environment (ADR-068) -- a seventh distinct relationship-shaped envelope field, answering "where did this event actually originate" as opposed to OriginId (ADR-033/090, which peer/site in THIS deployment's own multi-site mesh)
+    public Guid? RespondsToEventId { get; set; }            // optional on any publish -- the EventId this event is a reply to (Correlation Identifier pattern, Hohpe & Woolf). An eighth distinct relationship-shaped envelope field, answering "which prior event does this one satisfy a declared response expectation for" -- not existence-validated at publish time, unlike parentEventIds (ADR-094)
 }
 
 // Left behind in the primary table when a segment of StoredEvent rows is
@@ -100,6 +101,30 @@ the registered JSON Schema, so it can't collide with schema validation or
   link `ADR-027` introduces (`MaterializationOfEventId` is its own field) —
   lineage answers "what is this causally derived from," a different question
   from "what is this a re-shaped copy of."
+
+## Expected-response tracking (`ADR-094`)
+
+`RespondsToEventId` is envelope metadata, kept out of `Payload`, the same
+reasoning `ADR-005` established for `parentEventIds`. Any publish may set
+it, naming the `EventId` of the event this one is a reply to — it is
+**not** existence-validated at publish time (no `ParentValidationMode`-
+style Strict/Permissive fork), so a `RespondsToEventId` naming an
+`EventId` that doesn't resolve is simply a response correlating to
+nothing findable, never a rejected publish.
+
+Setting `RespondsToEventId` alone does nothing beyond record the
+relationship — tracking only activates when the *request* event's own
+type declares `EventTypeDefinition.ExpectedResponse` (`schema-
+registry.md`). `ExpectedResponseTracker` (`schema-registry.md`) is the
+durable state a background `ExpectedResponseWatcher` maintains per
+tracked request event, and the reserved `ExpectedResponseMissing` event
+is what gets published, through the ordinary publish path, if a matching
+response doesn't arrive within the declared window — see `ADR-094` for
+the full mechanism. `ExpectedResponseMissing` itself sets
+`RespondsToEventId` back at the original request, so a request event's
+children, its actual response (if any), and its missing-response
+escalation (if any) all resolve through this one field rather than a
+second mechanism.
 
 ## Publish idempotency (`ADR-011`)
 

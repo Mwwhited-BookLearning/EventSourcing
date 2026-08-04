@@ -42,13 +42,25 @@ stale numbers here are worse than none)*
   delayed-review SLAs with no design change, then named IONM and
   polysomnography as the two concrete use cases in
   `docs/domains/clinical-trials-device-telemetry/README.md`. That
-  surfaced a distinct, unresolved question — tracked event
-  acknowledgment (not just delivery) — weighed in a new comparison doc
-  (`docs/comparisons/event-response-acknowledgment.md`) and
-  **deliberately deferred**, tracked as `docs/10-open-questions.md` row
-  1 (Back-burnered, no longer empty). Full narrative:
-  `docs/changes/2026-08-04.md`. `TODO.md`'s Active section is empty as
-  of this session — nothing outstanding from the prior session's rework.
+  surfaced a distinct question — tracked event acknowledgment (not just
+  delivery) — first weighed in a comparison doc
+  (`docs/comparisons/event-response-acknowledgment.md`) recommending
+  deferral, then **corrected and resolved as `ADR-094`**: a generic
+  `RespondsToEventId` envelope field (the eighth relationship-shaped
+  one, Correlation Identifier pattern) + opt-in
+  `EventTypeDefinition.ExpectedResponse`, escalation policy left to the
+  application. The correction that unlocked this: IONM/polysomnography
+  were domain-*example* instances, not the framework decision's own
+  shape — waiting for their specific numbers to converge was the wrong
+  test; whether the relationship itself generalizes was the right one.
+  `docs/10-open-questions.md` is empty again (row added and resolved
+  same session). Full narrative: `docs/changes/2026-08-04.md`.
+  `TODO.md`'s Active section is empty as of this session.
+- **Not yet committed** — everything above is staged on
+  `design/service-level-agreement` but no commit has been made yet (an
+  earlier commit attempt was interrupted by the user mid-session, before
+  the ADR-094 direction existed). Confirm with the user before
+  committing/pushing.
 - **Standing lessons from the 07-31–08-03 session, still worth carrying
   forward** (condensed — see that range's `docs/changes/*.md` for the
   full incidents): an agent's own "looks right" report on a PlantUML

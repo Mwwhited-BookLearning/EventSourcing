@@ -224,17 +224,21 @@ re-derive the process from scratch:
   cleanup item in `TODO.md`.
 - **A repeated relationship gets its own envelope-metadata field, never
   conflated with an existing one just because the shape looks similar.**
-  This design has seven now: `parentEventIds` (causal derivation,
+  This design has eight now: `parentEventIds` (causal derivation,
   `ADR-005`), `MaterializationOfEventId` (reshaped copy of, `ADR-027`),
   `TelemetryPointer` (position in a signal/media stream, `ADR-031`),
   `AttachmentRef` (supporting binary content, `ADR-032`), `erasureScope`
   (whose crypto-shredding key protects this field, `ADR-057`),
-  `Signature` (a captured sign-off attestation, `ADR-066`), and
+  `Signature` (a captured sign-off attestation, `ADR-066`),
   `OriginalSequenceNumber`/`OriginalChainHash`/`ImportedFrom` (provenance
   of an imported lineage-export event, `ADR-068` — added without the
   explicit "ask before a seventh" gut-check this convention calls for;
-  flagged, not undone, since the fit is genuine on inspection). If an
-  eighth comes up, ask what question it specifically answers first.
+  flagged, not undone, since the fit is genuine on inspection), and
+  `RespondsToEventId` (which prior event this one satisfies a declared
+  response expectation for — the Correlation Identifier pattern, Hohpe &
+  Woolf — distinct from `parentEventIds`' broader, untimed causal
+  derivation; `ADR-094`, gut-check done explicitly this time). If a
+  ninth comes up, ask what question it specifically answers first.
 - **A new capability gets a named item in `08-build-plan.md`.** That file
   moved off fixed `Phase N` numbering this session — each item names its
   own prerequisite items instead of a phase number, so adding one never

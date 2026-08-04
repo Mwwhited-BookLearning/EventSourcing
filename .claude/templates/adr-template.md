@@ -42,11 +42,13 @@ order.
   already fits.** Check for one before deciding to build.
 - **A repeated relationship gets its own envelope field, never
   conflated with an existing one because the shape looks similar.**
-  This design already has several (`parentEventIds`,
+  This design already has eight (`parentEventIds`,
   `MaterializationOfEventId`, `TelemetryPointer`, `AttachmentRef`,
-  `erasureScope`, `Signature`) — if a new one is tempting, ask
-  explicitly what question it answers that none of the existing ones
-  do, and say so in the ADR's Context.
+  `erasureScope`, `Signature`, `OriginalSequenceNumber`/
+  `OriginalChainHash`/`ImportedFrom`, `RespondsToEventId`) — see
+  `CLAUDE.md`'s own up-to-date list for what each one answers. If a new
+  one is tempting, ask explicitly what question it answers that none of
+  the existing ones do, and say so in the ADR's Context.
 - **Compliance note — only when genuinely applicable, never forced.**
   Add the bottom bullet only if a real regulation/standard drives the
   decision. Most ADRs are purely mechanical/internal and get no note —

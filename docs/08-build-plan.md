@@ -276,6 +276,7 @@ state "i18n/l10n Scope" as a22
 state "Mechanism-Level\nOTel Instrumentation" as a23
 state "Event Log/AccessLog\nArchival" as a24
 state "Data Lifecycle &\nBackup Classification" as a25
+state "Expected-Response\nTracking" as a26
 
 a2 --> a4
 a1 --> a5
@@ -290,6 +291,8 @@ a17 --> a19
 a19 --> a20
 a17 --> a24
 a10 --> a23
+a8 --> a26
+a10 --> a26
 @enduml
 ```
 
@@ -382,6 +385,14 @@ the diagram above only shows addition-to-addition edges):
   **Scaffolding & Persistence** (the classification exists from day one)
   but its exit criteria stay accurate only as later items land — see its
   own entry.
+- **Expected-Response Tracking** depends on **CQRS Read-Model Projections
+  (worked example)** — the Follow-based internal-follower shape and
+  seeded-OAuth2-client extension pattern `ExpectedResponseWatcher`
+  reuses unchanged — and **Streaming Channels** — the reserved-detector-
+  event shape (`ChannelLagDetected`) `ExpectedResponseMissing` directly
+  mirrors — plus, per the diagram above, **Outbound Webhooks** (the
+  durable-tracker/cursor-table shape) and **Leader Election** (the
+  singleton-worker gate every other background worker already uses).
 
 ## Scaffolding & Persistence
 
@@ -2384,6 +2395,49 @@ mechanism, with its own distinct `ChainCheckpoint` row, confirmed not to
 share or collide with the Event Log's checkpoint; the archival backend is
 confirmed to be an ordinary registered `IAttachmentContentStore`
 implementation with no new extensibility interface introduced anywhere.
+
+## Expected-Response Tracking
+
+**Scope**: `ADR-094` — a generic `StoredEvent.RespondsToEventId`
+envelope field (Correlation Identifier, Hohpe & Woolf) any publish may
+set, plus an opt-in, nullable `EventTypeDefinition.ExpectedResponse
+{ ResponseEventType, Within }` a *request* event type declares. A new
+singleton `ExpectedResponseWatcher` — architecturally an internal
+follower, the same shape `ProjectionHost` already uses — maintains a
+durable `ExpectedResponseTracker` row per tracked request event and, on
+a periodic sweep, publishes the reserved `ExpectedResponseMissing` event
+(never registered via `PUT /registry/{event-type}`, the same treatment
+`EventUpcastFailed` gets) exactly once for any row past its deadline with
+no matching response yet. Escalation policy (what happens on a miss) is
+explicitly out of scope — an application concern, the same boundary
+`ADR-031` already draws for telemetry detection.
+
+**Depends on**: CQRS Read-Model Projections (worked example) — the
+Follow-based internal-follower shape and the seeded-OAuth2-client
+extension pattern `ExpectedResponseWatcher` reuses unchanged; Streaming
+Channels — the reserved-detector-event shape (`ChannelLagDetected`) this
+item's `ExpectedResponseMissing` directly mirrors; Outbound Webhooks —
+the durable-tracker/cursor-table shape (`WebhookOutbox`/
+`WebhookDeliveryCursor`) `ExpectedResponseTracker` follows; Leader
+Election via Database-Backed Lease — `ExpectedResponseWatcher` is a
+singleton worker gated by it, like `Router`/`UpcastMaterializer`/the
+outbox pumps.
+
+**Exit criteria**: an event type with no `ExpectedResponse` configured
+behaves exactly as before (no tracker row, no watcher activity) —
+confirms this is purely additive. An event type with `ExpectedResponse`
+configured gets a tracker row on publish, with `DeadlineAt` set
+correctly from `Within`; a matching `ResponseEventType` event carrying
+the correct `RespondsToEventId`, published before the deadline, stamps
+`SatisfiedByEventId`/`SatisfiedAt` and no `ExpectedResponseMissing` is
+ever published for that row; the same response published *after* the
+deadline still stamps `SatisfiedAt` (recorded, not treated as an error)
+even if `ExpectedResponseMissing` already fired; no matching response at
+all results in exactly one `ExpectedResponseMissing` publish per tracker
+row, `Follow`-able like any ordinary event, carrying `RespondsToEventId`
+back at the original request; killing and restarting
+`ExpectedResponseWatcher` mid-sweep loses no tracker state and never
+double-publishes `ExpectedResponseMissing` for a row already escalated.
 
 ## Cross-cutting, every item
 
