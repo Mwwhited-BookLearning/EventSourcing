@@ -131,9 +131,14 @@ Decision:
   Follow caller and a publisher like any other (`ADR-015`'s reasoning for
   `ProjectionHost`, applied unchanged) — a new seeded OAuth2 client
   (`expected-response-watcher-client`, scopes `events:follow` +
-  `events:publish`) alongside the others in `ADR-006`'s/`ADR-015`'s
-  seeded-clients table, extended the same way `ADR-015` already extended
-  it for `ProjectionHost`.
+  `events:publish`) alongside the others in `docs/features/auth.md`'s
+  seeded-clients table. **Landed directly in this pass, not assumed
+  already done**: checking found `ADR-015` itself had made the identical
+  claim about adding `projections-client` and that row had never actually
+  been added — a real instance of `CLAUDE.md`'s own cautionary lesson
+  ("verify a propagation claim against the actual file, never trust an
+  ADR's own Consequences section saying something is done"). Both rows
+  are added together this pass.
 - **Escalation policy stays explicitly out of framework scope** — the
   same boundary `ADR-031` already draws for telemetry detection ("a
   detector is an application concern"), applied here without
@@ -192,6 +197,10 @@ Consequences:
 - **`08-build-plan.md` gains a named item** ("Expected-Response
   Tracking") for this capability, per `CLAUDE.md`'s standing "a new
   capability gets a named item" rule.
+- **`docs/features/expected-response-tracking.md` is the worked
+  example** — sequence diagrams for tracking/resolution/escalation, the
+  ER diagram, an ops-facing Salt mockup, and the Gherkin scenarios
+  `08-build-plan.md`'s new item is built against.
 - **`docs/references.md` gains a row** for Correlation Identifier/
   Request-Reply (Hohpe & Woolf), landed in the same pass this citation is
   first used, per `.claude/protocols/verify-before-citing.md`.

@@ -183,9 +183,11 @@ choice this design doesn't need to make for you.
 
 `ProjectionHost` is a Follow caller like any other (`ADR-015`), so it
 needs its own OAuth2 client — a fourth seeded client alongside the three
-in `ADR-006` (e.g. `projections-client`, scope `events:follow`) — see
-[`features/auth.md`](features/auth.md)'s seeded-clients table, which must
-be extended to include it. If a projection consumes an event type gated by a
+in `ADR-006` (`projections-client`, scope `events:follow`) — see
+[`features/auth.md`](features/auth.md)'s seeded-clients table (landed
+there as of `ADR-094`'s propagation pass, not before — this section had
+said "must be extended" for several sessions before that actually
+happened). If a projection consumes an event type gated by a
 Read-direction `RequiredClaims` entry (`ADR-008`/`ADR-050`),
 `projections-client`'s token needs one of those claims too, exactly as
 any other follower would.
