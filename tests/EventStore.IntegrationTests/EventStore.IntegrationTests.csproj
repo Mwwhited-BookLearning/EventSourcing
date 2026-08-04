@@ -31,6 +31,9 @@
     <ProjectReference Include="..\..\src\EventStore.Inbox\EventStore.Inbox.csproj" />
     <ProjectReference Include="..\..\src\EventStore.Derivation\EventStore.Derivation.csproj" />
     <ProjectReference Include="..\..\src\EventStore.Masking\EventStore.Masking.csproj" />
+    <ProjectReference Include="..\..\src\EventStore.Projections.Abstractions\EventStore.Projections.Abstractions.csproj" />
+    <ProjectReference Include="..\..\src\EventStore.Projections.Host\EventStore.Projections.Host.csproj" />
+    <ProjectReference Include="..\..\src\Samples.Orders.Projections\Samples.Orders.Projections.csproj" />
     <ProjectReference Include="..\..\src\EventStore.SpecGeneration\EventStore.SpecGeneration.csproj" />
     <ProjectReference Include="..\..\src\EventStore.Lineage.Api\EventStore.Lineage.Api.csproj" />
     <ProjectReference Include="..\..\src\EventStore.Follow.Api\EventStore.Follow.Api.csproj" />

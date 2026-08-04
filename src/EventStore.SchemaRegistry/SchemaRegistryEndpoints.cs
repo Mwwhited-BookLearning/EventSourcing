@@ -41,6 +41,20 @@ public static class SchemaRegistryEndpoints
             return definition is null ? Results.NotFound() : Results.Text(definition.JsonSchema, "application/json");
         });
 
+        // "CQRS Read-Model Projections" -- ProjectionHost's only reachable
+        // dependency on the write side is HTTP (docs/06-solution-structure.md),
+        // so ChangeKind (needed to pick Full-replace vs. Partial-merge) must be
+        // exposed this way rather than a direct service reference. Deliberately
+        // NOT on the registry:admin-gated group above: this is metadata any
+        // Follow consumer needs (the same tier as the schema itself), not a
+        // control-plane action -- gated by events:follow, the scope a
+        // projections client already holds, instead.
+        app.MapGet("/registry/{eventType}/change-kind", async (string eventType, SchemaRegistryService service, CancellationToken ct) =>
+        {
+            var changeKind = await service.GetActiveChangeKindByNameAsync(eventType, ct);
+            return changeKind is null ? Results.NotFound() : Results.Ok(new { changeKind = changeKind.ToString() });
+        }).RequireAuthorization("events:follow");
+
         // Temporary listing surface for this build stage, ADR-012's QUERY method
         // with a body -- superseded by the GraphQL eventTypes(...) resolver once
         // "GraphQL-Only Query Layer" lands (see the correction note on this item

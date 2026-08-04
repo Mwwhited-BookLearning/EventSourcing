@@ -68,7 +68,7 @@ provider they apply to — not "code written."
 | 7 | [Event-Type Security](#event-type-security) | Auth + Orchestration | Done |
 | 8 | [Derived/Materialized Event Types (deferred)](#derivedmaterialized-event-types-deferred) | Event-Type Security | Done |
 | 9 | [Property-Level Masking](#property-level-masking-data-enforcement) | Event-Type Security, Follow API + Filter Pushdown | Done |
-| 10 | [CQRS Read-Model Projections](#cqrs-read-model-projections-worked-example) | Follow API + Filter Pushdown, Auth + Orchestration | Not started |
+| 10 | [CQRS Read-Model Projections](#cqrs-read-model-projections-worked-example) | Follow API + Filter Pushdown, Auth + Orchestration | Done |
 | 11 | [Hardening & Evolution](#hardening--evolution-dpop-event-upcasting-hash-chained-tamper-evidence) | Auth + Orchestration, Publish API, Follow API + Filter Pushdown, CQRS Read-Model Projections | Not started |
 | 12 | [Entity-Centric Core Rebuild](#entity-centric-core-rebuild) | Event-Type Security | Not started |
 | 13 | [Multi-Tenancy](#multi-tenancy) | Schema Registry, Entity-Centric Core Rebuild | Not started |
@@ -164,7 +164,7 @@ state "Auth + Orchestration" as p5 #palegreen
 state "Event-Type Security" as p6 #palegreen
 state "Derived Event Types (deferred)" as p7 #palegreen
 state "Property-Level Masking" as p8 #palegreen
-state "CQRS Projections" as p9
+state "CQRS Projections" as p9 #palegreen
 state "Hardening & Evolution" as p10
 state "Entity-Centric Core Rebuild" as p11
 state "Multi-Tenancy" as p12
@@ -1006,52 +1006,97 @@ redacted via a capturing logger, not just the response path (`ADR-050`).
 
 ## CQRS Read-Model Projections (worked example)
 
-**Scope**: per `ADR-015`, `ADR-016` — the **consumption** half
-(`ChangeKind` is already required at registration starting "Schema
-Registry"; this is where it's first consumed). Deliberately the
-**pre-`ADR-022`** whole-payload merge rule — `Optional<T>` per-property
-patches and explicit-`null`-clears-a-field are a later revision, not
-built here. `EventStore.Projections.Abstractions`: `IProjection<TReadModel>`
-(`Name`, `EventTypes`, `GetKey`, `Project`) — individual projections never
-see raw events, `ChangeKind`, or merge logic at all. `EventStore.
-Projections.Host`: `ProjectionHost`'s own poll loop, **always** `QUERY
-/follow/{event-type}` with `mode=replay&fromSequenceNumber=<checkpoint>`
-(never `mode=tail` — no reason to track two code paths for "starting
-fresh" vs. "resuming"); `ProjectionsDbContext` with `ProjectionCheckpoint`
-and `ProjectionSnapshot`, its own separate database, reachable only via
-HTTP from the write side; one EF Core provider (SQLite) is enough here.
-`SnapshotMerger`, applied once, centrally: `Full` **replaces** a key's
-whole snapshot; `Partial` **merges** the incoming payload onto the
-existing snapshot (RFC 7396's overwrite-if-present half only, not its
-delete-on-`null` half); a `Partial` event for a key with no existing
-snapshot simply starts one from that event's own fields. A masked/absent
-field arriving in a `Partial` payload is, from the merge's point of view,
-simply absent — the same overlay rule `ADR-009`'s masking consequences
-already state. A fourth seeded OAuth2 client (`projections-client`,
-`events:follow` scope). Runs as its own deployable, `EventStore.
-Projections.Host`, never in-process. Worked example: `Samples.Orders.
-Projections`' `OrderSummaryProjection` over `OrderPlaced` (`Full`) /
-`OrderAddressUpdated` / `OrderShipped` / `OrderCancelled` (`Partial`),
-keyed by `OrderId`.
+**Scope**: per `ADR-015`, `ADR-016`, now built — the **consumption** half
+(`ChangeKind` was already required at registration by "Schema Registry").
+Deliberately the **pre-`ADR-022`** whole-payload merge rule — `Optional<T>`
+per-property patches and explicit-`null`-clears-a-field are a later
+revision, not built here; a key present in a `Partial` payload (including
+present with value `null`) overwrites, a key absent from the payload is
+left untouched. `EventStore.Projections.Abstractions`: `IProjection
+<TReadModel>` (`Name`, `EventTypes`, `GetKey`, `Project`), verbatim per
+`docs/09-cqrs-read-models.md`'s own sketch. `EventStore.Projections.Host`:
+`ProjectionHost<TReadModel>` (`BackgroundService`, one instance per
+registered `IProjection<T>`), `SnapshotMerger`, an abstract
+`ProjectionsDbContext` (`ProjectionCheckpoint`/`ProjectionSnapshot` only —
+a worked example's own derived context, e.g. `OrdersProjectionsDbContext`,
+adds its own read-model `DbSet<T>`; `ProjectionHost<T>` itself only ever
+needs the generic `DbContext.Set<TReadModel>()`, never a concrete
+property). **References none of `EventStore.Persistence`,
+`EventStore.Host.Core`, or any `EventStore.Host.<Provider>` project** —
+its only dependency on the write side is `FollowClient`, a real HTTP
+client issuing the actual `QUERY /follow/{event-type}` verb and parsing
+its SSE response, plus a real Client Credentials token fetch against
+`EventStore.DevIdp` — enforced by the project reference graph itself, per
+`docs/06-solution-structure.md`. A fourth seeded OAuth2 client
+(`projections-client`, `events:follow` scope). Worked example:
+`Samples.Orders.Projections`' `OrderSummaryProjection` over `OrderPlaced`
+(`Full`) / `OrderAddressUpdated` / `OrderShipped` / `OrderCancelled`
+(`Partial`), keyed by `OrderId` — this is the actual runnable deployable
+(a Worker Service), referencing `EventStore.Projections.Host` as a
+library. One EF Core provider (SQLite) — no per-provider build split,
+per that doc's own note.
+
+**A real gap found while building this item, not anticipated by any prior
+doc**: `ChangeKind` isn't carried on the Follow SSE envelope itself (it's
+a property of the event *type*'s registration, not of each event), and
+`ProjectionHost` has no direct service/DB reference at all to look it up
+another way. Resolved with a small, additive `GET /registry/{eventType}/
+change-kind` endpoint — deliberately **not** on the `registry:admin`-gated
+group the rest of `SchemaRegistryEndpoints` uses (a projections client
+has no reason to hold that scope), gated by `events:follow` instead, the
+scope a projection already needs. Same bare-name, tie-break-by-`AppId`
+simplification as `GetActiveClaimsByNameAsync` (`docs/10-open-
+questions.md` row 1) — `SchemaRegistryService.
+GetActiveChangeKindByNameAsync`.
+
+**Runtime model, since Follow's own SSE stream is inherently unbounded**:
+`ProjectionHost<TReadModel>.CatchUpOnceAsync(eventType, maxEventsToConsume,
+idleTimeout, ct)` consumes a bounded pass — up to a count, or until no new
+event arrives within `idleTimeout`, whichever first — rather than
+requiring a truly infinite stream to test deterministically; `ExecuteAsync`
+(the real `BackgroundService` loop) calls it with `idleTimeout:
+Timeout.InfiniteTimeSpan` per event type, concurrently, with an automatic
+reconnect-after-delay on disconnect. A `ProjectionCheckpoint` row is one
+per `ProjectionName` (not per event type), so concurrently-tailed event
+types' applies are serialized through an in-process lock to avoid a lost
+checkpoint update — `docs/09-cqrs-read-models.md`'s own text names the
+possibility of concurrent per-type connections but doesn't address this
+coordination directly; this pass's own resolution.
+
+**Not built, a deliberate, narrower scope than the design doc's own
+text**: the configurable `batchSize` throughput trade-off (deferring the
+checkpoint write across several events' applies) — `batchSize` is always
+effectively `1` (checkpoint advances after every event), the doc's own
+"safest and slowest" default. Not wired into `EventStore.AppHost`/
+`docker-compose.yml` at this stage either, consistent with this item's
+"worked example" framing rather than the core write side's own
+orchestration.
 
 **Depends on**: Follow API + Filter Pushdown (Follow must exist — a
 projection is an ordinary Follow caller) and Auth + Orchestration (needs
 its own OAuth2 client). Independent of Event-Type Security, Derived/
 Materialized Event Types, and Property-Level Masking — a projection is
-"subject to `RequiredReadClaim`/masking exactly like any other Follow
+"subject to `RequiredClaims`/masking exactly like any other Follow
 caller," a constraint on what it can be built *over* if it needs
 claim-gated data, not a build-order dependency for the item itself.
 
-**Exit criteria**: a `Full` event establishes a read-model row from
-scratch; a `Partial` event merges onto existing state, leaving untouched
-fields alone; independent `Partial` events for the same key don't clobber
-each other's fields; a masked/absent field in a `Partial` payload is
+**Exit criteria** (`ProjectionsScenarioAssertions`, real end-to-end HTTP
+against a `WebApplicationFactory`-hosted `EventStore.Host.Sqlite` +
+`EventStore.DevIdp` pair — the same cross-TestServer pattern "Auth +
+Orchestration" established, since this item's only reachable dependency
+on the write side is genuinely HTTP, not a direct service call the way
+every prior item's own tests exercise their target): a `Full` event
+establishes a read-model row from scratch; a `Partial` event merges onto
+existing state, leaving untouched fields alone; independent `Partial`
+events for the same key don't clobber each other's fields; a masked/
+absent field in a `Partial` payload (gated by a Read-direction
+`RequiredClaims` entry the projections client's token doesn't hold) is
 ignored on merge, never overlaid as a placeholder; registering an event
 type without `ChangeKind` is rejected `400`; a full rebuild (truncate
 table + snapshots, reset checkpoint to `0`, replay) reproduces the exact
 same end state as the incrementally-built one; resuming after downtime
-delivers no gap and no duplicate, reusing `ADR-010`'s guarantee rather
-than reimplementing it.
+delivers exactly the one new event, no gap and no duplicate, reusing
+`ADR-010`'s guarantee rather than reimplementing it.
 
 ## Hardening & Evolution (DPoP, event upcasting, hash-chained tamper evidence)
 

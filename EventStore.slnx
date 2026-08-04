@@ -16,11 +16,16 @@
     <Project Path="src/EventStore.Persistence.Migrations.Sqlite/EventStore.Persistence.Migrations.Sqlite.csproj" />
     <Project Path="src/EventStore.Persistence.Migrations.SqlServer/EventStore.Persistence.Migrations.SqlServer.csproj" />
     <Project Path="src/EventStore.Persistence/EventStore.Persistence.csproj" />
+    <Project Path="src/EventStore.Projections.Abstractions/EventStore.Projections.Abstractions.csproj" />
+    <Project Path="src/EventStore.Projections.Host/EventStore.Projections.Host.csproj" />
     <Project Path="src/EventStore.SchemaRegistry/EventStore.SchemaRegistry.csproj" />
     <Project Path="src/EventStore.ServiceDefaults/EventStore.ServiceDefaults.csproj" />
     <Project Path="src/EventStore.SpecGeneration/EventStore.SpecGeneration.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/EventStore.IntegrationTests/EventStore.IntegrationTests.csproj" />
+  </Folder>
+  <Folder Name="/samples/">
+    <Project Path="src/Samples.Orders.Projections/Samples.Orders.Projections.csproj" />
   </Folder>
 </Solution>

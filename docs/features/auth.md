@@ -275,6 +275,7 @@ realm-export file, no admin console:
 | `publisher-client` | `client_credentials` | `events:publish` |
 | `follower-client` | `client_credentials` | `events:follow events:lineage:read` |
 | `operator-client` | `client_credentials` | `registry:admin` |
+| `projections-client` | `client_credentials` | `events:follow` |
 
 ## Salt (UI mockup)
 
