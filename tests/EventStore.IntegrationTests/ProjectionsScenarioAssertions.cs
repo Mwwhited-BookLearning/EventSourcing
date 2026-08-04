@@ -57,7 +57,7 @@ internal static class ProjectionsScenarioAssertions
         };
         AuthScenarioAssertions.AttachAuth(request, hostClient, token, key);
         var response = await hostClient.SendAsync(request);
-        Assert.AreEqual(HttpStatusCode.Created, response.StatusCode, await response.Content.ReadAsStringAsync());
+        Assert.AreEqual(HttpStatusCode.Accepted, response.StatusCode, await response.Content.ReadAsStringAsync());
     }
 
     public static async Task RunCatchUpForAllEventTypesAsync(ProjectionHost<OrderSummary> host, IProjection<OrderSummary> projection, CancellationToken ct = default)

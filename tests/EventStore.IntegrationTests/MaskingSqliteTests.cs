@@ -45,7 +45,7 @@ public class MaskingSqliteTests
         using var db = CreateContext();
         var cache = new MemoryCache(new MemoryCacheOptions());
         var registry = new SchemaRegistryService(db, new SqliteFilterableFieldIndexDdlGenerator(), cache, UpcastingTestSupport.CreateEvaluator());
-        var publish = new PublishService(db, registry, new SqliteUniqueConstraintViolationDetector(), UpcastingTestSupport.CreateChain());
+        var publish = new PublishService(db, registry, new SqliteUniqueConstraintViolationDetector());
         var (payloadMasker, logs) = MaskingTestSupport.CreatePayloadMasker();
         var follow = new FollowService(db, new EventTailReader(db, registry, payloadMasker, UpcastingTestSupport.CreateChain()));
 

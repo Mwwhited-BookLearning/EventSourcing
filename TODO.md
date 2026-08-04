@@ -25,6 +25,21 @@ here instead of inlining.
 
 ## Active
 
+- **`StoredEvent.AppId` now exists (added by "Entity-Centric Core Rebuild",
+  `ADR-021` — the dedicated fix `docs/10-open-questions.md`'s former row 1
+  named as one resolution path, now closed and deleted), but only
+  `EventStore.Router`'s own schema/entity resolution was rewired to use it
+  directly.** `SchemaRegistryService.GetActiveClaimsByNameAsync`/
+  `GetActiveClaimsByNamesAsync`/`GetActiveChangeKindByNameAsync` (used by
+  Follow's connect-time claim gate, Follow's per-parent visibility check,
+  and Lineage's own claim checks — all bare-`EventType`-name, tie-broken by
+  `AppId` ordering on a genuine collision) could now resolve unambiguously
+  by reading each `StoredEvent.AppId` directly instead, for every call
+  site that already has the `StoredEvent` in hand (Follow/Lineage both
+  do). Not done in the same pass as adding the column — a real, scoped
+  follow-up, not a fresh design question (the fix is already decided: use
+  `StoredEvent.AppId`; only the doing is left across those specific call
+  sites).
 - **`EventStore.AppHost`'s Postgres database resource doesn't reliably
   finish auto-creating before `EventStore.Host.Postgres`'s first
   connection attempt.** `Aspire.Hosting.PostgreSql` 13.4.6's `AddDatabase

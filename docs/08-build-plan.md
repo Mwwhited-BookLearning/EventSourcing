@@ -70,7 +70,7 @@ provider they apply to — not "code written."
 | 9 | [Property-Level Masking](#property-level-masking-data-enforcement) | Event-Type Security, Follow API + Filter Pushdown | Done |
 | 10 | [CQRS Read-Model Projections](#cqrs-read-model-projections-worked-example) | Follow API + Filter Pushdown, Auth + Orchestration | Done |
 | 11 | [Hardening & Evolution](#hardening--evolution-dpop-event-upcasting-hash-chained-tamper-evidence) | Auth + Orchestration, Publish API, Follow API + Filter Pushdown, CQRS Read-Model Projections | Done |
-| 12 | [Entity-Centric Core Rebuild](#entity-centric-core-rebuild) | Event-Type Security | Not started |
+| 12 | [Entity-Centric Core Rebuild](#entity-centric-core-rebuild) | Event-Type Security | Done |
 | 13 | [Multi-Tenancy](#multi-tenancy) | Schema Registry, Entity-Centric Core Rebuild | Not started |
 | 14 | [Upcast Materialization + Downcast](#upcast-materialization--downcast) | Hardening & Evolution, Entity-Centric Core Rebuild | Not started |
 | 15 | [Streaming Channels](#streaming-channels) | Auth + Orchestration, Entity-Centric Core Rebuild, Property-Level Masking | Not started |
@@ -166,7 +166,7 @@ state "Derived Event Types (deferred)" as p7 #palegreen
 state "Property-Level Masking" as p8 #palegreen
 state "CQRS Projections" as p9 #palegreen
 state "Hardening & Evolution" as p10 #palegreen
-state "Entity-Centric Core Rebuild" as p11
+state "Entity-Centric Core Rebuild" as p11 #palegreen
 state "Multi-Tenancy" as p12
 state "Upcast Materialization + Downcast" as p13
 state "Streaming Channels" as p14
@@ -1113,12 +1113,21 @@ working system, per `ADR-017`, `ADR-018`, `ADR-019`:
   `EventAppender` alongside the existing `SequenceNumber`/`PayloadHash`
   assignment; the `GET /events/verify?throughSequenceNumber=<n>`
   verification endpoint (or equivalent offline tool).
-- **Publish-time upcast validation** (`ADR-020`): this is where
+- ~~**Publish-time upcast validation** (`ADR-020`): this is where
   `PublishEndpoint` starts actually calling `UpcastChain` when
   `schemaVersion` is behind active, and where the reserved
   `EventUpcastFailed` event type and its dead-letter path are built —
   "Publish API" already accepts the required `schemaVersion` field, this
-  item is what makes it do anything beyond validate-and-store.
+  item is what makes it do anything beyond validate-and-store.~~
+  **Superseded by "Entity-Centric Core Rebuild," below**: that item's own
+  `ADR-023` persist-everything posture retires the `EventUpcastFailed`
+  dead-letter mechanism entirely (a publish-time hop failure now just
+  leaves the original event persisted with `SchemaStatus: invalid`, like
+  any other schema problem) and moves all schema/upcast validation off
+  `PublishEndpoint` onto the async Router. This item still built and
+  tested the mechanism as originally decided — the correction landed once
+  the later item's own dependency actually required revisiting it, not a
+  mistake caught here.
 
 **Depends on**: Auth + Orchestration (DPoP), Publish API (hash chaining),
 Follow API + Filter Pushdown (event upcasting), and **CQRS Read-Model

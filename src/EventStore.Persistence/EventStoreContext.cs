@@ -1,3 +1,4 @@
+using EventStore.Domain.EntityStore;
 using EventStore.Domain.EventLog;
 using EventStore.Domain.SchemaRegistry;
 using Microsoft.EntityFrameworkCore;
@@ -24,6 +25,7 @@ public class EventStoreContext(DbContextOptions<EventStoreContext> options, IJso
     public DbSet<DerivationDefinition> DerivationDefinitions => Set<DerivationDefinition>();
     public DbSet<DerivationCursor> DerivationCursors => Set<DerivationCursor>();
     public DbSet<PendingJoinState> PendingJoinStates => Set<PendingJoinState>();
+    public DbSet<EntityStoreRow> EntityStore => Set<EntityStoreRow>();
 
     protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder) =>
         optionsBuilder.ReplaceService<IModelCacheKeyFactory, ProviderAwareModelCacheKeyFactory>();
@@ -63,6 +65,7 @@ public class EventStoreContext(DbContextOptions<EventStoreContext> options, IJso
         {
             e.HasKey(x => x.SequenceNumber);
             e.HasIndex(x => x.EventId).IsUnique(); // ADR-011 -- publish idempotency relies on this constraint existing
+            e.HasIndex(x => x.EntityId); // ADR-021 -- QUERY /entities/{entityId}/events and the fold step's own per-entity lookups
 
             e.Property(x => x.Payload).IsRequired(); // portable TEXT/nvarchar(max)/text -- never a native JSON column type (ADR-004)
 
@@ -112,6 +115,12 @@ public class EventStoreContext(DbContextOptions<EventStoreContext> options, IJso
             // JoinKeyValue), which a DB-level unique constraint would reject.
             e.HasIndex(x => new { x.AppId, x.DerivationName, x.JoinKeyValue });
             e.HasIndex(x => x.ExpiresAt); // the TTL sweep's own lookup (ADR-007)
+        });
+
+        modelBuilder.Entity<EntityStoreRow>(e =>
+        {
+            e.HasKey(x => x.EntityId);
+            e.HasIndex(x => x.EntityType); // the whole-store, per-entity-type rebuild replay (ADR-021)
         });
     }
 

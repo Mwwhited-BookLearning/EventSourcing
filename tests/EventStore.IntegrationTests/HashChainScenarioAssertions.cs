@@ -28,11 +28,11 @@ internal static class HashChainScenarioAssertions
         const string typeName = "ChainedType1";
         await RegisterType(registry, appId, typeName);
 
-        var e1 = (PublishResult.Created)await publish.PublishAsync(typeName, new PublishEventRequest(
+        var e1 = (PublishResult.Accepted)await publish.PublishAsync(typeName, new PublishEventRequest(
             appId, 1, """{ "Amount": 1 }""", null, null), TestClaimsPrincipal.None);
-        var e2 = (PublishResult.Created)await publish.PublishAsync(typeName, new PublishEventRequest(
+        var e2 = (PublishResult.Accepted)await publish.PublishAsync(typeName, new PublishEventRequest(
             appId, 1, """{ "Amount": 2 }""", null, null), TestClaimsPrincipal.None);
-        var e3 = (PublishResult.Created)await publish.PublishAsync(typeName, new PublishEventRequest(
+        var e3 = (PublishResult.Accepted)await publish.PublishAsync(typeName, new PublishEventRequest(
             appId, 1, """{ "Amount": 3 }""", null, null), TestClaimsPrincipal.None);
 
         var result = await verifier.VerifyAsync(e3.SequenceNumber);
@@ -49,11 +49,11 @@ internal static class HashChainScenarioAssertions
         const string typeName = "ChainedType2";
         await RegisterType(registry, appId, typeName);
 
-        var e1 = (PublishResult.Created)await publish.PublishAsync(typeName, new PublishEventRequest(
+        var e1 = (PublishResult.Accepted)await publish.PublishAsync(typeName, new PublishEventRequest(
             appId, 1, """{ "Amount": 10 }""", null, null), TestClaimsPrincipal.None);
-        var e2 = (PublishResult.Created)await publish.PublishAsync(typeName, new PublishEventRequest(
+        var e2 = (PublishResult.Accepted)await publish.PublishAsync(typeName, new PublishEventRequest(
             appId, 1, """{ "Amount": 20 }""", null, null), TestClaimsPrincipal.None);
-        var e3 = (PublishResult.Created)await publish.PublishAsync(typeName, new PublishEventRequest(
+        var e3 = (PublishResult.Accepted)await publish.PublishAsync(typeName, new PublishEventRequest(
             appId, 1, """{ "Amount": 30 }""", null, null), TestClaimsPrincipal.None);
 
         // Verifies clean before any corruption -- establishes the baseline this
@@ -64,7 +64,7 @@ internal static class HashChainScenarioAssertions
         // Test-only direct database edit -- bypasses PublishService entirely, so
         // PayloadHash is deliberately left stale, matching this item's own exit
         // criterion ("a direct database edit" to Payload alone).
-        var row = await db.Events.SingleAsync(e => e.EventId == e2.EventId);
+        var row = await db.Events.SingleAsync(e => e.EventId == e2.CorrelationId);
         row.Payload = """{ "Amount": 999999 }""";
         await db.SaveChangesAsync();
         db.ChangeTracker.Clear();

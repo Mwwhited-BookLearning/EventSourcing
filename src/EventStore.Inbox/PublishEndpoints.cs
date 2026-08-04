@@ -19,14 +19,24 @@ public static class PublishEndpoints
             var result = await service.PublishAsync(eventType, request, user, ct);
             return result switch
             {
-                PublishResult.Created c => Results.Created($"/publish/{eventType}/{c.EventId}",
-                    new { eventId = c.EventId, sequenceNumber = c.SequenceNumber, schemaVersion = c.SchemaVersion, eventType = c.EventType, entityId = (string?)null }),
-                PublishResult.IdempotentReplay r => Results.Created($"/publish/{eventType}/{r.EventId}",
-                    new { eventId = r.EventId, sequenceNumber = r.SequenceNumber, schemaVersion = r.SchemaVersion, entityId = (string?)null }),
+                // ADR-023 -- the persist-everything envelope; entityId is ""
+                // rather than the JSON-friendlier null until the Router
+                // resolves it, matching StoredEvent.EntityId's own sentinel.
+                PublishResult.Accepted a => Results.Accepted($"/publish/{eventType}/{a.CorrelationId}", new
+                {
+                    correlationId = a.CorrelationId,
+                    status = a.Status,
+                    entityId = string.IsNullOrEmpty(a.EntityId) ? null : a.EntityId,
+                    schemaStatus = a.SchemaStatus,
+                    authorityStatus = a.AuthorityStatus,
+                    conflictFlag = a.ConflictFlag,
+                    reason = a.Reason,
+                    sequenceNumber = a.SequenceNumber,
+                    originId = (string?)null, // ADR-033/090 -- null for this single-site deployment
+                }),
                 PublishResult.Conflict => Results.Conflict(new { error = "eventId already used with different content" }),
                 PublishResult.UnregisteredEventType => Results.NotFound(new { error = $"event type '{eventType}' is not registered" }),
                 PublishResult.Forbidden => Results.Forbid(),
-                PublishResult.ValidationFailed f => Results.BadRequest(new { errors = f.Errors }),
                 PublishResult.UnresolvedParent p => Results.BadRequest(new { error = "parent event not found", missingParentEventIds = p.MissingParentEventIds }),
                 _ => Results.Problem(statusCode: 500),
             };

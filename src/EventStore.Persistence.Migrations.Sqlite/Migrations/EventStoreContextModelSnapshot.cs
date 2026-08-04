@@ -17,6 +17,62 @@ namespace EventStore.Persistence.Migrations.Sqlite.Migrations
 #pragma warning disable 612, 618
             modelBuilder.HasAnnotation("ProductVersion", "10.0.10");
 
+            modelBuilder.Entity("EventStore.Domain.EntityStore.EntityStoreRow", b =>
+                {
+                    b.Property<string>("EntityId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("AuthorityStatus")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Data")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("EntityType")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Extensions")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Hash")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTimeOffset>("LastAppliedLogicalTime")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("LastAppliedOriginId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<long>("LastAppliedSequenceNumber")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<bool>("LateArrivalFlag")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("SchemaVersion")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("ShardKey")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<long>("Version")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("EntityId");
+
+                    b.HasIndex("EntityType");
+
+                    b.ToTable("EntityStore");
+                });
+
             modelBuilder.Entity("EventStore.Domain.EventLog.EventParent", b =>
                 {
                     b.Property<Guid>("ChildEventId")
@@ -41,6 +97,10 @@ namespace EventStore.Persistence.Migrations.Sqlite.Migrations
                         .HasColumnType("INTEGER");
 
                     b.Property<string>("ActorId")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("AppId")
                         .IsRequired()
                         .HasColumnType("TEXT");
 
@@ -134,6 +194,8 @@ namespace EventStore.Persistence.Migrations.Sqlite.Migrations
 
                     b.HasKey("SequenceNumber");
 
+                    b.HasIndex("EntityId");
+
                     b.HasIndex("EventId")
                         .IsUnique();
 
@@ -226,6 +288,10 @@ namespace EventStore.Persistence.Migrations.Sqlite.Migrations
                         .HasColumnType("TEXT");
 
                     b.Property<string>("EntityIdField")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("EntityType")
                         .IsRequired()
                         .HasColumnType("TEXT");
 

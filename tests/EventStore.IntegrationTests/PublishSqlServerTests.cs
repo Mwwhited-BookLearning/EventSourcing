@@ -44,15 +44,14 @@ public class PublishSqlServerTests
         using var db = CreateContext();
         var cache = new MemoryCache(new MemoryCacheOptions());
         var registry = new SchemaRegistryService(db, new SqlServerFilterableFieldIndexDdlGenerator(), cache, UpcastingTestSupport.CreateEvaluator());
-        var publish = new PublishService(db, registry, new SqlServerUniqueConstraintViolationDetector(), UpcastingTestSupport.CreateChain());
+        var publish = new PublishService(db, registry, new SqlServerUniqueConstraintViolationDetector());
         var verifier = new ChainVerificationService(db);
         var specBuilder = new OpenApiDocumentBuilder(db, new EventSchemaConverter(), cache);
 
         await PublishScenarioAssertions.PublishingAValidEventSucceeds(registry, publish);
-        await PublishScenarioAssertions.PublishingAnEventMissingARequiredFieldIsRejected(registry, publish);
-        await PublishScenarioAssertions.PublishingAnEventWithAWrongShapedFieldIsRejected(registry, publish);
+        await PublishScenarioAssertions.PublishingAnEventMissingARequiredFieldIsPersistedNotRejected(registry, publish);
+        await PublishScenarioAssertions.PublishingAnEventWithAWrongShapedFieldIsPersistedNotRejected(registry, publish);
         await PublishScenarioAssertions.PublishingAgainstAnUnregisteredEventTypeIsRejected(publish);
-        await PublishScenarioAssertions.PublishingValidatesAgainstTheDeclaredVersionNotWhicheverIsActive(registry, publish);
         await PublishScenarioAssertions.RetryingWithSameEventIdAndIdenticalContentReplaysWithNoNewWrite(registry, publish);
         await PublishScenarioAssertions.RetryingWithSameEventIdButDifferentContentIsAConflict(registry, publish);
         await PublishScenarioAssertions.PublishingWithoutEventIdGeneratesAFreshOneEachTime(registry, publish);
@@ -62,9 +61,6 @@ public class PublishSqlServerTests
         await PublishScenarioAssertions.PermissiveParentValidationAcceptsADanglingParentReference(registry, publish);
         await PublishScenarioAssertions.PublishingAClaimGatedTypeWithoutTheClaimIsRejectedWith403AndWithItSucceeds(registry, publish);
         await PublishScenarioAssertions.PublishAndReadClaimsAreEnforcedFullyIndependentlyForTheSameType(registry, publish);
-
-        await PublishScenarioAssertions.PublishingALaggingVersionWithACompatibleUpcastStoresTheOriginalPayloadUnchanged(registry, publish);
-        await PublishScenarioAssertions.PublishingALaggingVersionWithAFailingUpcastStoresEventUpcastFailedInstead(registry, publish);
 
         await HashChainScenarioAssertions.PublishingEventsChainsEachEventsHashToItsPredecessor(registry, publish, verifier);
         await HashChainScenarioAssertions.CorruptingAHistoricalPayloadIsDetectedAtExactlyThatSequenceNumberWithEverythingBeforeItVerifyingClean(registry, publish, verifier, db);

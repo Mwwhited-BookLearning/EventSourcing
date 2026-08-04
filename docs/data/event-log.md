@@ -9,6 +9,7 @@ public class StoredEvent
     public string? OriginId { get; set; }       // which site/peer this event originated at, in a multi-site mesh -- null/local-site-implied for a single-site deployment (ADR-033; propagated to this file, ADR-090). NOT related to TelemetryChannel.Origin (raw-source-vs-derived, ADR-031, docs/data/streaming-and-attachments.md) -- both use the word "Origin" for unrelated concepts; disambiguated explicitly, not renamed
     public string? LogicalClock { get; set; }   // hybrid logical clock value assigned at the origin site, for cross-site ordering (ADR-033; propagated to this file, ADR-090)
     public Guid EventId { get; set; }          // unique — client-supplied for idempotent retries, or server-generated (ADR-011); plays the "CorrelationId" role too
+    public string AppId { get; set; } = default!;      // the publisher's own declared AppId (ADR-021) -- the real source for EntityId's {appId}:... prefix below; closes docs/10-open-questions.md row 1's ambiguity for entity resolution specifically ("Entity-Centric Core Rebuild" is the "dedicated fix" that row's own text named as one resolution path). Follow/Lineage's own read-time claim lookups still use their pre-existing bare-name tie-break -- not rewired to this field in the same pass, tracked in TODO.md
     public string EntityId { get; set; } = default!;   // {appId}:{entityType}:{uniqueId} — required (ADR-021); supersedes the old optional StreamId
     public string EventType { get; set; } = default!;  // normalized lowercase
     public int SchemaVersion { get; set; }

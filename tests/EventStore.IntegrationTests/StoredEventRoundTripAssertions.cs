@@ -17,6 +17,7 @@ internal static class StoredEventRoundTripAssertions
         var stored = new StoredEvent
         {
             EventId = eventId,
+            AppId = "demo",
             EntityId = "demo:Order:o-1",
             EventType = "orderplaced",
             SchemaVersion = 1,

@@ -245,16 +245,38 @@ stale numbers here are worse than none)*
   dead-letter built from scratch. `EventStore.IntegrationTests` still has
   23 `[TestMethod]`s (more internal scenarios each, not new methods) — all
   pass across SQLite/PostgreSQL/SQL Server.
-- **Next up**: item 12, "Entity-Centric Core Rebuild" — depends on
-  Event-Type Security (already Done). This is the big one: `EntityId`, the
-  always-on Entity Store, `Optional<T>` property patches, the Inbox/Router
-  split (publish becomes `202` + advisory `SchemaStatus`/`AuthorityStatus`,
-  never `400` for a schema-invalid/unknown-version payload — every earlier
-  item's `ValidationFailed`-returning test scenarios for those two cases
-  will need re-deriving, not just re-running), `ExpectedVersion` optimistic
-  concurrency + `ConflictFlag`, and `LateArrivalFlag`. Read `docs/08-build-
-  plan.md`'s "Entity-Centric Core Rebuild" section's exit criteria before
-  starting.
+- **Item 12, "Entity-Centric Core Rebuild," is Done — same day, same
+  session, continuing directly from item 11.** Full narrative in
+  `docs/changes/2026-08-04.md`'s second half. Short version: new
+  `EventStore.Router` project (`RouterWorker`, the async half of the
+  Inbox/Router split, `ADR-023`) does schema validation + entity
+  resolution + the Entity Store fold (`ConflictFlag`/`LateArrivalFlag`,
+  `ADR-024`/`029`); `PublishService` rewritten to always return `202` +
+  a status envelope (`PublishResult.Accepted`), never blocking on schema
+  content; **`EventUpcastFailed` (item 11's own `ADR-020` dead-letter
+  mechanism, built and tested that same day) is retired**, per `ADR-023`'s
+  own explicit "reframed... not a special case" text — both
+  `docs/adrs/adr-020-schemaversion-on-publish.md` and item 11's own
+  build-plan section got the required strikethrough-and-pointer note.
+  Two real design gaps found and fixed while writing tests, not by
+  reading the code back: `StoredEvent` needed a real `AppId` field (the
+  "dedicated fix" `docs/10-open-questions.md`'s former row 1 predicted —
+  that row is now deleted, resolved) and `EventTypeDefinition` needed a
+  new `EntityType` field distinct from `Name` (`OrderPlaced`/
+  `OrderShipped` are different event types that must still resolve to
+  the same `EntityId` — the first implementation attempt didn't do this
+  and silently created two different Entity Store rows for one order).
+  `EventStore.IntegrationTests` now has 26 `[TestMethod]`s (up from 23) —
+  all pass across SQLite/PostgreSQL/SQL Server.
+- **Next up**: item 13, "Multi-Tenancy" (`ADR-030`/`075` — `AppId` joins
+  the schema registry's key across every registry/upcast/downcast
+  lookup) or item 14, "Upcast Materialization + Downcast" (`ADR-027`/
+  `028`/`053`) — both now unblocked; check `docs/08-build-plan.md`'s
+  dependency graph for which build-plan ordering to follow. Item 14 in
+  particular is where the upcast-aware fold `RouterWorker` deliberately
+  skipped this pass (it validates a declared `SchemaVersion` against its
+  own schema only, never upcasts to the active version before folding)
+  is meant to land.
 
 ## How to resume cold
 
@@ -269,7 +291,7 @@ stale numbers here are worse than none)*
    narrative.
 5. `dotnet build EventStore.slnx` and `dotnet test tests/EventStore.IntegrationTests` —
    confirm the build/test baseline the last session left still holds
-   before adding to it (23 tests should pass). Requires Docker running
+   before adding to it (26 tests should pass). Requires Docker running
    (Testcontainers for Postgres/SQL Server) and the SDK pinned in
    `global.json`.
 
@@ -296,7 +318,7 @@ stale numbers here are worse than none)*
   treated as this session's own action; items 7 through 10 all committed —
   "check off work as you go. then continue" is the standing instruction
   currently in effect, so each item is committed without waiting for a
-  fresh prompt; item 11 now done too, per the same rhythm).
+  fresh prompt; items 11 and 12 now done too, per the same rhythm).
 - **Always actually run new code against every provider it's built for
   before calling an item done.** Every real bug found this session (the
   `ExecuteSqlRawAsync` brace-parsing issue, an unquoted Postgres column,

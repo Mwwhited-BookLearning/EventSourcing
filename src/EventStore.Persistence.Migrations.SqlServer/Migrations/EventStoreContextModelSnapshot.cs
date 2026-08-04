@@ -22,6 +22,62 @@ namespace EventStore.Persistence.Migrations.SqlServer.Migrations
 
             SqlServerModelBuilderExtensions.UseIdentityColumns(modelBuilder);
 
+            modelBuilder.Entity("EventStore.Domain.EntityStore.EntityStoreRow", b =>
+                {
+                    b.Property<string>("EntityId")
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<string>("AuthorityStatus")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("Data")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("EntityType")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<string>("Extensions")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("Hash")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTimeOffset>("LastAppliedLogicalTime")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("LastAppliedOriginId")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<long>("LastAppliedSequenceNumber")
+                        .HasColumnType("bigint");
+
+                    b.Property<bool>("LateArrivalFlag")
+                        .HasColumnType("bit");
+
+                    b.Property<int>("SchemaVersion")
+                        .HasColumnType("int");
+
+                    b.Property<string>("ShardKey")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<long>("Version")
+                        .HasColumnType("bigint");
+
+                    b.HasKey("EntityId");
+
+                    b.HasIndex("EntityType");
+
+                    b.ToTable("EntityStore");
+                });
+
             modelBuilder.Entity("EventStore.Domain.EventLog.EventParent", b =>
                 {
                     b.Property<Guid>("ChildEventId")
@@ -51,6 +107,10 @@ namespace EventStore.Persistence.Migrations.SqlServer.Migrations
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");
 
+                    b.Property<string>("AppId")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
                     b.Property<string>("AttestedActorId")
                         .HasColumnType("nvarchar(max)");
 
@@ -76,7 +136,7 @@ namespace EventStore.Persistence.Migrations.SqlServer.Migrations
 
                     b.Property<string>("EntityId")
                         .IsRequired()
-                        .HasColumnType("nvarchar(max)");
+                        .HasColumnType("nvarchar(450)");
 
                     b.Property<Guid>("EventId")
                         .HasColumnType("uniqueidentifier");
@@ -140,6 +200,8 @@ namespace EventStore.Persistence.Migrations.SqlServer.Migrations
                         .HasColumnType("nvarchar(max)");
 
                     b.HasKey("SequenceNumber");
+
+                    b.HasIndex("EntityId");
 
                     b.HasIndex("EventId")
                         .IsUnique();
@@ -233,6 +295,10 @@ namespace EventStore.Persistence.Migrations.SqlServer.Migrations
                         .HasColumnType("nvarchar(max)");
 
                     b.Property<string>("EntityIdField")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("EntityType")
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");
 

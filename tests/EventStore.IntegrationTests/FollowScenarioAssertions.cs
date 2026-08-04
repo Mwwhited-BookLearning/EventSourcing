@@ -23,8 +23,8 @@ internal static class FollowScenarioAssertions
             ChangeKind: "Full", EntityIdField: "$.Id",
             ParentValidationMode: "Permissive", RequiredClaims: null, UpcastFromPrevious: null, DowncastToPrevious: null));
 
-    private static async Task<PublishResult.Created> Publish(PublishService publish, string appId, string typeName, decimal amount) =>
-        (PublishResult.Created)await publish.PublishAsync(typeName, new PublishEventRequest(
+    private static async Task<PublishResult.Accepted> Publish(PublishService publish, string appId, string typeName, decimal amount) =>
+        (PublishResult.Accepted)await publish.PublishAsync(typeName, new PublishEventRequest(
             appId, 1, $$"""{ "Amount": {{amount}}, "Name": "n" }""", null, null), TestClaimsPrincipal.None);
 
     // Pulls exactly `count` items from a live poll loop, failing fast (rather than
@@ -89,7 +89,7 @@ internal static class FollowScenarioAssertions
             await using var enumerator = connected.Events.GetAsyncEnumerator(cts.Token);
             var events = await Collect(enumerator, 2, cts);
             cts.Cancel();
-            CollectionAssert.AreEquivalent(new[] { e150.EventId, e250.EventId }, events.Select(e => e.EventId).ToArray());
+            CollectionAssert.AreEquivalent(new[] { e150.CorrelationId, e250.CorrelationId }, events.Select(e => e.EventId).ToArray());
         }
 
         using (var cts = new CancellationTokenSource())
@@ -99,7 +99,7 @@ internal static class FollowScenarioAssertions
             await using var enumerator = connected.Events.GetAsyncEnumerator(cts.Token);
             var events = await Collect(enumerator, 1, cts);
             cts.Cancel();
-            Assert.AreEqual(e150.EventId, events.Single().EventId);
+            Assert.AreEqual(e150.CorrelationId, events.Single().EventId);
         }
     }
 
@@ -129,13 +129,13 @@ internal static class FollowScenarioAssertions
         await using var enumerator = connected.Events.GetAsyncEnumerator(cts.Token);
 
         var history = await Collect(enumerator, 2, cts);
-        CollectionAssert.AreEqual(new[] { e1.EventId, e2.EventId }, history.Select(e => e.EventId).ToArray());
+        CollectionAssert.AreEqual(new[] { e1.CorrelationId, e2.CorrelationId }, history.Select(e => e.EventId).ToArray());
 
         var e3 = await Publish(publish, appId, typeName, 3);
         var tailed = await Collect(enumerator, 1, cts);
         cts.Cancel();
 
-        Assert.AreEqual(e3.EventId, tailed.Single().EventId);
+        Assert.AreEqual(e3.CorrelationId, tailed.Single().EventId);
         Assert.AreEqual(e2.SequenceNumber + 1, tailed.Single().SequenceNumber, "expected no gap or duplicate between history and the tail");
     }
 
@@ -155,7 +155,7 @@ internal static class FollowScenarioAssertions
         var events = await Collect(enumerator, 2, cts);
         cts.Cancel();
 
-        CollectionAssert.AreEqual(new[] { e2.EventId, e3.EventId }, events.Select(e => e.EventId).ToArray());
+        CollectionAssert.AreEqual(new[] { e2.CorrelationId, e3.CorrelationId }, events.Select(e => e.EventId).ToArray());
     }
 
     public static async Task ModeReplayCombinedWithFilterReplaysOnlyMatchingHistory(SchemaRegistryService registry, PublishService publish, FollowService follow)
@@ -174,7 +174,7 @@ internal static class FollowScenarioAssertions
         var events = await Collect(enumerator, 2, cts);
         cts.Cancel();
 
-        CollectionAssert.AreEquivalent(new[] { e150.EventId, e250.EventId }, events.Select(e => e.EventId).ToArray());
+        CollectionAssert.AreEquivalent(new[] { e150.CorrelationId, e250.CorrelationId }, events.Select(e => e.EventId).ToArray());
     }
 
     public static async Task TheDefaultModeTailNeverDeliversPreExistingEvents(SchemaRegistryService registry, PublishService publish, FollowService follow)
@@ -193,7 +193,7 @@ internal static class FollowScenarioAssertions
         var events = await Collect(enumerator, 1, cts);
         cts.Cancel();
 
-        Assert.AreEqual(e2.EventId, events.Single().EventId);
+        Assert.AreEqual(e2.CorrelationId, events.Single().EventId);
     }
 
     public static async Task SupplyingFromSequenceNumberWithoutModeReplayIsRejected(SchemaRegistryService registry, PublishService publish, FollowService follow)
@@ -245,8 +245,8 @@ internal static class FollowScenarioAssertions
         await RegisterType(registry, appId, childTypeName); // no RequiredClaims -- visible to anyone with events:follow
 
         var parent = await Publish(publish, appId, parentTypeName, 1);
-        var child = (PublishResult.Created)await publish.PublishAsync(childTypeName, new PublishEventRequest(
-            appId, 1, $$"""{ "Amount": 1, "Name": "n" }""", [parent.EventId], null), TestClaimsPrincipal.None);
+        var child = (PublishResult.Accepted)await publish.PublishAsync(childTypeName, new PublishEventRequest(
+            appId, 1, $$"""{ "Amount": 1, "Name": "n" }""", [parent.CorrelationId], null), TestClaimsPrincipal.None);
 
         var connected = (FollowResult.Connected)await follow.ConnectAsync(
             childTypeName, new FollowRequest(appId, Filter: null, Mode: "Replay", FromSequenceNumber: 0), TestClaimsPrincipal.None);
@@ -254,7 +254,7 @@ internal static class FollowScenarioAssertions
         using var cts = new CancellationTokenSource();
         var followed = (await CollectFollowed(enumerator, 1, cts)).Single();
 
-        Assert.AreEqual(child.EventId, followed.Event.EventId, "the event itself must still stream despite the restricted parent");
+        Assert.AreEqual(child.CorrelationId, followed.Event.EventId, "the event itself must still stream despite the restricted parent");
         Assert.IsEmpty(followed.VisibleParentEventIds, "a parent the caller lacks the Read claim for must be omitted, not just redacted");
     }
 }

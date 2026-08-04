@@ -22,6 +22,62 @@ namespace EventStore.Persistence.Migrations.Postgres.Migrations
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
+            modelBuilder.Entity("EventStore.Domain.EntityStore.EntityStoreRow", b =>
+                {
+                    b.Property<string>("EntityId")
+                        .HasColumnType("text");
+
+                    b.Property<string>("AuthorityStatus")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("Data")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("EntityType")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("Extensions")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("Hash")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<DateTimeOffset>("LastAppliedLogicalTime")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("LastAppliedOriginId")
+                        .HasColumnType("text");
+
+                    b.Property<long>("LastAppliedSequenceNumber")
+                        .HasColumnType("bigint");
+
+                    b.Property<bool>("LateArrivalFlag")
+                        .HasColumnType("boolean");
+
+                    b.Property<int>("SchemaVersion")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("ShardKey")
+                        .HasColumnType("text");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<long>("Version")
+                        .HasColumnType("bigint");
+
+                    b.HasKey("EntityId");
+
+                    b.HasIndex("EntityType");
+
+                    b.ToTable("EntityStore");
+                });
+
             modelBuilder.Entity("EventStore.Domain.EventLog.EventParent", b =>
                 {
                     b.Property<Guid>("ChildEventId")
@@ -48,6 +104,10 @@ namespace EventStore.Persistence.Migrations.Postgres.Migrations
                     NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("SequenceNumber"));
 
                     b.Property<string>("ActorId")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("AppId")
                         .IsRequired()
                         .HasColumnType("text");
 
@@ -141,6 +201,8 @@ namespace EventStore.Persistence.Migrations.Postgres.Migrations
 
                     b.HasKey("SequenceNumber");
 
+                    b.HasIndex("EntityId");
+
                     b.HasIndex("EventId")
                         .IsUnique();
 
@@ -233,6 +295,10 @@ namespace EventStore.Persistence.Migrations.Postgres.Migrations
                         .HasColumnType("text");
 
                     b.Property<string>("EntityIdField")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("EntityType")
                         .IsRequired()
                         .HasColumnType("text");
 
