@@ -30,10 +30,18 @@ read-time downcast walk. It deliberately does **not** re-derive:
   whose `SchemaVersion` is behind the active version — that's `ADR-018`,
   unchanged by this doc, and is what both triggers below invoke rather
   than re-implement.
-- Publish-time upcast *validation* and the `EventUpcastFailed` reserved
-  dead-letter type on a hop that fails — that's `ADR-020`; the diagram
+- Publish-time upcast *validation* on a hop that fails — that's `ADR-020`
+  (as revised by `ADR-023`, "Entity-Centric Core Rebuild"); the diagram
   below shows only the success path through the same mechanism, since
   materialization only ever happens *after* that validation succeeds.
+  ~~`ADR-020` originally routed a hop failure to a reserved
+  `EventUpcastFailed` dead-letter event type~~ — **superseded by
+  `ADR-023`, already retired before this doc's own Trigger 1 diagram
+  below was written**: a hop failure now simply leaves the *original*
+  event persisted with `SchemaStatus: invalid`, exactly like any other
+  schema-shape problem, validated asynchronously by the Router rather
+  than synchronously by `PublishEndpoint`. This doc's diagram reflects
+  that current behavior, not the retired mechanism.
 - `ChangeKind`/`Optional<T>` fold merge semantics, or the Entity Store
   fold step in general — that's [`entity-concept.md`](entity-concept.md);
   this doc only adds the one invariant `ADR-027` layers on top of that
@@ -45,36 +53,46 @@ read-time downcast walk. It deliberately does **not** re-derive:
 
 ## Sequence diagram — publish-time materialization (Trigger 1, `ADR-027`)
 
-A lagging publish (`schemaVersion` behind the active version) already runs
-through `UpcastChain` for `ADR-020`'s live compatibility check. `ADR-027`'s
-first trigger changes only what happens **on success**: the upcasted
-result that `ADR-020` used to discard is now persisted as its own
-`UpcastMaterialization` event, immediately, in the same request.
+~~A lagging publish ran through `UpcastChain` synchronously, inside
+`PublishEndpoint` itself, for `ADR-020`'s original live compatibility
+check.~~ **Superseded by `ADR-023`** ("Entity-Centric Core Rebuild"): the
+Inbox (`PublishEndpoint`) now only authenticates, checks idempotency, and
+appends unconditionally, always returning `202 Accepted` immediately —
+schema validation, entity resolution, and (this ADR's own addition)
+Trigger 1 materialization all move to the async Router's per-tick
+`RouterWorker`, running *after* the Inbox has already responded. `ADR-027`'s
+first trigger changes only what the Router does **on a conformant-but-
+lagging hit**: the upcasted result `ADR-020` originally discarded is now
+persisted as its own `UpcastMaterialization` event instead.
 
 ```plantuml
 @startuml UpcastMaterialization_PublishTime_Sequence
 autonumber
 actor "Publishing System\n(still on schema v1)" as publisher
 participant "PublishEndpoint\n(Inbox, ADR-023)" as endpoint
+participant "RouterWorker\n(Router, ADR-023)" as router
 participant "UpcastChain\n(ADR-018)" as upcastChain
 participant "IUpcastExpressionEvaluator\n(CEL by default, ADR-053)" as evaluator
 database "Event Log" as eventLog
 
 publisher -> endpoint: POST /publish/OrderPlaced\n{ schemaVersion: 1, payload: { OrderId: "o-1", Amount: 42.00 } }
 note right: "demo:OrderPlaced" v2 is the active version\n(upcastFromPrevious "Amount, 'Unknown' as Status", schema-registry.md)
-endpoint -> endpoint: schemaVersion (1) < active version (2) -- run UpcastChain (ADR-020)
-endpoint -> upcastChain: upcast(payload, fromVersion: 1, toVersion: 2)
+endpoint -> eventLog: INSERT StoredEvent\n(EventKind: Original, SchemaVersion: 1, Status: "received",\nPayload: { OrderId: "o-1", Amount: 42.00 } -- verbatim, unchanged)
+endpoint --> publisher: 202 { status: "received" } -- unconditional, ADR-023
+...next Router tick, asynchronously...
+router -> eventLog: SELECT events WHERE Status = "received"
+router -> router: validate against the DECLARED version (1) --\nconformant; also schemaVersion (1) < active version (2)
+router -> upcastChain: upcast(payload, fromVersion: 1, toVersion: 2)
 upcastChain -> evaluator: evaluate "Amount, 'Unknown' as Status"\nagainst { OrderId: "o-1", Amount: 42.00 }
 evaluator --> upcastChain: { OrderId: "o-1", Amount: 42.00, Status: "Unknown" }
 upcastChain -> upcastChain: validate result against v2's JSON Schema
 alt every hop parses, evaluates, and the result validates
-  endpoint -> eventLog: INSERT StoredEvent\n(EventKind: Original, SchemaVersion: 1,\nPayload: { OrderId: "o-1", Amount: 42.00 } -- verbatim, unchanged)
-  endpoint -> eventLog: INSERT StoredEvent\n(EventKind: UpcastMaterialization, SchemaVersion: 2,\nMaterializationOfEventId: <original's EventId>,\nPayload: { OrderId: "o-1", Amount: 42.00, Status: "Unknown" })
-  note right: the second row is what ADR-020 used to discard --\nADR-027 persists it instead of recomputing it on every future read
-  endpoint --> publisher: 202 { status: "received", schemaStatus: "conformant" }
+  router -> eventLog: INSERT StoredEvent\n(EventKind: UpcastMaterialization, SchemaVersion: 2,\nMaterializationOfEventId: <original's EventId>,\nPayload: { OrderId: "o-1", Amount: 42.00, Status: "Unknown" })
+  note right: the new row is what ADR-020 used to discard --\nADR-027 persists it instead of recomputing it on every future read
+  router -> eventLog: UPDATE original StoredEvent\n(Status: "applied", SchemaStatus: "conformant")
 else a hop fails to parse, fails to evaluate, or its output fails v2's schema
-  endpoint -> eventLog: INSERT StoredEvent\n(EventType: "EventUpcastFailed" -- reserved, ADR-020 --\nin the original's place, carrying the verbatim payload + failed hop)
-  endpoint --> publisher: 202 { status: "received" } -- body names EventUpcastFailed as the stored type
+  router -> eventLog: UPDATE original StoredEvent\n(Status: "applied", SchemaStatus: "invalid" -- no materialization created)
+  note right: ~~originally routed to a reserved "EventUpcastFailed"\ndead-letter event type (ADR-020)~~ -- superseded by ADR-023:\nthe original just persists as SchemaStatus: invalid,\nlike any other schema-shape problem, no substituted event type
 end
 @enduml
 ```
@@ -82,42 +100,51 @@ end
 ## Sequence diagram — background `UpcastMaterializer` reconciling the existing backlog (Trigger 2, `ADR-027`)
 
 Publish-time materialization alone only covers *future* lagging publishes.
-`UpcastMaterializer` is `ADR-027`'s second trigger: it activates whenever a
-new schema version + mapping is registered, and catches up every event
-already sitting in the log at the now-superseded version. Architecturally
-it is "an internal follower," the same pattern `ADR-007`'s derivation
-workers and `ADR-015`'s `ProjectionHost` already establish — it tails via
-the public Follow API and republishes through the ordinary publish path,
-never a private write path of its own.
+`UpcastMaterializer` is `ADR-027`'s second trigger: it catches up every
+event already sitting in the log at a now-superseded version.
+~~Architecturally "an internal follower" tailing the public Follow API and
+republishing through the ordinary publish path~~ — **revised while building
+this item**: it runs as an extra step inside `RouterWorker`'s *own*
+existing per-tick loop (the same "combine responsibilities into one
+process" posture that worker's own header comment already states for
+Router+Fold), scanning `EventTypeDefinitions`/`Events` directly rather
+than through a Follow subscription, and appending a materialization via
+`EventAppender` directly rather than through `PublishEndpoint`. Going
+through the ordinary publish path would re-run `RequiredClaims`
+enforcement against an empty system principal — wrongly `Forbidden`-ing
+the materialization of any claim-gated event type, since a materialization
+is reshaping an event that already passed that check once, at its own
+original publish time, not a fresh external submission. It re-scans every
+`RouterWorker` tick rather than reacting to the registration event
+directly, since no pub/sub mechanism exists elsewhere in this design for
+that — functionally equivalent, at the accepted "no batching/pacing
+guarantee" cost `ADR-027`'s own Consequences already name.
 
 ```plantuml
 @startuml UpcastMaterializer_Backlog_Sequence
 autonumber
 actor "Platform Operator" as operator
 participant "Registry\n(schema-registry.md)" as registry
-participant "UpcastMaterializer\n(internal follower, ADR-007/ADR-015 pattern)" as materializer
-participant "GraphQL Gateway\n(Follow Subscription, ADR-037)" as gateway
+participant "RouterWorker\n(Router, ADR-023 -- ReconcileBacklogAsync\nruns every tick, not just on registration)" as router
 participant "UpcastChain\n(ADR-018)" as upcastChain
 participant "IUpcastExpressionEvaluator\n(CEL by default, ADR-053)" as evaluator
-participant "PublishEndpoint" as endpoint
+participant "EventAppender\n(shared append primitive, not PublishEndpoint)" as appender
 database "Event Log" as eventLog
 
 operator -> registry: PUT /registry/OrderPlaced\n{ ..., upcastFromPrevious: "Amount, 'Unknown' as Status" }
-note right: registration itself is schema-registry.md's own sequence --\nshown here only as the trigger this item reacts to
-registry -> materializer: new version + mapping registered for "demo:OrderPlaced" (v1 -> v2)
-activate materializer
-note over materializer: how far this worker has already walked is internal\nbookkeeping -- ADR-027 does not specify a persisted\ncheckpoint shape the way ProjectionCheckpoint (ADR-015) does
-materializer -> gateway: QUERY /graphql\nsubscription { onOrderPlaced(mode: REPLAY, fromSequenceNumber: 0) { ... } }
+note right: registration itself is schema-registry.md's own sequence --\nshown here only as the trigger this item eventually catches up to
+...next Router tick, asynchronously...
+router -> eventLog: SELECT EventTypeDefinitions WHERE IsActive AND Version > 1
+router -> eventLog: SELECT Events WHERE EventKind = Original,\nSchemaStatus = conformant, SchemaVersion < active Version,\nnot yet materialized
 loop for each matching event\n(EventKind: Original, SchemaVersion: 1, not yet materialized)
-  gateway --> materializer: StoredEvent { EventId, SchemaVersion: 1,\nPayload: { OrderId: "o-2", Amount: 17.50 } }
-  materializer -> upcastChain: upcast(payload, fromVersion: 1, toVersion: 2)
+  eventLog --> router: StoredEvent { EventId, SchemaVersion: 1,\nPayload: { OrderId: "o-2", Amount: 17.50 } }
+  router -> upcastChain: upcast(payload, fromVersion: 1, toVersion: 2)
   upcastChain -> evaluator: evaluate "Amount, 'Unknown' as Status"
   evaluator --> upcastChain: { OrderId: "o-2", Amount: 17.50, Status: "Unknown" }
-  upcastChain --> materializer: upcasted result, valid against v2 schema
-  materializer -> endpoint: publish materialization\n(EventKind: UpcastMaterialization, SchemaVersion: 2,\nMaterializationOfEventId: <o-2's original EventId>)
-  endpoint -> eventLog: INSERT StoredEvent (same append path as any other publish)
+  upcastChain --> router: upcasted result, valid against v2 schema
+  router -> appender: append materialization\n(EventKind: UpcastMaterialization, SchemaVersion: 2,\nMaterializationOfEventId: <o-2's original EventId>)
+  appender -> eventLog: INSERT StoredEvent -- same hash-chain-aware\nappend primitive PublishEndpoint itself uses,\nbut called directly, bypassing RequiredClaims re-checks
 end
-deactivate materializer
 @enduml
 ```
 

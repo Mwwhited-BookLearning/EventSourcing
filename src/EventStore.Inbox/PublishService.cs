@@ -1,4 +1,3 @@
-using System.Data;
 using System.Security.Claims;
 using EventStore.Domain.EventLog;
 using EventStore.Domain.SchemaRegistry;
@@ -89,7 +88,7 @@ public class PublishService(
 
         try
         {
-            await InsertEventAsync(storedEvent, parentEventIds, ct);
+            await EventAppender.AppendAsync(db, storedEvent, parentEventIds, ct);
         }
         catch (DbUpdateException ex) when (uniqueConstraintViolationDetector.IsUniqueConstraintViolation(ex, nameof(StoredEvent.EventId)))
         {
@@ -111,43 +110,6 @@ public class PublishService(
     private static PublishResult.Accepted ToAccepted(StoredEvent storedEvent) => new(
         storedEvent.EventId, storedEvent.SequenceNumber, storedEvent.Status, storedEvent.EntityId,
         storedEvent.SchemaStatus, storedEvent.AuthorityStatus, storedEvent.ConflictFlag, Reason: null);
-
-    // ADR-019 -- ChainHash needs this row's own SequenceNumber, which isn't
-    // known until the insert itself assigns it (an identity column), so this
-    // is necessarily a read-prior-hash, insert, then compute-and-update
-    // sequence, not one single insert. Serializable isolation prevents a
-    // concurrent publisher's own insert from reading the same "prior tail"
-    // and producing two rows that both chain off the same predecessor --
-    // a real, accepted v1 cost (a serialization conflict surfaces as a
-    // thrown exception a caller would need to retry) for a single linear
-    // chain under concurrent writers, not designed further here.
-    private async Task InsertEventAsync(StoredEvent storedEvent, IReadOnlyList<Guid> parentEventIds, CancellationToken ct)
-    {
-        db.Events.Add(storedEvent);
-        foreach (var parentEventId in parentEventIds)
-            db.EventParents.Add(new EventParent { ChildEventId = storedEvent.EventId, ParentEventId = parentEventId });
-
-        await using var transaction = await db.Database.BeginTransactionAsync(IsolationLevel.Serializable, ct);
-        try
-        {
-            var priorChainHash = await db.Events
-                .AsNoTracking()
-                .OrderByDescending(e => e.SequenceNumber)
-                .Select(e => e.ChainHash)
-                .FirstOrDefaultAsync(ct) ?? EventChainHash.Genesis;
-
-            await db.SaveChangesAsync(ct);
-
-            storedEvent.ChainHash = EventChainHash.Compute(priorChainHash, storedEvent.PayloadHash, storedEvent.SequenceNumber);
-            await db.SaveChangesAsync(ct);
-            await transaction.CommitAsync(ct);
-        }
-        catch (DbUpdateException)
-        {
-            await transaction.RollbackAsync(ct);
-            throw;
-        }
-    }
 
     private static PublishResult ReplayOrConflict(StoredEvent existing, string candidateHash) =>
         existing.PayloadHash == candidateHash

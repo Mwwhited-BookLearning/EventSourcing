@@ -6,5 +6,6 @@ public static class UpcastingServiceCollectionExtensions
 {
     public static IServiceCollection AddUpcasting(this IServiceCollection services) => services
         .AddSingleton<IUpcastExpressionEvaluator, CelUpcastExpressionEvaluator>()
-        .AddSingleton<UpcastChain>();
+        .AddSingleton<UpcastChain>()
+        .AddSingleton<DowncastChain>();
 }

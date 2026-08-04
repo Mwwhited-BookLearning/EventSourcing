@@ -2,6 +2,7 @@ using EventStore.Inbox;
 using EventStore.Persistence;
 using EventStore.Router;
 using EventStore.SchemaRegistry;
+using EventStore.Upcasting;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
@@ -60,7 +61,7 @@ internal static class EntityScenarioAssertions
     }
 
     public static async Task PublishingAnEventThatResolvesToABrandNewEntityIdCreatesAnEntityStoreRow(
-        SchemaRegistryService registry, PublishService publish, EventStoreContext db)
+        SchemaRegistryService registry, PublishService publish, EventStoreContext db, UpcastChain upcastChain)
     {
         const string appId = "entity-demo-1";
         await RegisterOrderPlaced(registry, appId);
@@ -68,7 +69,7 @@ internal static class EntityScenarioAssertions
         var created = await Publish(publish, appId, "OrderPlaced", """{ "OrderId": "o-1", "CustomerName": "A. Smith", "Amount": 42.00 }""");
         Assert.AreEqual("received", created.Status);
 
-        await RouterWorker.RunOnceAsync(db, registry);
+        await RouterWorker.RunOnceAsync(db, registry, upcastChain);
 
         var storedEvent = await db.Events.AsNoTracking().SingleAsync(e => e.EventId == created.CorrelationId);
         Assert.AreEqual("applied", storedEvent.Status);
@@ -79,17 +80,17 @@ internal static class EntityScenarioAssertions
     }
 
     public static async Task PublishingASecondEventForTheSameEntityIdUpdatesTheRowAndIncrementsVersion(
-        SchemaRegistryService registry, PublishService publish, EventStoreContext db)
+        SchemaRegistryService registry, PublishService publish, EventStoreContext db, UpcastChain upcastChain)
     {
         const string appId = "entity-demo-2";
         await RegisterOrderPlaced(registry, appId);
         await RegisterOrderShipped(registry, appId);
 
         await Publish(publish, appId, "OrderPlaced", """{ "OrderId": "o-2", "CustomerName": "A. Smith", "Amount": 42.00 }""");
-        await RouterWorker.RunOnceAsync(db, registry);
+        await RouterWorker.RunOnceAsync(db, registry, upcastChain);
 
         await Publish(publish, appId, "OrderShipped", """{ "OrderId": "o-2", "Carrier": "UPS" }""");
-        await RouterWorker.RunOnceAsync(db, registry);
+        await RouterWorker.RunOnceAsync(db, registry, upcastChain);
 
         var row = await db.EntityStore.AsNoTracking().SingleAsync(r => r.EntityId == $"{appId}:order:o-2");
         Assert.AreEqual(2, row.Version);
@@ -98,16 +99,16 @@ internal static class EntityScenarioAssertions
     }
 
     public static async Task AFullEventsPayloadReplacesTheEntityStoreRowsDataWholesale(
-        SchemaRegistryService registry, PublishService publish, EventStoreContext db)
+        SchemaRegistryService registry, PublishService publish, EventStoreContext db, UpcastChain upcastChain)
     {
         const string appId = "entity-demo-3";
         await RegisterOrderPlaced(registry, appId);
 
         await Publish(publish, appId, "OrderPlaced", """{ "OrderId": "o-3", "CustomerName": "A. Smith", "Amount": 42.00 }""");
-        await RouterWorker.RunOnceAsync(db, registry);
+        await RouterWorker.RunOnceAsync(db, registry, upcastChain);
 
         await Publish(publish, appId, "OrderPlaced", """{ "OrderId": "o-3", "CustomerName": "A. Smith", "Amount": 99.00 }""");
-        await RouterWorker.RunOnceAsync(db, registry);
+        await RouterWorker.RunOnceAsync(db, registry, upcastChain);
 
         var row = await db.EntityStore.AsNoTracking().SingleAsync(r => r.EntityId == $"{appId}:order:o-3");
         StringAssert.Contains(row.Data, "99");
@@ -115,17 +116,17 @@ internal static class EntityScenarioAssertions
     }
 
     public static async Task APartialEventsUnknownPropertyIsFoldedIntoExtensionsBagNotDropped(
-        SchemaRegistryService registry, PublishService publish, EventStoreContext db)
+        SchemaRegistryService registry, PublishService publish, EventStoreContext db, UpcastChain upcastChain)
     {
         const string appId = "entity-demo-4";
         await RegisterOrderPlaced(registry, appId);
         await RegisterOrderShipped(registry, appId);
 
         await Publish(publish, appId, "OrderPlaced", """{ "OrderId": "o-4", "CustomerName": "A. Smith", "Amount": 42.00 }""");
-        await RouterWorker.RunOnceAsync(db, registry);
+        await RouterWorker.RunOnceAsync(db, registry, upcastChain);
 
         await Publish(publish, appId, "OrderShipped", """{ "OrderId": "o-4", "Carrier": "UPS", "TrackingNumber": "1Z999" }""");
-        await RouterWorker.RunOnceAsync(db, registry);
+        await RouterWorker.RunOnceAsync(db, registry, upcastChain);
 
         var row = await db.EntityStore.AsNoTracking().SingleAsync(r => r.EntityId == $"{appId}:order:o-4");
         StringAssert.Contains(row.Data, "UPS");
@@ -133,19 +134,19 @@ internal static class EntityScenarioAssertions
     }
 
     public static async Task PublishingWithAStaleExpectedVersionSetsConflictFlagButStillPersistsAndFolds(
-        SchemaRegistryService registry, PublishService publish, EventStoreContext db)
+        SchemaRegistryService registry, PublishService publish, EventStoreContext db, UpcastChain upcastChain)
     {
         const string appId = "entity-demo-5";
         await RegisterOrderPlaced(registry, appId);
         await RegisterOrderShipped(registry, appId);
 
         await Publish(publish, appId, "OrderPlaced", """{ "OrderId": "o-5", "CustomerName": "A. Smith", "Amount": 42.00 }""");
-        await RouterWorker.RunOnceAsync(db, registry);
+        await RouterWorker.RunOnceAsync(db, registry, upcastChain);
         await Publish(publish, appId, "OrderShipped", """{ "OrderId": "o-5", "Carrier": "UPS" }""");
-        await RouterWorker.RunOnceAsync(db, registry); // EntityStoreRow now at Version 2
+        await RouterWorker.RunOnceAsync(db, registry, upcastChain); // EntityStoreRow now at Version 2
 
         var stale = await Publish(publish, appId, "OrderShipped", """{ "OrderId": "o-5", "Carrier": "FedEx" }""", expectedVersion: 1);
-        await RouterWorker.RunOnceAsync(db, registry);
+        await RouterWorker.RunOnceAsync(db, registry, upcastChain);
 
         var storedEvent = await db.Events.AsNoTracking().SingleAsync(e => e.EventId == stale.CorrelationId);
         Assert.IsTrue(storedEvent.ConflictFlag);
@@ -156,7 +157,7 @@ internal static class EntityScenarioAssertions
     }
 
     public static async Task AnEventWithAnOlderOccurredAtArrivingAfterALogicallyNewerOneAlreadyFoldedSetsLateArrivalFlagAndDoesNotOverwrite(
-        SchemaRegistryService registry, PublishService publish, EventStoreContext db)
+        SchemaRegistryService registry, PublishService publish, EventStoreContext db, UpcastChain upcastChain)
     {
         const string appId = "entity-demo-6";
         await RegisterOrderPlaced(registry, appId);
@@ -168,15 +169,15 @@ internal static class EntityScenarioAssertions
         // itself the "late" one relative to nothing) depending on when the suite runs.
         var baseline = DateTimeOffset.UtcNow;
         await Publish(publish, appId, "OrderPlaced", """{ "OrderId": "o-6", "CustomerName": "A. Smith", "Amount": 42.00 }""");
-        await RouterWorker.RunOnceAsync(db, registry);
+        await RouterWorker.RunOnceAsync(db, registry, upcastChain);
 
         var eB = await Publish(publish, appId, "OrderShipped", """{ "OrderId": "o-6", "Carrier": "UPS" }""");
         await SetOccurredAtAsync(db, eB.CorrelationId, baseline.AddHours(2));
-        await RouterWorker.RunOnceAsync(db, registry);
+        await RouterWorker.RunOnceAsync(db, registry, upcastChain);
 
         var eA = await Publish(publish, appId, "OrderShipped", """{ "OrderId": "o-6", "Carrier": "FedEx" }""");
         await SetOccurredAtAsync(db, eA.CorrelationId, baseline.AddHours(1)); // earlier than eB, arrives after
-        await RouterWorker.RunOnceAsync(db, registry);
+        await RouterWorker.RunOnceAsync(db, registry, upcastChain);
 
         var storedEventA = await db.Events.AsNoTracking().SingleAsync(e => e.EventId == eA.CorrelationId);
         Assert.IsTrue(storedEventA.LateArrivalFlag);
@@ -188,7 +189,7 @@ internal static class EntityScenarioAssertions
     }
 
     public static async Task AnEventThatIsBothAStaleExpectedVersionConflictAndALateArrivalSetsBothFlagsIndependently(
-        SchemaRegistryService registry, PublishService publish, EventStoreContext db)
+        SchemaRegistryService registry, PublishService publish, EventStoreContext db, UpcastChain upcastChain)
     {
         const string appId = "entity-demo-7";
         await RegisterOrderPlaced(registry, appId);
@@ -196,15 +197,15 @@ internal static class EntityScenarioAssertions
 
         var baseline = DateTimeOffset.UtcNow;
         await Publish(publish, appId, "OrderPlaced", """{ "OrderId": "o-7", "CustomerName": "A. Smith", "Amount": 42.00 }""");
-        await RouterWorker.RunOnceAsync(db, registry);
+        await RouterWorker.RunOnceAsync(db, registry, upcastChain);
 
         var shipped = await Publish(publish, appId, "OrderShipped", """{ "OrderId": "o-7", "Carrier": "UPS" }""");
         await SetOccurredAtAsync(db, shipped.CorrelationId, baseline.AddHours(2));
-        await RouterWorker.RunOnceAsync(db, registry); // EntityStoreRow now at Version 2, LastAppliedLogicalTime baseline+2h
+        await RouterWorker.RunOnceAsync(db, registry, upcastChain); // EntityStoreRow now at Version 2, LastAppliedLogicalTime baseline+2h
 
         var both = await Publish(publish, appId, "OrderShipped", """{ "OrderId": "o-7", "Carrier": "FedEx" }""", expectedVersion: 1);
         await SetOccurredAtAsync(db, both.CorrelationId, baseline.AddHours(1));
-        await RouterWorker.RunOnceAsync(db, registry);
+        await RouterWorker.RunOnceAsync(db, registry, upcastChain);
 
         var storedEvent = await db.Events.AsNoTracking().SingleAsync(e => e.EventId == both.CorrelationId);
         Assert.IsTrue(storedEvent.ConflictFlag);
@@ -216,17 +217,17 @@ internal static class EntityScenarioAssertions
     }
 
     public static async Task PublishingWithoutExpectedVersionAppliesUnconditionallyWithNoConflictDetection(
-        SchemaRegistryService registry, PublishService publish, EventStoreContext db)
+        SchemaRegistryService registry, PublishService publish, EventStoreContext db, UpcastChain upcastChain)
     {
         const string appId = "entity-demo-8";
         await RegisterOrderPlaced(registry, appId);
         await RegisterOrderShipped(registry, appId);
 
         await Publish(publish, appId, "OrderPlaced", """{ "OrderId": "o-8", "CustomerName": "A. Smith", "Amount": 42.00 }""");
-        await RouterWorker.RunOnceAsync(db, registry);
+        await RouterWorker.RunOnceAsync(db, registry, upcastChain);
 
         var shipped = await Publish(publish, appId, "OrderShipped", """{ "OrderId": "o-8", "Carrier": "UPS" }""");
-        await RouterWorker.RunOnceAsync(db, registry);
+        await RouterWorker.RunOnceAsync(db, registry, upcastChain);
 
         var storedEvent = await db.Events.AsNoTracking().SingleAsync(e => e.EventId == shipped.CorrelationId);
         Assert.IsFalse(storedEvent.ConflictFlag);
@@ -236,7 +237,7 @@ internal static class EntityScenarioAssertions
     }
 
     public static async Task ASchemaInvalidPublishPersistsWith202AndSchemaStatusInvalidAndKnownPropertiesStillFold(
-        SchemaRegistryService registry, PublishService publish, EventStoreContext db)
+        SchemaRegistryService registry, PublishService publish, EventStoreContext db, UpcastChain upcastChain)
     {
         const string appId = "entity-demo-9";
         await RegisterOrderPlaced(registry, appId);
@@ -244,7 +245,7 @@ internal static class EntityScenarioAssertions
         var accepted = await Publish(publish, appId, "OrderPlaced", """{ "OrderId": "o-9", "CustomerName": "A. Smith", "Amount": "not-a-number" }""");
         Assert.AreEqual("received", accepted.Status, "never rejected -- ADR-023");
 
-        await RouterWorker.RunOnceAsync(db, registry);
+        await RouterWorker.RunOnceAsync(db, registry, upcastChain);
 
         var storedEvent = await db.Events.AsNoTracking().SingleAsync(e => e.EventId == accepted.CorrelationId);
         Assert.AreEqual("invalid", storedEvent.SchemaStatus);
@@ -260,7 +261,7 @@ internal static class EntityScenarioAssertions
     // guarantee, re-exercised here (not in PublishScenarioAssertions.cs) since
     // it's now a Router-level, not a publish-time, concern (ADR-023).
     public static async Task PublishingAgainstADeclaredVersionBehindTheActiveOneStillValidatesAgainstTheDeclaredVersion(
-        SchemaRegistryService registry, PublishService publish, EventStoreContext db)
+        SchemaRegistryService registry, PublishService publish, EventStoreContext db, UpcastChain upcastChain)
     {
         const string appId = "entity-demo-10";
         await registry.RegisterAsync("OrderPlaced", new RegisterEventTypeRequest(
@@ -275,7 +276,7 @@ internal static class EntityScenarioAssertions
         // schemaVersion 1 explicitly must still validate against v1, not "whichever is active".
 
         var accepted = await Publish(publish, appId, "OrderPlaced", """{ "OrderId": "o-10", "Amount": 150.00, "Status": "Paid" }""");
-        await RouterWorker.RunOnceAsync(db, registry);
+        await RouterWorker.RunOnceAsync(db, registry, upcastChain);
 
         var storedEvent = await db.Events.AsNoTracking().SingleAsync(e => e.EventId == accepted.CorrelationId);
         Assert.AreEqual("conformant", storedEvent.SchemaStatus);

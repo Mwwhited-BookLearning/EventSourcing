@@ -47,7 +47,7 @@ public class FollowPostgresTests
         var registry = new SchemaRegistryService(db, new PostgresFilterableFieldIndexDdlGenerator(), cache, UpcastingTestSupport.CreateEvaluator());
         var publish = new PublishService(db, registry, new PostgresUniqueConstraintViolationDetector());
         var (payloadMasker, _) = MaskingTestSupport.CreatePayloadMasker();
-        var follow = new FollowService(db, new EventTailReader(db, registry, payloadMasker, UpcastingTestSupport.CreateChain()));
+        var follow = new FollowService(db, registry, new EventTailReader(db, registry, payloadMasker, UpcastingTestSupport.CreateChain(), UpcastingTestSupport.CreateDowncastChain()));
         var specBuilder = new AsyncApiDocumentBuilder(db, new EventSchemaConverter(), new MaskingSchemaTransformer(), cache);
 
         await FollowScenarioAssertions.ConnectingWithNoFilterInReplayModeStreamsEveryEventOfTheType(registry, publish, follow);
@@ -64,6 +64,9 @@ public class FollowPostgresTests
 
         await UpcastingScenarioAssertions.AV1StoredEventIsPresentedUpcastedToTheActiveV2ShapeOnReplay(registry, publish, follow);
         await UpcastingScenarioAssertions.AV1StoredEventSpanningTwoVersionHopsAppliesBothInOrder(registry, publish, follow);
+
+        await DowncastScenarioAssertions.ARequestForAGenuinelyOlderVersionReturnsTheOldShape(registry, publish, follow);
+        await DowncastScenarioAssertions.AVersionWithNoDowncastToPreviousRegisteredFailsTheRequestRatherThanGuessing(registry, publish, follow);
 
         await AsyncApiScenarioAssertions.AsyncApiDocumentIncludesTheFollowChannelForARegisteredType(registry, specBuilder);
         await AsyncApiScenarioAssertions.RegisteringANewTypeInvalidatesTheCachedAsyncApiDocument(registry, specBuilder);
