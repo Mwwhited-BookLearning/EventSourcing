@@ -72,3 +72,24 @@ design already trusts. Tracked as a back-burnered row in
 `docs/10-open-questions.md`, not closed, so this doesn't quietly
 disappear the way `CLAUDE.md`'s own cautionary tale (`ChannelOrigin.Origin`/
 `OriginId`) warns a flagged-but-untracked gap tends to.
+
+**Update, same session — superseded by `ADR-094`.** On further
+discussion this Recommendation's own test turned out to be the wrong
+one: IONM and the pharmacovigilance clock are domain-level *example
+instances*, not the shape of the framework decision itself, so waiting
+for their specific numbers to "converge" was never actually the right
+gate — a plain `TimeSpan` already covers a 300-second window and a
+15-day window equally well with no strain. The real question was always
+whether the underlying *relationship* ("this event is a reply to that
+event") generalizes cleanly on its own, independent of any domain's
+specifics — and it does, directly via Hohpe & Woolf's Correlation
+Identifier pattern (`docs/patterns/request-reply-correlation.md`), which
+neither option above actually considered. `ADR-094` adopts a refined
+Option B on that basis: a generic envelope field (`RespondsToEventId`)
+plus an opt-in registry declaration (`ExpectedResponse`), with escalation
+policy itself still left entirely to the application — narrower framework
+surface than this comparison's original Option B sketch, and decided
+without needing a second worked domain example first. `docs/
+10-open-questions.md`'s row is resolved (deleted) accordingly. The
+pros/cons above are kept as written, for the teaching value in seeing
+where the original framing was and wasn't the right test.
