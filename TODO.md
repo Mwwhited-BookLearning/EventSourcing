@@ -25,6 +25,31 @@ here instead of inlining.
 
 ## Active
 
+- **`FollowSubscriptionTypeModule`'s dynamic Subscription schema
+  (`EventStore.GraphQL`, "GraphQL-Only Query Layer") only reflects
+  whatever event types are active at Host warmup — registering a new
+  event type afterward never makes its `on_{appId}_{eventType}`
+  Subscription field appear without a process restart.** Confirmed, by
+  extensive direct debugging (Console-instrumented runs, a parallel
+  independent `EventStoreContext` proving the registration genuinely
+  commits and is immediately visible to any OTHER connection), that this
+  is not a registration bug: `ISchemaChangeNotifier.NotifyChanged()` does
+  fire and does reach a real subscriber inside HotChocolate's own
+  executor machinery, but no second `CreateTypesAsync` invocation ever
+  follows — not immediately, not after a 2-second periodic-timer fallback
+  retried for over a minute of real wall time. Most likely explanation,
+  not fully proven without reading HotChocolate's own source: whatever
+  internal scope builds the schema disposes the type modules it resolves
+  once building finishes, silently stopping a `Timer` field kept on this
+  same long-lived singleton. Worked around for this item's own exit
+  criteria by seeding the one test that needs a live Subscription
+  directly into the database before the Host starts, proving the dynamic
+  schema CONSTRUCTION mechanism itself is correct — the gap is narrowly
+  about hot-registering against an ALREADY-RUNNING Host. Investigate:
+  read HotChocolate's actual `RequestExecutorManager`/type-module-disposal
+  source, or try `IRequestExecutorManager.EvictExecutor(schemaName)`
+  explicitly alongside `TypesChanged` instead of relying on the event
+  alone.
 - **`dotnet test tests/EventStore.IntegrationTests` intermittently fails
   one or two SQL Server test classes per full run, a different class (or
   pair) failing each time** (seen: `DerivationSqlServerTests`, then

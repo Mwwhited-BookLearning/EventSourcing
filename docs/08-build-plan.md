@@ -77,7 +77,7 @@ provider they apply to — not "code written."
 | 16 | [Binary Attachments](#binary-attachments) | Auth + Orchestration, Entity-Centric Core Rebuild | Done |
 | 17 | [Sharding & Replication](#sharding--replication) | Entity-Centric Core Rebuild | Done |
 | 18 | [Non-Authoritative Capture](#non-authoritative-capture) | Entity-Centric Core Rebuild, Auth + Orchestration, Binary Attachments | Done |
-| 19 | [GraphQL-Only Query Layer](#graphql-only-query-layer) | Entity-Centric Core Rebuild, Multi-Tenancy, Hardening & Evolution | Not started |
+| 19 | [GraphQL-Only Query Layer](#graphql-only-query-layer) | Entity-Centric Core Rebuild, Multi-Tenancy, Hardening & Evolution | Done |
 | 20 | [Compatibility & Deployment Discipline](#compatibility--deployment-discipline) | GraphQL-Only Query Layer | Not started |
 | 21 | [MVVM Client](#mvvm-client) | Multi-Tenancy, Sharding & Replication | Not started |
 | 22 | [Ticket Exchange for Header-Incapable Clients](#ticket-exchange-for-header-incapable-clients) | Streaming Channels, Binary Attachments, Non-Authoritative Capture | Not started |
@@ -173,7 +173,7 @@ state "Streaming Channels" as p14 #palegreen
 state "Binary Attachments" as p15 #palegreen
 state "Sharding & Replication" as p16 #palegreen
 state "Non-Authoritative Capture" as p17 #palegreen
-state "GraphQL-Only Query Layer" as p18
+state "GraphQL-Only Query Layer" as p18 #palegreen
 state "Compatibility & Deployment Discipline" as p19
 state "MVVM Client" as p20
 state "Ticket Exchange" as p21
@@ -1479,6 +1479,80 @@ executing; a follower calling `revealField` on a masked node it holds
 the claim for receives the real value, and the same call without the
 claim is rejected — the `revealOnDemand` round-trip "Property-Level
 Masking" above could only build half of.
+
+**Built-scope note**: several real, deliberate scope narrowings, all
+honestly flagged rather than silently dropped:
+
+- **Per-`AppId` schema isolation is one shared schema with AppId-qualified
+  names (`on_{appId}_{eventType}`, `{appId}_{eventType}_Payload`), not a
+  literally separate SDL document per `AppId`.** Two different `AppId`s
+  can register the same event-type `Name` independently (`ADR-030`),
+  which one shared GraphQL schema cannot express as two identically-named
+  types — qualifying names avoids that real collision. HotChocolate's own
+  multiple-named-schema feature is configured for a fixed set of names at
+  startup, not for `AppId`s discovered dynamically at runtime, so a
+  genuinely separate document per `AppId` was not pursued.
+- **The `where` filter argument is one static, hand-written input type
+  (`[EventFilterInput!]`, `{field, eq, neq, gt, gte, lt, lte, contains}`),
+  not a dynamically-built per-event-type filter-input object.** `ADR-037`'s
+  literal "a client cannot construct a query referencing an undeclared
+  field" schema-level guarantee is narrowed, for filtering specifically,
+  to a runtime check — `GraphQlFilterPredicateBuilder` rejects an
+  undeclared field name with a GraphQL error before it ever reaches the
+  database, the same functional safety `ADR-003`'s original rule
+  required, just enforced one step later than schema validation. The
+  guarantee still holds at full schema-validation strength for the
+  SUBSCRIPTION FIELD NAME and PAYLOAD FIELDS themselves, which this
+  item's `FollowSubscriptionTypeModule` genuinely builds per registered
+  event type. No `and`/`or` boolean-combinator nesting either — multiple
+  `EventFilterInput` entries simply AND together.
+- **Lineage's `first`/`skip` are plain arguments applied inside
+  `LineageService`, not HotChocolate's `[UsePaging]` Relay-style
+  Connection wrapper (`edges { node { ... } } pageInfo`).** The doc's own
+  shown example (`ancestors(first: 50) { eventId ... }`, a flat list) never
+  uses `after` or a Connection shape, so building the fuller cursor
+  machinery would have produced a response shape the doc itself never
+  shows. Narrower than a full Relay cursor implementation.
+- **No generic "get current entity" query field, and no `extensions: JSON`
+  field anywhere.** `ADR-037`'s Consequences describe `extensions: JSON`
+  as "a generic field on every GraphQL type, exposing the Entity Store's
+  `Extensions` bag," but none of Follow/Lineage/Registry listing — the
+  only read surfaces this item's own exit criteria actually name — ever
+  queries current Entity Store state directly; there is currently no
+  GraphQL type it would attach to.
+- **DataLoader batching and cross-shard/cross-replica fan-out are not
+  exercised, honestly, because there's no concrete case to exercise.**
+  Every resolver this item builds already reads its data in one batched
+  query (`LineageService`'s own `ResolveNodesAsync`/
+  `ResolveVisibleClosureAsync`, unchanged since "Lineage API"); nothing
+  here has a per-node fetch pattern that would cause N+1. "Sharding &
+  Replication"'s own deferred cross-`EntityType` fan-out scenario remains
+  genuinely untestable, not just deferred: `ShardKey` is a logical column
+  in this codebase, never a physically separate database/replica to fan
+  out across.
+- **A real, found limitation, not a silent gap: registering a new event
+  type while a Host is already running does not make its Subscription
+  field appear without a process restart.** `FollowSubscriptionTypeModule`
+  (`ITypeModule`) is genuinely dynamic and correctly reflects whatever is
+  active *at schema warmup* — proven by seeding a registration directly
+  into the database before the Host starts, then subscribing successfully
+  over real HTTP. But `ISchemaChangeNotifier.NotifyChanged()` firing
+  afterward, confirmed by direct debugging to reach a real subscriber,
+  never actually triggers a second `CreateTypesAsync` invocation against
+  an already-running Host, and a periodic-timer fallback was tried and
+  hit the same wall (most likely explanation, not fully proven: whatever
+  HotChocolate-internal scope builds the schema disposes the type modules
+  it resolves once building finishes, which would silently stop a
+  `Timer` field on this same long-lived singleton). Tracked in `TODO.md`
+  as a real follow-up, not swept under the exit criteria — none of which
+  actually requires hot-registration against a live Host.
+- **`ADR-036`'s real DID/UCAN offline chain verification and the actual
+  RFC 8693 OAuth Token Exchange bridge endpoint remain not built**, exactly
+  as already noted in "Non-Authoritative Capture" above — `revealField`'s
+  own step-up-authentication refinement (`ADR-066`) and its `ADR-045`
+  `AccessLogEntry` audit write are similarly deferred to their own,
+  later, not-yet-built items ("Digital Sign-Off for Regulated Actions,"
+  "Delegated Grants, RBAC, Federated Claims & Read Audit Logging").
 
 ## Compatibility & Deployment Discipline
 

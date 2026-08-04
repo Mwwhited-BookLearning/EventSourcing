@@ -97,7 +97,7 @@ public static class FilterPredicateBuilder
         var field = fieldsByPropertyName[propertyAccessNode.Property.Name];
 
         var propertyExpr = BuildPropertyAccessExpression(field, eventParam);
-        var constantExpr = BuildConstantExpression((ConstantNode)Unwrap(constantSide), field.DataType);
+        var constantExpr = BuildConstantExpression(((ConstantNode)Unwrap(constantSide)).Value, field.DataType);
         var (leftExpr, rightExpr) = reversed ? (constantExpr, propertyExpr) : (propertyExpr, constantExpr);
 
         return binary.OperatorKind switch
@@ -121,21 +121,25 @@ public static class FilterPredicateBuilder
         throw new NotSupportedException("A $filter comparison must reference exactly one declared FilterableField.");
     }
 
-    private static Expression BuildPropertyAccessExpression(FilterableField field, ParameterExpression eventParam)
+    // public -- reused verbatim by EventStore.GraphQL's own GraphQlFilterPredicateBuilder
+    // (ADR-037's GraphQL-native filter translator, a different front end driving the
+    // SAME per-provider JSON pushdown mechanism this class already established for
+    // the OData era; "04-odata-filter-pushdown.md" -- "only what drives it changed").
+    public static Expression BuildPropertyAccessExpression(FilterableField field, ParameterExpression eventParam)
     {
         var method = typeof(JsonFunctions).GetMethod(JsonFunctions.MethodNameFor(field.DataType))!;
         var payloadProperty = Expression.Property(eventParam, nameof(StoredEvent.Payload));
         return Expression.Call(method, payloadProperty, Expression.Constant(field.JsonPath));
     }
 
-    private static Expression BuildConstantExpression(ConstantNode constant, FilterableFieldType targetType)
+    public static Expression BuildConstantExpression(object? value, FilterableFieldType targetType)
     {
         (object converted, Type clrType) = targetType switch
         {
-            FilterableFieldType.String => ((object)(Convert.ToString(constant.Value) ?? ""), typeof(string)),
-            FilterableFieldType.Number => ((object)Convert.ToDouble(constant.Value), typeof(double)),
-            FilterableFieldType.Boolean => ((object)Convert.ToBoolean(constant.Value), typeof(bool)),
-            FilterableFieldType.DateTimeOffset => ((object)ToDateTimeOffset(constant.Value), typeof(DateTimeOffset)),
+            FilterableFieldType.String => ((object)(Convert.ToString(value) ?? ""), typeof(string)),
+            FilterableFieldType.Number => ((object)Convert.ToDouble(value), typeof(double)),
+            FilterableFieldType.Boolean => ((object)Convert.ToBoolean(value), typeof(bool)),
+            FilterableFieldType.DateTimeOffset => ((object)ToDateTimeOffset(value), typeof(DateTimeOffset)),
             _ => throw new ArgumentOutOfRangeException(nameof(targetType)),
         };
         return Expression.Constant(converted, clrType);

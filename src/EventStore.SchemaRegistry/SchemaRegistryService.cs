@@ -10,7 +10,8 @@ using Microsoft.Extensions.Caching.Memory;
 namespace EventStore.SchemaRegistry;
 
 public class SchemaRegistryService(
-    EventStoreContext db, IFilterableFieldIndexDdlGenerator indexDdlGenerator, IMemoryCache cache, IUpcastExpressionEvaluator upcastEvaluator)
+    EventStoreContext db, IFilterableFieldIndexDdlGenerator indexDdlGenerator, IMemoryCache cache, IUpcastExpressionEvaluator upcastEvaluator,
+    ISchemaChangeNotifier? schemaChangeNotifier = null)
 {
     // Must equal EventStore.SpecGeneration.OpenApiDocumentBuilder.CacheKey /
     // AsyncApiDocumentBuilder.CacheKey -- duplicated rather than referenced,
@@ -177,6 +178,7 @@ public class SchemaRegistryService(
 
         cache.Remove(OpenApiDocumentCacheKey); // ADR-002 -- ~60s TTL otherwise; invalidate immediately on registration
         cache.Remove(AsyncApiDocumentCacheKey);
+        schemaChangeNotifier?.NotifyChanged(); // "GraphQL-Only Query Layer" -- same immediate-invalidation discipline, for the dynamically-built Subscription schema
 
         return new RegisterEventTypeResult.Success(newVersion);
     }

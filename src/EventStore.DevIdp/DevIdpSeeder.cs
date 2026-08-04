@@ -37,6 +37,24 @@ public static class DevIdpSeeder
 
     public static DpopKeyPair GetClientKeyPair(string clientId) => ClientKeys[clientId];
 
+    // ADR-008/050's RequiredClaims and ADR-009's x-masking.requiredClaim are
+    // a deliberately SEPARATE "type:value" claim namespace from OAuth scopes
+    // (RequiredClaimEvaluator.HasClaim -- ClaimsPrincipal.HasClaim(type,
+    // value), never the "scope" claim) -- OpenIddict's own Permissions system
+    // only governs which scopes a client may request, so a real issued token
+    // needs these added as their own claims too. Added for "GraphQL-Only
+    // Query Layer"'s revealField mutation, the first item to need this proven
+    // through a genuine DevIdp-issued token rather than an in-process
+    // ClaimsPrincipal construction -- purely additive to follower-client's
+    // existing scopes, nothing prior depended on its absence.
+    private static readonly IReadOnlyDictionary<string, (string Type, string Value)[]> ExtraClaims = new Dictionary<string, (string Type, string Value)[]>
+    {
+        ["follower-client"] = [("pii", "view")],
+    };
+
+    public static IReadOnlyList<(string Type, string Value)> GetExtraClaims(string clientId) =>
+        ExtraClaims.TryGetValue(clientId, out var claims) ? claims : [];
+
     public static async Task SeedAsync(IServiceProvider services)
     {
         var manager = services.GetRequiredService<IOpenIddictApplicationManager>();
