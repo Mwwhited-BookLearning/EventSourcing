@@ -7,6 +7,7 @@
     <ProjectReference Include="..\EventStore.Lineage.Api\EventStore.Lineage.Api.csproj" />
     <ProjectReference Include="..\EventStore.Masking\EventStore.Masking.csproj" />
     <ProjectReference Include="..\EventStore.Upcasting\EventStore.Upcasting.csproj" />
+    <ProjectReference Include="..\EventStore.ViewRegistry\EventStore.ViewRegistry.csproj" />
   </ItemGroup>
 
   <ItemGroup>

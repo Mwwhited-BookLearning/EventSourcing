@@ -427,3 +427,8 @@ FodyWeavers.xsd
 *.msix
 *.msm
 *.msp
+
+# client-web/ (ADR-039, "MVVM Client") -- npm workspace, not a .NET project
+client-web/dist/
+client-web/.vite/
+client-web/*.tsbuildinfo

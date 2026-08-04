@@ -79,7 +79,7 @@ provider they apply to — not "code written."
 | 18 | [Non-Authoritative Capture](#non-authoritative-capture) | Entity-Centric Core Rebuild, Auth + Orchestration, Binary Attachments | Done |
 | 19 | [GraphQL-Only Query Layer](#graphql-only-query-layer) | Entity-Centric Core Rebuild, Multi-Tenancy, Hardening & Evolution | Done |
 | 20 | [Compatibility & Deployment Discipline](#compatibility--deployment-discipline) | GraphQL-Only Query Layer | Done |
-| 21 | [MVVM Client](#mvvm-client) | Multi-Tenancy, Sharding & Replication | Not started |
+| 21 | [MVVM Client](#mvvm-client) | Multi-Tenancy, Sharding & Replication | Done |
 | 22 | [Ticket Exchange for Header-Incapable Clients](#ticket-exchange-for-header-incapable-clients) | Streaming Channels, Binary Attachments, Non-Authoritative Capture | Not started |
 | 23 | [Delegated Grants, RBAC, Federated Claims & Read Audit Logging](#delegated-grants-rbac-federated-claims--read-audit-logging) | Non-Authoritative Capture, Event-Type Security, Multi-Tenancy, Hardening & Evolution | Not started |
 | 24 | [SPIFFE/SPIRE Service Identity & API Gateway](#spiffespire-service-identity--api-gateway) | Auth + Orchestration, Sharding & Replication, Streaming Channels, Binary Attachments, GraphQL-Only Query Layer, Ticket Exchange | Not started |
@@ -1643,6 +1643,66 @@ entity with no registered view definition still renders (generic
 property-list fallback); `ConflictFlag`/`LateArrivalFlag`/`AuthorityStatus`
 all render via one shared generic "flag" convention, not three bespoke
 ones.
+
+**Built-scope note**: the first item in this build whose actual ADR
+decision is a real JS/TS web client, not server-side .NET — built as a
+genuine Vue 3 + Pinia + Vite app (`client-web/`, a new npm workspace,
+matching `06-solution-structure.md`'s own naming), not a C# simulation of
+the mechanics. Server-side, three small, real additions this item needed
+that nothing before it required: (1) `ViewDefinition` (`EventStore.Domain.
+Views`) + a new `EventStore.ViewRegistry` project (`ViewDefinitionService`,
+mirroring `SchemaRegistryService`'s own content-addressed/versioned
+registration pattern, migrated across all 3 providers) plus a
+`viewDefinition` GraphQL query and `registerViewDefinition` mutation
+(`EventStore.GraphQL`); (2) `ConflictFlag`/`LateArrivalFlag`/
+`AuthorityStatus`/`SchemaVersion` added as four FIXED envelope fields on
+every dynamically-built Subscription payload type
+(`FollowSubscriptionTypeModule.BuildEnvelopeFlagFields`) — nothing before
+this item ever needed these exposed over GraphQL, since no client
+previously needed to render the shared flag convention. Client-side: a
+hand-rolled `IndexedDB` wrapper (no `idb`/Dexie dependency, the object-
+store shape is small enough not to earn one), a Pinia outbox
+store + entity-cache store (the Model layer, per `docs/patterns/mvvm-
+client-architecture.md`'s own Vue mapping), `useEntityViewActions` (the
+Actions/ViewModel-commands layer — dispatches through the outbox, never
+mutates the cache directly, and discovers a per-event-type Subscription's
+own field set via GraphQL introspection rather than hardcoding one demo
+entity type's fields), `EntityView`/`TemplateRenderer` (the ADR's own
+"small injected binding runtime" — a minimal `{{ field }}` interpolator
+plus a `data-command-field`/`data-command-value-from` attribute
+convention, deliberately not a full templating engine)/
+`GenericFallbackView`/`FlagRow` (the one shared flag-rendering convention,
+used by both the fallback and the template renderer), and a minimal,
+dependency-free Service Worker + Web App Manifest for the PWA
+installability/offline-app-shell half of the ADR. 26 Vitest specs prove
+the three exit criteria directly (offline queue durability + restart
+survival, apply-once-online with no duplicate delivery via `ADR-011`'s
+existing dedup, the generic fallback never failing to render, the shared
+flag convention, the binding runtime's interpolation/command dispatch) —
+`npm run build`/a brief dev-server smoke check confirm the app is
+genuinely buildable and servable. Real, honestly-flagged narrowings: no
+native shell (`EventStore.Client.WebViewBridge`/`DeviceInput`, both later
+items' own scope — `ADR-070`/item 44) was built, only the web target;
+`entityIdField`/`entityType`/`eventType` are supplied as explicit
+per-instance launch configuration (matching the ADR's own "launch
+configuration, not auto-discovered" framing) rather than resolved from a
+registry:admin-gated lookup an ordinary follower credential doesn't hold;
+an unknown property that lands in the server's own `Extensions` bag
+(`ADR-022`) never reaches this client at all, because
+`FollowSubscriptionTypeModule`'s dynamic payload type only ever exposes a
+schema's OWN declared properties — `GenericFallbackView` renders
+`Extensions` generically wherever populated, but nothing populates it
+today, a data-availability gap, not a rendering one; no live browser/
+Playwright round trip against a real running Host + DevIdp was driven
+(this repo has no browser E2E harness yet, `TODO.md`'s own "no
+`EventStore.Bdd`/E2E built" entry) — the Vitest suite proves the
+mechanics, `npm run build`/the dev-server check prove the app is real and
+servable, but an actual live GraphQL round trip through a browser is not
+exercised in this pass. `ADR-065`'s erasure-driven local purge, `ADR-069`'s
+scheduled/manual/air-gapped-export flush triggers beyond the opportunistic
+one, `ADR-073`/`ADR-087`'s accessibility/i18n requirements, and the
+`ADR-068`-format outbox export/import are all later build-plan items' own
+scope (28, 43, 45, 46), not re-derived here.
 
 ## Ticket Exchange for Header-Incapable Clients
 
