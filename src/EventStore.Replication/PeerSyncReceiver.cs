@@ -46,6 +46,9 @@ public static class PeerSyncReceiver
                 OccurredAt = payload.OccurredAt,
                 ActorId = payload.ActorId,
                 OriginId = payload.OriginId, // preserved verbatim -- which site ORIGINALLY created this fact, never overwritten by whoever's relaying it
+                AuthorityStatus = payload.AuthorityStatus, // ADR-035/042 -- preserved verbatim, never reset to this class's own "accepted" default
+                AttestedActorId = payload.AttestedActorId,
+                AttestedClaims = payload.AttestedClaims,
             };
 
             await EventAppender.AppendAsync(db, storedEvent, payload.ParentEventIds ?? [], payload.LogicalClock, ct);

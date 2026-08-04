@@ -73,6 +73,40 @@ namespace EventStore.Persistence.Migrations.Sqlite.Migrations
                     b.ToTable("EntityStore");
                 });
 
+            modelBuilder.Entity("EventStore.Domain.EntityStore.LiveEntityStoreRow", b =>
+                {
+                    b.Property<string>("EntityId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("AuthorityStatus")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Data")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("EntityType")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Extensions")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<long>("LastAppliedSequenceNumber")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("EntityId");
+
+                    b.HasIndex("EntityType");
+
+                    b.ToTable("LiveEntityStore");
+                });
+
             modelBuilder.Entity("EventStore.Domain.EventLog.EventParent", b =>
                 {
                     b.Property<Guid>("ChildEventId")

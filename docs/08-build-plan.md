@@ -76,7 +76,7 @@ provider they apply to — not "code written."
 | 15 | [Streaming Channels](#streaming-channels) | Auth + Orchestration, Entity-Centric Core Rebuild, Property-Level Masking | Done |
 | 16 | [Binary Attachments](#binary-attachments) | Auth + Orchestration, Entity-Centric Core Rebuild | Done |
 | 17 | [Sharding & Replication](#sharding--replication) | Entity-Centric Core Rebuild | Done |
-| 18 | [Non-Authoritative Capture](#non-authoritative-capture) | Entity-Centric Core Rebuild, Auth + Orchestration, Binary Attachments | Not started |
+| 18 | [Non-Authoritative Capture](#non-authoritative-capture) | Entity-Centric Core Rebuild, Auth + Orchestration, Binary Attachments | Done |
 | 19 | [GraphQL-Only Query Layer](#graphql-only-query-layer) | Entity-Centric Core Rebuild, Multi-Tenancy, Hardening & Evolution | Not started |
 | 20 | [Compatibility & Deployment Discipline](#compatibility--deployment-discipline) | GraphQL-Only Query Layer | Not started |
 | 21 | [MVVM Client](#mvvm-client) | Multi-Tenancy, Sharding & Replication | Not started |
@@ -172,7 +172,7 @@ state "Upcast Materialization + Downcast" as p13 #palegreen
 state "Streaming Channels" as p14 #palegreen
 state "Binary Attachments" as p15 #palegreen
 state "Sharding & Replication" as p16 #palegreen
-state "Non-Authoritative Capture" as p17
+state "Non-Authoritative Capture" as p17 #palegreen
 state "GraphQL-Only Query Layer" as p18
 state "Compatibility & Deployment Discipline" as p19
 state "MVVM Client" as p20
@@ -1413,6 +1413,33 @@ already accepted and folded, per `ADR-042`'s narrowing), and either way
 denormalizes `AuthorityDecisionRef` back onto the original event; two
 servers disagreeing about review status resolves via `ConflictFlag`
 (`ADR-024`, reused), not a new mechanism.
+
+**Built-scope note**: `ADR-036`'s real DID/UCAN offline-verifiable chain
+validation and the actual server-side RFC 8693 OAuth Token Exchange bridge
+endpoint (`POST /oauth/token` with a `subject_token_type=urn:your-org:
+token-type:ucan`) are NOT built at this stage — `AttestedClaims` accepts
+and stores an opaque, credential-agnostic JSON blob exactly as
+`docs/features/non-authoritative-capture.md`'s own text explicitly scopes
+itself ("this doc stays credential-agnostic and only exercises the
+trust-axis mechanics themselves"), never cryptographically verified. This
+item's own Scope line names `ADR-036` because that ADR is what
+`AttestedClaims`/`AuthorityStatus` exist to eventually populate with real
+credential claims — the trust-axis mechanics those fields drive
+(unattested → pending_review → accepted/rejected, the gated fold, the
+Live View, `authorityDecision`/`RejectionBehavior`) are fully built and
+tested; the credential-verification half is a real, separate, larger
+undertaking, honestly flagged rather than silently claimed. Similarly,
+`ADR-035`'s own "`AttestedClaims` gets its own lightweight schema-registry
+entry (an `attestation` entity type)" is not built — no test exercises it,
+and the feature doc's own Background never registers one either.
+`QUERY /entities/{entityId}` (or any other pre-GraphQL entity/Live-View
+read surface) also doesn't exist — this item's own tests query
+`db.EntityStore`/`db.LiveEntityStore` directly, the same "exercise the
+mechanics directly" posture Sharding & Replication's own tests already
+use, consistent with this item's own text that its GraphQL query shapes
+are "illustrative only." A real, found doc inconsistency surfaced while
+verifying which shape to build against: `docs/10-open-questions.md` row 1
+tracks it, not repeated here.
 
 ## GraphQL-Only Query Layer
 

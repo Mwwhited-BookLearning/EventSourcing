@@ -37,6 +37,11 @@ public class SchemaRegistryService(
             !Enum.TryParse(pvmText, ignoreCase: true, out parentValidationMode))
             errors.Add($"parentValidationMode must be \"Strict\" or \"Permissive\" (got: {pvmText})");
 
+        var rejectionBehavior = RejectionBehavior.Annotate;
+        if (request.RejectionBehavior is { } rbText &&
+            !Enum.TryParse(rbText, ignoreCase: true, out rejectionBehavior))
+            errors.Add($"rejectionBehavior must be \"Annotate\" or \"Compensate\" (got: {rbText})");
+
         var requiredClaims = new List<RequiredClaim>();
         foreach (var claimRequest in request.RequiredClaims ?? [])
         {
@@ -141,6 +146,7 @@ public class SchemaRegistryService(
             EntityType = string.IsNullOrEmpty(request.EntityType) ? normalizedName : request.EntityType.ToLowerInvariant(),
             UpcastFromPrevious = request.UpcastFromPrevious,
             DowncastToPrevious = request.DowncastToPrevious,
+            RejectionBehavior = rejectionBehavior,
             FilterableFields = filterableFields,
         };
         db.EventTypeDefinitions.Add(definition);

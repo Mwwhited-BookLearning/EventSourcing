@@ -28,6 +28,7 @@ public class EventStoreContext(DbContextOptions<EventStoreContext> options, IJso
     public DbSet<DerivationCursor> DerivationCursors => Set<DerivationCursor>();
     public DbSet<PendingJoinState> PendingJoinStates => Set<PendingJoinState>();
     public DbSet<EntityStoreRow> EntityStore => Set<EntityStoreRow>();
+    public DbSet<LiveEntityStoreRow> LiveEntityStore => Set<LiveEntityStoreRow>();
     public DbSet<TelemetryChannel> TelemetryChannels => Set<TelemetryChannel>();
     public DbSet<TelemetrySample> TelemetrySamples => Set<TelemetrySample>();
     public DbSet<RedactedRange> RedactedRanges => Set<RedactedRange>();
@@ -129,6 +130,12 @@ public class EventStoreContext(DbContextOptions<EventStoreContext> options, IJso
         {
             e.HasKey(x => x.EntityId);
             e.HasIndex(x => x.EntityType); // the whole-store, per-entity-type rebuild replay (ADR-021)
+        });
+
+        modelBuilder.Entity<LiveEntityStoreRow>(e =>
+        {
+            e.HasKey(x => x.EntityId);
+            e.HasIndex(x => x.EntityType);
         });
 
         modelBuilder.Entity<TelemetryChannel>(e =>

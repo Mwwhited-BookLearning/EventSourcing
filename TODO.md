@@ -26,22 +26,27 @@ here instead of inlining.
 ## Active
 
 - **`dotnet test tests/EventStore.IntegrationTests` intermittently fails
-  exactly one SQL Server test class per full run, with a different class
-  failing each time** (seen: `DerivationSqlServerTests`, then
-  `AllUpcastMaterializationScenarios`/`UpcastMaterializationSqlServerTests`)
-  — a Testcontainers `MsSqlContainer` readiness-check timeout or a Docker
-  exec-call error (`Permission denied` reading `/proc`, `journalctl` not
-  found) during `ClassInit`, never during the test body itself. Every
-  failing class passes cleanly when run alone (confirmed for both classes
-  above), and the specific class rotates run to run — consistent with
-  Docker/WSL2 resource contention from spinning up several `MsSqlContainer`
-  instances back-to-back in one process, not a code defect in any item.
-  First noticed clearly during "Sharding & Replication" (item 17)'s own
-  full-suite regression run, but the cause traces to the test
-  infrastructure/environment, not that item's changes. Investigate: run
-  SQL Server test classes with reduced parallelism, or a longer/more
-  tolerant wait strategy on `MsSqlBuilder`, if this keeps costing
-  re-run time in future sessions.
+  one or two SQL Server test classes per full run, a different class (or
+  pair) failing each time** (seen: `DerivationSqlServerTests`, then
+  `AllUpcastMaterializationScenarios`/`UpcastMaterializationSqlServerTests`,
+  then `AllStreamingScenarios`/`StreamingSqlServerTests` +
+  `InsertAndReadBackStoredEvent`/`SqlServerRoundTripTests` together in one
+  run) — a Testcontainers `MsSqlContainer` readiness-check timeout, a Docker
+  exec-call error, or (the clearest evidence yet, this pass) the container
+  itself crashing on startup with exit code 134/1 and stderr `"Unable to
+  create a new asynchronous I/O context. Please increase sysctl
+  fs.aio-max-nr"` — a Linux/WSL2 kernel-wide AIO-context limit exhausted by
+  however many `MsSqlContainer`s this session has cumulatively started,
+  not any one test's fault. Every failing class passes cleanly when run
+  alone (confirmed four separate times now, across four different
+  classes), and which class(es) fail rotates run to run — conclusively a
+  host resource-exhaustion issue, not a code defect in any item. First
+  noticed during "Sharding & Replication" (item 17)'s own full-suite
+  regression run; the `fs.aio-max-nr` evidence surfaced during "Non-
+  Authoritative Capture" (item 18)'s. Investigate: raise the host/WSL2
+  `fs.aio-max-nr` sysctl, run SQL Server test classes with reduced
+  parallelism, or a longer/more tolerant wait strategy on `MsSqlBuilder`,
+  if this keeps costing re-run time in future sessions.
 
 - **`StoredEvent.AppId` now exists (added by "Entity-Centric Core Rebuild",
   `ADR-021` — the dedicated fix `docs/10-open-questions.md`'s former row 1
