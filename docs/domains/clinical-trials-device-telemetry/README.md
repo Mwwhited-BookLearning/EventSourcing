@@ -93,13 +93,16 @@ named as a build target.
 
 ## Workflows
 
-Four feature docs, three end-to-end workflows — the target structure for
-this domain as a complete reference application, not four disconnected
-examples. All four share the same `AppId` (`"trial1"`), the same
-`EntityId` format (`{appId}:{entityType}:{uniqueId}`, `ADR-021`), and the
-same continuity patient (`SubjectId` `"S-0091"`, `trial1:Patient:S-0091`)
-wherever a workflow's own narrative calls for one, so a reader can follow
-one patient's record across all three.
+Five feature docs, four end-to-end workflows. The original target
+structure for this domain was four feature docs/three workflows — **a
+fourth workflow was added afterward, on direct request**, once `ADR-094`
+gave the IONM use case named below a real framework mechanism to exercise
+end-to-end, not a disconnected addition. All five share the same `AppId`
+(`"trial1"`), the same `EntityId` format
+(`{appId}:{entityType}:{uniqueId}`, `ADR-021`), and the same continuity
+patient (`SubjectId` `"S-0091"`, `trial1:Patient:S-0091`) wherever a
+workflow's own narrative calls for one, so a reader can follow one
+patient's record across all four.
 
 - **Workflow A — Enrollment & Consent**: a patient is screened, walked
   through informed consent, and becomes an active study participant,
@@ -120,6 +123,14 @@ one patient's record across all three.
   withdrawn subject, directly stress-testing the retention-vs-erasure
   tension named below.
   1. [Trial Data Export and Subject Rights](features/trial-data-export-and-subject-rights.md)
+- **Workflow D — Intraoperative Monitoring & Alert Response**: the same
+  continuity subject undergoes a trial-protocol surgical procedure
+  monitored via IONM — a dual-channel stream (`ADR-031`) feeds a
+  detector's real-time alert, `ADR-094`'s expected-response tracking
+  gets its first real domain-level exercise (acknowledged in time, or
+  escalated), and an attending neurologist's later, signed interpretation
+  reuses Workflow B's exact `authorityDecision` mechanism unchanged.
+  1. [Intraoperative Monitoring and Alert Response](features/intraoperative-monitoring-and-alert-response.md)
 
 ## Special concerns
 
@@ -200,19 +211,23 @@ one patient's record across all three.
   **Two concrete EEG-modality use cases name the two ends of this same
   split, not two different mechanisms:** Intraoperative Neurophysiological
   Monitoring (IONM — continuous SSEP/MEP/EMG waveforms during surgery) is
-  the low-latency end, where a detector's escalating publish (this
-  domain's own adverse-event pattern, above) needs to reach the surgical
-  team fast enough to act on an impending neural insult; polysomnography
-  (a multi-channel overnight sleep study, EEG plus EOG/EMG/respiratory/
-  cardiac channels, scored in 30-second epochs per the AASM Scoring
-  Manual) is the delayed-review end, captured continuously overnight as
-  non-authoritative (`ADR-035`) and scored/reviewed by a sleep technologist
-  or physician afterward, where a delay of minutes to hours is the normal
-  workflow rather than a degradation. Both fit today's mechanism as-is —
-  IONM as the fast/reduced-fidelity channel with an immediate detector,
-  polysomnography as the full-fidelity channel with no urgency on the
-  fold — the difference is entirely in how each application configures
-  and consumes the same two-channel shape, not in the framework.
+  the low-latency end, where a detector's escalating publish needs to
+  reach the surgical team fast enough to act on an impending neural
+  insult — now worked through end-to-end in [Intraoperative Monitoring
+  and Alert Response](features/intraoperative-monitoring-and-alert-response.md)
+  (Workflow D); polysomnography (a multi-channel overnight sleep study,
+  EEG plus EOG/EMG/respiratory/cardiac channels, scored in 30-second
+  epochs per the AASM Scoring Manual) is the delayed-review end, captured
+  continuously overnight as non-authoritative (`ADR-035`) and
+  scored/reviewed by a sleep technologist or physician afterward, where a
+  delay of minutes to hours is the normal workflow rather than a
+  degradation — named here as the domain's other SLA profile, not
+  (yet) taken to its own worked feature doc. Both fit today's mechanism
+  as-is — IONM as the fast/reduced-fidelity channel with an immediate
+  detector, polysomnography as the full-fidelity channel with no urgency
+  on the fold — the difference is entirely in how each application
+  configures and consumes the same two-channel shape, not in the
+  framework.
 - **Whether an escalated event demands a tracked, timed acknowledgment
   is a real, related, and now separately-decided question.** An IONM
   alert (above) is exactly the case where "did anyone see this in time"
@@ -231,9 +246,11 @@ one patient's record across all three.
   correlation field, the opt-in deadline, the missing-response detection)
   is framework-level; what's specific to IONM (the event type names, the
   actual `Within` duration, what happens on a miss) is this domain's own
-  configuration, never baked into the mechanism. See `ADR-094` and
+  configuration, never baked into the mechanism. Worked through
+  end-to-end in [Intraoperative Monitoring and Alert Response](features/intraoperative-monitoring-and-alert-response.md)
+  (Workflow D) — see `ADR-094` and
   [`docs/patterns/request-reply-correlation.md`](../../patterns/request-reply-correlation.md)
-  for the full mechanism, and
+  for the underlying mechanism, and
   [`docs/comparisons/event-response-acknowledgment.md`](../../comparisons/event-response-acknowledgment.md)
   for the trade-off this decision was weighed against. Polysomnography
   (above) needs none of this — its scoring workflow has no
@@ -241,7 +258,7 @@ one patient's record across all three.
 
 ## Feature docs
 
-All four feature docs this domain now has, grouped into the three
+All five feature docs this domain now has, grouped into the four
 end-to-end workflows above (see "Workflows" for the ordering within each
 one):
 
@@ -249,6 +266,7 @@ one):
 - [Device Onboarding and Continuous Monitoring](features/device-onboarding-and-continuous-monitoring.md) — pairing a connected bedside monitor (`ADR-070`) and provisioning/ingesting its continuous vitals stream (`ADR-031`), ending at a detector's escalating publish. Workflow B, upstream half.
 - [Adverse Event Capture and Review](features/adverse-event-capture-and-review.md) — a device reading or site-entered AE result flows from non-authoritative capture (`ADR-035`/`ADR-042`) through delegated secondary-opinion review (`ADR-043`) to an investigator's signed-off, accepted record (`ADR-066`). Workflow B, downstream half.
 - [Trial Data Export and Subject Rights](features/trial-data-export-and-subject-rights.md) — sponsor/regulator lineage export and bitemporal system-time playback (`ADR-068`), and a withdrawn subject's GDPR erasure via crypto-shredding (`ADR-057`). Workflow C.
+- [Intraoperative Monitoring and Alert Response](features/intraoperative-monitoring-and-alert-response.md) — dual-channel IONM provisioning (`ADR-031`), a detector's tracked alert (`ADR-094`, acknowledged or escalated), and an attending neurologist's signed interpretation reusing Workflow B's `authorityDecision` mechanism unchanged (`ADR-066`). Workflow D.
 
 ## Glossary
 
@@ -283,8 +301,9 @@ one):
   looks imminent so corrective action can happen before injury becomes
   irreversible — the low-latency end of this domain's dual-channel
   live-safety concern, above, and the concrete case motivating `ADR-094`'s
-  expected-response tracking, configured for this domain in "Special
-  concerns."
+  expected-response tracking, worked through end-to-end in [Intraoperative
+  Monitoring and Alert Response](features/intraoperative-monitoring-and-alert-response.md)
+  (Workflow D).
 - **Investigator / Principal Investigator (PI)** — The person
   responsible for conducting the trial at a site and for the medical
   decisions and record approvals — including `ADR-066`'s CRF sign-off —

@@ -172,13 +172,20 @@ Consequences:
   fields, not seven**, with this field's specific justifying question
   stated inline — not just incremented, per that bullet's own standing
   instruction to ask (and record) what a new field specifically answers.
-- **IONM is the first concrete configuration example**, documented in
-  `docs/domains/clinical-trials-device-telemetry/README.md`: an
-  `IonmAlertRaised` event type declares `ExpectedResponse {
-  ResponseEventType: "IonmAlertAcknowledged", Within: <domain-chosen,
-  same-session duration> }`; the neurotechnologist's or surgeon's
-  acknowledgment publishes an `IonmAlertAcknowledged` event carrying
-  `RespondsToEventId` back at the alert. Polysomnography needs no
+- **IONM is the first concrete configuration example, now worked through
+  end-to-end** in `docs/domains/clinical-trials-device-telemetry/
+  features/intraoperative-monitoring-and-alert-response.md` (Workflow D,
+  added directly on request, growing this domain to 5 feature docs/4
+  workflows — `CLAUDE.md`'s domain-doc bullet and `docs/changes/
+  2026-08-04.md` both updated accordingly): an `IonmAlertRaised` event
+  type declares `ExpectedResponse { ResponseEventType:
+  "IonmAlertAcknowledged", Within: <domain-chosen, same-session
+  duration> }`; the neurotechnologist's or surgeon's acknowledgment
+  publishes an `IonmAlertAcknowledged` event carrying `RespondsToEventId`
+  back at the alert; a later, independent, signed `authorityDecision`
+  (reusing Workflow B's exact mechanism, `ADR-066`) is the actual
+  authoritative clinical interpretation — the two are shown as
+  deliberately distinct, never-conflated facts. Polysomnography needs no
   `ExpectedResponse` at all — its scoring workflow has no "escalate if
   unanswered" requirement, which is exactly why it was never claimed as a
   second convergence data point for *this* mechanism (it motivated the

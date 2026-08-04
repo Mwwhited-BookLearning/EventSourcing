@@ -151,10 +151,16 @@ re-derive the process from scratch:
   template.md`, the same depth as `docs/features/*.md` for the core
   engine). **The 13 considered-not-chosen domains stay at one feature
   doc each; the two chosen proving-ground domains (clinical trials +
-  device telemetry, digital identity/KYC) were taken further, each to 4
-  feature docs sequenced into a `## Workflows` section on that domain's
-  own `README.md`** — see `docs/changes/2026-07-30.md`'s "two chosen
-  domains taken to full reference-application depth" section. Distinct
+  device telemetry, digital identity/KYC) were taken further, sequenced
+  into a `## Workflows` section on that domain's own `README.md`** — see
+  `docs/changes/2026-07-30.md`'s "two chosen domains taken to full
+  reference-application depth" section. Originally 4 feature docs/3
+  workflows each; clinical trials + device telemetry grew to 5 feature
+  docs/4 workflows on direct request once `ADR-094` gave its named IONM
+  use case a real mechanism to exercise end-to-end
+  (`docs/changes/2026-08-04.md`) — the two domains were never required to
+  stay at matching depth, that was just how it happened to work out
+  until this addition. Distinct
   from `docs/glossary.md`, which covers Duplex's own
   cross-cutting engine terms once, not per domain. Generated from — not
   a repeat of — `docs/comparisons/proving-ground-domain.md`'s coverage
