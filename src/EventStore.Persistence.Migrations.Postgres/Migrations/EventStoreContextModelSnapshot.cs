@@ -653,6 +653,40 @@ namespace EventStore.Persistence.Migrations.Postgres.Migrations
                     b.ToTable("TelemetrySamples");
                 });
 
+            modelBuilder.Entity("EventStore.Domain.Views.ViewDefinition", b =>
+                {
+                    b.Property<string>("EntityType")
+                        .HasColumnType("text");
+
+                    b.Property<int>("Version")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("ViewKind")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("CompatibleSchemaVersions")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<DateTimeOffset?>("DeprecatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTimeOffset>("EffectiveFrom")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Hash")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("TemplateContent")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.HasKey("EntityType", "Version", "ViewKind");
+
+                    b.ToTable("ViewDefinitions");
+                });
+
             modelBuilder.Entity("EventStore.Domain.SchemaRegistry.FilterableField", b =>
                 {
                     b.HasOne("EventStore.Domain.SchemaRegistry.EventTypeDefinition", null)

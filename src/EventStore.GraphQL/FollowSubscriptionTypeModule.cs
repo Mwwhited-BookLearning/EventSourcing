@@ -100,6 +100,8 @@ public class FollowSubscriptionTypeModule : ITypeModule, ISchemaChangeNotifier
             foreach (var property in EventTypeSchemaReader.GetTopLevelProperties(definition.JsonSchema))
                 foreach (var field in BuildPayloadFields(property))
                     payloadConfig.Fields.Add(field);
+            foreach (var field in BuildEnvelopeFlagFields())
+                payloadConfig.Fields.Add(field);
             var payloadType = ObjectType.CreateUnsafe(payloadConfig);
             types.Add(payloadType);
 
@@ -169,6 +171,35 @@ public class FollowSubscriptionTypeModule : ITypeModule, ISchemaChangeNotifier
                 },
             };
         }
+    }
+
+    // "MVVM Client" (ADR-039) -- ConflictFlag/LateArrivalFlag/AuthorityStatus
+    // (ADR-024/029/035) and SchemaVersion are fixed envelope fields every
+    // dynamically-built payload type gets, regardless of the event type's
+    // own JSON Schema properties -- a client rendering the shared generic
+    // "flag" convention, or picking a ViewDefinition version compatible
+    // with the event it just received, needs these on every Subscription
+    // payload, not just the per-schema-declared ones BuildPayloadFields
+    // already handles. Sourced directly from FollowedEvent.Event (the
+    // underlying StoredEvent), never from the masked/JSON payload.
+    private static IEnumerable<ObjectFieldConfiguration> BuildEnvelopeFlagFields()
+    {
+        yield return new ObjectFieldConfiguration("conflictFlag", type: TypeReference.Parse("Boolean"))
+        {
+            PureResolver = ctx => ctx.Parent<FollowedEvent>().Event.ConflictFlag,
+        };
+        yield return new ObjectFieldConfiguration("lateArrivalFlag", type: TypeReference.Parse("Boolean"))
+        {
+            PureResolver = ctx => ctx.Parent<FollowedEvent>().Event.LateArrivalFlag,
+        };
+        yield return new ObjectFieldConfiguration("authorityStatus", type: TypeReference.Parse("String"))
+        {
+            PureResolver = ctx => ctx.Parent<FollowedEvent>().Event.AuthorityStatus,
+        };
+        yield return new ObjectFieldConfiguration("schemaVersion", type: TypeReference.Parse("Int"))
+        {
+            PureResolver = ctx => ctx.Parent<FollowedEvent>().Event.SchemaVersion,
+        };
     }
 
     private static object? BuildMasked(JsonObject? payload, EventPayloadProperty property)

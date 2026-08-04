@@ -743,11 +743,63 @@ stale numbers here are worse than none)*
   SQL Server Testcontainers resource-contention flake already tracked in
   `TODO.md` — this item's own 3 `CompatibilitySqliteTests`/`Postgres`/
   `SqlServer` runs all passed cleanly.
-- **Next up**: item 21, "MVVM Client" (`ADR-039`) — depends on
-  Multi-Tenancy (Done) and Sharding & Replication (Done): View/ViewModel/
-  command-dispatch-to-outbox layering, a client-local durable outbox,
-  HTML+JS entity view definitions, the native/JS bridge, offline-first
-  caching.
+- **Item 21, "MVVM Client," is Done — same day, continuing directly from
+  item 20.** The first item whose actual ADR decision is a real JS/TS web
+  client (Vue 3 + Pinia + Vite), not server-side .NET — explicitly checked
+  with the user first (a genuine tech-stack fork, unlike every prior
+  item's own "which server-side mechanism" question), who chose "build the
+  real client" over a C# simulation of the mechanics. New `client-web/`
+  npm workspace (matching `06-solution-structure.md`'s own naming), plus
+  three small, real server-side additions: `ViewDefinition`
+  (`EventStore.Domain.Views`) + a new `EventStore.ViewRegistry` project
+  (`ViewDefinitionService`, mirroring `SchemaRegistryService`'s content-
+  addressed/versioned pattern, migrated across all 3 providers) exposed via
+  a `viewDefinition` GraphQL query + `registerViewDefinition` mutation; and
+  `ConflictFlag`/`LateArrivalFlag`/`AuthorityStatus`/`SchemaVersion` added
+  as four FIXED envelope fields on every dynamically-built Subscription
+  payload type (`FollowSubscriptionTypeModule.BuildEnvelopeFlagFields`) --
+  nothing before this item ever needed these exposed over GraphQL.
+  Client-side: a hand-rolled IndexedDB wrapper, Pinia outbox/entity-cache
+  stores (Model layer), `useEntityViewActions` (Actions/ViewModel-commands
+  layer -- dispatches through the outbox, never mutates the cache
+  directly, discovers a Subscription's own field set via GraphQL
+  introspection rather than hardcoding one demo entity type),
+  `EntityView`/`TemplateRenderer` (the ADR's own "small injected binding
+  runtime" -- a minimal `{{ field }}` interpolator + a
+  `data-command-field`/`data-command-value-from` attribute convention) /
+  `GenericFallbackView`/`FlagRow` (the one shared flag convention, used by
+  both), and a minimal dependency-free Service Worker + Web App Manifest.
+  **One real bug found only by actually running the tests**: Pinia wraps
+  every store entry in a reactive `Proxy`, which IndexedDB's structured-
+  clone algorithm correctly rejects (`DataCloneError`) -- fixed by having
+  `db/indexedDb.ts`'s `put()` round-trip the value through
+  `JSON.parse(JSON.stringify(value))` before storing it. 26 Vitest specs
+  (outbox durability/restart/apply-once, entity-cache fold, the generic
+  fallback never failing, the shared flag convention, the binding
+  runtime's interpolation/command dispatch) plus a real `npm run build` and
+  a dev-server smoke check (curl against a running `vite` process,
+  confirming the app shell/manifest actually serve) all pass/succeed.
+  `EventStore.IntegrationTests` now has 66 `[TestMethod]`s (up from 61) --
+  `ViewDefinitionSqliteTests`/`Postgres`/`SqlServer` (5 registry scenarios
+  each) plus `MvvmClientGraphQlHttpSqliteTests` (2 real-HTTP scenarios:
+  registerViewDefinition/viewDefinition round trip, and the 4 envelope
+  flags on a real Subscription). Honestly-flagged narrowings: no native
+  shell (`WebViewBridge`/`DeviceInput`, later items' own scope) was built,
+  web target only; `entityIdField`/`entityType`/`eventType` are explicit
+  per-instance launch config, not resolved from a registry:admin-gated
+  lookup a follower credential doesn't hold; an unknown property in the
+  server's own `Extensions` bag never reaches this client at all today --
+  `FollowSubscriptionTypeModule`'s dynamic payload type only ever exposes a
+  schema's own declared properties, a data-availability gap, not a
+  rendering one; no live browser/Playwright round trip against a real
+  running Host was driven (no browser E2E harness exists in this repo yet)
+  -- the Vitest suite proves the mechanics, the build/dev-server check
+  proves the app is real, but an actual live GraphQL round trip through a
+  browser is not exercised this pass.
+- **Next up**: item 22, "Ticket Exchange for Header-Incapable Clients"
+  (`ADR-040`) — a short-lived, single-use, opaque ticket + client-signed
+  URL for callers that can't set an `Authorization` header at all (RFC 8693
+  issuance, RFC 7662-shaped resolution).
 
 ## How to resume cold
 

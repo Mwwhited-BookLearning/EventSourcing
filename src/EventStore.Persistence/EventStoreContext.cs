@@ -3,6 +3,7 @@ using EventStore.Domain.EventLog;
 using EventStore.Domain.Replication;
 using EventStore.Domain.SchemaRegistry;
 using EventStore.Domain.Streaming;
+using EventStore.Domain.Views;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Query.SqlExpressions;
@@ -35,6 +36,7 @@ public class EventStoreContext(DbContextOptions<EventStoreContext> options, IJso
     public DbSet<Attachment> Attachments => Set<Attachment>();
     public DbSet<AttachmentRef> AttachmentRefs => Set<AttachmentRef>();
     public DbSet<PeerSyncCursor> PeerSyncCursors => Set<PeerSyncCursor>();
+    public DbSet<ViewDefinition> ViewDefinitions => Set<ViewDefinition>();
 
     protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder) =>
         optionsBuilder.ReplaceService<IModelCacheKeyFactory, ProviderAwareModelCacheKeyFactory>();
@@ -180,6 +182,17 @@ public class EventStoreContext(DbContextOptions<EventStoreContext> options, IJso
         modelBuilder.Entity<PeerSyncCursor>(e =>
         {
             e.HasKey(x => x.PeerId);
+        });
+
+        modelBuilder.Entity<ViewDefinition>(e =>
+        {
+            e.HasKey(x => new { x.EntityType, x.Version, x.ViewKind }); // ADR-039 -- docs/data/dbcontext-and-conventions.md's own key
+
+            e.Property(x => x.TemplateContent).IsRequired(); // portable TEXT/nvarchar(max) -- raw HTML+JS, never a native JSON column type
+
+            e.Property(x => x.CompatibleSchemaVersions)
+                .HasConversion(JsonValueConverter.For<List<int>>())
+                .Metadata.SetValueComparer(JsonValueConverter.ListComparer<List<int>>());
         });
     }
 

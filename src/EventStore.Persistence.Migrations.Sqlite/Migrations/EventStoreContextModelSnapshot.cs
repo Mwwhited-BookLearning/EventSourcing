@@ -642,6 +642,40 @@ namespace EventStore.Persistence.Migrations.Sqlite.Migrations
                     b.ToTable("TelemetrySamples");
                 });
 
+            modelBuilder.Entity("EventStore.Domain.Views.ViewDefinition", b =>
+                {
+                    b.Property<string>("EntityType")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("Version")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("ViewKind")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("CompatibleSchemaVersions")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTimeOffset?>("DeprecatedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTimeOffset>("EffectiveFrom")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Hash")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("TemplateContent")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("EntityType", "Version", "ViewKind");
+
+                    b.ToTable("ViewDefinitions");
+                });
+
             modelBuilder.Entity("EventStore.Domain.SchemaRegistry.FilterableField", b =>
                 {
                     b.HasOne("EventStore.Domain.SchemaRegistry.EventTypeDefinition", null)

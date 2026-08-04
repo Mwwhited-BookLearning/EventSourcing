@@ -30,6 +30,7 @@ public static class GraphQlServiceCollectionExtensions
         services
             .AddScoped<Follow.Api.EventTailReader>()
             .AddScoped<Lineage.Api.LineageService>()
+            .AddScoped<ViewRegistry.ViewDefinitionService>()
             .AddSingleton<FollowSubscriptionTypeModule>()
             .AddSingleton<Domain.SchemaRegistry.ISchemaChangeNotifier>(sp => sp.GetRequiredService<FollowSubscriptionTypeModule>())
             .AddGraphQLServer()
@@ -37,8 +38,10 @@ public static class GraphQlServiceCollectionExtensions
             .AddTypeExtension<RegistryQueries>()
             .AddTypeExtension<LineageQueries>()
             .AddTypeExtension<CapabilitiesQueries>()
+            .AddTypeExtension<ViewDefinitionQueries>()
             .AddMutationType<Mutation>()
             .AddTypeExtension<RevealFieldMutation>()
+            .AddTypeExtension<ViewDefinitionMutation>()
             .AddSubscriptionType<Subscription>()
             .AddTypeModule<FollowSubscriptionTypeModule>()
             .AddType<MaskedString>()
