@@ -197,6 +197,34 @@ one patient's record across all three.
   Which channel is "the fast one" is domain/device metadata (a
   `Purpose`/label an application chooses to attach), not a framework
   concept `ADR-031` needs to formalize.
+  **Two concrete EEG-modality use cases name the two ends of this same
+  split, not two different mechanisms:** Intraoperative Neurophysiological
+  Monitoring (IONM — continuous SSEP/MEP/EMG waveforms during surgery) is
+  the low-latency end, where a detector's escalating publish (this
+  domain's own adverse-event pattern, above) needs to reach the surgical
+  team fast enough to act on an impending neural insult; polysomnography
+  (a multi-channel overnight sleep study, EEG plus EOG/EMG/respiratory/
+  cardiac channels, scored in 30-second epochs per the AASM Scoring
+  Manual) is the delayed-review end, captured continuously overnight as
+  non-authoritative (`ADR-035`) and scored/reviewed by a sleep technologist
+  or physician afterward, where a delay of minutes to hours is the normal
+  workflow rather than a degradation. Both fit today's mechanism as-is —
+  IONM as the fast/reduced-fidelity channel with an immediate detector,
+  polysomnography as the full-fidelity channel with no urgency on the
+  fold — the difference is entirely in how each application configures
+  and consumes the same two-channel shape, not in the framework.
+- **Whether an escalated event demands a tracked, timed acknowledgment
+  is a real, related, and separately-decided question — deliberately
+  left to the application for now.** An IONM alert (above) is exactly
+  the case where "did anyone see this in time" matters as much as "was
+  it recorded" — but this design doesn't (yet) have a framework-level
+  concept of an event type that expects a response within a window, only
+  the building blocks an application already has to construct one
+  itself (an ordinary reference field, the same shape `authorityDecision.
+  targetEventId` already uses; a `ProjectionHost`-shaped watcher). See
+  [`docs/comparisons/event-response-acknowledgment.md`](../../comparisons/event-response-acknowledgment.md)
+  for the full trade-off and `docs/10-open-questions.md` for the
+  back-burnered fork this leaves open.
 
 ## Feature docs
 
@@ -235,6 +263,14 @@ one):
   independent committee that reviews and approves a trial's protocol
   and consent materials to protect subjects' rights and welfare before
   and during the trial.
+- **Intraoperative Neurophysiological Monitoring (IONM)** — Real-time
+  assessment of the brain, spinal cord, and related neural structures
+  during surgery (via SSEPs/MEPs/EMG, multimodal), letting a
+  neurotechnologist alert the surgical team the moment neural compromise
+  looks imminent so corrective action can happen before injury becomes
+  irreversible — the low-latency end of this domain's dual-channel
+  live-safety concern, above, and the concrete case motivating the
+  event-acknowledgment open question in "Special concerns."
 - **Investigator / Principal Investigator (PI)** — The person
   responsible for conducting the trial at a site and for the medical
   decisions and record approvals — including `ADR-066`'s CRF sign-off —
@@ -249,6 +285,13 @@ one):
   against source data to confirm subjects' rights are protected and
   data is accurate/complete — the human review step `ADR-035`/`ADR-042`
   model as the gate between captured and accepted.
+- **Polysomnography (PSG)** *(synonym: sleep study)* — A multi-channel
+  overnight recording (EEG, EOG, EMG, respiratory effort/airflow, SpO2,
+  ECG) scored in 30-second epochs against the AASM Manual for the
+  Scoring of Sleep and Associated Events — the delayed-review end of
+  this domain's dual-channel live-safety concern, above, where a
+  technologist's or physician's scoring pass happens well after capture
+  rather than live.
 - **Protocol** — The document that describes a trial's objective(s),
   design, methodology, statistical considerations, and organization —
   the authoritative rulebook a site must follow.

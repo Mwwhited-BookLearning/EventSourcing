@@ -29,70 +29,36 @@ here than in most repos.
 *(update this section's content, not just its presence, every session —
 stale numbers here are worse than none)*
 
-- As of **2026-08-03** (one long working session, started 2026-07-31):
-  HEAD was `a602317` ("updating design") as of the last check, moved
-  several times via commits not made by this conversation (an external
-  process/terminal checkpointing the work; harmless, just don't assume
-  it's still current — re-check `git log`/`git status`).
-- **`TODO.md`'s Active section has 10 items again, all surfaced by the
-  `08-build-plan.md` rework below — not a regression, a real find.**
-  `docs/10-open-questions.md` is still EMPTY. Before this rework,
-  everything tracked anywhere in either file had been resolved (the
-  original 6-phase restructuring plan, every smaller item found along the
-  way, and a follow-up implementation-readiness survey's 5 findings):
-  `01-c4-architecture.md`'s GraphQL diagram gained `ADR-068`'s export/
-  playback resolver nodes; `06-solution-structure.md` gained `ADR-072`'s
-  MLLP-listener project and `ADR-068`'s offline-player build target;
-  `ADR-093`'s own "the ticket-exchange secret needs a new entity" claim
-  was checked against `ADR-040` and found wrong — corrected in place, no
-  entity added, none needed; `docs/features/ticket-exchange.md` written;
-  `docker-compose.yml`'s absence was removed from `TODO.md` rather than
-  left open. Also confirmed, on request: every ADR/core-feature-doc/
-  domain-feature-doc filename matches its content — no mismatches found.
-  Full narrative across `docs/changes/2026-07-30.md` through
-  `2026-08-03.md`; skim the latest one or two, don't re-derive from this
-  summary.
-- **`08-build-plan.md` was reworked from scratch this session** (direct
-  request, user chose "fresh rebuild for confidence" over a lighter-touch
-  option): all 48 items' Scope/Depends-on/Exit-criteria re-derived
-  directly from their source ADR(s) via 10 parallel background agents
-  (5 items each, scratch-file-per-batch to avoid a shared-file race),
-  hand-consolidated into one file with both PlantUML dependency diagrams
-  rebuilt. This found and fixed a real, sizeable set of missing
-  dependency edges (MVVM Client's dependency set was substantially
-  wrong — CQRS Projections/Streaming Channels/Binary Attachments removed
-  as ungrounded, Sharding & Replication added as the single most
-  load-bearing one it was missing; Signing Secret Rotation's Scope line
-  had drifted back to `ADR-093`'s pre-correction wrong framing) plus an
-  ordering bug caught before finalizing (Tenant Federation Mapping had
-  been placed before the item it now correctly depends on, Bulk
-  Ingestion). Ten genuine doc/coverage gaps this pass found — not
-  build-plan structure — are now `TODO.md`'s 10 active items; see that
-  file for the list (an `ADR-087` i18n propagation gap, several missing
-  Gherkin scenarios, and one still-unresolved mystery: a background
-  agent reported receiving a mid-task instruction to create a
-  `docs/develop/{epic}/{feature}.md`-shaped file with no defined
-  taxonomy, source unclear, surfaced to the user rather than guessed at
-  — not yet answered). **`08-build-plan.md` still doesn't use fixed
-  `Phase N` numbering** — cite its items by name only (`` `08-build-
-  plan.md`, "Event-Type Security" ``, never a number). All 93 ADRs are
-  Accepted.
-- **A real PlantUML syntax bug, found by the user (not caught by review),
-  turned out to be systemic**: backslash-escaped quotes (`\"`) inside a
-  quoted diagram-element name break PlantUML's parser (it terminates the
-  string at the first unescaped `"`) — present in 9 diagrams this
-  session's parallel agents wrote, across `docs/features/*.md` and
-  domain docs, every one of which had self-reported "verdict: complete."
-  All fixed (plain or single quotes instead). **Lesson, genuinely new,
-  worth remembering**: an agent's own "looks right" report on a diagram
-  it wrote is not the same as the diagram actually rendering — this class
-  of bug is invisible in a transcript read-through and needs an actual
-  render check to catch reliably; don't treat a clean-looking PlantUML
-  block as verified just because the prose around it is accurate.
-  Confirmed the lesson stuck: caught my own fresh instance of the exact
-  same bug while writing `ticket-exchange.md`'s Salt mockup immediately
-  afterward, by actually checking for it rather than assuming a
-  just-written diagram was fine.
+- As of **2026-08-04**, working on branch **`design/service-level-
+  agreement`** (created this session, off `main` at a clean tree). `main`
+  itself carries the 2026-07-31–2026-08-03 build-plan-rework session
+  (all 93 ADRs Accepted, `TODO.md` had 10 active items at that point) —
+  see that range of `docs/changes/*.md` for its full narrative, not
+  re-told here.
+- **This session (design-discussion-led, not a `TODO.md` pass)**:
+  confirmed the existing dual-`TelemetryChannel` mechanism (`ADR-031` +
+  the clinical-trials domain's "Dual-channel live-safety vs. standard
+  persistence" special concern) already supports mixed near-real-time/
+  delayed-review SLAs with no design change, then named IONM and
+  polysomnography as the two concrete use cases in
+  `docs/domains/clinical-trials-device-telemetry/README.md`. That
+  surfaced a distinct, unresolved question — tracked event
+  acknowledgment (not just delivery) — weighed in a new comparison doc
+  (`docs/comparisons/event-response-acknowledgment.md`) and
+  **deliberately deferred**, tracked as `docs/10-open-questions.md` row
+  1 (Back-burnered, no longer empty). Full narrative:
+  `docs/changes/2026-08-04.md`. `TODO.md`'s Active section is empty as
+  of this session — nothing outstanding from the prior session's rework.
+- **Standing lessons from the 07-31–08-03 session, still worth carrying
+  forward** (condensed — see that range's `docs/changes/*.md` for the
+  full incidents): an agent's own "looks right" report on a PlantUML
+  diagram it wrote is not proof it renders — a backslash-escaped-quote
+  bug hid in 9 self-reported-complete diagrams last session; always
+  actually render-check, don't trust the transcript. Verify a
+  propagation claim against the real file, never an ADR's own
+  Consequences section saying something "is done." Grep a whole file
+  for a topic before assuming one updated bullet means the whole file is
+  consistent.
 - **Other lessons from this session worth carrying forward**:
   **(1)** verify a propagation claim against the actual file, never trust
   an ADR's own Consequences section saying something "is done"; **(2)**
