@@ -71,7 +71,7 @@ provider they apply to — not "code written."
 | 10 | [CQRS Read-Model Projections](#cqrs-read-model-projections-worked-example) | Follow API + Filter Pushdown, Auth + Orchestration | Done |
 | 11 | [Hardening & Evolution](#hardening--evolution-dpop-event-upcasting-hash-chained-tamper-evidence) | Auth + Orchestration, Publish API, Follow API + Filter Pushdown, CQRS Read-Model Projections | Done |
 | 12 | [Entity-Centric Core Rebuild](#entity-centric-core-rebuild) | Event-Type Security | Done |
-| 13 | [Multi-Tenancy](#multi-tenancy) | Schema Registry, Entity-Centric Core Rebuild | Not started |
+| 13 | [Multi-Tenancy](#multi-tenancy) | Schema Registry, Entity-Centric Core Rebuild | Done |
 | 14 | [Upcast Materialization + Downcast](#upcast-materialization--downcast) | Hardening & Evolution, Entity-Centric Core Rebuild | Not started |
 | 15 | [Streaming Channels](#streaming-channels) | Auth + Orchestration, Entity-Centric Core Rebuild, Property-Level Masking | Not started |
 | 16 | [Binary Attachments](#binary-attachments) | Auth + Orchestration, Entity-Centric Core Rebuild | Not started |
@@ -167,7 +167,7 @@ state "Property-Level Masking" as p8 #palegreen
 state "CQRS Projections" as p9 #palegreen
 state "Hardening & Evolution" as p10 #palegreen
 state "Entity-Centric Core Rebuild" as p11 #palegreen
-state "Multi-Tenancy" as p12
+state "Multi-Tenancy" as p12 #palegreen
 state "Upcast Materialization + Downcast" as p13
 state "Streaming Channels" as p14
 state "Binary Attachments" as p15

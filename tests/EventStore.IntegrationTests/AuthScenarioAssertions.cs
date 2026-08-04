@@ -55,8 +55,11 @@ internal static class AuthScenarioAssertions
     public static void AttachAuth(HttpRequestMessage request, HttpClient hostClient, string token, DpopKeyPair key)
     {
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
-        var absoluteUri = new Uri(hostClient.BaseAddress!, request.RequestUri!).ToString();
-        request.Headers.Add("DPoP", key.CreateProof(request.Method.Method, absoluteUri, token));
+        var absoluteUri = new Uri(hostClient.BaseAddress!, request.RequestUri!);
+        // RFC 9449 -- htu excludes the query string and fragment; DpopValidationMiddleware's
+        // own expectedHtu is built from HttpRequest.Path alone, never Path+QueryString.
+        var htu = absoluteUri.GetLeftPart(UriPartial.Path);
+        request.Headers.Add("DPoP", key.CreateProof(request.Method.Method, htu, token));
     }
 
     public static async Task RequestWithoutAuthorizationHeaderIsRejected(HttpClient hostClient)
@@ -189,6 +192,56 @@ internal static class AuthScenarioAssertions
         replay.Headers.Add("DPoP", proof); // the exact same proof bytes, same jti
         var response = await hostClient.SendAsync(replay);
         Assert.AreEqual(HttpStatusCode.Unauthorized, response.StatusCode);
+    }
+
+    // ADR-030 -- "a caller scoped to one AppId cannot resolve or read
+    // another's schema." tenant-a-operator-client holds only
+    // registry:admin:tenant-a, not the unscoped registry:admin -- it can
+    // register/read schemas under "tenant-a", but is Forbidden for any
+    // other AppId, even though ScopeAuthorizationHandler's own coarse gate
+    // (a registry:admin-shaped scope of SOME kind) lets it reach the
+    // endpoint at all.
+    public static async Task ATenantScopedTokenCanAdministerItsOwnAppIdButNotAnother(HttpClient hostClient, HttpClient devIdpClient)
+    {
+        var (tenantToken, tenantKey) = await GetTokenAsync(devIdpClient, "tenant-a-operator-client", "tenant-a-operator-client-secret", "registry:admin:tenant-a");
+        const string schema = """{ "type": "object", "properties": { "Amount": { "type": "number" } }, "required": ["Amount"] }""";
+
+        using var ownAppIdRequest = new HttpRequestMessage(HttpMethod.Put, "/registry/TenantScopedEvent")
+        {
+            Content = JsonContent(new
+            {
+                appId = "tenant-a",
+                jsonSchema = schema,
+                filterableFields = Array.Empty<object>(),
+                changeKind = "Full",
+                entityIdField = "$.Id",
+                parentValidationMode = "Permissive",
+            }),
+        };
+        AttachAuth(ownAppIdRequest, hostClient, tenantToken, tenantKey);
+        var ownAppIdResponse = await hostClient.SendAsync(ownAppIdRequest);
+        Assert.AreEqual(HttpStatusCode.Created, ownAppIdResponse.StatusCode, await ownAppIdResponse.Content.ReadAsStringAsync());
+
+        using var otherAppIdRequest = new HttpRequestMessage(HttpMethod.Put, "/registry/TenantScopedEvent")
+        {
+            Content = JsonContent(new
+            {
+                appId = "tenant-b",
+                jsonSchema = schema,
+                filterableFields = Array.Empty<object>(),
+                changeKind = "Full",
+                entityIdField = "$.Id",
+                parentValidationMode = "Permissive",
+            }),
+        };
+        AttachAuth(otherAppIdRequest, hostClient, tenantToken, tenantKey);
+        var otherAppIdResponse = await hostClient.SendAsync(otherAppIdRequest);
+        Assert.AreEqual(HttpStatusCode.Forbidden, otherAppIdResponse.StatusCode);
+
+        using var readOtherAppIdRequest = new HttpRequestMessage(HttpMethod.Get, "/registry/TenantScopedEvent?appId=tenant-b");
+        AttachAuth(readOtherAppIdRequest, hostClient, tenantToken, tenantKey);
+        var readOtherAppIdResponse = await hostClient.SendAsync(readOtherAppIdRequest);
+        Assert.AreEqual(HttpStatusCode.Forbidden, readOtherAppIdResponse.StatusCode);
     }
 
     private static async Task<HttpResponseMessage> Preflight(HttpClient hostClient, string origin)

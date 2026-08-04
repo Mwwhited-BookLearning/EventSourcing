@@ -95,5 +95,6 @@ public class AuthSqliteTests
         await AuthScenarioAssertions.ARequestWithAValidBearerTokenButNoDpopProofIsRejectedWith401(_hostClient, _devIdpClient);
         await AuthScenarioAssertions.ARequestWithADpopProofSignedByADifferentKeyIsRejectedWith401(_hostClient, _devIdpClient);
         await AuthScenarioAssertions.ReplayingAnAlreadyUsedDpopProofIsRejectedWith401(_hostClient, _devIdpClient);
+        await AuthScenarioAssertions.ATenantScopedTokenCanAdministerItsOwnAppIdButNotAnother(_hostClient, _devIdpClient);
     }
 }

@@ -34,7 +34,11 @@ builder.Services.AddOpenIddict()
     {
         options.SetTokenEndpointUris("/connect/token");
         options.AllowClientCredentialsFlow();
-        options.RegisterScopes("events:publish", "events:follow", "events:lineage:read", "registry:admin");
+        // ADR-030 -- "registry:admin:tenant-a" is one concrete AppId-scoped
+        // admin variant, seeded for a dev/POC client to actually demonstrate
+        // the mechanism; a real deployment would provision these per-tenant
+        // dynamically, not via a fixed registered list like this one.
+        options.RegisterScopes("events:publish", "events:follow", "events:lineage:read", "registry:admin", "registry:admin:tenant-a");
 
         // Dev-only ephemeral certs (ADR-006) -- a real deployment swaps DevIdp
         // for a production IdP entirely, per this item's own config-only story.
