@@ -1,5 +1,6 @@
 using EventStore.Derivation;
 using EventStore.Follow.Api;
+using EventStore.GraphQL;
 using EventStore.Host.Core;
 using EventStore.Inbox;
 using EventStore.Lineage.Api;
@@ -39,6 +40,7 @@ builder.Services.AddFollowApi();
 builder.Services.AddStreaming();
 builder.Services.AddAttachments();
 builder.Services.AddReplication();
+builder.Services.AddEventStoreGraphQl();
 builder.Services.Configure<OriginIdOptions>(builder.Configuration.GetSection("OriginId"));
 builder.Services.Configure<PeerSyncOptions>(builder.Configuration.GetSection("PeerSync"));
 builder.Services.Configure<PeerSyncClientOptions>(builder.Configuration.GetSection("PeerSyncClient"));
@@ -66,6 +68,7 @@ app.MapFollowEndpoints();
 app.MapStreamingEndpoints();
 app.MapAttachmentEndpoints();
 app.MapPeerSyncEndpoints();
+app.MapGraphQlEndpoints();
 app.Run();
 
 public partial class Program;

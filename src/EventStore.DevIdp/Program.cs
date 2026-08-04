@@ -97,6 +97,8 @@ app.MapPost("/connect/token", async (HttpContext httpContext, IOpenIddictApplica
 
     identity.SetClaim(Claims.Subject, await applicationManager.GetClientIdAsync(application));
     identity.SetScopes(request.GetScopes());
+    foreach (var (claimType, claimValue) in DevIdpSeeder.GetExtraClaims(request.ClientId!))
+        identity.SetClaim(claimType, claimValue);
     // ADR-017 -- binds the issued access token to the key that just proved
     // possession above; a flat "cnf.jkt" claim (the ADR's own phrasing),
     // not RFC 9449's nested cnf:{jkt:...} JSON-object shape.
