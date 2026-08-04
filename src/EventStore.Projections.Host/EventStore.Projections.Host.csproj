@@ -13,6 +13,7 @@
          QUERY /follow/(event-type), enforced by the project reference graph
          itself, not just a convention." -->
     <ProjectReference Include="..\EventStore.Projections.Abstractions\EventStore.Projections.Abstractions.csproj" />
+    <ProjectReference Include="..\EventStore.Dpop\EventStore.Dpop.csproj" />
   </ItemGroup>
 
   <ItemGroup>

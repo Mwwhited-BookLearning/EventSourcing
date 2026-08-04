@@ -231,10 +231,30 @@ stale numbers here are worse than none)*
   per-provider build split here" note, unlike every write-side item's own
   3-provider matrix. `EventStore.IntegrationTests` now has 23 passing
   tests (up from 22, +1 `[TestMethod]` covering 7 scenarios).
-- **Next up**: item 11, "Hardening & Evolution (DPoP, event upcasting,
-  hash-chained tamper evidence)" — depends on Auth + Orchestration,
-  Publish API, Follow API + Filter Pushdown, and CQRS Read-Model
-  Projections.
+- **Item 11, "Hardening & Evolution (DPoP, event upcasting, hash-chained
+  tamper evidence)," is Done.** Full narrative (code links, the real
+  chain-verification gap found and fixed, the `EventUpcastFailed`
+  dead-letter design, and 3 real bugs found only by running the real HTTP
+  round trip) is in `docs/changes/2026-08-04.md` — not repeated here.
+  Short version: `EventStore.Dpop` (new project, EC P-256 DPoP proofs,
+  shared by `EventStore.DevIdp` and `EventStore.Host.Core`), `ADR-019`'s
+  `ChainVerificationService` fixed to re-derive `PayloadHash` from `Payload`
+  itself (it previously trusted the stored column blindly, missing exactly
+  the corrupted-`Payload` scenario this item's own exit criteria names),
+  `ADR-020`'s publish-time upcast compatibility check + `EventUpcastFailed`
+  dead-letter built from scratch. `EventStore.IntegrationTests` still has
+  23 `[TestMethod]`s (more internal scenarios each, not new methods) — all
+  pass across SQLite/PostgreSQL/SQL Server.
+- **Next up**: item 12, "Entity-Centric Core Rebuild" — depends on
+  Event-Type Security (already Done). This is the big one: `EntityId`, the
+  always-on Entity Store, `Optional<T>` property patches, the Inbox/Router
+  split (publish becomes `202` + advisory `SchemaStatus`/`AuthorityStatus`,
+  never `400` for a schema-invalid/unknown-version payload — every earlier
+  item's `ValidationFailed`-returning test scenarios for those two cases
+  will need re-deriving, not just re-running), `ExpectedVersion` optimistic
+  concurrency + `ConflictFlag`, and `LateArrivalFlag`. Read `docs/08-build-
+  plan.md`'s "Entity-Centric Core Rebuild" section's exit criteria before
+  starting.
 
 ## How to resume cold
 
@@ -276,7 +296,7 @@ stale numbers here are worse than none)*
   treated as this session's own action; items 7 through 10 all committed —
   "check off work as you go. then continue" is the standing instruction
   currently in effect, so each item is committed without waiting for a
-  fresh prompt; item 11 not yet started as of this snapshot).
+  fresh prompt; item 11 now done too, per the same rhythm).
 - **Always actually run new code against every provider it's built for
   before calling an item done.** Every real bug found this session (the
   `ExecuteSqlRawAsync` brace-parsing issue, an unquoted Postgres column,
@@ -338,6 +358,16 @@ stale numbers here are worse than none)*
   `extern alias X;` in the test file the first time a test references
   more than one such project — first hit this item, will recur for any
   future multi-service test.
+- **`AddDbContext`'s options-configuration delegate re-runs on every
+  scoped `DbContext` instantiation, not once at startup** — computing a
+  fresh random value (e.g. `Guid.NewGuid()`) directly inside that
+  delegate silently hands every single request its own distinct
+  in-memory database, since `UseInMemoryDatabase(name)` is what actually
+  gets re-evaluated per call. Compute any such value once, in a local
+  variable *outside* the `AddDbContext(...)` call, and close over it.
+  Cost a full extra debugging round-trip in item 11's DPoP work (a
+  self-inflicted regression while fixing a genuine parallel-test-database
+  race) — see `docs/changes/2026-08-04.md` for the full story.
 - **Actually running `aspire run` (not just `dotnet build`) against
   `EventStore.AppHost` found 5 more real bugs no test could catch**,
   each fixed: `AddDatabase("Postgres")` needed (the bare server resource

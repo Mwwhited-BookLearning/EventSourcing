@@ -43,8 +43,8 @@ public class DerivationSqlServerTests
     {
         using var db = CreateContext();
         var cache = new MemoryCache(new MemoryCacheOptions());
-        var registry = new SchemaRegistryService(db, new SqlServerFilterableFieldIndexDdlGenerator(), cache);
-        var publish = new PublishService(db, registry, new SqlServerUniqueConstraintViolationDetector());
+        var registry = new SchemaRegistryService(db, new SqlServerFilterableFieldIndexDdlGenerator(), cache, UpcastingTestSupport.CreateEvaluator());
+        var publish = new PublishService(db, registry, new SqlServerUniqueConstraintViolationDetector(), UpcastingTestSupport.CreateChain());
         var derivationRegistry = new DerivationRegistrationService(db, registry);
 
         await DerivationScenarioAssertions.RegisteringAValidDerivationSucceeds(registry, derivationRegistry);

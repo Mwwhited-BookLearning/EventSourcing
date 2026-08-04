@@ -74,10 +74,16 @@ internal static class PublishScenarioAssertions
         var v2Schema = """
             { "type": "object", "properties": { "Amount": { "type": "number" }, "Status": { "type": "string" }, "Currency": { "type": "string" } }, "required": ["Amount", "Status", "Currency"] }
             """;
+        // A real upcastFromPrevious mapping (not null) -- ADR-020's publish-time
+        // compatibility check now runs the v1-shaped payload below through this
+        // mapping and validates the result against v2, so v2 must actually be
+        // reachable from v1 or this scenario's own "still validates against the
+        // declared version" assertion would be masked by an unrelated dead-letter.
         await registry.RegisterAsync("OrderPlaced", new RegisterEventTypeRequest(
             AppId: appId, JsonSchema: v2Schema, FilterableFields: [],
             ChangeKind: "Full", EntityIdField: "$.OrderId",
-            ParentValidationMode: null, RequiredClaims: null, UpcastFromPrevious: null, DowncastToPrevious: null));
+            ParentValidationMode: null, RequiredClaims: null,
+            UpcastFromPrevious: "event.Amount as Amount, event.Status as Status, 'USD' as Currency", DowncastToPrevious: "Amount, Status"));
         // v2 is now active and requires "Currency" -- a v1-shaped payload declaring
         // schemaVersion 1 explicitly must still validate against v1, not "whichever is active".
 
@@ -242,6 +248,55 @@ internal static class PublishScenarioAssertions
         var withPublishClaim = await publish.PublishAsync("LabResultRecorded", new PublishEventRequest(
             AppId: appId, SchemaVersion: 1, Payload: """{ "Amount": 1 }""", ParentEventIds: null, EventId: null), TestClaimsPrincipal.With("role:lab-tech"));
         AssertCreated(withPublishClaim, out _);
+    }
+
+    // ADR-020 -- a declared schemaVersion behind the active one is run through
+    // UpcastChain right now, against this real payload, as a live compatibility
+    // check. A real upcastFromPrevious mapping that actually reaches the active
+    // version's shape must let the original publish through unchanged.
+    public static async Task PublishingALaggingVersionWithACompatibleUpcastStoresTheOriginalPayloadUnchanged(
+        SchemaRegistryService registry, PublishService publish)
+    {
+        const string appId = "publish-demo-15";
+        await RegisterOrderPlacedV1(registry, appId);
+        var v2Schema = """{ "type": "object", "properties": { "Amount": { "type": "number" }, "Status": { "type": "string" }, "Currency": { "type": "string" } }, "required": ["Amount", "Status", "Currency"] }""";
+        await registry.RegisterAsync("OrderPlaced", new RegisterEventTypeRequest(
+            AppId: appId, JsonSchema: v2Schema, FilterableFields: [],
+            ChangeKind: "Full", EntityIdField: "$.OrderId",
+            ParentValidationMode: null, RequiredClaims: null,
+            UpcastFromPrevious: "event.Amount as Amount, event.Status as Status, 'USD' as Currency", DowncastToPrevious: "Amount, Status"));
+
+        var result = await publish.PublishAsync("OrderPlaced", new PublishEventRequest(
+            AppId: appId, SchemaVersion: 1, Payload: """{ "Amount": 150.00, "Status": "Paid" }""",
+            ParentEventIds: null, EventId: null), TestClaimsPrincipal.None);
+
+        AssertCreated(result, out var created);
+        Assert.AreEqual(1, created.SchemaVersion, "the event is stored exactly as declared -- Payload is never transformed before storage");
+        Assert.AreEqual("orderplaced", created.EventType);
+    }
+
+    // ADR-020's dead-letter path -- a lagging publish whose upcast hop fails
+    // (here: no upcastFromPrevious mapping at all onto a version that added a
+    // new required field, so the passed-through payload can never satisfy v2)
+    // is not rejected outright and is not silently stored as if nothing were
+    // wrong -- it's stored as the reserved EventUpcastFailed type instead.
+    public static async Task PublishingALaggingVersionWithAFailingUpcastStoresEventUpcastFailedInstead(
+        SchemaRegistryService registry, PublishService publish)
+    {
+        const string appId = "publish-demo-16";
+        await RegisterOrderPlacedV1(registry, appId);
+        var v2Schema = """{ "type": "object", "properties": { "Amount": { "type": "number" }, "Status": { "type": "string" }, "Currency": { "type": "string" } }, "required": ["Amount", "Status", "Currency"] }""";
+        await registry.RegisterAsync("OrderPlaced", new RegisterEventTypeRequest(
+            AppId: appId, JsonSchema: v2Schema, FilterableFields: [],
+            ChangeKind: "Full", EntityIdField: "$.OrderId",
+            ParentValidationMode: null, RequiredClaims: null, UpcastFromPrevious: null, DowncastToPrevious: null));
+
+        var result = await publish.PublishAsync("OrderPlaced", new PublishEventRequest(
+            AppId: appId, SchemaVersion: 1, Payload: """{ "Amount": 150.00, "Status": "Paid" }""",
+            ParentEventIds: null, EventId: null), TestClaimsPrincipal.None);
+
+        AssertCreated(result, out var created);
+        Assert.AreEqual(PublishService.EventUpcastFailedEventType, created.EventType);
     }
 
     private static void AssertCreated(PublishResult result, out PublishResult.Created created)

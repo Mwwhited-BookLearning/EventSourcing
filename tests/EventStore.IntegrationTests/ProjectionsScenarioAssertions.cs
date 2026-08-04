@@ -1,5 +1,4 @@
 using System.Net;
-using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using EventStore.Projections.Abstractions;
 using EventStore.Projections.Host;
@@ -30,7 +29,7 @@ internal static class ProjectionsScenarioAssertions
         HttpClient hostClient, HttpClient devIdpClient, string appId, string typeName, string changeKind, string schema, string entityIdField,
         (string Direction, string Claim)[]? requiredClaims = null)
     {
-        var token = await AuthScenarioAssertions.GetTokenAsync(devIdpClient, "operator-client", "operator-client-secret", "registry:admin");
+        var (token, key) = await AuthScenarioAssertions.GetTokenAsync(devIdpClient, "operator-client", "operator-client-secret", "registry:admin");
         using var request = new HttpRequestMessage(HttpMethod.Put, $"/registry/{typeName}")
         {
             Content = JsonContent.Create(new
@@ -44,19 +43,19 @@ internal static class ProjectionsScenarioAssertions
                 requiredClaims = requiredClaims?.Select(c => new { direction = c.Direction, claim = c.Claim }).ToArray(),
             }),
         };
-        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+        AuthScenarioAssertions.AttachAuth(request, hostClient, token, key);
         var response = await hostClient.SendAsync(request);
         Assert.AreEqual(HttpStatusCode.Created, response.StatusCode, await response.Content.ReadAsStringAsync());
     }
 
     public static async Task PublishAsync(HttpClient hostClient, HttpClient devIdpClient, string appId, string typeName, string payload)
     {
-        var token = await AuthScenarioAssertions.GetTokenAsync(devIdpClient, "publisher-client", "publisher-client-secret", "events:publish");
+        var (token, key) = await AuthScenarioAssertions.GetTokenAsync(devIdpClient, "publisher-client", "publisher-client-secret", "events:publish");
         using var request = new HttpRequestMessage(HttpMethod.Post, $"/publish/{typeName}")
         {
             Content = JsonContent.Create(new { appId, schemaVersion = 1, payload }),
         };
-        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+        AuthScenarioAssertions.AttachAuth(request, hostClient, token, key);
         var response = await hostClient.SendAsync(request);
         Assert.AreEqual(HttpStatusCode.Created, response.StatusCode, await response.Content.ReadAsStringAsync());
     }
@@ -168,7 +167,7 @@ internal static class ProjectionsScenarioAssertions
 
     public static async Task RegisteringAnEventTypeWithoutChangeKindIsRejected(HttpClient hostClient, HttpClient devIdpClient)
     {
-        var token = await AuthScenarioAssertions.GetTokenAsync(devIdpClient, "operator-client", "operator-client-secret", "registry:admin");
+        var (token, key) = await AuthScenarioAssertions.GetTokenAsync(devIdpClient, "operator-client", "operator-client-secret", "registry:admin");
         using var request = new HttpRequestMessage(HttpMethod.Put, "/registry/OrderRefunded")
         {
             Content = JsonContent.Create(new
@@ -180,7 +179,7 @@ internal static class ProjectionsScenarioAssertions
                 parentValidationMode = "Permissive",
             }),
         };
-        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+        AuthScenarioAssertions.AttachAuth(request, hostClient, token, key);
         var response = await hostClient.SendAsync(request);
         Assert.AreEqual(HttpStatusCode.BadRequest, response.StatusCode);
     }

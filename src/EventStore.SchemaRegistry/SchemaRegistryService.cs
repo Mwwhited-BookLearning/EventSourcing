@@ -2,13 +2,15 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using EventStore.Domain.SchemaRegistry;
 using EventStore.Persistence;
+using EventStore.Upcasting;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
 using Microsoft.Extensions.Caching.Memory;
 
 namespace EventStore.SchemaRegistry;
 
-public class SchemaRegistryService(EventStoreContext db, IFilterableFieldIndexDdlGenerator indexDdlGenerator, IMemoryCache cache)
+public class SchemaRegistryService(
+    EventStoreContext db, IFilterableFieldIndexDdlGenerator indexDdlGenerator, IMemoryCache cache, IUpcastExpressionEvaluator upcastEvaluator)
 {
     // Must equal EventStore.SpecGeneration.OpenApiDocumentBuilder.CacheKey /
     // AsyncApiDocumentBuilder.CacheKey -- duplicated rather than referenced,
@@ -81,6 +83,31 @@ public class SchemaRegistryService(EventStoreContext db, IFilterableFieldIndexDd
 
         if (schemaNode is JsonObject schemaObject)
             MaskingSchemaValidator.Validate(schemaObject, errors);
+
+        // ADR-018 -- an alias that doesn't name an actual property of the
+        // destination (this registration's own) schema, or an expression that
+        // fails to parse, is rejected 400 at registration time. This narrows,
+        // but does not close, registration-time compatibility checking --
+        // whether the expression's *output* actually validates against the
+        // destination schema is ADR-020's job (publish-time), not this one's.
+        if (!string.IsNullOrEmpty(request.UpcastFromPrevious))
+        {
+            if (!UpcastExpressionListParser.TryParse(request.UpcastFromPrevious, out var upcastClauses, out var parseError))
+            {
+                errors.Add($"upcastFromPrevious: {parseError}");
+            }
+            else
+            {
+                foreach (var clause in upcastClauses)
+                {
+                    if (!upcastEvaluator.TryCompile(clause.Expression, out var compileError))
+                        errors.Add($"upcastFromPrevious: expression '{clause.Expression}' failed to parse: {compileError}");
+                    if (schemaNode is not JsonObject destSchema || destSchema["properties"] is not JsonObject destProperties ||
+                        !destProperties.ContainsKey(clause.Alias))
+                        errors.Add($"upcastFromPrevious: alias '{clause.Alias}' does not name a property of this version's own schema");
+                }
+            }
+        }
 
         if (errors.Count > 0)
             return new RegisterEventTypeResult.ValidationFailed(errors);
@@ -198,6 +225,17 @@ public class SchemaRegistryService(EventStoreContext db, IFilterableFieldIndexDd
             .ToDictionary(g => g.Key, g => (IReadOnlyList<RequiredClaim>)g.First().RequiredClaims);
     }
 
+    // "Hardening & Evolution" -- UpcastChain needs the event type's own
+    // CURRENT active version as the upcast destination, given only a bare
+    // EventType name (Follow has no AppId per event, same docs/10-open-
+    // questions.md row 1 gap every other bare-name lookup here shares).
+    public async Task<EventTypeDefinition?> GetActiveDefinitionByNameAsync(string eventTypeName, CancellationToken ct = default) =>
+        await db.EventTypeDefinitions
+            .AsNoTracking()
+            .Where(e => e.Name == eventTypeName.ToLowerInvariant() && e.IsActive)
+            .OrderBy(e => e.AppId)
+            .FirstOrDefaultAsync(ct);
+
     // "CQRS Read-Model Projections" -- ProjectionHost needs each followed
     // event type's ChangeKind (ADR-016) to know Full-replace vs. Partial-merge,
     // but has no direct service/DB reference at all (docs/06-solution-
@@ -235,6 +273,21 @@ public class SchemaRegistryService(EventStoreContext db, IFilterableFieldIndexDd
         return definitions
             .GroupBy(e => e.Version)
             .ToDictionary(g => g.Key, g => g.First());
+    }
+
+    // AppId-scoped counterpart to GetVersionsByNameAsync -- Publish's own
+    // context always has an explicit AppId (the request's own field), so it
+    // never needs that method's bare-name tie-break workaround
+    // (docs/10-open-questions.md row 1).
+    public async Task<IReadOnlyDictionary<int, EventTypeDefinition>> GetVersionsAsync(
+        string appId, string eventTypeName, IReadOnlyCollection<int> versions, CancellationToken ct = default)
+    {
+        var normalizedName = eventTypeName.ToLowerInvariant();
+        var definitions = await db.EventTypeDefinitions
+            .AsNoTracking()
+            .Where(e => e.AppId == appId && e.Name == normalizedName && versions.Contains(e.Version))
+            .ToListAsync(ct);
+        return definitions.ToDictionary(e => e.Version, e => e);
     }
 
     // Temporary listing surface for this build stage -- plain HTTP QUERY with

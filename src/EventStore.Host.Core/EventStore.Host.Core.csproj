@@ -2,6 +2,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\EventStore.Persistence\EventStore.Persistence.csproj" />
+    <ProjectReference Include="..\EventStore.Dpop\EventStore.Dpop.csproj" />
   </ItemGroup>
 
   <ItemGroup>

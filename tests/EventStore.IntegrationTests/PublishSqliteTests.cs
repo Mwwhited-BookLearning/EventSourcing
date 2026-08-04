@@ -44,8 +44,9 @@ public class PublishSqliteTests
     {
         using var db = CreateContext();
         var cache = new MemoryCache(new MemoryCacheOptions());
-        var registry = new SchemaRegistryService(db, new SqliteFilterableFieldIndexDdlGenerator(), cache);
-        var publish = new PublishService(db, registry, new SqliteUniqueConstraintViolationDetector());
+        var registry = new SchemaRegistryService(db, new SqliteFilterableFieldIndexDdlGenerator(), cache, UpcastingTestSupport.CreateEvaluator());
+        var publish = new PublishService(db, registry, new SqliteUniqueConstraintViolationDetector(), UpcastingTestSupport.CreateChain());
+        var verifier = new ChainVerificationService(db);
         var specBuilder = new OpenApiDocumentBuilder(db, new EventSchemaConverter(), cache);
 
         await PublishScenarioAssertions.PublishingAValidEventSucceeds(registry, publish);
@@ -62,6 +63,12 @@ public class PublishSqliteTests
         await PublishScenarioAssertions.PermissiveParentValidationAcceptsADanglingParentReference(registry, publish);
         await PublishScenarioAssertions.PublishingAClaimGatedTypeWithoutTheClaimIsRejectedWith403AndWithItSucceeds(registry, publish);
         await PublishScenarioAssertions.PublishAndReadClaimsAreEnforcedFullyIndependentlyForTheSameType(registry, publish);
+
+        await PublishScenarioAssertions.PublishingALaggingVersionWithACompatibleUpcastStoresTheOriginalPayloadUnchanged(registry, publish);
+        await PublishScenarioAssertions.PublishingALaggingVersionWithAFailingUpcastStoresEventUpcastFailedInstead(registry, publish);
+
+        await HashChainScenarioAssertions.PublishingEventsChainsEachEventsHashToItsPredecessor(registry, publish, verifier);
+        await HashChainScenarioAssertions.CorruptingAHistoricalPayloadIsDetectedAtExactlyThatSequenceNumberWithEverythingBeforeItVerifyingClean(registry, publish, verifier, db);
 
         await OpenApiScenarioAssertions.OpenApiDocumentIncludesRegisteredPublishPaths(registry, specBuilder);
         await OpenApiScenarioAssertions.RegisteringANewTypeInvalidatesTheCachedDocument(registry, specBuilder);

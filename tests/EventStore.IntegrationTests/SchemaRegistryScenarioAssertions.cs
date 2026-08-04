@@ -68,7 +68,7 @@ internal static class SchemaRegistryScenarioAssertions
         var result = await service.RegisterAsync("OrderUpdated", new RegisterEventTypeRequest(
             AppId: "demo", JsonSchema: v2Schema, FilterableFields: [],
             ChangeKind: "Full", EntityIdField: "$.OrderId",
-            ParentValidationMode: null, RequiredClaims: null, UpcastFromPrevious: "Amount, 'Unknown' as Status", DowncastToPrevious: "Amount"));
+            ParentValidationMode: null, RequiredClaims: null, UpcastFromPrevious: "event.Amount as Amount, 'Unknown' as Status", DowncastToPrevious: "Amount"));
 
         Assert.IsInstanceOfType<RegisterEventTypeResult.Success>(result);
         Assert.AreEqual(2, ((RegisterEventTypeResult.Success)result).Version);
