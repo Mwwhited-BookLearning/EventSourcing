@@ -86,8 +86,13 @@ public class FollowClient(IHttpClientFactory httpClientFactory, IOptions<FollowC
     private void AttachAuth(HttpRequestMessage request, HttpClient followClient, string token)
     {
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
-        var absoluteUri = new Uri(followClient.BaseAddress!, request.RequestUri!).ToString();
-        request.Headers.Add("DPoP", _keyPair.CreateProof(request.Method.Method, absoluteUri, token));
+        var absoluteUri = new Uri(followClient.BaseAddress!, request.RequestUri!);
+        // RFC 9449 -- htu excludes the query string and fragment; neither of
+        // this client's own requests carries one today, but the resource
+        // server's own DpopValidationMiddleware computes expectedHtu from
+        // HttpRequest.Path alone, so this must match exactly if one is ever added.
+        var htu = absoluteUri.GetLeftPart(UriPartial.Path);
+        request.Headers.Add("DPoP", _keyPair.CreateProof(request.Method.Method, htu, token));
     }
 
     private async Task<string> GetAccessTokenAsync(CancellationToken ct)

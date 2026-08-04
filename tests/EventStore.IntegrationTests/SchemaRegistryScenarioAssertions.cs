@@ -41,13 +41,15 @@ internal static class SchemaRegistryScenarioAssertions
         await service.RegisterAsync("IsolationCheck", new RegisterEventTypeRequest(
             AppId: "demo", JsonSchema: OrderPlacedSchema, FilterableFields: [],
             ChangeKind: "Full", EntityIdField: "$.OrderId",
-            ParentValidationMode: null, RequiredClaims: null, UpcastFromPrevious: null, DowncastToPrevious: null));
+            ParentValidationMode: null, RequiredClaims: [new RequiredClaimRequest("Publish", "role:demo-writer")],
+            UpcastFromPrevious: null, DowncastToPrevious: null));
 
         var acmeSchema = """{ "type": "object", "properties": { "TotalCents": { "type": "integer" } }, "required": ["TotalCents"] }""";
         var result = await service.RegisterAsync("IsolationCheck", new RegisterEventTypeRequest(
             AppId: "acme", JsonSchema: acmeSchema, FilterableFields: [],
             ChangeKind: "Partial", EntityIdField: "$.OrderRef",
-            ParentValidationMode: null, RequiredClaims: null, UpcastFromPrevious: null, DowncastToPrevious: null));
+            ParentValidationMode: null, RequiredClaims: [new RequiredClaimRequest("Publish", "role:acme-writer")],
+            UpcastFromPrevious: null, DowncastToPrevious: null));
 
         Assert.IsInstanceOfType<RegisterEventTypeResult.Success>(result);
         var acmeActive = await service.GetActiveAsync("acme", "IsolationCheck");
@@ -55,6 +57,9 @@ internal static class SchemaRegistryScenarioAssertions
         Assert.AreEqual(1, acmeActive!.Version);
         Assert.AreEqual(1, demoActive!.Version);
         Assert.AreNotEqual(demoActive.JsonSchema, acmeActive.JsonSchema);
+        Assert.AreNotEqual(demoActive.ChangeKind, acmeActive.ChangeKind);
+        Assert.AreEqual("role:demo-writer", demoActive.RequiredClaims.Single().Claim);
+        Assert.AreEqual("role:acme-writer", acmeActive.RequiredClaims.Single().Claim);
     }
 
     public static async Task RegisteringAnUpdatedSchemaCreatesNewVersionAndDeactivatesPrevious(SchemaRegistryService service)

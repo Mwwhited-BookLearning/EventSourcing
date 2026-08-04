@@ -5,8 +5,10 @@ using OpenIddict.Abstractions;
 
 namespace EventStore.DevIdp;
 
-// The three Client Credentials clients ADR-006/features/auth.md name
-// explicitly, seeded in code at startup -- no realm-export file, no admin
+// The Client Credentials clients ADR-006/features/auth.md name explicitly
+// (plus one added per later build-plan item -- projections-client for
+// "CQRS Read-Model Projections", tenant-a-operator-client for "Multi-
+// Tenancy"), seeded in code at startup -- no realm-export file, no admin
 // console, matching this item's own dev/POC scope. Secrets below are
 // plaintext, fixed, dev-only values, not production credentials.
 public static class DevIdpSeeder
@@ -17,6 +19,7 @@ public static class DevIdpSeeder
         ("follower-client", "follower-client-secret", ["events:follow", "events:lineage:read"]),
         ("operator-client", "operator-client-secret", ["registry:admin"]),
         ("projections-client", "projections-client-secret", ["events:follow"]), // "CQRS Read-Model Projections" -- ProjectionHost is a Follow caller like any other (ADR-015)
+        ("tenant-a-operator-client", "tenant-a-operator-client-secret", ["registry:admin:tenant-a"]), // "Multi-Tenancy" (ADR-030) -- a caller scoped to exactly one AppId, not the unscoped framework-operator form
     ];
 
     // ADR-017 -- "each of the four OAuth2 clients generates its own

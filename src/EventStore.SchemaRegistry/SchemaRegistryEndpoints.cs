@@ -1,3 +1,4 @@
+using System.Security.Claims;
 using EventStore.Persistence;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
@@ -18,8 +19,14 @@ public static class SchemaRegistryEndpoints
         // (docs/05-schema-registry-and-spec-generation.md, ADR-006).
         var registry = app.MapGroup("/registry").RequireAuthorization("registry:admin");
 
-        registry.MapPut("/{eventType}", async (string eventType, RegisterEventTypeRequest request, SchemaRegistryService service, CancellationToken ct) =>
+        registry.MapPut("/{eventType}", async (string eventType, RegisterEventTypeRequest request, ClaimsPrincipal user, SchemaRegistryService service, CancellationToken ct) =>
         {
+            // ADR-030 -- the coarse registry:admin policy above only confirms
+            // the caller holds SOME admin-shaped scope; this confirms it's
+            // scoped to (or unscoped for) THIS request's own AppId specifically.
+            if (!AppIdScopeEvaluator.CanAdminister(user, request.AppId))
+                return Results.Forbid();
+
             var result = await service.RegisterAsync(eventType, request, ct);
             return result switch
             {
@@ -29,14 +36,20 @@ public static class SchemaRegistryEndpoints
             };
         });
 
-        registry.MapGet("/{eventType}", async (string eventType, string appId, SchemaRegistryService service, CancellationToken ct) =>
+        registry.MapGet("/{eventType}", async (string eventType, string appId, ClaimsPrincipal user, SchemaRegistryService service, CancellationToken ct) =>
         {
+            if (!AppIdScopeEvaluator.CanAdminister(user, appId))
+                return Results.Forbid();
+
             var definition = await service.GetActiveAsync(appId, eventType, ct);
             return definition is null ? Results.NotFound() : Results.Text(definition.JsonSchema, "application/json");
         });
 
-        registry.MapGet("/{eventType}/{version:int}", async (string eventType, int version, string appId, SchemaRegistryService service, CancellationToken ct) =>
+        registry.MapGet("/{eventType}/{version:int}", async (string eventType, int version, string appId, ClaimsPrincipal user, SchemaRegistryService service, CancellationToken ct) =>
         {
+            if (!AppIdScopeEvaluator.CanAdminister(user, appId))
+                return Results.Forbid();
+
             var definition = await service.GetVersionAsync(appId, eventType, version, ct);
             return definition is null ? Results.NotFound() : Results.Text(definition.JsonSchema, "application/json");
         });
@@ -59,8 +72,11 @@ public static class SchemaRegistryEndpoints
         // with a body -- superseded by the GraphQL eventTypes(...) resolver once
         // "GraphQL-Only Query Layer" lands (see the correction note on this item
         // in docs/08-build-plan.md).
-        registry.MapMethods("/", ["QUERY"], async (ListEventTypesRequest request, SchemaRegistryService service, CancellationToken ct) =>
+        registry.MapMethods("/", ["QUERY"], async (ListEventTypesRequest request, ClaimsPrincipal user, SchemaRegistryService service, CancellationToken ct) =>
         {
+            if (!AppIdScopeEvaluator.CanAdminister(user, request.AppId))
+                return Results.Forbid();
+
             var results = await service.ListAsync(request.AppId, request.Top, request.Skip, ct);
             return Results.Ok(results.Select(e => new { e.Name, e.Version, e.IsActive }));
         });

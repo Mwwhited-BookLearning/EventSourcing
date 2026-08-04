@@ -268,14 +268,28 @@ stale numbers here are worse than none)*
   and silently created two different Entity Store rows for one order).
   `EventStore.IntegrationTests` now has 26 `[TestMethod]`s (up from 23) —
   all pass across SQLite/PostgreSQL/SQL Server.
-- **Next up**: item 13, "Multi-Tenancy" (`ADR-030`/`075` — `AppId` joins
-  the schema registry's key across every registry/upcast/downcast
-  lookup) or item 14, "Upcast Materialization + Downcast" (`ADR-027`/
-  `028`/`053`) — both now unblocked; check `docs/08-build-plan.md`'s
-  dependency graph for which build-plan ordering to follow. Item 14 in
-  particular is where the upcast-aware fold `RouterWorker` deliberately
-  skipped this pass (it validates a declared `SchemaVersion` against its
-  own schema only, never upcasts to the active version before folding)
+- **Item 13, "Multi-Tenancy," is Done — same day, continuing directly from
+  item 12.** Much smaller than 11/12: `ADR-030`'s own text already said
+  multi-tenancy was "closer to already built than not" (`EventTypeDefinition`
+  keyed by `(AppId, Name, Version)` since item 2; `EntityId`/`StoredEvent.
+  AppId` already disambiguate applications since item 12). The one
+  genuinely new piece: `registry:admin` gains optional `AppId`-scoped
+  variants (`registry:admin:{appId}`) — `ScopeAuthorizationHandler`'s
+  coarse gate plus a new `AppIdScopeEvaluator` fine-grained check in
+  `SchemaRegistryEndpoints`, checked at the HTTP layer (not inside
+  `SchemaRegistryService`) so its ~15 direct-construction test call sites
+  needed zero changes. Found and fixed a real, previously-latent RFC 9449
+  bug while writing the new isolation test (the first query-string request
+  in the whole suite): `AttachAuth`'s `htu` must exclude the query string,
+  in both the test helper and `FollowClient`'s own production code. Full
+  narrative in `docs/changes/2026-08-04.md`. `EventStore.IntegrationTests`
+  still has 26 `[TestMethod]`s (existing methods gained one scenario each).
+- **Next up**: item 14, "Upcast Materialization + Downcast" (`ADR-027`/
+  `028`/`053`) — now unblocked (depends on Hardening & Evolution,
+  Entity-Centric Core Rebuild, both Done). This is where the upcast-aware
+  fold `RouterWorker` deliberately skipped in item 12 (it validates a
+  declared `SchemaVersion` against its own schema only, never upcasts to
+  the active version before folding)
   is meant to land.
 
 ## How to resume cold
