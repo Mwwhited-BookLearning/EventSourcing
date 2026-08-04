@@ -1,6 +1,7 @@
 using System.Security.Cryptography;
 using System.Text;
 using EventStore.Dpop;
+using EventStore.TicketExchange;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
@@ -23,6 +24,18 @@ public static class DpopValidationMiddlewareExtensions
         app.Use(async (context, next) =>
         {
             if (context.User.Identity?.IsAuthenticated != true)
+            {
+                await next(context);
+                return;
+            }
+
+            // ADR-040 -- a ticket-resolved principal is never DPoP-bound
+            // by design ("DPoP's proof-of-possession isn't lost, it's
+            // consumed one hop earlier," at ticket-issuance time, not at
+            // this header-incapable resolution hop). Skipped here rather
+            // than left to fail on "missing Authorization: Bearer token" --
+            // that's not a DPoP failure, it's this scheme's entire point.
+            if (context.User.Identity?.AuthenticationType == TicketAuthenticationDefaults.AuthenticationScheme)
             {
                 await next(context);
                 return;

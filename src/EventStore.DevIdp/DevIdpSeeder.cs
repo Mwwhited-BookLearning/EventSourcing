@@ -23,7 +23,14 @@ public static class DevIdpSeeder
         ("telemetry-client", "telemetry-client-secret", ["telemetry:ingest", "telemetry:read"]), // "Streaming Channels" (ADR-031) -- a producer/detector client, holding both since this repo's tests drive both roles from one caller
         ("attachments-client", "attachments-client-secret", ["attachments:ingest", "attachments:read"]), // "Binary Attachments" (ADR-032) -- same both-roles-in-one-caller posture as telemetry-client
         ("peer-sync-client", "peer-sync-client-secret", ["peer:sync", "events:publish", "registry:admin"]), // "Sharding & Replication" (ADR-033) -- shared by every site in this dev/POC environment; a real deployment would give each site its own credential, per-site OriginId identity comes from the application layer (/peer-sync/whoami), not this token. Also holds events:publish/registry:admin since this repo's HTTP replication test drives register+publish+sync from one caller, the same both-roles-in-one-caller posture as telemetry-client/attachments-client
+        ("clinician-spa-client", "clinician-spa-client-secret", ["telemetry:read", "attachments:read"]), // "Ticket Exchange for Header-Incapable Clients" (ADR-040) -- the header-CAPABLE caller (an SPA/backend) that exchanges its own bearer token for a ticket on behalf of a <video src>/<img src> element it doesn't control the request internals of; named after the ADR/feature-doc's own running example, not a generic reuse of telemetry-client/attachments-client
     ];
+
+    // ADR-040 -- only a caller that legitimately constructs header-incapable
+    // playback/retrieval URLs is granted the token-exchange grant type;
+    // every other seeded client keeps its existing client_credentials-only
+    // permission set unchanged.
+    private static readonly HashSet<string> TokenExchangeClients = ["clinician-spa-client"];
 
     // ADR-017 -- "each of the four OAuth2 clients generates its own
     // asymmetric key pair." No separate client process exists in this repo
@@ -55,6 +62,16 @@ public static class DevIdpSeeder
     public static IReadOnlyList<(string Type, string Value)> GetExtraClaims(string clientId) =>
         ExtraClaims.TryGetValue(clientId, out var claims) ? claims : [];
 
+    // ADR-040's introspection step needs the PLAINTEXT client_secret to
+    // recompute HMAC-SHA256(ticket, secret) -- OpenIddict's own
+    // IOpenIddictApplicationManager deliberately never exposes a stored
+    // secret in plaintext (only ValidateClientSecretAsync, correctly, for
+    // security), so this reads back from the SAME dev-only plaintext
+    // source this file's own header comment already names, rather than a
+    // second, newly-invented secrets store.
+    public static string? GetClientSecret(string clientId) =>
+        Clients.FirstOrDefault(c => c.ClientId == clientId).ClientSecret;
+
     public static async Task SeedAsync(IServiceProvider services)
     {
         var manager = services.GetRequiredService<IOpenIddictApplicationManager>();
@@ -78,6 +95,9 @@ public static class DevIdpSeeder
             };
             foreach (var scope in scopes)
                 descriptor.Permissions.Add(OpenIddictConstants.Permissions.Prefixes.Scope + scope);
+
+            if (TokenExchangeClients.Contains(clientId))
+                descriptor.Permissions.Add(OpenIddictConstants.Permissions.GrantTypes.TokenExchange);
 
             await manager.CreateAsync(descriptor);
         }

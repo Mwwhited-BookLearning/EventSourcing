@@ -5,10 +5,15 @@
     <ProjectReference Include="..\EventStore.SchemaRegistry\EventStore.SchemaRegistry.csproj" />
     <ProjectReference Include="..\EventStore.Masking\EventStore.Masking.csproj" />
     <ProjectReference Include="..\EventStore.Inbox\EventStore.Inbox.csproj" />
+    <ProjectReference Include="..\EventStore.TicketExchange\EventStore.TicketExchange.csproj" />
   </ItemGroup>
 
   <ItemGroup>
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="10.0.10" />
   </ItemGroup>
 
   <PropertyGroup>

@@ -1,6 +1,9 @@
 using System.Security.Claims;
 using System.Text.Json;
 using EventStore.Persistence;
+using EventStore.TicketExchange;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.EntityFrameworkCore;
@@ -57,6 +60,12 @@ public static class StreamingEndpoints
         // retrieval over the channel's concatenated chunk bytes (ADR-031's
         // playback/seeking need -- RFC 7233); its absence serves the live
         // JSON/SSE tail/replay stream instead (ADR-010's shape, reused).
+        // The byte-range mode is ADR-040's own named "Streaming Channel
+        // playback" header-incapable target (a <video src>) -- gated by
+        // BOTH schemes (Bearer, the default, and Ticket, ADR-040), so an
+        // ordinarily-authenticated caller is completely unaffected and a
+        // ticket+sig caller with no Authorization header at all also
+        // succeeds.
         app.MapGet("/telemetry/{channelId}/samples", async (
             string channelId, string? mode, DateTimeOffset? fromTimestamp,
             EventStoreContext db, TelemetryTailReader reader, ClaimsPrincipal user, HttpContext context) =>
@@ -66,7 +75,11 @@ public static class StreamingEndpoints
 
             await ServeTailAsync(await reader.ConnectAsync(channelId, mode, fromTimestamp, user, context.RequestAborted), context);
             return Results.Empty;
-        }).RequireAuthorization("telemetry:read");
+        }).RequireAuthorization(new AuthorizeAttribute
+        {
+            AuthenticationSchemes = $"{JwtBearerDefaults.AuthenticationScheme},{TicketAuthenticationDefaults.AuthenticationScheme}",
+            Policy = "telemetry:read",
+        });
 
         app.MapGet("/telemetry/sessions/{threadId}/samples", async (
             string threadId, string? mode, DateTimeOffset? fromTimestamp,

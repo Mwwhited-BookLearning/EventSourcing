@@ -1,4 +1,5 @@
 using EventStore.Dpop;
+using EventStore.TicketExchange;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Builder;
@@ -29,7 +30,22 @@ public static class HostCoreExtensions
                 options.Authority = builder.Configuration["Authentication:Authority"];
                 options.RequireHttpsMetadata = builder.Configuration.GetValue("Authentication:RequireHttpsMetadata", true);
                 options.TokenValidationParameters.ValidateAudience = false;
+            })
+            // ADR-040 -- additive, never the default scheme: only the specific
+            // routes that opt in (Streaming playback, Attachment retrieval)
+            // ever try this scheme at all, via AuthorizeAttribute.
+            // AuthenticationSchemes; every other endpoint's Bearer-only
+            // authentication is completely unaffected.
+            .AddScheme<TicketAuthenticationOptions, TicketAuthenticationHandler>(TicketAuthenticationDefaults.AuthenticationScheme, options =>
+            {
+                options.IntrospectionEndpoint = new Uri(new Uri(builder.Configuration["Authentication:Authority"]!), "oauth/introspect").ToString();
             });
+
+        // Needed by TicketAuthenticationHandler's own introspection call --
+        // registered here (not left to happen to already exist) so this
+        // scheme is self-contained regardless of what else a given Host
+        // process happens to also register a named HttpClient for.
+        builder.Services.AddHttpClient();
 
         // ADR-017 -- one replay cache per Host process; dev/POC scale, per
         // IDpopReplayCache's own accepted-cost note.

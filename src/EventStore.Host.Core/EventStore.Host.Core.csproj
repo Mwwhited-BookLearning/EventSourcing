@@ -3,6 +3,7 @@
   <ItemGroup>
     <ProjectReference Include="..\EventStore.Persistence\EventStore.Persistence.csproj" />
     <ProjectReference Include="..\EventStore.Dpop\EventStore.Dpop.csproj" />
+    <ProjectReference Include="..\EventStore.TicketExchange\EventStore.TicketExchange.csproj" />
   </ItemGroup>
 
   <ItemGroup>
