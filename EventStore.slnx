@@ -1,6 +1,7 @@
 <Solution>
   <Folder Name="/src/">
     <Project Path="src/EventStore.AppHost/EventStore.AppHost.csproj" />
+    <Project Path="src/EventStore.Attachments/EventStore.Attachments.csproj" />
     <Project Path="src/EventStore.DevIdp/EventStore.DevIdp.csproj" />
     <Project Path="src/EventStore.Derivation/EventStore.Derivation.csproj" />
     <Project Path="src/EventStore.Domain/EventStore.Domain.csproj" />
@@ -19,9 +20,11 @@
     <Project Path="src/EventStore.Persistence/EventStore.Persistence.csproj" />
     <Project Path="src/EventStore.Projections.Abstractions/EventStore.Projections.Abstractions.csproj" />
     <Project Path="src/EventStore.Projections.Host/EventStore.Projections.Host.csproj" />
+    <Project Path="src/EventStore.Replication/EventStore.Replication.csproj" />
     <Project Path="src/EventStore.Router/EventStore.Router.csproj" />
     <Project Path="src/EventStore.SchemaRegistry/EventStore.SchemaRegistry.csproj" />
     <Project Path="src/EventStore.ServiceDefaults/EventStore.ServiceDefaults.csproj" />
+    <Project Path="src/EventStore.Streaming/EventStore.Streaming.csproj" />
     <Project Path="src/EventStore.Upcasting/EventStore.Upcasting.csproj" />
     <Project Path="src/EventStore.SpecGeneration/EventStore.SpecGeneration.csproj" />
   </Folder>

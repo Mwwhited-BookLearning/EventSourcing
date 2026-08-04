@@ -6,6 +6,7 @@ using EventStore.Domain.Streaming;
 using EventStore.Persistence;
 using EventStore.SchemaRegistry;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 
 namespace EventStore.Inbox;
 
@@ -19,8 +20,15 @@ namespace EventStore.Inbox;
 public class PublishService(
     EventStoreContext db,
     SchemaRegistryService schemaRegistry,
-    IUniqueConstraintViolationDetector uniqueConstraintViolationDetector)
+    IUniqueConstraintViolationDetector uniqueConstraintViolationDetector,
+    IOptions<OriginIdOptions>? originIdOptions = null)
 {
+    // ADR-033 -- defaults every existing 3-arg construction site (every
+    // pre-"Sharding & Replication" test file, ~26 of them) to a single-
+    // site-shaped OriginId rather than forcing a mechanical sweep across
+    // all of them for a value most don't care about; a real Host always
+    // supplies a real configured value via DI.
+    private readonly string _originId = originIdOptions?.Value.OriginId ?? OriginIdOptions.Default;
     public async Task<PublishResult> PublishAsync(
         string eventTypeName, PublishEventRequest request, ClaimsPrincipal user, CancellationToken ct = default, int derivationHopCount = 0)
     {
@@ -73,6 +81,8 @@ public class PublishService(
             EventId = eventId,
             AppId = request.AppId, // ADR-021 -- the real AppId source for EntityId's own {appId}:... prefix, closing docs/10-open-questions.md row 1's ambiguity for entity resolution specifically
             EntityId = "", // resolved by the Router once it fold this event (ADR-021)
+            OriginId = _originId, // ADR-033 -- every client-facing publish originates AT this site, by definition
+            LogicalClock = "", // computed by EventAppender, once the prior clock value is known (mirrors ChainHash)
             EventType = normalizedName,
             SchemaVersion = request.SchemaVersion,
             ExpectedVersion = request.ExpectedVersion,

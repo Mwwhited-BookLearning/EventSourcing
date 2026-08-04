@@ -202,6 +202,28 @@ namespace EventStore.Persistence.Migrations.Sqlite.Migrations
                     b.ToTable("Events");
                 });
 
+            modelBuilder.Entity("EventStore.Domain.Replication.PeerSyncCursor", b =>
+                {
+                    b.Property<string>("PeerId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<long>("LastAckedSequenceNumber")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<long>("LastReceivedSequenceNumber")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTimeOffset>("LastSyncAttemptAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTimeOffset?>("LastSyncSuccessAt")
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("PeerId");
+
+                    b.ToTable("PeerSyncCursors");
+                });
+
             modelBuilder.Entity("EventStore.Domain.SchemaRegistry.DerivationCursor", b =>
                 {
                     b.Property<string>("AppId")

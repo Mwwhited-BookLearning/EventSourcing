@@ -75,7 +75,7 @@ provider they apply to — not "code written."
 | 14 | [Upcast Materialization + Downcast](#upcast-materialization--downcast) | Hardening & Evolution, Entity-Centric Core Rebuild | Done |
 | 15 | [Streaming Channels](#streaming-channels) | Auth + Orchestration, Entity-Centric Core Rebuild, Property-Level Masking | Done |
 | 16 | [Binary Attachments](#binary-attachments) | Auth + Orchestration, Entity-Centric Core Rebuild | Done |
-| 17 | [Sharding & Replication](#sharding--replication) | Entity-Centric Core Rebuild | Not started |
+| 17 | [Sharding & Replication](#sharding--replication) | Entity-Centric Core Rebuild | Done |
 | 18 | [Non-Authoritative Capture](#non-authoritative-capture) | Entity-Centric Core Rebuild, Auth + Orchestration, Binary Attachments | Not started |
 | 19 | [GraphQL-Only Query Layer](#graphql-only-query-layer) | Entity-Centric Core Rebuild, Multi-Tenancy, Hardening & Evolution | Not started |
 | 20 | [Compatibility & Deployment Discipline](#compatibility--deployment-discipline) | GraphQL-Only Query Layer | Not started |
@@ -171,7 +171,7 @@ state "Multi-Tenancy" as p12 #palegreen
 state "Upcast Materialization + Downcast" as p13 #palegreen
 state "Streaming Channels" as p14 #palegreen
 state "Binary Attachments" as p15 #palegreen
-state "Sharding & Replication" as p16
+state "Sharding & Replication" as p16 #palegreen
 state "Non-Authoritative Capture" as p17
 state "GraphQL-Only Query Layer" as p18
 state "Compatibility & Deployment Discipline" as p19
@@ -1365,6 +1365,18 @@ newly-deployed peer with no prior configuration beyond its own
 `SeedPeers` list successfully gossips with the mesh via its first
 reachable seed; the cross-shard fan-out scenario is re-verified once
 "GraphQL-Only Query Layer" lands, per the note above.
+
+**Built-scope note**: `ADR-033`'s Scope line names Merkle-tree catch-up as
+an efficiency optimization for a long-disconnected peer's resync — not
+built at this stage. What *is* built: a plain `PeerSyncCursor`-based full
+resync-since-last-ack (every event past `LastAckedSequenceNumber`,
+re-pushed and re-deduped by `EventId` on arrival), which is functionally
+correct — converges, flags genuine conflicts — just not bandwidth-
+efficient for a peer disconnected a long time. The exit criteria above
+only require convergence-with-conflicts-flagged, not hash-tree diffing,
+so this is a deliberate, honestly-flagged scope narrowing, not a gap
+against what was promised. Revisit if a later item's own scope actually
+needs the efficiency (none currently do).
 
 ## Non-Authoritative Capture
 

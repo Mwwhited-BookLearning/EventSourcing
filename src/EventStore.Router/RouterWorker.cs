@@ -202,6 +202,7 @@ public class RouterWorker(IServiceScopeFactory scopeFactory, ILogger<RouterWorke
             {
                 EntityId = entityId,
                 EntityType = entityType,
+                ShardKey = entityType, // ADR-034 -- ShardKey = EntityType, the default and only v1 mechanism
                 Version = 0,
                 Data = "{}",
                 Extensions = "{}",
@@ -238,6 +239,7 @@ public class RouterWorker(IServiceScopeFactory scopeFactory, ILogger<RouterWorke
             row.SchemaVersion = storedEvent.SchemaVersion;
             row.Hash = ComputeHash(newDataJson);
             row.LastAppliedLogicalTime = storedEvent.OccurredAt;
+            row.LastAppliedOriginId = storedEvent.OriginId; // ADR-033 -- which site's event most recently won this fold
         }
 
         row.LateArrivalFlag = isLateArrival;

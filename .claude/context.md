@@ -427,11 +427,76 @@ stale numbers here are worse than none)*
   `Postgres`/`SqlServer`, 7 scenarios each) plus one dedicated real-HTTP
   `AttachmentHttpSqliteTests` for the Range-request/206 behavior, run
   twice in a row for stability.
-- **Next up**: item 17, "Sharding & Replication" (`ADR-033`/`034`/`051`) —
-  depends on Entity-Centric Core Rebuild (Done). A large item: gossip
-  topology, `OriginId`/`LogicalClock` (already on `StoredEvent`, unused
-  until this item), the fault/abend/restart-tolerant peer-sync outbox/
-  inbox, Merkle-tree catch-up, peer discovery.
+- **Item 17, "Sharding & Replication," is Done — same day, continuing
+  directly from item 16.** New `HybridLogicalClock`
+  (`EventStore.Domain/EventLog`, Kulkarni et al.'s HLC algorithm —
+  physical = max(wall-clock, prior local, observed remote), logical
+  increments on a tie/resets when physical genuinely advances, formatted
+  `"{physicalTicks:D19}-{logicalCounter:D10}"` for correct lexicographic
+  ordering); `EventAppender.AppendAsync` gained an `observedRemoteClock`
+  parameter, computing `StoredEvent.LogicalClock` alongside `ChainHash` in
+  the same read-prior-row pattern. `PublishService` gained an optional
+  `IOptions<OriginIdOptions>?` (defaulting to `"local"`) so ~26 existing
+  3-arg test call sites needed zero changes — a deliberate low-invasiveness
+  choice. New `EventStore.Domain/Replication/PeerSyncCursor.cs` (exact
+  shape verified against `docs/data/schema-registry.md` before building:
+  `PeerId, LastReceivedSequenceNumber, LastAckedSequenceNumber,
+  LastSyncAttemptAt, LastSyncSuccessAt` — no `Address` field) and a new
+  `EventStore.Replication` project: `PeerAddressBook` (in-memory, gossip-
+  discovered via a `knownPeers` exchange baked into every push request/
+  response round trip — proves `ADR-051`'s "one seed discovers the rest of
+  the mesh" requirement), `PeerSyncClient`/`PeerSyncReceiver` (the latter
+  appends via `EventAppender.AppendAsync` directly, bypassing
+  `PublishService` entirely — the original event already passed
+  claims/parent-link checks once at its own origin site, the same
+  reasoning item 14's `UpcastMaterializer` already established),
+  `PeerSyncWorker` (`BackgroundService` + a public `RunOnceAsync` static
+  for direct testing, per this repo's established
+  RouterWorker→ChannelDerivationWorker→PeerSyncWorker testing-pattern
+  precedent), `PeerSyncEndpoints` (`GET /peer-sync/whoami`,
+  `POST /peer-sync/push`, both gated by a new `peer:sync` scope). All 3
+  hosts wired (`AddReplication()`, `OriginIdOptions`/`PeerSyncOptions`/
+  `PeerSyncClientOptions`, a `"PeerSync"` named `IHttpClientFactory`
+  client with no fixed `BaseAddress`).
+  **A real bug found while writing the real-HTTP test, not by reading the
+  code back**: `PeerSyncClient.AttachAuth`'s `request.RequestUri!.
+  GetLeftPart(UriPartial.Path)` throws `InvalidOperationException` for a
+  relative `RequestUri` — which it deliberately is when the real target is
+  supplied via a `FixedHttpClientFactory`-mapped `HttpClient.BaseAddress`
+  rather than a real absolute URL (the same test pattern `FollowClient`'s
+  own tests already use). Fixed by resolving against `client.BaseAddress`
+  first when `RequestUri` isn't already absolute, mirroring
+  `FollowClient.AttachAuth`'s existing pattern exactly. A second, unrelated
+  bug the same test surfaced: the seeded `peer-sync-client` DevIdp client
+  only held `peer:sync`, but a real site driving register+publish+sync
+  from one caller (this repo's simplification — "a real deployment would
+  give each site its own credential") also needs `events:publish`/
+  `registry:admin` — added both, same both-roles-in-one-caller posture
+  `telemetry-client`/`attachments-client` already established.
+  **Built-scope note**: Merkle-tree catch-up (`ADR-033`'s named efficiency
+  optimization) is NOT built — a plain `PeerSyncCursor`-based full
+  resync-since-last-ack is used instead, functionally correct (converges,
+  flags genuine conflicts) but not bandwidth-efficient for a
+  long-disconnected peer. Honestly flagged in `docs/08-build-plan.md`'s
+  own section, not silently dropped. Cross-shard fan-out remains deferred
+  to "GraphQL-Only Query Layer," per this item's own pre-existing note.
+  `EventStore.IntegrationTests` now has 45 `[TestMethod]`s (up from 41) —
+  `ReplicationSqliteTests`/`Postgres`/`SqlServer` (5 scenarios each) plus
+  one dedicated real-HTTP `ReplicationHttpSqliteTests` proving the actual
+  wire/auth path (`peer:sync` scope enforcement, real DPoP-proof
+  generation against a resolved absolute URI, the `/peer-sync/whoami`
+  handshake) between two real `WebApplicationFactory` Hosts. All pass
+  reliably alone and in the SQLite-only subset; the full multi-provider
+  run has an unrelated, pre-existing flake (see `TODO.md`'s new entry) —
+  a rotating single SQL Server test class occasionally fails its own
+  Testcontainers `ClassInit` under resource contention from running
+  several `MsSqlContainer`s in one process, never the same class twice,
+  always passing standalone. Not caused by this item's changes.
+- **Next up**: item 18, "Non-Authoritative Capture" (`ADR-035`/`036`/`042`)
+  — depends on Entity-Centric Core Rebuild, Auth + Orchestration, and
+  Binary Attachments (all Done): `AuthorityStatus`/`authorityDecision`
+  events, DID/UCAN self-attestation + OAuth Token Exchange (RFC 8693), the
+  gated authoritative fold + `LiveEntityStoreRow`.
 
 ## How to resume cold
 
@@ -446,9 +511,13 @@ stale numbers here are worse than none)*
    narrative.
 5. `dotnet build EventStore.slnx` and `dotnet test tests/EventStore.IntegrationTests` —
    confirm the build/test baseline the last session left still holds
-   before adding to it (41 tests should pass). Requires Docker running
+   before adding to it (45 tests should pass). Requires Docker running
    (Testcontainers for Postgres/SQL Server) and the SDK pinned in
-   `global.json`.
+   `global.json`. A full multi-provider run has a known, pre-existing,
+   unrelated flake — see `TODO.md`'s entry — where one SQL Server test
+   class occasionally fails its own container `ClassInit` under resource
+   contention; re-running just that class alone always passes. Don't
+   mistake this for a real regression.
 
 ## Working notes not yet written down elsewhere
 
@@ -473,7 +542,7 @@ stale numbers here are worse than none)*
   treated as this session's own action; items 7 through 10 all committed —
   "check off work as you go. then continue" is the standing instruction
   currently in effect, so each item is committed without waiting for a
-  fresh prompt; items 11 through 16 now done too, per the same rhythm).
+  fresh prompt; items 11 through 17 now done too, per the same rhythm).
 - **Always actually run new code against every provider it's built for
   before calling an item done.** Every real bug found this session (the
   `ExecuteSqlRawAsync` brace-parsing issue, an unquoted Postgres column,

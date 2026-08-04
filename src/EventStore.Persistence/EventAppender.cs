@@ -14,31 +14,42 @@ namespace EventStore.Persistence;
 // time.
 public static class EventAppender
 {
+    public static Task AppendAsync(
+        EventStoreContext db, StoredEvent storedEvent, IReadOnlyList<Guid> parentEventIds, CancellationToken ct = default) =>
+        AppendAsync(db, storedEvent, parentEventIds, observedRemoteClock: null, ct);
+
+    // observedRemoteClock -- ADR-033: a peer-sync-received event's own
+    // LogicalClock, stamped at its origin site, merged into this site's
+    // running clock so it never falls behind a value it has now observed.
+    // Absent for every ordinary, locally-originated publish.
     public static async Task AppendAsync(
-        EventStoreContext db, StoredEvent storedEvent, IReadOnlyList<Guid> parentEventIds, CancellationToken ct = default)
+        EventStoreContext db, StoredEvent storedEvent, IReadOnlyList<Guid> parentEventIds, string? observedRemoteClock, CancellationToken ct = default)
     {
         db.Events.Add(storedEvent);
         foreach (var parentEventId in parentEventIds)
             db.EventParents.Add(new EventParent { ChildEventId = storedEvent.EventId, ParentEventId = parentEventId });
 
-        // ADR-019 -- ChainHash needs this row's own SequenceNumber, which isn't
-        // known until the insert itself assigns it (an identity column), so this
-        // is necessarily a read-prior-hash, insert, then compute-and-update
-        // sequence, not one single insert. Serializable isolation prevents a
+        // ADR-019/033 -- ChainHash needs this row's own SequenceNumber, which
+        // isn't known until the insert itself assigns it (an identity column),
+        // so this is necessarily a read-prior-state, insert, then compute-and-
+        // update sequence, not one single insert. LogicalClock's own "read this
+        // site's most recent clock, compute the next one" follows the identical
+        // shape, in the same transaction. Serializable isolation prevents a
         // concurrent appender's own insert from reading the same "prior tail"
         // and producing two rows that both chain off the same predecessor.
         await using var transaction = await db.Database.BeginTransactionAsync(IsolationLevel.Serializable, ct);
         try
         {
-            var priorChainHash = await db.Events
+            var prior = await db.Events
                 .AsNoTracking()
                 .OrderByDescending(e => e.SequenceNumber)
-                .Select(e => e.ChainHash)
-                .FirstOrDefaultAsync(ct) ?? EventChainHash.Genesis;
+                .Select(e => new { e.ChainHash, e.LogicalClock })
+                .FirstOrDefaultAsync(ct);
 
             await db.SaveChangesAsync(ct);
 
-            storedEvent.ChainHash = EventChainHash.Compute(priorChainHash, storedEvent.PayloadHash, storedEvent.SequenceNumber);
+            storedEvent.ChainHash = EventChainHash.Compute(prior?.ChainHash ?? EventChainHash.Genesis, storedEvent.PayloadHash, storedEvent.SequenceNumber);
+            storedEvent.LogicalClock = HybridLogicalClock.Next(prior?.LogicalClock, observedRemoteClock);
             await db.SaveChangesAsync(ct);
             await transaction.CommitAsync(ct);
         }

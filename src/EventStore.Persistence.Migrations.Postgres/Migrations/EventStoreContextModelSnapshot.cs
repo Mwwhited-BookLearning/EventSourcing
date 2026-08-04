@@ -209,6 +209,28 @@ namespace EventStore.Persistence.Migrations.Postgres.Migrations
                     b.ToTable("Events");
                 });
 
+            modelBuilder.Entity("EventStore.Domain.Replication.PeerSyncCursor", b =>
+                {
+                    b.Property<string>("PeerId")
+                        .HasColumnType("text");
+
+                    b.Property<long>("LastAckedSequenceNumber")
+                        .HasColumnType("bigint");
+
+                    b.Property<long>("LastReceivedSequenceNumber")
+                        .HasColumnType("bigint");
+
+                    b.Property<DateTimeOffset>("LastSyncAttemptAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTimeOffset?>("LastSyncSuccessAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("PeerId");
+
+                    b.ToTable("PeerSyncCursors");
+                });
+
             modelBuilder.Entity("EventStore.Domain.SchemaRegistry.DerivationCursor", b =>
                 {
                     b.Property<string>("AppId")
