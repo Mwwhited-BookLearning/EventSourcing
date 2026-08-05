@@ -1,5 +1,6 @@
 using System.Security.Claims;
 using System.Security.Cryptography;
+using EventStore.Domain.AccessLog;
 using EventStore.Domain.SchemaRegistry;
 using EventStore.Domain.Streaming;
 using EventStore.Persistence;
@@ -66,6 +67,14 @@ public class AttachmentService(EventStoreContext db)
 
         attachment.LastAccessedAt = DateTimeOffset.UtcNow;
         await db.SaveChangesAsync(ct);
+
+        // ADR-045 -- named explicitly in that ADR's own read-surface list
+        // ("attachment retrieval"); covers ADR-040's ticket-authenticated
+        // headerless access too, since it's this SAME route, only reached
+        // via a different authentication scheme.
+        var (readerActorId, readerTrustBasis, grantRef) = AccessLogReaderContext.Resolve(user);
+        await AccessLogAppender.AppendAsync(db, readerActorId, readerTrustBasis, grantRef, "Authoritative", contentHash, "download", ct);
+
         return new RetrieveAttachmentResult.Found(attachment.Bytes!, attachment.MimeType, attachment.FileName);
     }
 

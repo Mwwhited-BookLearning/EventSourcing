@@ -27,6 +27,7 @@
     <Project Path="src/EventStore.ServiceDefaults/EventStore.ServiceDefaults.csproj" />
     <Project Path="src/EventStore.Streaming/EventStore.Streaming.csproj" />
     <Project Path="src/EventStore.TicketExchange/EventStore.TicketExchange.csproj" />
+    <Project Path="src/EventStore.Ucan/EventStore.Ucan.csproj" />
     <Project Path="src/EventStore.Upcasting/EventStore.Upcasting.csproj" />
     <Project Path="src/EventStore.SpecGeneration/EventStore.SpecGeneration.csproj" />
     <Project Path="src/EventStore.ViewRegistry/EventStore.ViewRegistry.csproj" />

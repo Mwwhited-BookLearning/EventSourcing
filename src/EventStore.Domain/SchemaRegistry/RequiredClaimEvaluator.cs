@@ -24,4 +24,27 @@ public static class RequiredClaimEvaluator
         var value = requiredClaim[(separatorIndex + 1)..];
         return user.HasClaim(type, value);
     }
+
+    // ADR-043 -- "the check becomes 'does the caller have this claim, AND
+    // does it apply to this EntityId' -- not a bare HasClaim boolean." An
+    // entity-scope restriction rides alongside the underlying claim as a
+    // SEPARATE, companion claim (type "{requiredClaim}:entityScope", one
+    // value per EntityId the holder's grant is restricted to) rather than
+    // encoding it into the claim's own value -- this keeps HasClaim/HasAny
+    // above completely unaware entity scoping exists at all, unaffected for
+    // every caller that never has a concrete EntityId to check against. No
+    // companion claim present at all means unscoped -- ADR-043's own
+    // "unaffected, default case," applies wherever the claim ordinarily would.
+    public static bool HasClaimForEntity(ClaimsPrincipal user, string requiredClaim, string? entityId)
+    {
+        if (!HasClaim(user, requiredClaim))
+            return false;
+
+        var scopeClaimType = $"{requiredClaim}:entityScope";
+        var scopeValues = user.FindAll(scopeClaimType).Select(c => c.Value).ToList();
+        if (scopeValues.Count == 0)
+            return true;
+
+        return entityId is not null && scopeValues.Contains(entityId);
+    }
 }

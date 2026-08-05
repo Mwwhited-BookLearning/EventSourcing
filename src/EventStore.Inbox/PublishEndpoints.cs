@@ -10,7 +10,8 @@ public static class PublishEndpoints
 {
     public static IServiceCollection AddInbox(this IServiceCollection services) => services
         .AddScoped<PublishService>()
-        .AddScoped<ChainVerificationService>();
+        .AddScoped<ChainVerificationService>()
+        .AddScoped<AccessLogChainVerificationService>();
 
     public static WebApplication MapPublishEndpoints(this WebApplication app)
     {
@@ -46,6 +47,19 @@ public static class PublishEndpoints
         // reuses registry:admin, the existing "admin tier" scope, rather than
         // inventing a new one for this single endpoint.
         app.MapGet("/events/verify", async (long throughSequenceNumber, ChainVerificationService service, CancellationToken ct) =>
+        {
+            var result = await service.VerifyAsync(throughSequenceNumber, ct);
+            return result switch
+            {
+                ChainVerificationResult.Verified v => Results.Ok(new { verified = true, eventCount = v.EventCount }),
+                ChainVerificationResult.Tampered t => Results.Ok(new { verified = false, firstDivergentSequenceNumber = t.FirstDivergentSequenceNumber }),
+                _ => Results.Problem(statusCode: 500),
+            };
+        }).RequireAuthorization("registry:admin");
+
+        // ADR-045 -- the AccessLog analogue of /events/verify above, same
+        // operator/audit scope, its own independent chain/service.
+        app.MapGet("/access-log/verify", async (long throughSequenceNumber, AccessLogChainVerificationService service, CancellationToken ct) =>
         {
             var result = await service.VerifyAsync(throughSequenceNumber, ct);
             return result switch

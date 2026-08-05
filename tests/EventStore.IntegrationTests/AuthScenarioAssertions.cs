@@ -26,25 +26,33 @@ internal static class AuthScenarioAssertions
     // clients generates its own asymmetric key pair") -- DevIdpSeeder plays
     // the client's role too, since no separate client process exists in
     // this repo (see that seeder's own comment).
-    public static async Task<(string Token, DpopKeyPair Key)> GetTokenAsync(HttpClient devIdpClient, string clientId, string clientSecret, string scope)
+    public static async Task<(string Token, DpopKeyPair Key)> GetTokenAsync(HttpClient devIdpClient, string clientId, string clientSecret, string scope, string? appId = null)
     {
         var key = DevIdpSeeder.GetClientKeyPair(clientId);
         var tokenUrl = new Uri(devIdpClient.BaseAddress!, "/connect/token").ToString();
 
+        var form = new Dictionary<string, string>
+        {
+            ["grant_type"] = "client_credentials",
+            ["client_id"] = clientId,
+            ["client_secret"] = clientSecret,
+            ["scope"] = scope,
+        };
+        // "Delegated Grants, RBAC, Federated Claims" (ADR-046) -- opt-in
+        // only: every pre-existing call site never passes appId and is
+        // completely unaffected.
+        if (appId is not null)
+            form["app_id"] = appId;
+
         using var request = new HttpRequestMessage(HttpMethod.Post, "/connect/token")
         {
-            Content = new FormUrlEncodedContent(new Dictionary<string, string>
-            {
-                ["grant_type"] = "client_credentials",
-                ["client_id"] = clientId,
-                ["client_secret"] = clientSecret,
-                ["scope"] = scope,
-            }),
+            Content = new FormUrlEncodedContent(form),
         };
         request.Headers.Add("DPoP", key.CreateProof("POST", tokenUrl));
 
         var response = await devIdpClient.SendAsync(request);
-        response.EnsureSuccessStatusCode();
+        if (!response.IsSuccessStatusCode)
+            throw new HttpRequestException($"{(int)response.StatusCode} {response.StatusCode}: {await response.Content.ReadAsStringAsync()}");
         var body = JsonNode.Parse(await response.Content.ReadAsStringAsync())!;
         return (body["access_token"]!.GetValue<string>(), key);
     }

@@ -1,5 +1,6 @@
 using System.Security.Claims;
 using System.Text.Json.Nodes;
+using EventStore.Domain.AccessLog;
 using EventStore.Domain.SchemaRegistry;
 using EventStore.Persistence;
 using EventStore.SchemaRegistry;
@@ -15,13 +16,14 @@ namespace EventStore.GraphQL;
 // the CORE mechanism this item's own exit criteria actually names ("a
 // follower calling revealField on a masked node it holds the claim for
 // receives the real value, and the same call without the claim is
-// rejected") -- ADR-066's optional step-up-authentication refinement for a
-// field configured to require one, and the ADR-045 AccessLogEntry audit
-// write, are NOT built here: both depend on infrastructure two later,
-// not-yet-built build-plan items own (RFC 9470 step-up enforcement,
-// "Digital Sign-Off for Regulated Actions"; the AccessLogEntry table
-// itself, "Delegated Grants, RBAC, Federated Claims & Read Audit
-// Logging") -- honestly flagged in 08-build-plan.md rather than stubbed.
+// rejected"), plus the ADR-045 AccessLogEntry audit write (Action: "reveal",
+// per that ADR's own consequences section -- "revealField's own field-level
+// grain gives sharper audit than an ordinary bulk query already has").
+// ADR-066's optional step-up-authentication refinement for a field
+// configured to require one is still NOT built here -- depends on a later,
+// not-yet-built build-plan item (RFC 9470 step-up enforcement, "Digital
+// Sign-Off for Regulated Actions") -- honestly flagged in 08-build-plan.md
+// rather than stubbed.
 [ExtendObjectType(OperationTypeNames.Mutation)]
 public class RevealFieldMutation
 {
@@ -49,8 +51,12 @@ public class RevealFieldMutation
         if (fieldSchema["x-masking"] is not JsonObject maskingConfig || maskingConfig["requiredClaim"]?.GetValue<string>() is not { } requiredClaim)
             throw new GraphQLException("fieldPath does not name a maskable field -- nothing to reveal.");
 
-        if (!RequiredClaimEvaluator.HasClaim(user, requiredClaim))
-            throw new GraphQLException("Forbidden -- caller lacks the required claim to reveal this field.");
+        // ADR-043 -- an entity-scoped grant (a delegated "secondary
+        // opinion" claim, restricted to one specific EntityId) passes here
+        // only for THAT entity, not blanket; a caller holding the ordinary,
+        // unscoped form of the claim is completely unaffected.
+        if (!RequiredClaimEvaluator.HasClaimForEntity(user, requiredClaim, entityId))
+            throw new GraphQLException("Forbidden -- caller lacks the required claim to reveal this field for this entity.");
 
         var payloadNode = JsonNode.Parse(storedEvent.Payload);
         var valueNode = NavigatePayload(payloadNode, segments);
@@ -61,6 +67,10 @@ public class RevealFieldMutation
             JsonValue v => v.ToJsonString(),
             _ => valueNode.ToJsonString(),
         };
+
+        var (readerActorId, readerTrustBasis, grantRef) = AccessLogReaderContext.Resolve(user);
+        await AccessLogAppender.AppendAsync(db, readerActorId, readerTrustBasis, grantRef, "Authoritative", $"{entityId}:{fieldPath}", "reveal", ct);
+
         return new RevealFieldPayload(value);
     }
 

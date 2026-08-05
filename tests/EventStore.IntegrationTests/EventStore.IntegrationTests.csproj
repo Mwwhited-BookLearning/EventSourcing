@@ -38,6 +38,7 @@
     <ProjectReference Include="..\..\src\EventStore.Upcasting\EventStore.Upcasting.csproj" />
     <ProjectReference Include="..\..\src\EventStore.Dpop\EventStore.Dpop.csproj" />
     <ProjectReference Include="..\..\src\EventStore.TicketExchange\EventStore.TicketExchange.csproj" />
+    <ProjectReference Include="..\..\src\EventStore.Ucan\EventStore.Ucan.csproj" />
     <ProjectReference Include="..\..\src\EventStore.Router\EventStore.Router.csproj" />
     <ProjectReference Include="..\..\src\EventStore.SpecGeneration\EventStore.SpecGeneration.csproj" />
     <ProjectReference Include="..\..\src\EventStore.Lineage.Api\EventStore.Lineage.Api.csproj" />
