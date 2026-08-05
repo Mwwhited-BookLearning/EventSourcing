@@ -1,3 +1,4 @@
+using EventStore.Domain.AccessLog;
 using EventStore.Domain.EntityStore;
 using EventStore.Domain.EventLog;
 using EventStore.Domain.Replication;
@@ -37,6 +38,7 @@ public class EventStoreContext(DbContextOptions<EventStoreContext> options, IJso
     public DbSet<AttachmentRef> AttachmentRefs => Set<AttachmentRef>();
     public DbSet<PeerSyncCursor> PeerSyncCursors => Set<PeerSyncCursor>();
     public DbSet<ViewDefinition> ViewDefinitions => Set<ViewDefinition>();
+    public DbSet<AccessLogEntry> AccessLogEntries => Set<AccessLogEntry>();
 
     protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder) =>
         optionsBuilder.ReplaceService<IModelCacheKeyFactory, ProviderAwareModelCacheKeyFactory>();
@@ -193,6 +195,12 @@ public class EventStoreContext(DbContextOptions<EventStoreContext> options, IJso
             e.Property(x => x.CompatibleSchemaVersions)
                 .HasConversion(JsonValueConverter.For<List<int>>())
                 .Metadata.SetValueComparer(JsonValueConverter.ListComparer<List<int>>());
+        });
+
+        modelBuilder.Entity<AccessLogEntry>(e =>
+        {
+            e.HasKey(x => x.SequenceNumber);
+            e.HasIndex(x => x.ReaderActorId); // ADR-045 -- "every read by this reader" lookups
         });
     }
 

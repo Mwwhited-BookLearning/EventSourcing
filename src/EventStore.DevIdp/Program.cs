@@ -3,12 +3,14 @@ using System.Security.Cryptography;
 using EventStore.DevIdp;
 using EventStore.Dpop;
 using EventStore.TicketExchange;
+using EventStore.Ucan;
 using Microsoft.AspNetCore; // GetOpenIddictServerRequest() -- OpenIddictServerAspNetCoreHelpers
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.JsonWebTokens;
 using Microsoft.IdentityModel.Tokens;
 using OpenIddict.Abstractions;
+using OpenIddict.Extensions;
 using OpenIddict.Server;
 using OpenIddict.Server.AspNetCore;
 using static OpenIddict.Abstractions.OpenIddictConstants;
@@ -33,6 +35,10 @@ builder.Services.AddDbContext<DevIdpDbContext>(options =>
 });
 builder.Services.AddSingleton<IDpopReplayCache, InMemoryDpopReplayCache>();
 builder.Services.AddSingleton<TicketStore>(); // ADR-040 -- in-process, non-persistent, per auth.md's own "client/token state lives in DevIdp" statement
+builder.Services.AddScoped<TrustRootService>(); // ADR-044
+builder.Services.AddScoped<RoleService>(); // ADR-046
+builder.Services.AddScoped<FederationService>(); // ADR-047
+builder.Services.AddHttpClient(); // FederationService's own JWKS fetch
 
 builder.Services.AddOpenIddict()
     .AddCore(options => options.UseEntityFrameworkCore().UseDbContext<DevIdpDbContext>())
@@ -51,11 +57,73 @@ builder.Services.AddOpenIddict()
         // "ID2032: requested_token_type is not supported" until added here).
         options.AllowTokenExchangeFlow();
         options.Configure(o => o.RequestedTokenTypes.Add("urn:eventstore:token-type:ticket"));
+        // Same fixed-allow-list problem exists for subject_token_type
+        // (ID2032 again). But every one of RFC 8693's OWN registered types --
+        // including the generic "jwt" one -- turned out (found only by
+        // running this) to still trigger OpenIddict's built-in signature
+        // check against ITS OWN configured signing keys before this code
+        // ever runs, failing with ID2090 for every subject token here (a
+        // self-signed UCAN delegation, a genuinely externally-issued
+        // federated JWT -- never a token this IdP itself issued). A wholly
+        // custom, unrecognized URN gets the same treatment "ticket" already
+        // gets for requested_token_type above: OpenIddict has no built-in
+        // format handler for a name it's never heard of, so it defers
+        // entirely to this code's own sniff-the-JOSE-header branching below.
+        options.Configure(o => o.SubjectTokenTypes.Add("urn:eventstore:token-type:external-subject"));
+        // Registering the type above only satisfies ValidateTokenExchangeParameters'
+        // own presence/allow-list check. Decompiling OpenIddictServerHandlers
+        // (this project's own "verify before citing" discipline, applied to
+        // a third-party library this time, not just this repo's own docs)
+        // found a SECOND, unconditional check: ValidateSubjectToken
+        // (EvaluateValidatedTokens hardcodes RejectSubjectToken = true for
+        // EVERY token-exchange request at this endpoint, with no options
+        // flag to disable it) re-validates subject_token's OWN signature
+        // against THIS server's own signing keys -- during Results.SignIn
+        // itself, AFTER ExchangeUcanDelegationAsync/ExchangeFederatedTokenAsync
+        // below have already done this token's REAL validation in full and
+        // decided to approve it. Every subject_token this endpoint ever
+        // receives is deliberately NOT signed by this IdP (a self-signed
+        // UCAN delegation, ADR-043; a genuinely external federated token,
+        // ADR-047), so that redundant built-in check always fails with
+        // ID2090 ("signing key ... not found") and blocks an otherwise-
+        // already-approved exchange. This inline handler -- ordered to run
+        // before OpenIddict's own ValidateIdentityModelToken via
+        // int.MinValue, which already skips its own logic once
+        // context.Principal is non-null -- exists solely to stand in for
+        // that redundant check for our one custom subject_token_type,
+        // never for any of RFC 8693's own standard ones.
+        options.AddEventHandler<OpenIddictServerEvents.ValidateTokenContext>(handler => handler
+            .UseInlineHandler(context =>
+            {
+                // A non-null Principal alone isn't enough -- the very next
+                // built-in handler (Protection.ValidatePrincipal) then
+                // unconditionally requires the deserialized principal to
+                // carry OpenIddict's OWN internal "oi_tkn_typ" claim (found
+                // only by running this: "InvalidOperationException: The
+                // deserialized principal doesn't contain the mandatory
+                // 'oi_tkn_typ' claim"), checked against this exact
+                // ValidTokenTypes set already populated above -- and, one
+                // layer further still (also found only by running this:
+                // "ID2184: the specified token doesn't contain any
+                // presenter"), a presenter claim matching the caller's own
+                // client_id, since our custom subject_token_type wasn't one
+                // of the few standard ones ValidateSubjectToken special-
+                // cases to skip presenter validation for.
+                if (context.ValidTokenTypes.Contains("urn:eventstore:token-type:external-subject"))
+                    context.Principal = new ClaimsPrincipal(new ClaimsIdentity())
+                        .SetTokenType("urn:eventstore:token-type:external-subject")
+                        .SetPresenters(context.Request?.ClientId ?? string.Empty);
+                return default;
+            })
+            .SetOrder(int.MinValue));
         // ADR-030 -- "registry:admin:tenant-a" is one concrete AppId-scoped
         // admin variant, seeded for a dev/POC client to actually demonstrate
         // the mechanism; a real deployment would provision these per-tenant
         // dynamically, not via a fixed registered list like this one.
-        options.RegisterScopes("events:publish", "events:follow", "events:lineage:read", "registry:admin", "registry:admin:tenant-a", "telemetry:ingest", "telemetry:read", "attachments:ingest", "attachments:read", "peer:sync");
+        // "registry:trust-admin" (ADR-044) is deliberately NOT implied by
+        // "registry:admin" -- a caller needs both explicitly, never one
+        // via the other.
+        options.RegisterScopes("events:publish", "events:follow", "events:lineage:read", "registry:admin", "registry:admin:tenant-a", "registry:trust-admin", "telemetry:ingest", "telemetry:read", "attachments:ingest", "attachments:read", "peer:sync");
 
         // Dev-only ephemeral certs (ADR-006) -- a real deployment swaps DevIdp
         // for a production IdP entirely, per this item's own config-only story.
@@ -83,7 +151,8 @@ using (var scope = app.Services.CreateScope())
 
 app.MapPost("/connect/token", async (
     HttpContext httpContext, IOpenIddictApplicationManager applicationManager, IDpopReplayCache replayCache,
-    TicketStore ticketStore, IOptionsMonitor<OpenIddictServerOptions> serverOptions) =>
+    TicketStore ticketStore, IOptionsMonitor<OpenIddictServerOptions> serverOptions,
+    TrustRootService trustRootService, RoleService roleService, FederationService federationService) =>
 {
     var request = httpContext.GetOpenIddictServerRequest() ??
         throw new InvalidOperationException("The OpenID Connect request cannot be retrieved.");
@@ -123,7 +192,23 @@ app.MapPost("/connect/token", async (
         if (callerApplication is null || !await applicationManager.ValidateClientSecretAsync(callerApplication, request.ClientSecret))
             return Results.Json(new { error = "invalid_client" }, statusCode: StatusCodes.Status400BadRequest);
 
-        return await IssueTicketAsync(request.SubjectToken, request.ClientId, ticketStore, serverOptions);
+        if (request.RequestedTokenType == "urn:eventstore:token-type:ticket")
+            return await IssueTicketAsync(request.SubjectToken, request.ClientId, ticketStore, serverOptions);
+
+        // ADR-043/047 -- requesting an ordinary access token back (RFC
+        // 8693's own standard token type) covers two of this item's three
+        // Token Exchange use cases: a UCAN delegation being exchanged for
+        // a bearer JWT carrying the delegated claims (ADR-043), or an
+        // externally-issued, already-authoritative token being augmented
+        // with this framework's own locally-known claims (ADR-047). Which
+        // one applies is sniffed from the subject_token's own JOSE header --
+        // a UcanDelegation always carries "typ": "ucan+jwt" (self-signed,
+        // never issued by this IdP); anything else is treated as a
+        // federated exchange candidate.
+        if (request.RequestedTokenType is "urn:ietf:params:oauth:token-type:access_token" or null)
+            return await ExchangeForAugmentedAccessTokenAsync(request, trustRootService, federationService, roleService, serverOptions, dpopResult.Jkt!);
+
+        return Results.Json(new { error = "invalid_request", error_description = $"unsupported requested_token_type: {request.RequestedTokenType}" }, statusCode: StatusCodes.Status400BadRequest);
     }
 
     // OpenIddict's own token-request middleware already validated client_id/
@@ -141,6 +226,21 @@ app.MapPost("/connect/token", async (
     identity.SetScopes(request.GetScopes());
     foreach (var (claimType, claimValue) in DevIdpSeeder.GetExtraClaims(request.ClientId!))
         identity.SetClaim(claimType, claimValue);
+    // ADR-046 -- RBAC's own role-to-permission flattening, opt-in via a
+    // new, non-standard "app_id" form parameter (Role/UserPermission are
+    // AppId-scoped): every EXISTING client_credentials caller that never
+    // passes app_id is completely unaffected, since this whole block is
+    // skipped when it's absent.
+    var rbacAppId = (string?)request.GetParameter("app_id");
+    if (!string.IsNullOrEmpty(rbacAppId))
+    {
+        foreach (var permission in await roleService.GetFlattenedPermissionsAsync(request.ClientId!, rbacAppId))
+        {
+            var separatorIndex = permission.IndexOf(':');
+            if (separatorIndex > 0)
+                identity.AddClaim(new Claim(permission[..separatorIndex], permission[(separatorIndex + 1)..]));
+        }
+    }
     // ADR-017 -- binds the issued access token to the key that just proved
     // possession above; a flat "cnf.jkt" claim (the ADR's own phrasing),
     // not RFC 9449's nested cnf:{jkt:...} JSON-object shape.
@@ -198,6 +298,151 @@ async Task<IResult> IssueTicketAsync(string? subjectToken, string secretRef, Tic
     ticketStore.Add(new Ticket(ticketValue, secretRef, DateTimeOffset.UtcNow.Add(expiresIn), subjectClaims));
 
     return Results.Json(new { ticket = ticketValue, expiresIn = (int)expiresIn.TotalSeconds, issuedTokenType = "urn:eventstore:token-type:ticket" });
+}
+
+// ADR-043/047's shared entry point -- requesting an ordinary access token
+// back from Token Exchange. `app_id` is a new, non-standard form parameter
+// this exchange needs (both AppTrustRoot and TrustedFederationIssuer
+// registrations are AppId-scoped) -- there is no standard RFC 8693
+// parameter for "which application namespace is this exchange scoped to."
+async Task<IResult> ExchangeForAugmentedAccessTokenAsync(
+    OpenIddictRequest request, TrustRootService trustRootService, FederationService federationService, RoleService roleService,
+    IOptionsMonitor<OpenIddictServerOptions> serverOptions, string callerJkt)
+{
+    var subjectToken = request.SubjectToken;
+    if (string.IsNullOrEmpty(subjectToken))
+        return Results.Json(new { error = "invalid_request", error_description = "subject_token is required." }, statusCode: StatusCodes.Status400BadRequest);
+
+    var appId = (string?)request.GetParameter("app_id");
+    if (string.IsNullOrEmpty(appId))
+        return Results.Json(new { error = "invalid_request", error_description = "app_id is required." }, statusCode: StatusCodes.Status400BadRequest);
+
+    var subjectTyp = new JsonWebToken(subjectToken).Typ;
+    return subjectTyp == "ucan+jwt"
+        ? await ExchangeUcanDelegationAsync(subjectToken, appId, trustRootService, serverOptions, callerJkt)
+        : await ExchangeFederatedTokenAsync(subjectToken, appId, federationService, roleService, callerJkt);
+}
+
+// ADR-043 step 2 (grantee side) -- verifies the delegation (self-signature,
+// cap invariant against its own embedded proof, or AppTrustRoot if rooted
+// directly) and, on success, issues an ordinary access token carrying
+// exactly the delegated capabilities -- downstream code sees an ordinary
+// bearer JWT, unaware it arrived via delegation (ADR-036's own
+// consequence, reused). `callerJkt` -- the DPoP proof the grantee already
+// presented on THIS exchange request itself, ADR-017 unaffected -- binds
+// the issued token to the grantee's own key, the identical "cnf.jkt from
+// the token request's own proof" pattern the client_credentials branch
+// above already uses; omitting it would leave the issued token
+// unusable against any DPoP-protected resource at all.
+async Task<IResult> ExchangeUcanDelegationAsync(string delegationJwt, string appId, TrustRootService trustRootService, IOptionsMonitor<OpenIddictServerOptions> serverOptions, string callerJkt)
+{
+    var result = await UcanValidator.ValidateAsync(
+        delegationJwt,
+        () => Task.FromResult<IReadOnlyList<SecurityKey>>(serverOptions.CurrentValue.SigningCredentials.Select(c => c.Key).ToList()),
+        (targetAppId, thumbprint) => trustRootService.IsTrustedAsync(targetAppId, thumbprint));
+
+    if (!result.IsValid)
+        return Results.Json(new { error = "invalid_grant", error_description = result.Error }, statusCode: StatusCodes.Status400BadRequest);
+    if (result.AppId != appId)
+        return Results.Json(new { error = "invalid_grant", error_description = "delegation's own appId does not match the requested app_id." }, statusCode: StatusCodes.Status400BadRequest);
+
+    var identity = new ClaimsIdentity(
+        authenticationType: TokenValidationParameters.DefaultAuthenticationType,
+        nameType: Claims.Name,
+        roleType: Claims.Role);
+    identity.SetClaim(Claims.Subject, result.GranteeActorId);
+    // The delegated claim(s) alone would still fail any endpoint gated by
+    // an ordinary OAuth "scope" (a separate namespace, ADR-006) -- ADR-043
+    // doesn't itself address scope-vs-claim interplay, so this grants the
+    // one narrow scope this item's own exit criteria actually exercise a
+    // delegated grant against (events:follow, revealField's own gate),
+    // not a blanket scope grant.
+    identity.SetScopes(["events:follow"]);
+    foreach (var cap in result.Capabilities!)
+    {
+        var separatorIndex = cap.Claim.IndexOf(':');
+        if (separatorIndex <= 0)
+            continue;
+        identity.AddClaim(new Claim(cap.Claim[..separatorIndex], cap.Claim[(separatorIndex + 1)..]));
+        // ADR-043 -- the entity-scope restriction rides as a companion
+        // claim (RequiredClaimEvaluator.HasClaimForEntity's own
+        // convention), never encoded into the claim's own value.
+        if (cap.EntityScope is not null)
+            identity.AddClaim(new Claim($"{cap.Claim}:entityScope", cap.EntityScope));
+    }
+    // ADR-045 -- AccessLogReaderContext's own two markers: a token minted
+    // via a delegated-grant exchange is "Attested" (ADR-045's own Attested
+    // definition names ADR-043 delegations specifically), never
+    // "Authoritative" -- and GrantRef records exactly WHICH delegation.
+    identity.SetClaim("trust_basis", "Attested");
+    if (result.GrantRef is { } grantRef)
+        identity.SetClaim("grant_ref", grantRef.ToString());
+    identity.SetClaim("cnf.jkt", callerJkt);
+    identity.SetDestinations(_ => [Destinations.AccessToken]);
+
+    return Results.SignIn(new ClaimsPrincipal(identity), authenticationScheme: OpenIddictServerAspNetCoreDefaults.AuthenticationScheme);
+}
+
+// ADR-047 step (federated exchange) -- verifies the external token against
+// its registered issuer's own JWKS, then augments -- never replaces -- its
+// claims with this framework's own locally-known Role/UserPermission
+// grants for the JIT-provisioned local ActorId. Identity claims (email,
+// name, etc.) pass through completely unchanged; "sub" specifically is
+// relocated to this system's own local ActorId (preserved verbatim under
+// "federated_sub") since "sub" is this design's own load-bearing ActorId
+// convention everywhere else, not merely inert identity metadata -- an
+// honest, named deviation from "augments, never replaces" for that one
+// claim, not silently glossed over.
+async Task<IResult> ExchangeFederatedTokenAsync(string externalToken, string appId, FederationService federationService, RoleService roleService, string callerJkt)
+{
+    var externalJwt = new JsonWebToken(externalToken);
+    var issuer = externalJwt.Issuer;
+    if (string.IsNullOrEmpty(issuer))
+        return Results.Json(new { error = "invalid_grant", error_description = "subject_token has no issuer." }, statusCode: StatusCodes.Status400BadRequest);
+
+    var trustedIssuer = await federationService.FindAsync(appId, issuer);
+    if (trustedIssuer is null)
+        return Results.Json(new { error = "invalid_grant", error_description = "issuer is not a registered TrustedFederationIssuer for this app_id." }, statusCode: StatusCodes.Status400BadRequest);
+
+    var signingKeys = await federationService.FetchSigningKeysAsync(trustedIssuer.JwksUri);
+    var validationResult = await new JsonWebTokenHandler().ValidateTokenAsync(externalToken, new TokenValidationParameters
+    {
+        ValidateIssuer = true,
+        ValidIssuer = issuer,
+        ValidateAudience = false,
+        ValidateLifetime = true,
+        IssuerSigningKeys = signingKeys,
+    });
+    if (!validationResult.IsValid)
+        return Results.Json(new { error = "invalid_grant", error_description = "subject_token signature invalid against the registered issuer's own JWKS." }, statusCode: StatusCodes.Status400BadRequest);
+
+    var externalClaims = validationResult.ClaimsIdentity!;
+    var sub = externalClaims.FindFirst(Claims.Subject)?.Value;
+    if (string.IsNullOrEmpty(sub))
+        return Results.Json(new { error = "invalid_grant", error_description = "subject_token has no \"sub\" claim." }, statusCode: StatusCodes.Status400BadRequest);
+
+    var actorId = await federationService.GetOrCreateActorIdAsync(appId, issuer, sub);
+
+    var identity = new ClaimsIdentity(
+        authenticationType: TokenValidationParameters.DefaultAuthenticationType,
+        nameType: Claims.Name,
+        roleType: Claims.Role);
+    foreach (var claim in externalClaims.Claims.Where(c => c.Type != Claims.Subject))
+        identity.AddClaim(new Claim(claim.Type, claim.Value));
+    identity.SetClaim("federated_sub", sub);
+    identity.SetClaim(Claims.Subject, actorId);
+    identity.SetScopes(["events:follow"]); // same narrow-scope reasoning as ExchangeUcanDelegationAsync above
+
+    foreach (var permission in await roleService.GetFlattenedPermissionsAsync(actorId, appId))
+    {
+        var separatorIndex = permission.IndexOf(':');
+        if (separatorIndex > 0)
+            identity.AddClaim(new Claim(permission[..separatorIndex], permission[(separatorIndex + 1)..]));
+    }
+    identity.SetClaim("cnf.jkt", callerJkt);
+    identity.SetDestinations(_ => [Destinations.AccessToken]);
+
+    return Results.SignIn(new ClaimsPrincipal(identity), authenticationScheme: OpenIddictServerAspNetCoreDefaults.AuthenticationScheme);
 }
 
 // ADR-040's one_time_secret path -- deliberately NOT routed through
@@ -270,6 +515,61 @@ app.MapPost("/oauth/introspect", async (HttpContext httpContext, TicketStore tic
     });
 });
 
+// ADR-044/046/047's own admin surface -- plain, unauthenticated minimal-API
+// endpoints (DevIdp has never had a runtime admin API/scope-gate of its
+// own for anything it manages, including its seeded clients themselves,
+// which are registered in code, not via an API at all) -- an honest,
+// named narrowing, not an oversight: "registry:trust-admin"/
+// "registry:admin" gate the CORE ENGINE's own registry endpoints
+// (SchemaRegistryEndpoints, ADR-044's Consequences), never these
+// DevIdp-internal management calls.
+app.MapPut("/oauth/trust-roots", async (RegisterTrustRootRequest request, TrustRootService trustRootService) =>
+{
+    await trustRootService.RegisterAsync(request.AppId, request.IssuerDid, request.Description);
+    return Results.Created();
+});
+
+app.MapPut("/oauth/roles", async (DefineRoleRequest request, RoleService roleService) =>
+{
+    await roleService.DefineRoleAsync(request.AppId, request.RoleName, request.Permissions);
+    return Results.Created();
+});
+
+app.MapPost("/oauth/role-assignments", async (RoleAssignmentRequest request, RoleService roleService) =>
+{
+    await roleService.AssignRoleAsync(request.ActorId, request.AppId, request.RoleName);
+    return Results.Created();
+});
+
+// DELETE requests don't support an inferred body parameter in Minimal APIs
+// (only POST/PUT/PATCH do) -- found only by actually running this
+// ("System.InvalidOperationException: Body was inferred but the method
+// does not allow inferred body parameters"). Query parameters instead,
+// the conventional REST shape for a DELETE anyway.
+app.MapDelete("/oauth/role-assignments", async (string actorId, string appId, string roleName, RoleService roleService) =>
+{
+    await roleService.RevokeRoleAsync(actorId, appId, roleName);
+    return Results.NoContent();
+});
+
+app.MapPost("/oauth/user-permissions", async (UserPermissionRequest request, RoleService roleService) =>
+{
+    await roleService.GrantDirectPermissionAsync(request.ActorId, request.AppId, request.Permission);
+    return Results.Created();
+});
+
+app.MapPut("/oauth/federation-issuers", async (RegisterFederationIssuerRequest request, FederationService federationService) =>
+{
+    await federationService.RegisterIssuerAsync(request.AppId, request.Issuer, request.JwksUri, request.Description);
+    return Results.Created();
+});
+
 app.Run();
+
+record RegisterTrustRootRequest(string AppId, string IssuerDid, string? Description);
+record DefineRoleRequest(string AppId, string RoleName, List<string> Permissions);
+record RoleAssignmentRequest(string ActorId, string AppId, string RoleName);
+record UserPermissionRequest(string ActorId, string AppId, string Permission);
+record RegisterFederationIssuerRequest(string AppId, string Issuer, string JwksUri, string? Description);
 
 public partial class Program;

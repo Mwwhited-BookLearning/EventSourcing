@@ -22,6 +22,51 @@ namespace EventStore.Persistence.Migrations.Postgres.Migrations
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
+            modelBuilder.Entity("EventStore.Domain.AccessLog.AccessLogEntry", b =>
+                {
+                    b.Property<long>("SequenceNumber")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("SequenceNumber"));
+
+                    b.Property<DateTimeOffset>("AccessedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Action")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("ChainHash")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<Guid?>("GrantRef")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("ReaderActorId")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("ReaderTrustBasis")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("ResourceRef")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("ViewAccessed")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.HasKey("SequenceNumber");
+
+                    b.HasIndex("ReaderActorId");
+
+                    b.ToTable("AccessLogEntries");
+                });
+
             modelBuilder.Entity("EventStore.Domain.EntityStore.EntityStoreRow", b =>
                 {
                     b.Property<string>("EntityId")

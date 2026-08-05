@@ -1,4 +1,5 @@
 using System.Security.Claims;
+using EventStore.Domain.AccessLog;
 using EventStore.Lineage.Api;
 using EventStore.Persistence;
 using HotChocolate;
@@ -23,17 +24,24 @@ namespace EventStore.GraphQL;
 public class LineageQueries
 {
     [GraphQLName("event")]
-    public async Task<LineageEventNode> GetEventAsync(Guid eventId, [Service] ClaimsPrincipal user, LineageService lineage, IAuthorizationService authorizationService, CancellationToken ct)
+    public async Task<LineageEventNode> GetEventAsync(
+        Guid eventId, [Service] ClaimsPrincipal user, LineageService lineage, IAuthorizationService authorizationService, EventStoreContext db, CancellationToken ct)
     {
         await GraphQlAuth.RequireScopeAsync(authorizationService, user, "events:lineage:read");
 
         var check = await lineage.CheckRootAsync(eventId, user, ct);
-        return check switch
-        {
-            LineageRootCheck.NotFound => throw new GraphQLException("Unknown eventId."),
-            LineageRootCheck.Forbidden => throw new GraphQLException("Forbidden -- caller lacks the required Read claim for this event's type."),
-            _ => new LineageEventNode(eventId),
-        };
+        if (check is LineageRootCheck.NotFound)
+            throw new GraphQLException("Unknown eventId.");
+        if (check is LineageRootCheck.Forbidden)
+            throw new GraphQLException("Forbidden -- caller lacks the required Read claim for this event's type.");
+
+        // ADR-045 -- Lineage always reads the authoritative Event Log
+        // (docs/03-api-contracts.md), never the Live View (ADR-042's
+        // distinction is specific to Follow/entity reads).
+        var (readerActorId, readerTrustBasis, grantRef) = AccessLogReaderContext.Resolve(user);
+        await AccessLogAppender.AppendAsync(db, readerActorId, readerTrustBasis, grantRef, "Authoritative", eventId.ToString(), "query", ct);
+
+        return new LineageEventNode(eventId);
     }
 }
 

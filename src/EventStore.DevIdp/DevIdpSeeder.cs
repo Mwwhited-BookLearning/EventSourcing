@@ -17,20 +17,22 @@ public static class DevIdpSeeder
     [
         ("publisher-client", "publisher-client-secret", ["events:publish"]),
         ("follower-client", "follower-client-secret", ["events:follow", "events:lineage:read"]),
-        ("operator-client", "operator-client-secret", ["registry:admin"]),
+        ("operator-client", "operator-client-secret", ["registry:admin", "registry:trust-admin"]),
         ("projections-client", "projections-client-secret", ["events:follow"]), // "CQRS Read-Model Projections" -- ProjectionHost is a Follow caller like any other (ADR-015)
         ("tenant-a-operator-client", "tenant-a-operator-client-secret", ["registry:admin:tenant-a"]), // "Multi-Tenancy" (ADR-030) -- a caller scoped to exactly one AppId, not the unscoped framework-operator form
         ("telemetry-client", "telemetry-client-secret", ["telemetry:ingest", "telemetry:read"]), // "Streaming Channels" (ADR-031) -- a producer/detector client, holding both since this repo's tests drive both roles from one caller
         ("attachments-client", "attachments-client-secret", ["attachments:ingest", "attachments:read"]), // "Binary Attachments" (ADR-032) -- same both-roles-in-one-caller posture as telemetry-client
         ("peer-sync-client", "peer-sync-client-secret", ["peer:sync", "events:publish", "registry:admin"]), // "Sharding & Replication" (ADR-033) -- shared by every site in this dev/POC environment; a real deployment would give each site its own credential, per-site OriginId identity comes from the application layer (/peer-sync/whoami), not this token. Also holds events:publish/registry:admin since this repo's HTTP replication test drives register+publish+sync from one caller, the same both-roles-in-one-caller posture as telemetry-client/attachments-client
         ("clinician-spa-client", "clinician-spa-client-secret", ["telemetry:read", "attachments:read"]), // "Ticket Exchange for Header-Incapable Clients" (ADR-040) -- the header-CAPABLE caller (an SPA/backend) that exchanges its own bearer token for a ticket on behalf of a <video src>/<img src> element it doesn't control the request internals of; named after the ADR/feature-doc's own running example, not a generic reuse of telemetry-client/attachments-client
+        ("colleague-client", "colleague-client-secret", []), // "Delegated Grants, RBAC, Federated Claims" (ADR-043) -- the grantee of a "secondary opinion" delegation; holds no scopes/claims of its own at all, everything it can do comes from what clinician-spa-client (the granter) delegates
     ];
 
-    // ADR-040 -- only a caller that legitimately constructs header-incapable
-    // playback/retrieval URLs is granted the token-exchange grant type;
-    // every other seeded client keeps its existing client_credentials-only
-    // permission set unchanged.
-    private static readonly HashSet<string> TokenExchangeClients = ["clinician-spa-client"];
+    // ADR-040/043 -- only a caller that legitimately constructs header-
+    // incapable playback/retrieval URLs, or exchanges a UCAN delegation/
+    // federated token for an ordinary access token, is granted the token-
+    // exchange grant type; every other seeded client keeps its existing
+    // client_credentials-only permission set unchanged.
+    private static readonly HashSet<string> TokenExchangeClients = ["clinician-spa-client", "colleague-client"];
 
     // ADR-017 -- "each of the four OAuth2 clients generates its own
     // asymmetric key pair." No separate client process exists in this repo
@@ -57,6 +59,12 @@ public static class DevIdpSeeder
     private static readonly IReadOnlyDictionary<string, (string Type, string Value)[]> ExtraClaims = new Dictionary<string, (string Type, string Value)[]>
     {
         ["follower-client"] = [("pii", "view")],
+        // "Delegated Grants" (ADR-043) -- the "user holding special
+        // authority" the ADR's own Context names (a doctor with
+        // clearance:phi); clinician-spa-client plays this granter role,
+        // same as it already plays the header-capable requesting party
+        // for ADR-040's ticket exchange.
+        ["clinician-spa-client"] = [("clearance", "phi")],
     };
 
     public static IReadOnlyList<(string Type, string Value)> GetExtraClaims(string clientId) =>

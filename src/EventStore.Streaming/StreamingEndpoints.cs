@@ -1,5 +1,6 @@
 using System.Security.Claims;
 using System.Text.Json;
+using EventStore.Domain.AccessLog;
 using EventStore.Persistence;
 using EventStore.TicketExchange;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
@@ -71,7 +72,7 @@ public static class StreamingEndpoints
             EventStoreContext db, TelemetryTailReader reader, ClaimsPrincipal user, HttpContext context) =>
         {
             if (context.Request.Headers.ContainsKey("Range"))
-                return await ServeByteRangeAsync(channelId, db, context.RequestAborted);
+                return await ServeByteRangeAsync(channelId, db, user, context.RequestAborted);
 
             await ServeTailAsync(await reader.ConnectAsync(channelId, mode, fromTimestamp, user, context.RequestAborted), context);
             return Results.Empty;
@@ -92,7 +93,7 @@ public static class StreamingEndpoints
         return app;
     }
 
-    private static async Task<IResult> ServeByteRangeAsync(string channelId, EventStoreContext db, CancellationToken ct)
+    private static async Task<IResult> ServeByteRangeAsync(string channelId, EventStoreContext db, ClaimsPrincipal user, CancellationToken ct)
     {
         var channel = await db.TelemetryChannels.AsNoTracking().SingleOrDefaultAsync(c => c.ChannelId == channelId, ct);
         if (channel is null)
@@ -105,6 +106,13 @@ public static class StreamingEndpoints
             .Where(s => s.ChannelId == channelId)
             .ToListAsync(ct);
         var bytes = samples.OrderBy(s => s.Timestamp).SelectMany(s => s.Value).ToArray();
+
+        // ADR-045 -- ADR-040's own named "Streaming Channel playback" target
+        // (a <video src>/<audio src>); the live SSE tail mode above is a
+        // per-sample subscription, not this named single-request read, so
+        // it's deliberately not also logged here, one entry per sample.
+        var (readerActorId, readerTrustBasis, grantRef) = AccessLogReaderContext.Resolve(user);
+        await AccessLogAppender.AppendAsync(db, readerActorId, readerTrustBasis, grantRef, "Authoritative", channelId, "stream", ct);
 
         return Results.Bytes(bytes, channel.MimeType ?? "application/octet-stream", enableRangeProcessing: true);
     }

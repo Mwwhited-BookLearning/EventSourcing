@@ -849,10 +849,115 @@ stale numbers here are worse than none)*
   already tracked in `TODO.md` (4 unrelated classes this run -- Derivation,
   ViewDefinition, Compatibility, Replication -- none touching this item's
   own code).
-- **Next up**: item 23, "Delegated Grants, RBAC, Federated Claims & Read
-  Audit Logging" (`ADR-043`/`044`/`045`/`046`/`047`) — depends on
-  Non-Authoritative Capture (Done, UCAN exchange infrastructure), Event-
-  Type Security (Done), Multi-Tenancy (Done), Hardening & Evolution (Done).
+- **Item 23, "Delegated Grants, RBAC, Federated Claims & Read Audit
+  Logging," is Done — same day, continuing directly from item 22.**
+  `EventStore.Ucan` (new project): `UcanDelegation.Create`/`UcanValidator`
+  -- a self-signed JWT (DPoP's own embedded-JWK pattern, reused via a new
+  `EventStore.Dpop/SelfSignedJwtVerifier` factored out of
+  `DpopProofValidator`), carrying `iss`/`aud`/`appId`/`cap`/`exp`/`jti`
+  and an optional `prf` (the granter's own currently-valid access token,
+  embedded verbatim -- UCAN's "chain of proofs," narrowed to one hop).
+  `AppTrustRoot`/`Role`/`RoleAssignment`/`UserPermission`/
+  `TrustedFederationIssuer`/`FederatedIdentityMapping` all live in
+  `EventStore.DevIdp`'s own `DevIdpDbContext` (EF InMemory), not
+  `EventStoreContext` -- DevIdp has no live dependency on any Host's own
+  database, and all six are consulted exclusively by DevIdp's own
+  token-issuance/exchange logic (a deliberate narrowing from
+  `docs/data/schema-registry.md`'s documentation-grouping-only
+  placement). `EventStore.DevIdp/Program.cs`'s `/connect/token` gained a
+  third Token Exchange use (`ExchangeUcanDelegationAsync`/
+  `ExchangeFederatedTokenAsync`, sniffed via the subject_token's own JOSE
+  `typ` header) alongside client_credentials and item 22's ticket
+  issuance, plus opt-in RBAC permission-flattening on the ordinary
+  client_credentials path (`app_id` form parameter, additive-only).
+  **The single hardest problem this item hit, found only by actually
+  running the exchange against the real OpenIddict 7.6.0 assembly
+  (decompiled with `ilspycmd` to confirm, not guessed)**: no
+  `subject_token_type` value -- not `"access_token"`, not RFC 8693's own
+  generic `"jwt"`, not a wholly custom unregistered URN -- stops
+  `AllowTokenExchangeFlow()`'s own built-in subject_token signature
+  re-validation (against THIS server's own signing keys) from running a
+  SECOND time during `Results.SignIn` itself, after this item's own
+  exchange logic had already validated and approved the same token
+  upstream. `ValidateSubjectToken`'s `RejectSubjectToken` flag is
+  hardcoded `true` for every token-exchange request at this endpoint, no
+  options switch disables it. Resolved with a `ValidateTokenContext`
+  inline event handler (`options.AddEventHandler<...>(...).SetOrder(int.
+  MinValue)`, running before OpenIddict's own `ValidateIdentityModelToken`),
+  scoped only to this item's own custom `subject_token_type`, setting a
+  placeholder principal carrying OpenIddict's own two required internal
+  claims (`oi_tkn_typ` via `SetTokenType`, `oi_prst` via `SetPresenters`)
+  that a separate downstream handler (`Protection.ValidatePrincipal`)
+  otherwise unconditionally rejects a null/presenter-less principal for
+  -- three distinct opaque errors (`ID2090`, then "missing oi_tkn_typ,"
+  then `ID2184` "no presenter"), each found only by actually running it,
+  peeled back one at a time. Two smaller bugs found the same way:
+  `RoleService.GetFlattenedPermissionsAsync`'s `.SelectMany(r =>
+  r.Permissions)` over a `HasConversion`-mapped `List<string>` property
+  couldn't be translated by EF Core (fixed by materializing via
+  `ToListAsync()` first, flattening client-side); and a `MapDelete`
+  handler bound an inferred JSON body parameter, which ASP.NET Core
+  Minimal APIs only support for POST/PUT/PATCH -- this one manifested as
+  an opaque "the discovery document fetch failed" for every DevIdp-backed
+  test in the whole suite (any endpoint-metadata-inference failure
+  poisons a TestServer's first request), not a scoped failure, making it
+  the more confusing of the two to isolate. **ADR-045 (`AccessLog`)**:
+  `AccessLogEntry`/`AccessLogEntryHash` (`EventStore.Domain.AccessLog`),
+  `AccessLogAppender` (`EventStore.Persistence`, mirrors `EventAppender`'s
+  own read-prior-state/insert/compute-chain/update shape exactly, its own
+  independent hash chain never coupled to the Event Log's), migrated into
+  `EventStoreContext` across all 3 providers (`dotnet ef migrations add
+  AddAccessLog`) -- physically co-located with `EventStoreContext` the
+  same way Streaming/Attachments already are, despite `ADR-045`'s own
+  text reading "not inside EventStoreContext"; `docs/data/streaming-and-
+  attachments.md`'s own actual implementation already established this
+  precedent (a logically-separate data plane, not a separate physical
+  DbContext), so this follows it rather than the ADR prose literally. A
+  new `GET /access-log/verify` endpoint (`AccessLogChainVerificationService`,
+  mirrors `ChainVerificationService`). Wired into 4 read surfaces:
+  `RevealFieldMutation` (`Action: "reveal"`), `LineageQueries.
+  GetEventAsync` (`Action: "query"`), `AttachmentService.RetrieveAsync`
+  (`Action: "download"`, covering item 22's ticket-authenticated path too
+  since it's the same route), and `StreamingEndpoints`'s byte-range
+  playback mode (`Action: "stream"`) -- the live SSE tail mode
+  deliberately not also logged per-sample. `AccessLogReaderContext.
+  Resolve` needed BOTH `ClaimTypes.NameIdentifier` (JwtBearer's own
+  `MapInboundClaims=true` default remaps a token's literal `"sub"` claim
+  before any resolver sees it) and the literal `"sub"` claim type
+  (`TicketAuthenticationHandler`'s replayed claims, validated directly via
+  `JsonWebTokenHandler`, never remapped) -- checking only one silently
+  produced `"unauthenticated"` for whichever path wasn't checked, caught
+  by running the new tests, not by reading the code back. `ReaderTrustBasis`
+  is `"Attested"` only for a token minted via the UCAN-delegation exchange
+  path specifically (a new `trust_basis` claim, plus `grant_ref` sourced
+  from the delegation's own new `jti`); a federated-claims-augmented token
+  is deliberately `"Authoritative"` -- its claims came from a real,
+  already-verified external IdP the caller directly authenticated with,
+  not a self-attestation or delegation chain, and `ADR-045`'s own Attested
+  definition names only `ADR-036`/`ADR-043`, never `ADR-047`.
+  `EventStore.IntegrationTests` now has 81 `[TestMethod]`s (up from 72) --
+  `DelegatedGrantsRbacFederationHttpSqliteTests` (6 scenarios: entity-
+  scoped delegation, over-broad-delegation rejection, AppTrustRoot-rooted
+  custom-permission acceptance, untrusted-root rejection, RBAC
+  direct-permission-survives-role-change, federated-claims augmentation)
+  and a new dedicated `AccessLogHttpSqliteTests` (3 scenarios: an
+  ordinary query logs the reader as Authoritative, a revealField call
+  logs `Action: "reveal"`, tampering with a past entry is caught by
+  `/access-log/verify`). All pass reliably; the full multi-provider run
+  hit the same pre-existing SQL Server Testcontainers resource-contention
+  flake already tracked in `TODO.md` (4 unrelated classes this run --
+  Compatibility, Lineage, Attachment -- plus the also-pre-existing
+  cross-test-class SSE orderId flake, none touching this item's own
+  code). `ADR-036`'s own self-attestation issuance flow through the now-
+  proven Token Exchange bridge, and its offline DID/UCAN chain
+  verification, remain not built -- flagged in `08-build-plan.md`'s
+  own "GraphQL-Only Query Layer" AND this item's own Built-scope notes
+  rather than silently dropped, no later item's exit criteria names
+  either one yet.
+- **Next up**: item 24, "SPIFFE/SPIRE Service Identity & API Gateway"
+  (`ADR-048`/`049`) — depends on Auth + Orchestration (Done), Sharding &
+  Replication (Done), GraphQL-Only Query Layer (Done), Streaming
+  Channels (Done), Binary Attachments (Done), Ticket Exchange (Done).
 
 ## How to resume cold
 

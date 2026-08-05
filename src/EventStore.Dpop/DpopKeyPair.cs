@@ -72,4 +72,33 @@ public sealed class DpopKeyPair
 
         return new JsonWebTokenHandler().CreateToken(descriptor);
     }
+
+    // The general form CreateProof's own signing logic already needed --
+    // factored out for "Delegated Grants" (EventStore.Ucan), which reuses
+    // this exact same "embed the public JWK in the JOSE header, sign with
+    // the matching private key" self-verifying shape for a UCAN delegation
+    // instead of a DPoP proof. Every seeded client already plays the role
+    // of holding its own asymmetric keypair (ADR-017); a UCAN delegation's
+    // "issuer DID" is, in this implementation, that same keypair.
+    public string SignJwt(IDictionary<string, object> claims, string typ)
+    {
+        var descriptor = new SecurityTokenDescriptor
+        {
+            Claims = claims,
+            SigningCredentials = new SigningCredentials(new ECDsaSecurityKey(_key), SecurityAlgorithms.EcdsaSha256),
+            AdditionalHeaderClaims = new Dictionary<string, object>
+            {
+                ["typ"] = typ,
+                ["jwk"] = new Dictionary<string, object>
+                {
+                    ["kty"] = PublicJwk.Kty,
+                    ["crv"] = PublicJwk.Crv,
+                    ["x"] = PublicJwk.X,
+                    ["y"] = PublicJwk.Y,
+                },
+            },
+        };
+
+        return new JsonWebTokenHandler().CreateToken(descriptor);
+    }
 }

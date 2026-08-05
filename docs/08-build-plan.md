@@ -81,7 +81,7 @@ provider they apply to — not "code written."
 | 20 | [Compatibility & Deployment Discipline](#compatibility--deployment-discipline) | GraphQL-Only Query Layer | Done |
 | 21 | [MVVM Client](#mvvm-client) | Multi-Tenancy, Sharding & Replication | Done |
 | 22 | [Ticket Exchange for Header-Incapable Clients](#ticket-exchange-for-header-incapable-clients) | Streaming Channels, Binary Attachments, Non-Authoritative Capture | Done |
-| 23 | [Delegated Grants, RBAC, Federated Claims & Read Audit Logging](#delegated-grants-rbac-federated-claims--read-audit-logging) | Non-Authoritative Capture, Event-Type Security, Multi-Tenancy, Hardening & Evolution | Not started |
+| 23 | [Delegated Grants, RBAC, Federated Claims & Read Audit Logging](#delegated-grants-rbac-federated-claims--read-audit-logging) | Non-Authoritative Capture, Event-Type Security, Multi-Tenancy, Hardening & Evolution | Done |
 | 24 | [SPIFFE/SPIRE Service Identity & API Gateway](#spiffespire-service-identity--api-gateway) | Auth + Orchestration, Sharding & Replication, Streaming Channels, Binary Attachments, GraphQL-Only Query Layer, Ticket Exchange | Not started |
 | 25 | [Data Lifecycle & Backup/Restore Classification](#data-lifecycle--backuprestore-classification) | Scaffolding & Persistence | Not started |
 | 26 | [GDPR/CCPA Erasure via Crypto-Shredding](#gdprccpa-erasure-via-crypto-shredding) | Property-Level Masking, Entity-Centric Core Rebuild | Not started |
@@ -177,7 +177,7 @@ state "GraphQL-Only Query Layer" as p18 #palegreen
 state "Compatibility & Deployment Discipline" as p19 #palegreen
 state "MVVM Client" as p20 #palegreen
 state "Ticket Exchange" as p21 #palegreen
-state "Delegated Grants, RBAC & Read Audit Logging" as p22
+state "Delegated Grants, RBAC & Read Audit Logging" as p22 #palegreen
 state "SPIFFE/SPIRE Identity & API Gateway" as p23
 
 p0 --> p1
@@ -1546,13 +1546,22 @@ honestly flagged rather than silently dropped:
   `Timer` field on this same long-lived singleton). Tracked in `TODO.md`
   as a real follow-up, not swept under the exit criteria — none of which
   actually requires hot-registration against a live Host.
-- **`ADR-036`'s real DID/UCAN offline chain verification and the actual
-  RFC 8693 OAuth Token Exchange bridge endpoint remain not built**, exactly
-  as already noted in "Non-Authoritative Capture" above — `revealField`'s
-  own step-up-authentication refinement (`ADR-066`) and its `ADR-045`
-  `AccessLogEntry` audit write are similarly deferred to their own,
-  later, not-yet-built items ("Digital Sign-Off for Regulated Actions,"
-  "Delegated Grants, RBAC, Federated Claims & Read Audit Logging").
+- **Updated once "Ticket Exchange" and "Delegated Grants, RBAC,
+  Federated Claims & Read Audit Logging" landed**: the RFC 8693 OAuth
+  Token Exchange bridge endpoint this note originally flagged as not
+  built now exists — built for ticket issuance first, reused a second
+  and third time for UCAN-delegation and federated-claims exchange.
+  **`ADR-036`'s own specific self-attestation issuance flow through that
+  bridge (an actor self-attesting its own claims, no granter/grantee
+  relationship at all — distinct from `ADR-043`'s delegation, even
+  though both share the identical self-signed-JWT primitive) remains not
+  built**, along with its own real DID/UCAN offline chain verification —
+  neither is named in any later item's own exit criteria yet, so neither
+  has an obvious next home. `revealField`'s own step-up-authentication
+  refinement (`ADR-066`) is similarly still deferred, to "Digital Sign-Off
+  for Regulated Actions." Its `ADR-045` `AccessLogEntry` audit write is
+  no longer deferred — built in "Delegated Grants, RBAC, Federated
+  Claims & Read Audit Logging," the item that actually built that table.
 
 ## Compatibility & Deployment Discipline
 
@@ -1832,6 +1841,50 @@ change to that user's role assignment (`ADR-046`); a token augmented with
 a claim sourced from a federated/external IdP via Token Exchange passes a
 `RequiredReadClaim` check exactly as if the claim had come from the
 primary IdP (`ADR-047`).
+
+**Built-scope note**: a UCAN delegation/AppTrustRoot self-verification
+(`EventStore.Ucan`) reuses DPoP's own embedded-JWK self-signed-JWT
+pattern (`EventStore.Dpop/SelfSignedJwtVerifier`, factored out of
+`DpopProofValidator`'s own signing/verification logic) rather than real
+W3C DID resolution -- an honest, explicitly-scoped simplification
+("DID" = an EC P-256 public key's RFC 7638 thumbprint). A genuinely
+unexpected finding, only surfaced by actually running the token-exchange
+flow against the real OpenIddict 7.6.0 assembly (decompiled to confirm,
+this project's own "verify before citing" discipline applied to a
+third-party library): `AllowTokenExchangeFlow()`'s own built-in
+`subject_token` validation is not configurable off and unconditionally
+re-validates `subject_token`'s signature against THIS server's own
+signing keys during `Results.SignIn` itself -- fatal for every
+subject_token this item's own exchange paths ever receive (a self-signed
+UCAN delegation, a genuinely externally-issued federated token, never a
+token this IdP itself issued). No `SubjectTokenTypes` value sidesteps
+it, including RFC 8693's own generic `"jwt"` type and a wholly custom,
+unregistered URN alike. Resolved with a targeted `ValidateTokenContext`
+inline event handler (ordered via `int.MinValue` to run before
+OpenIddict's own `ValidateIdentityModelToken`), registered only for this
+item's own custom `subject_token_type`, which sets a placeholder
+principal carrying the two internal claims (`oi_tkn_typ`, `oi_prst`)
+OpenIddict's own downstream `ValidatePrincipal` handler separately,
+unconditionally requires -- this item's own `ExchangeUcanDelegationAsync`/
+`ExchangeFederatedTokenAsync` already perform this subject_token's REAL
+validation upstream of that; the handler exists solely to stop
+OpenIddict's redundant built-in check from blocking an already-approved
+exchange. `RoleService.GetFlattenedPermissionsAsync`'s
+`.SelectMany(r => r.Permissions)` over a `HasConversion`-mapped
+`List<string>` property could not be translated by EF Core (materialized
+via `ToListAsync()` first, flattened client-side instead) -- and a
+`MapDelete` handler bound an inferred JSON body parameter (`RoleAssignmentRequest
+request`), which ASP.NET Core Minimal APIs only support for POST/PUT/PATCH;
+both found only by running this, the second one manifesting as an
+opaque "the discovery document fetch failed" for every test using
+DevIdp (any endpoint-metadata-inference failure poisons the whole
+TestServer's first request). `AccessLogReaderContext`'s `ReaderActorId`
+lookup needed both `ClaimTypes.NameIdentifier` (JwtBearer's own
+`MapInboundClaims=true` default remaps a token's literal `"sub"` claim
+before a resolver ever sees it) and the literal `"sub"` claim type
+(`TicketAuthenticationHandler`'s replayed claims, validated directly via
+`JsonWebTokenHandler`, never remapped) -- checking only one silently
+produced `"unauthenticated"` for the other authentication path.
 
 ## SPIFFE/SPIRE Service Identity & API Gateway
 
