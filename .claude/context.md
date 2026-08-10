@@ -1306,10 +1306,33 @@ stale numbers here are worse than none)*
   verify the Host's real write path and DevIdp's fold-target methods
   directly instead. Verified against SQLite only (matching SPIFFE/Gateway's
   own provider-agnostic precedent).
-- **Next up**: item 31, "Dynamic Feature-Flag Configuration Provider"
-  (`ADR-077`) — depends on Scaffolding & Persistence (Done) and this item;
-  reuses item 30's own reserved-event pattern verbatim (a `FeatureFlagSet`
-  reserved event → `FeatureFlagState` folded table).
+- **Item 31, "Dynamic Feature-Flag Configuration Provider" (`ADR-077`), is
+  Done.** `FeatureFlagState` (`EventStore.Domain.FeatureFlags`) plus its
+  migration across all 3 providers were the two "not yet done" pieces
+  ADR-077's own Consequences flagged — landed. New `EventStore.FeatureFlags`
+  project: `FeatureFlagSetEventType` (reserved event, item 30's pattern),
+  `FeatureFlagService` (publishes via `PublishService`, real `ActorId`/hash
+  chain/Lineage visibility, then folds `FeatureFlagState`),
+  `FeatureFlagEndpoints` (`PUT /feature-flags/{key}`, `registry:admin`-gated,
+  wired into all 3 Hosts), and `EventLogFeatureFlagConfigurationProvider`/
+  `...Source` (a real `IConfigurationProvider`, raw ADO.NET behind a
+  `Func<DbConnection>` since it must be addable to `IConfigurationBuilder`
+  before `WebApplicationBuilder.Build()`, before any DI container exists).
+  Opt-in per Host via `FeatureFlags:AppId` config — unset by default, no
+  existing deployment/test affected. **One deliberate departure from the
+  ADR's own literal framing**: the event-to-`FeatureFlagState` fold is
+  SYNCHRONOUS, in the same `SetFlagAsync` call, not an async Router fold —
+  `FeatureFlagState` is read by the SAME Host process that writes it
+  (unlike item 30's RBAC events, which needed a cross-process Follow fold
+  into DevIdp), so this reuses `SchemaRegistered`/`EventTypeDefinition`'s
+  own synchronous-fold posture instead. This item's own build (much
+  simpler, single-process, no self-referential `WebApplicationFactory`
+  hazard) went smoothly — verified across SQLite/PostgreSQL/SQL Server
+  (`FeatureFlagScenarioAssertions.cs`) plus a dedicated poll/reload-token
+  test (`EventLogFeatureFlagConfigurationProviderSqliteTests.cs`).
+- **Next up**: item 32, "Leader Election via Database-Backed Lease"
+  (`ADR-078`) — depends on Entity-Centric Core Rebuild (Done) and Sharding
+  & Replication (Done).
 
 ## How to resume cold
 

@@ -89,7 +89,7 @@ provider they apply to — not "code written."
 | 28 | [Local/Edge Active-Scope Caching & Erasure Invalidation](#localedge-active-scope-caching--erasure-invalidation) | MVVM Client, GDPR/CCPA Erasure | Done |
 | 29 | [Digital Sign-Off for Regulated Actions](#digital-sign-off-for-regulated-actions-step-up-authentication) | Auth + Orchestration, ActorId on Every Event | Done |
 | 30 | [Control-Plane Actions as Reserved Events](#control-plane-actions-as-reserved-events) | Schema Registry, Entity-Centric Core Rebuild | Done |
-| 31 | [Dynamic Feature-Flag Configuration Provider](#dynamic-feature-flag-configuration-provider) | Scaffolding & Persistence, Control-Plane Actions as Reserved Events | Not started |
+| 31 | [Dynamic Feature-Flag Configuration Provider](#dynamic-feature-flag-configuration-provider) | Scaffolding & Persistence, Control-Plane Actions as Reserved Events | Done |
 | 32 | [Leader Election via Database-Backed Lease](#leader-election-via-database-backed-lease) | Entity-Centric Core Rebuild, Sharding & Replication | Not started |
 | 33 | [Per-Tenant Rate Limiting](#per-tenant-rate-limiting) | Auth + Orchestration, SPIFFE/SPIRE Service Identity & API Gateway | Not started |
 | 34 | [Outbound Webhooks](#outbound-webhooks) | Publish API, Auth + Orchestration, Property-Level Masking, Leader Election | Not started |
@@ -229,7 +229,7 @@ state "Local Services" as tierLocal {
     state "ActorId on Every Event\n(already satisfied by Auth + Orchestration)" as a1 #palegreen
   }
   state "Control-Plane Reserved Events" as a6 #palegreen
-  state "Dynamic Feature Flags" as a7
+  state "Dynamic Feature Flags" as a7 #palegreen
   state "Leader Election" as a8
   state "Per-Tenant Rate Limiting" as a9
   state "Release Engineering,\nPackaging & Supply Chain" as a15
@@ -244,6 +244,14 @@ state "UI" as tierUi {
   state "Accessibility Standard" as a21
   state "i18n/l10n Scope" as a22
 }
+
+' Hidden edges between the 4 tier containers themselves -- not a real
+' dependency, just a layout hint so Graphviz stacks the tiers top-to-bottom
+' instead of spreading them side-by-side (Local Services alone holds 30+
+' states and was pulling the whole diagram wide without this).
+tierExternal -[hidden]-> tierPersistence
+tierPersistence -[hidden]-> tierLocal
+tierLocal -[hidden]-> tierUi
 
 p0 --> p1
 p1 --> p2
@@ -2560,6 +2568,40 @@ toggling a flag never changes which adapters/plugins are loaded
 (`ADR-041`'s explicit-composition rule is unaffected) and static
 configuration (e.g. a connection string) stays sourced from its static
 provider throughout.
+
+**Status: Done.** `FeatureFlagState`/`DbSet<FeatureFlagState>` (the two
+pieces `ADR-077`'s own Consequences flagged as "not yet done") now exist —
+`EventStore.Domain.FeatureFlags.FeatureFlagState` plus a migration against
+all 3 providers. A new `EventStore.FeatureFlags` project holds
+`FeatureFlagSetEventType` (the reserved event, registered lazily per
+`AppId` like every other reserved type in this design),
+`FeatureFlagService` (publishes the event via the ordinary `PublishService`
+— real `ActorId`, real hash chain, real Lineage visibility — then folds
+`FeatureFlagState`), `FeatureFlagEndpoints` (`PUT /feature-flags/{key}`,
+gated by `registry:admin` + `AppIdScopeEvaluator`, wired into all 3 Hosts),
+and `EventLogFeatureFlagConfigurationProvider`/`...Source` (the actual
+`IConfigurationProvider`, addable to `IConfigurationBuilder` before
+`WebApplicationBuilder.Build()` — deliberately raw ADO.NET behind a
+`Func<DbConnection>`, not `EventStoreContext`, both because no DI container
+exists yet at that point and because this provider only ever reads one
+flat table with no JSON columns). Opt-in per Host via a `FeatureFlags:AppId`
+config key — unset by default, so no existing deployment/test is affected.
+
+One deliberate departure from this section's own Scope text: **the
+event-to-`FeatureFlagState` fold is synchronous, in the same
+`FeatureFlagService.SetFlagAsync` call, not an async Router/`EntityStoreRow`
+fold.** `FeatureFlagState` is read by the SAME Host process that publishes
+`FeatureFlagSet` (unlike `ADR-067`'s RBAC events, which fold cross-process
+into a separate identity-provider process) — the same posture
+`SchemaRegistered`/`EventTypeDefinition` already established for exactly
+this reason. The only propagation delay in the whole mechanism is
+`EventLogFeatureFlagConfigurationProvider`'s own poll of `FeatureFlagState`,
+matching this section's own "observable within one poll interval" exit
+criterion precisely. Verified across SQLite, PostgreSQL, and SQL Server
+(`FeatureFlagScenarioAssertions.cs`, run from all 3 providers' own test
+files) plus a dedicated, provider-agnostic-by-construction poll/reload-token
+test (`EventLogFeatureFlagConfigurationProviderSqliteTests.cs`, SQLite
+only — the provider's own ADO.NET code path never varies by provider).
 
 ## Leader Election via Database-Backed Lease
 

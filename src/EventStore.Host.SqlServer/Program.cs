@@ -1,5 +1,6 @@
 using EventStore.Derivation;
 using EventStore.Erasure;
+using EventStore.FeatureFlags;
 using EventStore.Follow.Api;
 using EventStore.GraphQL;
 using EventStore.Host.Core;
@@ -16,11 +17,27 @@ using EventStore.Attachments;
 using EventStore.Replication;
 using EventStore.Streaming;
 using EventStore.Upcasting;
+using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 
 var builder = WebApplication.CreateBuilder(args);
 builder.AddServiceDefaults(); // ADR-026 -- all three OTel signals, wired identically for every service
 builder.AddEventStoreCommonServices();
+
+// ADR-077 -- opt-in: only wired when FeatureFlags:AppId is configured, so
+// every existing deployment/test with no such config section is
+// completely unaffected. A raw ADO.NET connection, not EventStoreContext --
+// this provider runs before WebApplicationBuilder.Build() (no DI container
+// yet) and only ever reads one flat table with no JSON columns.
+if (builder.Configuration["FeatureFlags:AppId"] is { } featureFlagsAppId)
+{
+    var sqlServerConnectionString = builder.Configuration.GetConnectionString("SqlServer");
+    // ConfigurationManager (WebApplicationBuilder.Configuration's own type)
+    // implements IConfigurationBuilder explicitly -- Add() isn't visible
+    // without the cast.
+    ((IConfigurationBuilder)builder.Configuration).Add(new EventLogFeatureFlagConfigurationSource(() => new SqlConnection(sqlServerConnectionString), featureFlagsAppId));
+}
 
 builder.Services.AddDbContext<EventStoreContext>(options => options.UseSqlServer(
     builder.Configuration.GetConnectionString("SqlServer"),
@@ -31,6 +48,7 @@ builder.Services.AddScoped<IUniqueConstraintViolationDetector, SqlServerUniqueCo
 builder.Services.AddScoped<IEventLineageQueryProvider, SqlServerEventLineageQueryProvider>();
 builder.Services.AddUpcasting();
 builder.Services.AddSchemaRegistry();
+builder.Services.AddFeatureFlags();
 builder.Services.AddInbox();
 builder.Services.AddRouter();
 builder.Services.AddDerivation();
@@ -65,6 +83,7 @@ app.MapEventStoreCommonEndpoints();
 app.MapSchemaRegistryEndpoints();
 app.MapPublishEndpoints();
 app.MapRbacEndpoints();
+app.MapFeatureFlagEndpoints();
 app.MapDerivationEndpoints();
 app.MapSpecGenerationEndpoints();
 app.MapLineageEndpoints();

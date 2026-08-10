@@ -328,6 +328,26 @@ namespace EventStore.Persistence.Migrations.Postgres.Migrations
                     b.ToTable("Events");
                 });
 
+            modelBuilder.Entity("EventStore.Domain.FeatureFlags.FeatureFlagState", b =>
+                {
+                    b.Property<string>("AppId")
+                        .HasColumnType("text");
+
+                    b.Property<string>("Key")
+                        .HasColumnType("text");
+
+                    b.Property<long>("LastAppliedSequenceNumber")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("Value")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.HasKey("AppId", "Key");
+
+                    b.ToTable("FeatureFlags");
+                });
+
             modelBuilder.Entity("EventStore.Domain.Replication.PeerSyncCursor", b =>
                 {
                     b.Property<string>("PeerId")
