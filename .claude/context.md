@@ -1350,11 +1350,42 @@ stale numbers here are worse than none)*
   The webhook outbox pump (the 4th named role) stays deferred to "Outbound
   Webhooks," as the build-plan's own Depends-on paragraph already
   anticipated. Verified across SQLite/PostgreSQL/SQL Server.
-- **Next up**: item 33, "Per-Tenant Rate Limiting" — depends on Auth +
-  Orchestration (Done) and SPIFFE/SPIRE Service Identity & API Gateway
-  (Done); `ADR-058` left its own configuration source deliberately open,
-  which item 31's feature-flag mechanism now gives a concrete, available
-  (not mandatory) answer to.
+- **Item 33, "Per-Tenant Rate Limiting" (`ADR-058`), is Done.** Built
+  entirely inside `EventStore.Gateway`: `RateLimitingOptions` (ordinary
+  config), `RateLimiterPolicies.AddPerTenantRateLimiting` (three named
+  `Microsoft.AspNetCore.RateLimiting` policies — Token Bucket for
+  `/publish`, Concurrency for `/follow`, Sliding Window as the general
+  default — each attached to its own YARP route via `RouteConfig.
+  RateLimiterPolicy`), `TenantPartitionKey`, and `AppIdBufferingMiddleware`
+  (buffers+peeks a `/publish`/`/follow` JSON body for `appId`, rewinds
+  `Request.Body.Position` to 0 so YARP's own forwarding is unaffected).
+  **Finding 1**: the Gateway has no `HttpContext.User` at all (`ADR-049`'s
+  own design forwards `Authorization` unchanged, validating nothing
+  itself) — resolved with a tiered partition-key fallback: body `appId` →
+  an explicitly UNVALIDATED JWT-payload peek (`client_id`/`sub`, commented
+  in code as a traffic-bucketing heuristic only, never a security
+  decision) → `"anonymous"`. **Finding 2**: `Retry-After` is not universal
+  — verified directly against `System.Threading.RateLimiting` via a
+  throwaway probe that only `TokenBucketRateLimiter` ever attaches
+  `MetadataName.RetryAfter` to a rejected lease; `ConcurrencyLimiter`/
+  `SlidingWindowRateLimiter` never do, for any configuration — corrected
+  the build-plan's own exit-criteria text, which had assumed it
+  uniformly. Verified with `RateLimitingGatewayTests.cs` (the same
+  `WebApplicationFactory<GatewayAssembly::Program>` + real stand-in
+  backend pattern `GatewayTests.cs` established): all 3 limiter types'
+  own behavior, cross-tenant isolation, rejected-never-reaches-backend,
+  config-changeable-with-no-code-deploy (two `WebApplicationFactory`
+  instances, different `RateLimiting:*` settings), and that the Gateway
+  forwards `/graphql` byte-for-byte so `ADR-037`'s own depth limiter
+  (already proven against a real Host) is what actually governs query
+  shape. Full multi-provider Sqlite regression suite re-run clean
+  (57/58 — only the pre-existing, unrelated `SubscribingOverRealHttpStreams
+  AsMatchingEventAsSse` flake).
+- **Next up**: item 34, "Outbound Webhooks" — depends on Publish API
+  (Done), Auth + Orchestration (Done), Property-Level Masking (Done), and
+  Leader Election via Database-Backed Lease (Done, item 32) — the webhook
+  outbox pump is the 4th leader-elected role item 32's own build-plan
+  section deferred to this item.
 
 ## How to resume cold
 
@@ -1369,7 +1400,9 @@ stale numbers here are worse than none)*
    narrative.
 5. `dotnet build EventStore.slnx` and `dotnet test tests/EventStore.IntegrationTests` —
    confirm the build/test baseline the last session left still holds
-   before adding to it (98 tests should pass). Requires Docker running
+   before adding to it (105 tests should pass — 98 plus item 33's new
+   `RateLimitingGatewayTests.cs`, 7 methods, SQLite-only/no-DB-provider
+   since it's a pure Gateway-process test). Requires Docker running
    (Testcontainers for Postgres/SQL Server) and the SDK pinned in
    `global.json`. A full multi-provider run has a known, pre-existing,
    unrelated flake — see `TODO.md`'s entry — where one or two SQL Server
