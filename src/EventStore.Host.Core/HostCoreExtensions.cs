@@ -70,7 +70,14 @@ public static class HostCoreExtensions
             .AddPolicy("telemetry:read", p => p.Requirements.Add(new ScopeRequirement("telemetry:read")))
             .AddPolicy("attachments:ingest", p => p.Requirements.Add(new ScopeRequirement("attachments:ingest")))
             .AddPolicy("attachments:read", p => p.Requirements.Add(new ScopeRequirement("attachments:read")))
-            .AddPolicy("peer:sync", p => p.Requirements.Add(new ScopeRequirement("peer:sync")));
+            .AddPolicy("peer:sync", p => p.Requirements.Add(new ScopeRequirement("peer:sync")))
+            // ADR-060 -- webhooks.md's own illustrative scope choice (03-api-
+            // contracts.md never enumerated a webhook-management endpoint at
+            // all); registering/rotating a subscription is an admin action
+            // on par with registry:admin, kept as its own named policy rather
+            // than folded into it since a caller managing webhook targets has
+            // no inherent need for schema-registry admin rights or vice versa.
+            .AddPolicy("webhooks:admin", p => p.Requirements.Add(new ScopeRequirement("webhooks:admin")));
 
         // ADR-014: deny by default -- an empty/missing Cors:AllowedOrigins means
         // no cross-origin browser call ever succeeds (server-to-server traffic,

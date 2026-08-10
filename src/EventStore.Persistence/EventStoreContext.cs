@@ -7,6 +7,7 @@ using EventStore.Domain.Replication;
 using EventStore.Domain.SchemaRegistry;
 using EventStore.Domain.Streaming;
 using EventStore.Domain.Views;
+using EventStore.Domain.Webhooks;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Query.SqlExpressions;
@@ -45,6 +46,9 @@ public class EventStoreContext(DbContextOptions<EventStoreContext> options, IJso
     public DbSet<LocalErasureKeyMaterial> LocalErasureKeyMaterials => Set<LocalErasureKeyMaterial>();
     public DbSet<FeatureFlagState> FeatureFlags => Set<FeatureFlagState>(); // ADR-077
     public DbSet<LeaderLease> LeaderLeases => Set<LeaderLease>(); // ADR-078
+    public DbSet<WebhookSubscription> WebhookSubscriptions => Set<WebhookSubscription>(); // ADR-060
+    public DbSet<WebhookOutbox> WebhookOutbox => Set<WebhookOutbox>();
+    public DbSet<WebhookDeliveryCursor> WebhookDeliveryCursors => Set<WebhookDeliveryCursor>();
 
     protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder) =>
         optionsBuilder.ReplaceService<IModelCacheKeyFactory, ProviderAwareModelCacheKeyFactory>();
@@ -229,6 +233,26 @@ public class EventStoreContext(DbContextOptions<EventStoreContext> options, IJso
         modelBuilder.Entity<LeaderLease>(e =>
         {
             e.HasKey(x => x.WorkerRole); // ADR-078 -- deployment-wide, not AppId-scoped
+        });
+
+        modelBuilder.Entity<WebhookSubscription>(e =>
+        {
+            e.HasKey(x => x.SubscriptionId); // ADR-060
+
+            e.Property(x => x.EventTypes)
+                .HasConversion(JsonValueConverter.For<List<string>>())
+                .Metadata.SetValueComparer(JsonValueConverter.ListComparer<List<string>>());
+        });
+
+        modelBuilder.Entity<WebhookOutbox>(e =>
+        {
+            e.HasKey(x => x.SequenceNumber);
+            e.HasIndex(x => x.SubscriptionId); // WebhookOutboxPump's own "past this subscription's cursor" query
+        });
+
+        modelBuilder.Entity<WebhookDeliveryCursor>(e =>
+        {
+            e.HasKey(x => x.SubscriptionId);
         });
     }
 
