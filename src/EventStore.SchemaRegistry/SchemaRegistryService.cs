@@ -1,5 +1,8 @@
+using System.Security.Claims;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using EventStore.Domain.AccessLog;
+using EventStore.Domain.EventLog;
 using EventStore.Domain.SchemaRegistry;
 using EventStore.Persistence;
 using EventStore.Upcasting;
@@ -22,8 +25,13 @@ public class SchemaRegistryService(
     private const string OpenApiDocumentCacheKey = "openapi-document";
     private const string AsyncApiDocumentCacheKey = "asyncapi-document";
 
+    // ADR-067 -- user is optional (trailing, defaulting to null) so every
+    // pre-existing call site (dozens, across nearly every test file) is
+    // completely unaffected; a real Host endpoint always passes the actual
+    // caller's ClaimsPrincipal, matching ADR-064's ActorId requirement for
+    // the reserved SchemaRegistered audit event this method now appends.
     public async Task<RegisterEventTypeResult> RegisterAsync(
-        string eventTypeName, RegisterEventTypeRequest request, CancellationToken ct = default)
+        string eventTypeName, RegisterEventTypeRequest request, CancellationToken ct = default, ClaimsPrincipal? user = null)
     {
         var errors = new List<string>();
         var normalizedName = eventTypeName.ToLowerInvariant();
@@ -200,7 +208,50 @@ public class SchemaRegistryService(
         cache.Remove(AsyncApiDocumentCacheKey);
         schemaChangeNotifier?.NotifyChanged(); // "GraphQL-Only Query Layer" -- same immediate-invalidation discipline, for the dynamically-built Subscription schema
 
+        // ADR-067 -- a control-plane mutation publishes a reserved, hash-chained
+        // audit event, the same treatment ADR-020's EventUpcastFailed already
+        // established -- guarded against SchemaRegisteredEventType's own
+        // bootstrap registration (its first-ever RegisterAsync call for this
+        // AppId, triggered by EnsureRegisteredAsync below), which would
+        // otherwise recurse into appending an event about registering the
+        // event type this very append needs to already exist.
+        if (normalizedName != SchemaRegisteredEventType.Name.ToLowerInvariant())
+        {
+            await SchemaRegisteredEventType.EnsureRegisteredAsync(this, request.AppId, ct);
+            await AppendSchemaRegisteredAsync(request.AppId, normalizedName, newVersion, user, ct);
+        }
+
         return new RegisterEventTypeResult.Success(newVersion);
+    }
+
+    private async Task AppendSchemaRegisteredAsync(string appId, string registeredEventTypeName, int version, ClaimsPrincipal? user, CancellationToken ct)
+    {
+        var payload = new JsonObject { ["EventTypeName"] = registeredEventTypeName, ["Version"] = version }.ToJsonString();
+        var storedEvent = new StoredEvent
+        {
+            EventId = Guid.NewGuid(),
+            AppId = appId,
+            EntityId = $"{appId}:schema:{registeredEventTypeName}",
+            OriginId = "local", // mirrors EventStore.Inbox.OriginIdOptions.Default, duplicated rather than referenced -- SchemaRegistry has no other reason to depend on Inbox, which itself depends on SchemaRegistry (ADR-033/090)
+            LogicalClock = "",
+            EventType = SchemaRegisteredEventType.Name.ToLowerInvariant(),
+            SchemaVersion = 1,
+            Payload = payload,
+            PayloadHash = EventPayloadHash.Compute(SchemaRegisteredEventType.Name.ToLowerInvariant(), payload, []),
+            ChainHash = "",
+            Status = "applied", // system-generated and folded immediately, never left "received" for the Router to reprocess (same posture as UpcastMaterializer)
+            SchemaStatus = "conformant",
+            AuthorityStatus = "accepted",
+            OccurredAt = DateTimeOffset.UtcNow,
+            // AccessLogReaderContext.Resolve's own claim resolution, reused
+            // verbatim (ADR-064) -- "system" when no caller principal was
+            // supplied at all (most existing RegisterAsync call sites predate
+            // this parameter and never will pass one), distinct from
+            // "unauthenticated" (a real caller whose token carried no
+            // identifiable claim).
+            ActorId = user is null ? "system" : AccessLogReaderContext.Resolve(user).ReaderActorId,
+        };
+        await EventAppender.AppendAsync(db, storedEvent, [], ct);
     }
 
     public async Task<EventTypeDefinition?> GetActiveAsync(string appId, string eventTypeName, CancellationToken ct = default) =>
@@ -325,9 +376,23 @@ public class SchemaRegistryService(
     // item in docs/08-build-plan.md).
     public async Task<IReadOnlyList<EventTypeDefinition>> ListAsync(string appId, int? top, int? skip, CancellationToken ct = default)
     {
+        // ADR-067 -- SchemaRegistered is a reserved, platform-owned type
+        // (never registered via PUT /registry, only ever via
+        // EnsureRegisteredAsync's own bootstrap), the same "not something an
+        // operator manages" posture EventUpcastFailed/ChannelLagDetected/
+        // EntityErasureRequested already have -- excluded here so it never
+        // silently pads a caller's own listing/pagination of the TYPES THEY
+        // registered. Found while testing this item's own new behavior
+        // (ListingSupportsTopAndSkipPagination's count assertion broke the
+        // moment any AppId's first-ever registration also became this
+        // type's own bootstrap trigger) -- the other three reserved types
+        // above aren't retroactively excluded here too, tracked as a
+        // follow-up in TODO.md rather than silently widened beyond this
+        // item's own new regression.
+        var reservedTypeName = SchemaRegisteredEventType.Name.ToLowerInvariant();
         var query = db.EventTypeDefinitions
             .AsNoTracking()
-            .Where(e => e.AppId == appId)
+            .Where(e => e.AppId == appId && e.Name != reservedTypeName)
             .OrderBy(e => e.Name).ThenBy(e => e.Version);
 
         IQueryable<EventTypeDefinition> paged = query;

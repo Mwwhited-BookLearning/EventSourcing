@@ -23,6 +23,8 @@ using Microsoft.IdentityModel.Protocols.OpenIdConnect;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using DevIdpSeeder = DevIdpAssembly::EventStore.DevIdp.DevIdpSeeder;
+using RoleService = DevIdpAssembly::EventStore.DevIdp.RoleService;
+using TrustRootService = DevIdpAssembly::EventStore.DevIdp.TrustRootService;
 
 namespace EventStore.IntegrationTests;
 
@@ -244,9 +246,20 @@ public class DelegatedGrantsRbacFederationHttpSqliteTests
         const string appId = "delegated-grant-demo-3";
         var appServiceKey = DpopKeyPair.Generate();
 
-        var registerResponse = await _devIdpClient.PutAsync("/oauth/trust-roots",
-            JsonContent.Create(new { appId, issuerDid = appServiceKey.Thumbprint, description = "this app's own service identity" }));
-        Assert.AreEqual(HttpStatusCode.Created, registerResponse.StatusCode);
+        // ADR-067 -- registering a trust root is now a Host-side, hash-
+        // chained, registry:trust-admin-gated mutation; DevIdp's own local
+        // AppTrustRoot table is populated by RbacProjectionWorker's Follow
+        // fold in production, not synchronously by this call. Exercising
+        // the LIVE cross-process worker from inside this same test process
+        // hit a genuine WebApplicationFactory hazard (a background service
+        // that self-references its own still-starting host -- see
+        // RbacProjectionWorker's own header comment and TODO.md); this test
+        // instead verifies the Host's real write path (scope-gated publish)
+        // above, then applies the SAME fold DevIdp's worker would apply --
+        // TrustRootService.RegisterAsync, unchanged -- directly, standing in
+        // for the live Follow subscription.
+        await RegisterTrustRootAsync(appId, appServiceKey.Thumbprint, "this app's own service identity");
+        await ApplyTrustRootRegisteredFoldAsync(appId, appServiceKey.Thumbprint, "this app's own service identity");
 
         // No `prf` at all -- the issuer key IS the root of trust, per
         // ADR-044's own text; "custom:widget-admin" was never registered
@@ -289,17 +302,33 @@ public class DelegatedGrantsRbacFederationHttpSqliteTests
         const string appId = "rbac-demo-5";
         const string actorId = "colleague-client";
 
+        // "PUT /oauth/roles" (what "role-a" bundles) is unaffected by
+        // ADR-067 -- it has no reserved event of its own, per that ADR's
+        // Decision naming exactly 4 RBAC event types, none of them a role's
+        // own permission-bundle definition.
         await PutAsync("/oauth/roles", new { appId, roleName = "role-a", permissions = new[] { "scoped:permA" } });
-        await PostAsync("/oauth/role-assignments", new { actorId, appId, roleName = "role-a" });
-        await PostAsync("/oauth/user-permissions", new { actorId, appId, permission = "direct:permB" });
+        // Assigning the role to an actor, and granting a direct permission,
+        // ARE both reserved-event mutations now -- published via the Host's
+        // real, scope-gated write path. In production, DevIdp's own
+        // RbacProjectionWorker folds these into its local tables via a live
+        // Follow subscription; this test applies the SAME fold target
+        // methods (RoleService.AssignRoleAsync/GrantDirectPermissionAsync,
+        // unchanged) directly rather than running that live cross-process
+        // worker inside this test process -- see
+        // ADelegationRootedInARegisteredAppTrustRootIsAcceptedForCustomPermissionsWithNoCentralPreRegistration's
+        // own comment for why.
+        await GrantRoleAsync(appId, actorId, "role-a");
+        await ApplyRoleGrantedFoldAsync(appId, actorId, "role-a");
+        await GrantPermissionAsync(appId, actorId, "direct:permB");
+        await ApplyPermissionGrantedFoldAsync(appId, actorId, "direct:permB");
 
         var (tokenBefore, _) = await AuthScenarioAssertions.GetTokenAsync(_devIdpClient, "colleague-client", "colleague-client-secret", "", appId);
         var decodedBefore = new JsonWebToken(tokenBefore);
         Assert.AreEqual("permA", decodedBefore.GetClaim("scoped").Value);
         Assert.AreEqual("permB", decodedBefore.GetClaim("direct").Value);
 
-        var revokeResponse = await _devIdpClient.DeleteAsync($"/oauth/role-assignments?actorId={actorId}&appId={appId}&roleName=role-a");
-        Assert.AreEqual(HttpStatusCode.NoContent, revokeResponse.StatusCode);
+        await RevokeRoleAsync(appId, actorId, "role-a");
+        await ApplyRoleRevokedFoldAsync(appId, actorId, "role-a");
 
         var (tokenAfter, _) = await AuthScenarioAssertions.GetTokenAsync(_devIdpClient, "colleague-client", "colleague-client-secret", "", appId);
         var decodedAfter = new JsonWebToken(tokenAfter);
@@ -308,6 +337,36 @@ public class DelegatedGrantsRbacFederationHttpSqliteTests
         // own FindFirst -- found only by running this.
         Assert.IsFalse(decodedAfter.TryGetClaim("scoped", out _), "the revoked role's own permission is gone");
         Assert.AreEqual("permB", decodedAfter.GetClaim("direct").Value, "the direct, additive-only grant survives the unrelated role change");
+    }
+
+    // ADR-067 -- stands in for RbacProjectionWorker's own live Follow-based
+    // fold (RoleService/TrustRootService calls, unchanged from the ones the
+    // real worker uses), resolved from DevIdp's OWN service provider rather
+    // than DevIdp's retired /oauth/role-assignments /oauth/user-permissions
+    // /oauth/trust-roots HTTP endpoints. See TODO.md for why the live worker
+    // itself isn't run inside these tests.
+    private static async Task ApplyRoleGrantedFoldAsync(string appId, string actorId, string roleName)
+    {
+        using var scope = _devIdpFactory.Services.CreateScope();
+        await scope.ServiceProvider.GetRequiredService<RoleService>().AssignRoleAsync(actorId, appId, roleName);
+    }
+
+    private static async Task ApplyRoleRevokedFoldAsync(string appId, string actorId, string roleName)
+    {
+        using var scope = _devIdpFactory.Services.CreateScope();
+        await scope.ServiceProvider.GetRequiredService<RoleService>().RevokeRoleAsync(actorId, appId, roleName);
+    }
+
+    private static async Task ApplyPermissionGrantedFoldAsync(string appId, string actorId, string permission)
+    {
+        using var scope = _devIdpFactory.Services.CreateScope();
+        await scope.ServiceProvider.GetRequiredService<RoleService>().GrantDirectPermissionAsync(actorId, appId, permission);
+    }
+
+    private static async Task ApplyTrustRootRegisteredFoldAsync(string appId, string issuerDid, string? description)
+    {
+        using var scope = _devIdpFactory.Services.CreateScope();
+        await scope.ServiceProvider.GetRequiredService<TrustRootService>().RegisterAsync(appId, issuerDid, description);
     }
 
     [TestMethod]
@@ -380,10 +439,53 @@ public class DelegatedGrantsRbacFederationHttpSqliteTests
         Assert.AreEqual(HttpStatusCode.Created, response.StatusCode);
     }
 
-    private static async Task PostAsync(string path, object body)
+    // ADR-067 -- RoleGranted/RoleRevoked/PermissionGranted/AppTrustRootRegistered
+    // are now published through the Host's own EventStore.Rbac endpoints,
+    // gated by registry:admin/registry:trust-admin, never written to DevIdp
+    // directly. operator-client (DevIdpSeeder) holds both scopes.
+    private static async Task GrantRoleAsync(string appId, string actorId, string roleName)
     {
-        var response = await _devIdpClient.PostAsync(path, JsonContent.Create(body));
-        Assert.AreEqual(HttpStatusCode.Created, response.StatusCode);
+        var (token, key) = await AuthScenarioAssertions.GetTokenAsync(_devIdpClient, "operator-client", "operator-client-secret", "registry:admin");
+        using var request = new HttpRequestMessage(HttpMethod.Post, $"/rbac/roles/{roleName}/assignments")
+        {
+            Content = JsonContent.Create(new { appId, actorId }),
+        };
+        AuthScenarioAssertions.AttachAuth(request, _hostClient, token, key);
+        var response = await _hostClient.SendAsync(request);
+        Assert.AreEqual(HttpStatusCode.Created, response.StatusCode, await response.Content.ReadAsStringAsync());
+    }
+
+    private static async Task RevokeRoleAsync(string appId, string actorId, string roleName)
+    {
+        var (token, key) = await AuthScenarioAssertions.GetTokenAsync(_devIdpClient, "operator-client", "operator-client-secret", "registry:admin");
+        using var request = new HttpRequestMessage(HttpMethod.Delete, $"/rbac/roles/{roleName}/assignments?appId={appId}&actorId={actorId}");
+        AuthScenarioAssertions.AttachAuth(request, _hostClient, token, key);
+        var response = await _hostClient.SendAsync(request);
+        Assert.AreEqual(HttpStatusCode.Created, response.StatusCode, await response.Content.ReadAsStringAsync());
+    }
+
+    private static async Task GrantPermissionAsync(string appId, string actorId, string permission)
+    {
+        var (token, key) = await AuthScenarioAssertions.GetTokenAsync(_devIdpClient, "operator-client", "operator-client-secret", "registry:admin");
+        using var request = new HttpRequestMessage(HttpMethod.Post, "/rbac/permissions")
+        {
+            Content = JsonContent.Create(new { appId, actorId, permission }),
+        };
+        AuthScenarioAssertions.AttachAuth(request, _hostClient, token, key);
+        var response = await _hostClient.SendAsync(request);
+        Assert.AreEqual(HttpStatusCode.Created, response.StatusCode, await response.Content.ReadAsStringAsync());
+    }
+
+    private static async Task RegisterTrustRootAsync(string appId, string issuerDid, string? description)
+    {
+        var (token, key) = await AuthScenarioAssertions.GetTokenAsync(_devIdpClient, "operator-client", "operator-client-secret", "registry:trust-admin");
+        using var request = new HttpRequestMessage(HttpMethod.Put, $"/rbac/trust-roots/{issuerDid}")
+        {
+            Content = JsonContent.Create(new { appId, description }),
+        };
+        AuthScenarioAssertions.AttachAuth(request, _hostClient, token, key);
+        var response = await _hostClient.SendAsync(request);
+        Assert.AreEqual(HttpStatusCode.Created, response.StatusCode, await response.Content.ReadAsStringAsync());
     }
 
     private sealed class JwksLookupHandler(ConcurrentDictionary<string, string> responses) : HttpMessageHandler

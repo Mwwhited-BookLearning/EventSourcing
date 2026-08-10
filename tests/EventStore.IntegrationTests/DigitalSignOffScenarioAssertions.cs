@@ -62,7 +62,12 @@ internal static class DigitalSignOffScenarioAssertions
 
         var stepUp = Assert.IsInstanceOfType<PublishResult.StepUpRequired>(result);
         CollectionAssert.AreEqual(new[] { "urn:eventstore:step-up" }, stepUp.AcrValues.ToArray());
-        Assert.IsFalse(await db.Events.AnyAsync(e => e.AppId == appId), "no event may be persisted for a rejected step-up attempt");
+        // Scoped to the target type specifically, not "any event for this
+        // AppId" -- ADR-067's own SchemaRegistered audit event legitimately
+        // exists for this AppId (from RegisterSignedType's own registration
+        // above), unrelated to whether THIS publish attempt was rejected.
+        Assert.IsFalse(await db.Events.AnyAsync(e => e.AppId == appId && e.EventType == typeName.ToLowerInvariant()),
+            "no event may be persisted for a rejected step-up attempt");
     }
 
     public static async Task APublishWithTheWrongAcrValueIsRejectedEvenThoughAnAcrClaimIsPresent(
@@ -107,7 +112,7 @@ internal static class DigitalSignOffScenarioAssertions
             TestClaimsPrincipal.WithClaims(("acr", "urn:eventstore:step-up")));
 
         Assert.IsInstanceOfType<PublishResult.MissingSignatureMeaning>(result);
-        Assert.IsFalse(await db.Events.AnyAsync(e => e.AppId == appId),
+        Assert.IsFalse(await db.Events.AnyAsync(e => e.AppId == appId && e.EventType == typeName.ToLowerInvariant()),
             "an incomplete signed envelope is never persisted with an advisory flag");
     }
 

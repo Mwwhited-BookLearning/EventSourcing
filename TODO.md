@@ -128,6 +128,46 @@ here instead of inlining.
   (OIDC/OpenIddict) + Orchestration" section's own note for the full
   list of *other* real orchestration bugs this same pass found and
   fixed.
+- **`EventUpcastFailed`/`ChannelLagDetectedEventType`/`EntityErasureRequestedEventType`
+  (reserved, platform-owned event types) are NOT excluded from
+  `SchemaRegistryService.ListAsync`'s own per-AppId listing, unlike
+  `SchemaRegisteredEventType` (excluded while building "Control-Plane
+  Actions as Reserved Events," item 30, after `ListingSupportsTopAndSkip
+  Pagination`'s own count assertion broke the moment any AppId's first
+  registration also triggered `SchemaRegistered`'s bootstrap).** The three
+  older reserved types happen not to have surfaced this same bug only
+  because no existing test both (a) registers one of them and (b) asserts
+  an exact count via `ListAsync`/`QUERY /registry` against the SAME AppId
+  — the underlying gap (a caller's own type listing can be silently padded
+  by ANY reserved type that happened to bootstrap under their AppId) is
+  real and pre-existing, just not yet observed. Investigate: either widen
+  `ListAsync`'s exclusion to a real `IsReserved`/`IsPlatformOwned` column
+  on `EventTypeDefinition` (checked at registration time, not a hardcoded
+  name list) or accept the current per-name exclusion approach and add
+  each reserved type's own lowercased name to it explicitly.
+- **`RbacProjectionWorker`'s own live, cross-process Follow subscription
+  (item 30, "Control-Plane Actions as Reserved Events") is not exercised
+  end-to-end by any test.** `DelegatedGrantsRbacFederationHttpSqliteTests.cs`
+  verifies the Host's real write path (`RbacEndpoints`, scope-gated publish)
+  and DevIdp's own fold-target methods (`RoleService`/`TrustRootService`,
+  unchanged) directly, but simulates the fold itself rather than running the
+  live worker inside the test process — running it hit a genuine
+  `WebApplicationFactory` hazard: `BackgroundService.StartAsync` invokes
+  `ExecuteAsync` synchronously, inline, until its first real suspension
+  point, and `RbacProjectionWorker`'s self-referential "DevIdp" `HttpClient`
+  (`FollowClientOptions.ClientId` points back at the same process) recursed
+  into `_devIdpFactory.Server` while that same factory was still being
+  built one level up the call stack — silently, no exception, no log.
+  Worked around in production code with a real one-time startup delay
+  (`RbacProjectionWorker.ExecuteAsync`'s own comment), which resolves the
+  hazard for this specific case but was never proven against a live,
+  in-process `WebApplicationFactory` pair the way the fix was validated.
+  Investigate either a real multi-process test harness (two actual `dotnet
+  run` processes, no shared-process self-reference at all) or extracting
+  `RbacProjectionWorker`'s own tail-and-apply logic into a `CatchUpOnceAsync`-
+  style public method (mirroring `ProjectionHost<T>`'s own shape) that a test
+  can drive directly, post-ClassInit, without relying on `BackgroundService`'s
+  own eager startup timing.
 - **`client-web`'s `useEntityViewActions.subscribe()` opens every
   Subscription (the main entity one, and "Local/Edge Active-Scope Caching
   & Erasure Invalidation"'s new `EntityErasureRequested` one) hardcoded
