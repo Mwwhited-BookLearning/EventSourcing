@@ -1011,8 +1011,35 @@ stale numbers here are worse than none)*
   (`GatewayTests`, 1 scenario: routing + header-forwarding). Deliberately
   exercised once, not ×3 — this item never touches a database provider
   at all, unlike every provider-specific item so far.
-- **Next up**: item 25, "Data Lifecycle & Backup/Restore Classification"
-  (`ADR-056`) — depends on Scaffolding & Persistence (Done).
+- **Item 25, "Data Lifecycle & Backup/Restore Classification," is Done** —
+  mostly a documentation item (`06-solution-structure.md`'s "Data
+  lifecycle" table re-checked against the actual current `DbSet` list and
+  found 5 tables behind: `DerivationDefinition`/`DerivationCursor`/
+  `PendingJoinState`/`ViewDefinition` classified authoritative, nothing
+  currently regenerates any of them; `PeerSyncCursor` classified
+  rebuildable, losing it only costs a slower resync) plus a real restore
+  drill (`DataLifecycleScenarioAssertions`): wipe `EntityStoreRow`/
+  `LiveEntityStoreRow`, reset every `StoredEvent` back to `"received"`,
+  re-run `RouterWorker.RunOnceAsync`, confirm the reconstructed rows match
+  field for field. **A real, pre-existing bug in `RouterWorker` (built
+  by "Entity-Centric Core Rebuild," item 12) found and fixed while
+  writing that drill, not part of this item's own original scope**:
+  `FoldAsync`/`FoldLiveAsync` queried the database for an entity's row
+  with no check of already-tracked-but-unsaved local rows first — two
+  events for the *same* entity landing in one `RunOnceAsync` tick (an
+  ordinary case, a burst of activity or catching up after any delay, not
+  contrived) made the second event's fold `Add()` a duplicate row with
+  the same key, crashing with an EF Core identity-conflict exception.
+  Fixed by checking `DbSet.Local` first in both methods. No earlier
+  test had ever exercised two events for one entity in a single tick —
+  every existing `EntityScenarioAssertions` scenario folds one event per
+  tick. Verified against SQLite (passes); Postgres/SQL Server variants
+  are code-complete but unverified this session — Docker was not running
+  in this environment for this stretch of work (confirmed via `docker
+  ps`), a pure local-environment gap, not a code regression.
+- **Next up**: item 26, "GDPR/CCPA Erasure via Crypto-Shredding"
+  (`ADR-057`) — depends on Property-Level Masking (Done) and
+  Entity-Centric Core Rebuild (Done).
 
 ## How to resume cold
 
@@ -1027,7 +1054,7 @@ stale numbers here are worse than none)*
    narrative.
 5. `dotnet build EventStore.slnx` and `dotnet test tests/EventStore.IntegrationTests` —
    confirm the build/test baseline the last session left still holds
-   before adding to it (84 tests should pass). Requires Docker running
+   before adding to it (87 tests should pass). Requires Docker running
    (Testcontainers for Postgres/SQL Server) and the SDK pinned in
    `global.json`. A full multi-provider run has a known, pre-existing,
    unrelated flake — see `TODO.md`'s entry — where one or two SQL Server
