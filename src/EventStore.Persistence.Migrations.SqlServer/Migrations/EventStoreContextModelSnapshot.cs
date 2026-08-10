@@ -67,6 +67,30 @@ namespace EventStore.Persistence.Migrations.SqlServer.Migrations
                     b.ToTable("AccessLogEntries");
                 });
 
+            modelBuilder.Entity("EventStore.Domain.EntityStore.EntityErasureKey", b =>
+                {
+                    b.Property<string>("EntityId")
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<string>("BackendName")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<DateTimeOffset?>("ErasedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("KeyReference")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.HasKey("EntityId");
+
+                    b.ToTable("EntityErasureKeys");
+                });
+
             modelBuilder.Entity("EventStore.Domain.EntityStore.EntityStoreRow", b =>
                 {
                     b.Property<string>("EntityId")
@@ -155,6 +179,22 @@ namespace EventStore.Persistence.Migrations.SqlServer.Migrations
                     b.HasIndex("EntityType");
 
                     b.ToTable("LiveEntityStore");
+                });
+
+            modelBuilder.Entity("EventStore.Domain.EntityStore.LocalErasureKeyMaterial", b =>
+                {
+                    b.Property<string>("KeyReference")
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<bool>("Destroyed")
+                        .HasColumnType("bit");
+
+                    b.Property<byte[]>("WrappedKey")
+                        .HasColumnType("varbinary(max)");
+
+                    b.HasKey("KeyReference");
+
+                    b.ToTable("LocalErasureKeyMaterials");
                 });
 
             modelBuilder.Entity("EventStore.Domain.EventLog.EventParent", b =>

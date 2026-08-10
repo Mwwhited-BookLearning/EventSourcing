@@ -22,6 +22,20 @@ public static class JsonSchemaInstanceValidator
         if (schema is not JsonObject schemaObject)
             return true; // no constraints (or a bare `true` schema) -- nothing to check
 
+        // ADR-057 -- a property carrying x-masking.regulatoryClassification is
+        // stored (and, for an upcast result, re-derived) as ciphertext, always
+        // a base64 string, regardless of its originally-declared type -- both
+        // this validator's callers (RouterWorker's own fold-time re-validation,
+        // UpcastMaterializer's own upcast-result check) only ever see the
+        // ALREADY-STORED/re-derived form, never the plaintext PublishService
+        // encrypted before persisting. Exempting type-checking here, not by
+        // teaching every caller to skip classified leaves individually, keeps
+        // this the one place that knows "ciphertext never matches its own
+        // declared type, and that's expected, not a validation failure."
+        if (schemaObject.TryGetPropertyValue("x-masking", out var maskingNode) &&
+            maskingNode is JsonObject { } masking && masking["regulatoryClassification"] is not null)
+            return true;
+
         var ok = true;
 
         if (schemaObject["type"] is { } typeNode)

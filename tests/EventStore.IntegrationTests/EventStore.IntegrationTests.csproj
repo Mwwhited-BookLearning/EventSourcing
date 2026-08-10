@@ -14,6 +14,7 @@
       <PrivateAssets>all</PrivateAssets>
     </PackageReference>
     <PackageReference Include="MSTest" Version="4.0.2" />
+    <PackageReference Include="Testcontainers" Version="4.13.0" />
     <PackageReference Include="Testcontainers.MsSql" Version="4.13.0" />
     <PackageReference Include="Testcontainers.PostgreSql" Version="4.13.0" />
   </ItemGroup>
@@ -30,6 +31,7 @@
     <ProjectReference Include="..\..\src\EventStore.SchemaRegistry\EventStore.SchemaRegistry.csproj" />
     <ProjectReference Include="..\..\src\EventStore.ViewRegistry\EventStore.ViewRegistry.csproj" />
     <ProjectReference Include="..\..\src\EventStore.Inbox\EventStore.Inbox.csproj" />
+    <ProjectReference Include="..\..\src\EventStore.Erasure\EventStore.Erasure.csproj" />
     <ProjectReference Include="..\..\src\EventStore.Derivation\EventStore.Derivation.csproj" />
     <ProjectReference Include="..\..\src\EventStore.Spiffe\EventStore.Spiffe.csproj" />
     <ProjectReference Include="..\..\src\EventStore.Masking\EventStore.Masking.csproj" />

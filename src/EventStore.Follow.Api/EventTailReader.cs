@@ -67,7 +67,7 @@ public class EventTailReader(
                     var visibleParentIds = await GetVisibleParentEventIdsAsync(storedEvent.EventId, user, ct);
                     var upcastPayload = UpcastPayload(storedEvent, activeVersion, schemasByVersion);
                     var currentPayload = DowncastPayload(upcastPayload, activeVersion, targetVersion, schemasByVersion);
-                    var maskedPayload = MaskPayload(currentPayload, targetVersion, schemasByVersion, user);
+                    var maskedPayload = await MaskPayloadAsync(currentPayload, targetVersion, schemasByVersion, storedEvent.EntityId, user, ct);
                     yield return new FollowedEvent(storedEvent, visibleParentIds, maskedPayload);
                     lastSeen = storedEvent.SequenceNumber;
                 }
@@ -125,14 +125,15 @@ public class EventTailReader(
     // Masks against the active version's own schema, matching whichever shape
     // currentPayload is actually in after UpcastPayload above -- not
     // storedEvent.SchemaVersion's schema, which may no longer match.
-    private JsonNode? MaskPayload(
-        JsonNode currentPayload, int activeVersion, IReadOnlyDictionary<int, EventTypeDefinition> schemasByVersion, ClaimsPrincipal user)
+    private async Task<JsonNode?> MaskPayloadAsync(
+        JsonNode currentPayload, int activeVersion, IReadOnlyDictionary<int, EventTypeDefinition> schemasByVersion,
+        string? entityId, ClaimsPrincipal user, CancellationToken ct)
     {
         if (!schemasByVersion.TryGetValue(activeVersion, out var definition))
             return currentPayload;
 
         var schemaNode = JsonNode.Parse(definition.JsonSchema)!;
-        return payloadMasker.Mask(schemaNode, currentPayload, claim => RequiredClaimEvaluator.HasClaim(user, claim));
+        return await payloadMasker.MaskAsync(schemaNode, currentPayload, entityId, claim => RequiredClaimEvaluator.HasClaim(user, claim), ct);
     }
 
     // ADR-008 -- a restricted parent's ID is omitted from the envelope without

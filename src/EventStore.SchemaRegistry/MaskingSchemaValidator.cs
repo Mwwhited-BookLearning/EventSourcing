@@ -1,4 +1,5 @@
 using System.Text.Json.Nodes;
+using EventStore.Persistence;
 
 namespace EventStore.SchemaRegistry;
 
@@ -59,6 +60,15 @@ internal static class MaskingSchemaValidator
                 string.IsNullOrWhiteSpace(value.GetValue<string>()))
                 errors.Add($"x-masking.{field} must be a non-empty string if present");
         }
+
+        // ADR-057 -- optional; when present, resolves to the EntityId owning
+        // THIS field's DEK when it differs from the event's own default
+        // EntityId (the cross-entity classified-data case). Same safe-subset
+        // grammar EntityIdField already validates against, for the same
+        // injection-surface reason -- both are walked by
+        // ErasureScopeResolver/EntityIdResolver's identical restricted walker.
+        if (masking["erasureScope"]?.GetValue<string>() is { } erasureScope && !JsonPathValidation.IsSafe(erasureScope))
+            errors.Add($"x-masking.erasureScope must be a safe JSON-path-like pointer (got: {erasureScope})");
     }
 
     private static bool IsTypeValueFormat(string claim)

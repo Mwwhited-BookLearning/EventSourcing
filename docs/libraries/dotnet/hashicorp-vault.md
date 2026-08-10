@@ -31,10 +31,19 @@ IVaultClient vaultClient = new VaultClient(settings);
 // transit engine: encrypt a classified field value under this entity's key,
 // without VaultSharp/the caller ever seeing the raw key material
 var encrypted = await vaultClient.V1.Secrets.Transit.EncryptAsync(
-    keyName: $"dek-{appId}-{entityId}", transitEncryptRequestOptions: new() { Base64EncodedPlainText = plaintextBase64 });
+    $"dek-{appId}-{entityId}", new EncryptRequestOptions { Base64EncodedPlainText = plaintextBase64 }, "transit");
 
-// Erasure: delete the transit key, irreversible once purged
-await vaultClient.V1.System.DeleteTransitKeyAsync($"dek-{appId}-{entityId}");
+// Erasure: deletion must be explicitly allowed on the key first (a Vault
+// safety default), then deleted -- irreversible once purged. Verified
+// against the installed package via reflection while building
+// EventStore.Erasure.HashiCorpVaultErasureKeyStore, not assumed from this
+// snippet's own earlier draft: the delete method lives on
+// ITransitSecretsEngine, not V1.System, which this snippet originally (and
+// incorrectly) named.
+var keyName = $"dek-{appId}-{entityId}";
+await vaultClient.V1.Secrets.Transit.UpdateEncryptionKeyConfigAsync(
+    keyName, new UpdateKeyRequestOptions { DeletionAllowed = true }, "transit");
+await vaultClient.V1.Secrets.Transit.DeleteEncryptionKeyAsync(keyName, "transit");
 ```
 
 ## Where this project uses it

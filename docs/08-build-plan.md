@@ -84,7 +84,7 @@ provider they apply to — not "code written."
 | 23 | [Delegated Grants, RBAC, Federated Claims & Read Audit Logging](#delegated-grants-rbac-federated-claims--read-audit-logging) | Non-Authoritative Capture, Event-Type Security, Multi-Tenancy, Hardening & Evolution | Done |
 | 24 | [SPIFFE/SPIRE Service Identity & API Gateway](#spiffespire-service-identity--api-gateway) | Auth + Orchestration, Sharding & Replication, Streaming Channels, Binary Attachments, GraphQL-Only Query Layer, Ticket Exchange | Done |
 | 25 | [Data Lifecycle & Backup/Restore Classification](#data-lifecycle--backuprestore-classification) | Scaffolding & Persistence | Done |
-| 26 | [GDPR/CCPA Erasure via Crypto-Shredding](#gdprccpa-erasure-via-crypto-shredding) | Property-Level Masking, Entity-Centric Core Rebuild | Not started |
+| 26 | [GDPR/CCPA Erasure via Crypto-Shredding](#gdprccpa-erasure-via-crypto-shredding) | Property-Level Masking, Entity-Centric Core Rebuild | Done |
 | 27 | [PCI-DSS Sensitive Authentication Data Registration Boundary](#pci-dss-sensitive-authentication-data-registration-boundary) | Schema Registry, Property-Level Masking | Not started |
 | 28 | [Local/Edge Active-Scope Caching & Erasure Invalidation](#localedge-active-scope-caching--erasure-invalidation) | MVVM Client, GDPR/CCPA Erasure | Not started |
 | 29 | [Digital Sign-Off for Regulated Actions](#digital-sign-off-for-regulated-actions-step-up-authentication) | Auth + Orchestration, ActorId on Every Event | Not started |
@@ -320,7 +320,7 @@ duplicating the whole core graph's nodes here.
 
 ```plantuml
 @startuml BuildPlan_Additions
-state "GDPR/CCPA Erasure" as a2
+state "GDPR/CCPA Erasure" as a2 #palegreen
 state "PCI-DSS SAD Boundary" as a3
 state "Local/Edge Cache Scoping\n+ Erasure Invalidation" as a4
 state "Digital Sign-Off\n(Step-Up Auth)" as a5 {
@@ -2022,29 +2022,72 @@ for one entity in a single tick.
 
 ## GDPR/CCPA Erasure via Crypto-Shredding
 
+**Status: Done.** Implemented as `EventStore.Erasure`
+(`IErasureKeyStore`/`LocalErasureKeyStore`/`HashiCorpVaultErasureKeyStore`/
+`ErasureKeyService`/`PayloadEncryptor`/`ErasureScopeResolver`/
+`EntityErasureRequestedEventType`/`EntityErasureResolver`), wired into
+`EventStore.Inbox` (publish-time encryption), `EventStore.Masking`
+(read-time decrypt/erasure reveal), and `EventStore.Router` (the
+`EntityErasureRequested` reactor). Verified end-to-end (`Erasure*Tests.cs`
+in `EventStore.IntegrationTests`, one shared `ErasureScenarioAssertions`
+run against SQLite/PostgreSQL/SQL Server, plus a dedicated
+`ErasureVaultTests` against a real `hashicorp/vault` dev-mode container,
+not a mock) covering: ciphertext at rest, claim-holder decrypt, non-claim-
+holder masking unaffected by encryption, erasure producing
+`{"erased": true}` unconditionally, hash-chain integrity surviving
+erasure, a cross-entity `erasureScope`, and two `AppId`s on two different
+live backends (Local, HashiCorp Vault) in the same deployment.
+
 **Scope**: `ADR-057` (revises `ADR-009`'s original no-erasure stance) —
 per-`(AppId, EntityId)` Data-Encryption Keys (DEKs) wrapping every
 `x-masking`-classified field, generated the first time a classified field
-is published for that entity; encryption happens after
-`SchemaValidationService` validates the plaintext and before the payload
-is written to `StoredEvent.Payload` and hashed, so `ADR-019`'s hash chain
-is completely unaffected. The pluggable `IErasureKeyStore` seam (same
-Strategy/keyed-DI shape as `IMaskingStrategy`/`ADR-052`'s
-`IStreamRedactionStrategy`) supports **multiple backends registered and
-active simultaneously in one deployment**, selected per `AppId` (or
-finer): cloud (Azure Key Vault, AWS KMS, Google Cloud KMS), on-prem/
-self-hosted (HashiCorp Vault), local (an encrypted file/DB-backed store
-for dev). A new optional `x-masking` field, `erasureScope` (JSON Pointer
-to another payload property naming the owning `EntityId`, defaulting to
-the event's own `EntityId`), covers the case where classified data
-belongs to a different entity than the event's own. The `oneOf` wrapper
-gains a third branch, `{"erased": true}`, deliberately distinct from
-`{"masked": ...}` — shown even to a caller who holds the claim, since
-erasure is a permanent, unconditional fact, not a permission gap.
-Erasure itself is an event, not a side effect: requesting erasure for an
-`EntityId` publishes a reserved `EntityErasureRequested` `StoredEvent`
-(hash-chained like everything else), then destroys that entity's DEK via
-the configured `IErasureKeyStore`'s own irreversible primitive.
+is published for that entity. **One deviation from this ADR's original
+text, made during implementation**: the architecture this item actually
+builds on (the entity-centric rebuild's always-202 Inbox + async Router
+split, `ADR-023`) postdates `ADR-057`'s own assumption of a synchronous
+validate-then-persist pipeline — encryption still happens synchronously
+at publish time (this ADR's own explicit ordering requirement, before
+`Payload` is persisted and hashed), but `PublishService` independently
+resolves `EntityId` for encryption-scoping purposes only, via the same
+`EntityIdResolver` pure function the Router uses, without changing
+`StoredEvent.EntityId`'s own "starts empty, Router fills it in" contract.
+The pluggable `IErasureKeyStore` seam (same Strategy/keyed-DI shape as
+`IMaskingStrategy`/`ADR-052`'s `IStreamRedactionStrategy`) supports
+**multiple backends registered and active simultaneously in one
+deployment**, selected per `AppId` (or finer): on-prem/self-hosted
+(HashiCorp Vault, built and verified against a real server) and local (an
+encrypted, `EventStoreContext`-table-backed store for dev, built).
+**Cloud KMS backends (Azure Key Vault, AWS KMS, Google Cloud KMS) are
+documented in this ADR as future backends behind the same seam, not
+implemented this pass** — the seam itself (keyed DI, one interface) is
+already proven to support an arbitrary Nth backend without touching any
+caller, by the fact that Local and HashiCorp Vault already coexist; adding
+a cloud KMS backend later is exactly the same shape of change Vault's own
+addition was, no design changes required. A new optional `x-masking`
+field, `erasureScope` (JSON Pointer to another payload property naming
+the owning `EntityId`, defaulting to the event's own `EntityId`), covers
+the case where classified data belongs to a different entity than the
+event's own — its format is validated at schema-registration time by
+`MaskingSchemaValidator`, the same safe-subset grammar `EntityIdField`
+already uses. The `oneOf` wrapper gains a third branch, `{"erased": true}`,
+deliberately distinct from `{"masked": ...}` — shown even to a caller who
+holds the claim, since erasure is a permanent, unconditional fact, not a
+permission gap. Erasure itself is an event, not a side effect: requesting
+erasure for an `EntityId` publishes a reserved `EntityErasureRequested`
+`StoredEvent` (hash-chained like everything else, published through the
+same ordinary Publish API as any other registered event type — no bespoke
+DELETE-shaped endpoint), gated by an ordinary `requiredClaim`
+(`erasure:request`, `ADR-050`'s existing mechanism, nothing new).
+`RouterWorker`'s existing "special-purpose reactor" shape
+(`AuthorityDecisionResolver`'s own precedent) folds this event into its
+own entity like any other type, then performs the additional side
+effect — destroying that entity's DEK via the configured
+`IErasureKeyStore`'s own irreversible primitive. The reserved type is
+registered lazily, the first time a given `AppId` ever creates its first
+DEK (`ErasureKeyService.GetOrCreateAsync`) — the same "not seeded up
+front" treatment `ADR-031`'s `ChannelLagDetectedEventType` already
+established — guaranteeing the type exists for an `AppId` before an
+erasure request against it could ever be meaningful.
 
 **Depends on**: Property-Level Masking (`ADR-009`/`ADR-050`) — this item
 reuses its `x-masking.regulatoryClassification`-carrying fields wholesale

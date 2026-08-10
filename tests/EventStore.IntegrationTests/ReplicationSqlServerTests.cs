@@ -46,7 +46,7 @@ public class ReplicationSqlServerTests
         new(db, new SqlServerFilterableFieldIndexDdlGenerator(), new MemoryCache(new MemoryCacheOptions()), UpcastingTestSupport.CreateEvaluator());
 
     private static PublishService NewPublishService(EventStoreContext db, SchemaRegistryService registry, string originId) =>
-        new(db, registry, new SqlServerUniqueConstraintViolationDetector(), Options.Create(new OriginIdOptions { OriginId = originId }));
+        new(db, registry, new SqlServerUniqueConstraintViolationDetector(), originIdOptions: Options.Create(new OriginIdOptions { OriginId = originId }));
 
     [TestMethod]
     public async Task AllReplicationScenarios()

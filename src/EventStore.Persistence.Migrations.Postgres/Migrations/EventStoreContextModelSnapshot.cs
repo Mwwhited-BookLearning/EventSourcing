@@ -67,6 +67,30 @@ namespace EventStore.Persistence.Migrations.Postgres.Migrations
                     b.ToTable("AccessLogEntries");
                 });
 
+            modelBuilder.Entity("EventStore.Domain.EntityStore.EntityErasureKey", b =>
+                {
+                    b.Property<string>("EntityId")
+                        .HasColumnType("text");
+
+                    b.Property<string>("BackendName")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTimeOffset?>("ErasedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("KeyReference")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.HasKey("EntityId");
+
+                    b.ToTable("EntityErasureKeys");
+                });
+
             modelBuilder.Entity("EventStore.Domain.EntityStore.EntityStoreRow", b =>
                 {
                     b.Property<string>("EntityId")
@@ -155,6 +179,22 @@ namespace EventStore.Persistence.Migrations.Postgres.Migrations
                     b.HasIndex("EntityType");
 
                     b.ToTable("LiveEntityStore");
+                });
+
+            modelBuilder.Entity("EventStore.Domain.EntityStore.LocalErasureKeyMaterial", b =>
+                {
+                    b.Property<string>("KeyReference")
+                        .HasColumnType("text");
+
+                    b.Property<bool>("Destroyed")
+                        .HasColumnType("boolean");
+
+                    b.Property<byte[]>("WrappedKey")
+                        .HasColumnType("bytea");
+
+                    b.HasKey("KeyReference");
+
+                    b.ToTable("LocalErasureKeyMaterials");
                 });
 
             modelBuilder.Entity("EventStore.Domain.EventLog.EventParent", b =>
