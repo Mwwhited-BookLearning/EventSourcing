@@ -3,10 +3,17 @@ import { setActivePinia, createPinia } from 'pinia'
 import { useEntityViewActions, type ClientConfig } from './useEntityViewActions'
 import { resetDbConnectionForTests } from '../db/indexedDb'
 import { useOutboxStore } from '../stores/outbox'
+import { useEntityCacheStore } from '../stores/entityCache'
 import * as publishClientModule from '../api/publishClient'
+import * as graphqlClientModule from '../api/graphqlClient'
 
 vi.mock('../api/publishClient', () => ({
   publishCommand: vi.fn(),
+}))
+
+vi.mock('../api/graphqlClient', () => ({
+  graphqlQuery: vi.fn(),
+  graphqlSubscribe: vi.fn(),
 }))
 
 const config: ClientConfig = {
@@ -27,6 +34,8 @@ describe('useEntityViewActions (docs/patterns/mvvm-client-architecture.md\'s "Ac
     setActivePinia(createPinia())
     resetDbConnectionForTests()
     vi.mocked(publishClientModule.publishCommand).mockReset()
+    vi.mocked(graphqlClientModule.graphqlQuery).mockReset()
+    vi.mocked(graphqlClientModule.graphqlSubscribe).mockReset()
   })
 
   it('dispatching a command while online enqueues then delivers immediately, with no duplicate delivery on a redundant flush', async () => {
@@ -82,5 +91,87 @@ describe('useEntityViewActions (docs/patterns/mvvm-client-architecture.md\'s "Ac
     await actions.dispatchCommand('mvvm-demo:orderplaced:o-1', { Amount: 200 })
 
     expect(fetchToken).toHaveBeenCalledTimes(1)
+  })
+
+  // ADR-065's two rules: an explicit scope filter (the same
+  // [EventFilterInput!] shape any GraphQL Subscription already supports),
+  // and a mandatory, immediate local purge on EntityErasureRequested --
+  // delivered through a second, independent subscription to that reserved
+  // type, not folded into the entity subscription's own handler.
+  describe('local/edge active-scope caching and erasure invalidation (ADR-065)', () => {
+    function mockIntrospection(fieldsByType: { entity: string[]; erasure: string[] }) {
+      vi.mocked(graphqlClientModule.graphqlQuery).mockImplementation(async (_host, _token, query) => {
+        const fields = (query as string).includes('entityerasurerequested') ? fieldsByType.erasure : fieldsByType.entity
+        return { __type: { fields: fields.map((name) => ({ name })) } }
+      })
+    }
+
+    it('subscribing opens the entity subscription carrying its scope filter, plus a second, independent EntityErasureRequested subscription', async () => {
+      mockIntrospection({ entity: ['orderId', 'amount'], erasure: ['targetEntityId'] })
+      const subscribedQueries: string[] = []
+      vi.mocked(graphqlClientModule.graphqlSubscribe).mockImplementation((_host, _token, query) => {
+        subscribedQueries.push(query as string)
+        return () => {}
+      })
+      const fetchToken = vi.fn().mockResolvedValue('token-123')
+      const scopedConfig: ClientConfig = { ...config, scopeFilter: [{ field: 'Status', eq: 'open' }] }
+      const actions = useEntityViewActions(scopedConfig, { fetchToken })
+
+      await actions.subscribe()
+
+      expect(subscribedQueries).toHaveLength(2)
+      expect(subscribedQueries[0]).toContain('on_mvvm_demo_orderplaced')
+      expect(subscribedQueries[0]).toContain('where: [{field: "Status", eq: "open"}]')
+      expect(subscribedQueries[1]).toContain('on_mvvm_demo_entityerasurerequested')
+    })
+
+    it('receiving an EntityErasureRequested event for a cached entity purges it immediately, not deferred to any scope-eviction cycle', async () => {
+      mockIntrospection({ entity: ['orderId'], erasure: ['targetEntityId'] })
+      let erasureOnMessage: ((data: Record<string, { targetEntityId?: string }>) => void) | undefined
+      vi.mocked(graphqlClientModule.graphqlSubscribe).mockImplementation((_host, _token, query, onMessage) => {
+        if ((query as string).includes('entityerasurerequested')) erasureOnMessage = onMessage as typeof erasureOnMessage
+        return () => {}
+      })
+      const fetchToken = vi.fn().mockResolvedValue('token-123')
+      const actions = useEntityViewActions(config, { fetchToken })
+      const entityCache = useEntityCacheStore()
+      await entityCache.applyFollowedEvent('instance-a', 'orderplaced', 'mvvm-demo:orderplaced:o-1', {
+        conflictFlag: false,
+        lateArrivalFlag: false,
+        authorityStatus: 'accepted',
+        schemaVersion: 1,
+        orderId: 'o-1',
+      })
+      expect(entityCache.get('instance-a', 'mvvm-demo:orderplaced:o-1')).toBeDefined()
+
+      await actions.subscribe()
+      erasureOnMessage!({ on_mvvm_demo_entityerasurerequested: { targetEntityId: 'mvvm-demo:orderplaced:o-1' } })
+
+      expect(entityCache.get('instance-a', 'mvvm-demo:orderplaced:o-1')).toBeUndefined()
+    })
+
+    it('an EntityErasureRequested event naming a DIFFERENT entity leaves an unrelated cached entity untouched', async () => {
+      mockIntrospection({ entity: ['orderId'], erasure: ['targetEntityId'] })
+      let erasureOnMessage: ((data: Record<string, { targetEntityId?: string }>) => void) | undefined
+      vi.mocked(graphqlClientModule.graphqlSubscribe).mockImplementation((_host, _token, query, onMessage) => {
+        if ((query as string).includes('entityerasurerequested')) erasureOnMessage = onMessage as typeof erasureOnMessage
+        return () => {}
+      })
+      const fetchToken = vi.fn().mockResolvedValue('token-123')
+      const actions = useEntityViewActions(config, { fetchToken })
+      const entityCache = useEntityCacheStore()
+      await entityCache.applyFollowedEvent('instance-a', 'orderplaced', 'mvvm-demo:orderplaced:o-1', {
+        conflictFlag: false,
+        lateArrivalFlag: false,
+        authorityStatus: 'accepted',
+        schemaVersion: 1,
+        orderId: 'o-1',
+      })
+
+      await actions.subscribe()
+      erasureOnMessage!({ on_mvvm_demo_entityerasurerequested: { targetEntityId: 'mvvm-demo:orderplaced:o-2' } })
+
+      expect(entityCache.get('instance-a', 'mvvm-demo:orderplaced:o-1')).toBeDefined()
+    })
   })
 })

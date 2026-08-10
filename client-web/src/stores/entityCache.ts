@@ -61,10 +61,9 @@ export const useEntityCacheStore = defineStore('entityCache', {
       return this.entries[keyFor(instanceId, entityId)]
     },
     // ADR-065's own local-purge requirement ("Local/Edge Active-Scope
-    // Caching & Erasure Invalidation," a later build-plan item) -- the
-    // mechanism this store needs is already this simple removal; wiring it
-    // to an EntityErasureRequested subscription event is that later item's
-    // own scope, not built here.
+    // Caching & Erasure Invalidation") -- this simple removal is the whole
+    // mechanism; useEntityViewActions.subscribe() calls it immediately on
+    // receiving an EntityErasureRequested event naming a cached EntityId.
     async purge(instanceId: string, entityId: string) {
       delete this.entries[keyFor(instanceId, entityId)]
       await clientDb.remove(clientDb.ENTITY_CACHE_STORE, [instanceId, entityId])

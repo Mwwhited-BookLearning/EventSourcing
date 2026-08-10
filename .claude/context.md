@@ -1170,9 +1170,55 @@ stale numbers here are worse than none)*
   `SchemaRegistrySqliteTests`/`Postgres`/`SqlServer`'s existing single
   `AllSchemaRegistryScenarios` `[TestMethod]` each). All pass across
   SQLite/PostgreSQL/SQL Server.
-- **Next up**: item 28, "Local/Edge Active-Scope Caching & Erasure
-  Invalidation" (`ADR-065`) — depends on MVVM Client (Done) and GDPR/CCPA
-  Erasure (Done).
+- **Item 28, "Local/Edge Active-Scope Caching & Erasure Invalidation," is
+  Done — one deliberately, explicitly accepted narrowing, checked with the
+  user before building rather than assumed.** `ADR-065`'s own "falling out
+  of scope proactively evicts the local copy" claim has a real gap: the
+  Subscription filter is enforced server-side per event, so an entity's
+  own later disqualifying update is simply never delivered at all — there
+  is no push-based "you fell out of scope" signal for the client to react
+  to. Asked explicitly which way to resolve it (client-side re-evaluation
+  of the full scope predicate on every update vs. accept the server-filter-
+  only gap as a named limitation); the user chose the latter. Both halves
+  of `docs/features/mvvm-client.md`'s own Gherkin were updated to describe
+  this honestly rather than silently narrowed.
+  Implemented client-side only (`client-web`): `subscriptionBuilder.ts`
+  gained `ScopeFilterClause`/`serializeWhereClauses`, threading an
+  optional `where` argument (the same `[EventFilterInput!]` shape the
+  server already exposes) through `buildSubscriptionQuery`;
+  `ClientConfig.scopeFilter` carries it from `useEntityViewActions.
+  subscribe()`. Erasure invalidation is a SECOND, independent subscription
+  (`subscribeToErasure`) to the reserved `EntityErasureRequested` type for
+  the client's own `AppId` — on receipt, `targetEntityId` is resolved and
+  `entityCacheStore.purge()` (already stubbed by "MVVM Client" exactly for
+  this item) is called immediately.
+  **A real, pre-existing bug found and fixed while building this item's
+  own mechanism**: `payloadTypeName`/`subscriptionFieldName` never
+  lowercased the event type before sanitizing it, but the server always
+  stores `EventTypeDefinition.Name` lowercased before building a field
+  name from it — every existing client call site (and this item's own new
+  subscription, which would have failed identically) silently subscribed
+  to a field name matching nothing the server exposes, with no error, just
+  no data ever arriving. Fixed by lowercasing the event type (never
+  `AppId`) inside those two functions; the existing
+  `subscriptionBuilder.spec.ts` assertions that had encoded the WRONG
+  (mixed-case) expected behavior were corrected in the same pass.
+  **A second real gap found while verifying, not assumed satisfied**:
+  every Subscription this client opens is hardcoded `mode: TAIL` with no
+  persisted resume cursor — a client that reconnects after having missed
+  an event while disconnected (the literal case this item's own "offline
+  at the moment erasure fires" exit criterion names) has no guaranteed
+  catch-up today. Pre-existing since "MVVM Client" (item 21), not
+  introduced here; tracked as a new `TODO.md` item rather than silently
+  claimed satisfied by this item's own exit-criteria text.
+  3 new Vitest specs added to `useEntityViewActions.spec.ts` (scope filter
+  reaches the query; an `EntityErasureRequested` event purges the matching
+  cached entity; a differently-targeted one leaves an unrelated entity
+  untouched) plus 2 new `subscriptionBuilder.spec.ts` specs for `where`-
+  clause serialization — `client-web` now has 31 passing Vitest specs (up
+  from 26), `vue-tsc -b` and `vite build` both clean.
+- **Next up**: item 29, "Digital Sign-Off for Regulated Actions (Step-Up
+  Authentication)" (`ADR-066`) — depends on Auth + Orchestration (Done).
 
 ## How to resume cold
 
