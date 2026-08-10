@@ -85,7 +85,7 @@ provider they apply to — not "code written."
 | 24 | [SPIFFE/SPIRE Service Identity & API Gateway](#spiffespire-service-identity--api-gateway) | Auth + Orchestration, Sharding & Replication, Streaming Channels, Binary Attachments, GraphQL-Only Query Layer, Ticket Exchange | Done |
 | 25 | [Data Lifecycle & Backup/Restore Classification](#data-lifecycle--backuprestore-classification) | Scaffolding & Persistence | Done |
 | 26 | [GDPR/CCPA Erasure via Crypto-Shredding](#gdprccpa-erasure-via-crypto-shredding) | Property-Level Masking, Entity-Centric Core Rebuild | Done |
-| 27 | [PCI-DSS Sensitive Authentication Data Registration Boundary](#pci-dss-sensitive-authentication-data-registration-boundary) | Schema Registry, Property-Level Masking | Not started |
+| 27 | [PCI-DSS Sensitive Authentication Data Registration Boundary](#pci-dss-sensitive-authentication-data-registration-boundary) | Schema Registry, Property-Level Masking | Done |
 | 28 | [Local/Edge Active-Scope Caching & Erasure Invalidation](#localedge-active-scope-caching--erasure-invalidation) | MVVM Client, GDPR/CCPA Erasure | Not started |
 | 29 | [Digital Sign-Off for Regulated Actions](#digital-sign-off-for-regulated-actions-step-up-authentication) | Auth + Orchestration, ActorId on Every Event | Not started |
 | 30 | [Control-Plane Actions as Reserved Events](#control-plane-actions-as-reserved-events) | Schema Registry, Entity-Centric Core Rebuild | Not started |
@@ -321,7 +321,7 @@ duplicating the whole core graph's nodes here.
 ```plantuml
 @startuml BuildPlan_Additions
 state "GDPR/CCPA Erasure" as a2 #palegreen
-state "PCI-DSS SAD Boundary" as a3
+state "PCI-DSS SAD Boundary" as a3 #palegreen
 state "Local/Edge Cache Scoping\n+ Erasure Invalidation" as a4
 state "Digital Sign-Off\n(Step-Up Auth)" as a5 {
   state "ActorId on Every Event\n(already satisfied by Auth + Orchestration)" as a1 #palegreen
@@ -2113,6 +2113,17 @@ different `IErasureKeyStore` backends (e.g. one on HashiCorp Vault, one
 on the local store) both work correctly in the same running deployment.
 
 ## PCI-DSS Sensitive Authentication Data Registration Boundary
+
+**Status: Done.** Implemented as one added check in the existing
+`MaskingSchemaValidator.ValidateMaskingConfig` (`EventStore.SchemaRegistry`)
+— no new project, no publish-path change, no Host wiring — since
+registration-time rejection already flows through `SchemaRegistryService.
+RegisterAsync`'s existing `errors` list exactly the same way every other
+`x-masking` structural check does. Verified via
+`SchemaRegistryScenarioAssertions` (2 new scenarios: a `PCI-SAD`-declaring
+field is rejected `400`; the ordinary `"PCI"` classification for a full
+card number still registers successfully, unaffected) across SQLite/
+PostgreSQL/SQL Server.
 
 **Scope**: `ADR-071` — a reserved `x-masking.regulatoryClassification`
 value, `"PCI-SAD"`, that makes schema **registration** (not publish) hard-

@@ -61,6 +61,20 @@ internal static class MaskingSchemaValidator
                 errors.Add($"x-masking.{field} must be a non-empty string if present");
         }
 
+        // ADR-071 -- the one regulatoryClassification value that hard-rejects
+        // registration outright, rather than being recorded as inert metadata
+        // like every other value (including the ordinary "PCI" full-PAN
+        // classification, unaffected). PCI-DSS Requirement 3.2/3.2.2 requires
+        // Sensitive Authentication Data (CVV2/CVC2/CID, full track data, PIN
+        // blocks) never be persisted at all, even encrypted -- masking and
+        // ADR-057 crypto-shredding both still write the real value into
+        // Payload first, which this design's append-only architecture cannot
+        // avoid; the only compliant answer is refusing to register a schema
+        // that declares this value in the first place.
+        if (masking["regulatoryClassification"]?.GetValue<string>() == "PCI-SAD")
+            errors.Add("x-masking.regulatoryClassification \"PCI-SAD\" can never be registered -- " +
+                "PCI-DSS Sensitive Authentication Data must never be persisted, under any circumstances, including encrypted");
+
         // ADR-057 -- optional; when present, resolves to the EntityId owning
         // THIS field's DEK when it differs from the event's own default
         // EntityId (the cross-entity classified-data case). Same safe-subset

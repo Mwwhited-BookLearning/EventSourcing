@@ -55,6 +55,8 @@ public class SchemaRegistrySqlServerTests
         await SchemaRegistryScenarioAssertions.RegisteringAnUnsupportedMaskingStrategyIsRejected(service);
         await SchemaRegistryScenarioAssertions.RegisteringPartialRevealAndHashStrategiesSucceeds(service);
         await SchemaRegistryScenarioAssertions.RegulatoryMetadataFieldsAreOptional(service);
+        await SchemaRegistryScenarioAssertions.RegisteringAFieldDeclaringPciSadIsRejected(service);
+        await SchemaRegistryScenarioAssertions.RegisteringTheOrdinaryPciClassificationForAFullCardNumberSucceedsUnaffectedByTheSadBoundary(service);
         await SchemaRegistryScenarioAssertions.ListingSupportsTopAndSkipPagination(service);
     }
 
