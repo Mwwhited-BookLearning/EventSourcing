@@ -45,7 +45,7 @@ builder.Services.Configure<OriginIdOptions>(builder.Configuration.GetSection("Or
 builder.Services.Configure<PeerSyncOptions>(builder.Configuration.GetSection("PeerSync"));
 builder.Services.Configure<PeerSyncClientOptions>(builder.Configuration.GetSection("PeerSyncClient"));
 builder.Services.AddHttpClient("DevIdp", c => c.BaseAddress = new Uri(builder.Configuration["Authentication:Authority"]!));
-builder.Services.AddHttpClient("PeerSync"); // no fixed BaseAddress -- PeerSyncClient dials each peer's own absolute address
+builder.AddSpiffePeerIdentity(); // ADR-048 -- wires the "PeerSync" named HttpClient with this Host's own SVID; no fixed BaseAddress here either, same reason as before
 
 var app = builder.Build();
 

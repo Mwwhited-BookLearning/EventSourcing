@@ -25,6 +25,24 @@ here instead of inlining.
 
 ## Active
 
+- **`docs/06-solution-structure.md`'s "Project layout" sketch names one
+  deployable per internal service (`EventStore.Router`/`.Fold`/`.GraphQL`/
+  `.Sharding`/`.PeerSync`/`.Streaming`/`.Attachments`, etc.), but the
+  actual build consolidated most of these into library namespaces inside
+  each `EventStore.Host.<Provider>` process, and named the peer-sync one
+  `EventStore.Replication`, not `EventStore.PeerSync` as sketched.**
+  Noticed while building "SPIFFE/SPIRE Service Identity & API Gateway"
+  (item 24) checking ADR-048's own flagged propagation gap ("each
+  internal service project [needs] its SPIFFE ID convention annotated");
+  a one-line propagation note was added at that file's top explaining the
+  divergence for THIS item's own purposes, but reconciling the entire
+  project-layout listing against what every prior item actually built
+  (which projects are real deployables vs. consolidated namespaces, which
+  names changed) is a larger sweep across many already-Done items, not
+  scoped to one. Investigate: read every `src/EventStore.*` project's own
+  `Program.cs` (or its absence) against this file's list, correct each
+  mismatch, and add a standing note about which split is authoritative
+  going forward.
 - **`FollowSubscriptionTypeModule`'s dynamic Subscription schema
   (`EventStore.GraphQL`, "GraphQL-Only Query Layer") only reflects
   whatever event types are active at Host warmup — registering a new

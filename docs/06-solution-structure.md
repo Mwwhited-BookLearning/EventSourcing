@@ -16,6 +16,33 @@ line-by-line against every ADR past `ADR-041` (explicit composition) —
 treat any code sketch not explicitly called out above with the same
 "concept accurate, exact wiring unverified" caution as before.
 
+**Propagation note, added building "SPIFFE/SPIRE Service Identity & API
+Gateway" (`08-build-plan.md` item 24)**: the actual build consolidated
+several of the separate deployables sketched below into fewer processes
+rather than splitting one-project-per-service as literally drawn --
+`EventStore.PeerSync` below was actually implemented as
+`EventStore.Replication`, wired directly into each `EventStore.Host.
+<Provider>` process rather than as its own deployable; the same is true
+of `EventStore.Router`/`.Fold`/`.GraphQL`/`.Sharding`/`.Streaming`/
+`.Attachments`, each a library namespace inside the same Host process,
+not an independently-addressable service. `EventStore.Gateway` (YARP)
+and `EventStore.Spiffe` (the SPIFFE ID/trust-bundle/mTLS primitives
+`ADR-048` decided) **are** real, separate projects, matching this
+sketch. Per `ADR-048`'s own Consequences ("each internal service project
+[needs] its SPIFFE ID convention" annotated here): every SVID this
+build actually issues follows `spiffe://<trust-domain>/eventstore/
+<service-name>` exactly as decided, but since there is no real internal
+network hop *between* Router/Fold/GraphQL/etc. in the actual build (they
+share one process), SPIFFE/mTLS is only actually exercised at the two
+genuine inter-process boundaries that exist: peer-to-peer sync between
+independent site deployments, and the Gateway-to-Host hop this item
+introduces -- both share one internal mTLS listener per Host
+(`EventStore.Host.Core.SpiffePeerIdentity`/`SpiffePeerOptions.
+AllowedInternalCallerPaths`), not one per sketched service below.
+Reconciling this entire file's project list against what was actually
+built, item by item, is a larger, separate cleanup -- tracked in
+`TODO.md`, not attempted here.
+
 **Deployment-unit note, added this session (`ADR-075`)**: this whole
 solution builds to **one dedicated deployment per tenant** (the silo
 model), not one shared deployment serving many tenants. `AppId` below

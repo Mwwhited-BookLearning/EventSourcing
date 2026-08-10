@@ -1,8 +1,12 @@
+using System.Net;
+using System.Net.Security;
 using EventStore.Dpop;
+using EventStore.Spiffe;
 using EventStore.TicketExchange;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Hosting;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -74,6 +78,46 @@ public static class HostCoreExtensions
             .WithHeaders("Authorization", "Content-Type")));
 
         return builder;
+    }
+
+    // ADR-048 -- moves ADR-033's peer-sync authentication onto SPIFFE/SPIRE's
+    // cross-trust-domain federation, additively: PeerSyncClient/PeerSyncEndpoints'
+    // existing OAuth2/DPoP bearer auth (ADR-006/017, "peer:sync" scope) is
+    // completely unaffected; this adds a SECOND, transport-level mTLS gate on
+    // top of it, on the internal listener specifically. Returns the identity
+    // so a Host's own Program.cs can log/inspect it if needed -- most callers
+    // just need the side effect (HttpClient + optional Kestrel listener wired).
+    public static SpiffePeerIdentity AddSpiffePeerIdentity(this WebApplicationBuilder builder)
+    {
+        var options = builder.Configuration.GetSection("Spiffe").Get<SpiffePeerOptions>() ?? new SpiffePeerOptions();
+        var identity = new SpiffePeerIdentity(options);
+
+        builder.Services.AddSingleton(identity);
+
+        // Attaches this Host's own SVID as a client certificate on every
+        // outbound peer-sync call (PeerSyncClient) -- built before Build(),
+        // so the exact same identity object also configures the internal
+        // listener below, rather than resolving a second instance from DI.
+        builder.Services.AddHttpClient("PeerSync")
+            .ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler
+            {
+                SslOptions = new SslClientAuthenticationOptions { ClientCertificates = [identity.SvidCertificate] },
+            });
+
+        // null (the default) means no internal mTLS listener starts at all --
+        // e.g. under test, or a single-site deployment with no peers. A real
+        // multi-site deployment sets Spiffe:InternalListenPort explicitly.
+        if (options.InternalListenPort is { } port)
+        {
+            var allowedPaths = options.AllowedInternalCallerPaths.Count > 0
+                ? options.AllowedInternalCallerPaths
+                : [options.ServicePath];
+            builder.WebHost.ConfigureKestrel(kestrel => kestrel.ListenInternalMtls(
+                new IPEndPoint(IPAddress.Any, port), identity.SvidCertificate, identity.TrustBundle,
+                id => allowedPaths.Contains(id.Path)));
+        }
+
+        return identity;
     }
 
     public static WebApplication MapEventStoreCommonEndpoints(this WebApplication app)
