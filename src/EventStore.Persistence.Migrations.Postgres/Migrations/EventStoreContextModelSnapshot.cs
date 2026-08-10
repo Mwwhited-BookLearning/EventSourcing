@@ -348,6 +348,23 @@ namespace EventStore.Persistence.Migrations.Postgres.Migrations
                     b.ToTable("FeatureFlags");
                 });
 
+            modelBuilder.Entity("EventStore.Domain.LeaderElection.LeaderLease", b =>
+                {
+                    b.Property<string>("WorkerRole")
+                        .HasColumnType("text");
+
+                    b.Property<DateTimeOffset>("LeaseExpiresAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("LeaseHolderId")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.HasKey("WorkerRole");
+
+                    b.ToTable("LeaderLeases");
+                });
+
             modelBuilder.Entity("EventStore.Domain.Replication.PeerSyncCursor", b =>
                 {
                     b.Property<string>("PeerId")

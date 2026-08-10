@@ -2,6 +2,7 @@ using EventStore.Domain.AccessLog;
 using EventStore.Domain.EntityStore;
 using EventStore.Domain.EventLog;
 using EventStore.Domain.FeatureFlags;
+using EventStore.Domain.LeaderElection;
 using EventStore.Domain.Replication;
 using EventStore.Domain.SchemaRegistry;
 using EventStore.Domain.Streaming;
@@ -43,6 +44,7 @@ public class EventStoreContext(DbContextOptions<EventStoreContext> options, IJso
     public DbSet<EntityErasureKey> EntityErasureKeys => Set<EntityErasureKey>();
     public DbSet<LocalErasureKeyMaterial> LocalErasureKeyMaterials => Set<LocalErasureKeyMaterial>();
     public DbSet<FeatureFlagState> FeatureFlags => Set<FeatureFlagState>(); // ADR-077
+    public DbSet<LeaderLease> LeaderLeases => Set<LeaderLease>(); // ADR-078
 
     protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder) =>
         optionsBuilder.ReplaceService<IModelCacheKeyFactory, ProviderAwareModelCacheKeyFactory>();
@@ -222,6 +224,11 @@ public class EventStoreContext(DbContextOptions<EventStoreContext> options, IJso
         modelBuilder.Entity<FeatureFlagState>(e =>
         {
             e.HasKey(x => new { x.AppId, x.Key }); // ADR-077
+        });
+
+        modelBuilder.Entity<LeaderLease>(e =>
+        {
+            e.HasKey(x => x.WorkerRole); // ADR-078 -- deployment-wide, not AppId-scoped
         });
     }
 

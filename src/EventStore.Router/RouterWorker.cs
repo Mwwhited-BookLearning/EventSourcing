@@ -5,6 +5,7 @@ using EventStore.Domain.EntityStore;
 using EventStore.Domain.EventLog;
 using EventStore.Domain.SchemaRegistry;
 using EventStore.Erasure;
+using EventStore.LeaderElection;
 using EventStore.Persistence;
 using EventStore.SchemaRegistry;
 using EventStore.Upcasting;
@@ -31,18 +32,62 @@ public class RouterWorker(IServiceScopeFactory scopeFactory, ILogger<RouterWorke
 {
     private static readonly TimeSpan PollInterval = TimeSpan.FromMilliseconds(200);
 
+    // ADR-078 -- "Router" is one of the 4 named worker roles. Its own
+    // UpcastMaterializer calls (below, inline in RunOnceAsync) run ONLY as
+    // part of this SAME tick, under this SAME lease -- there is no
+    // separate, independently-schedulable "UpcastMaterializer" process in
+    // this build (see this class's own header comment: Router and
+    // UpcastMaterializer were combined into one worker, not two deployables,
+    // this build stage). A second lease row for it would protect nothing
+    // that this one doesn't already cover, so none is created; documented
+    // explicitly rather than silently deviating from ADR-078's literal
+    // 4-independent-roles framing.
+    private const string WorkerRole = "Router";
+    private static readonly TimeSpan LeaseDuration = TimeSpan.FromSeconds(5);
+    // Renewing on every 200ms tick would add a write query to the lease
+    // table 5x more often than necessary and, under heavy parallel test
+    // load, measurably slowed down the real fold work sharing the same
+    // SQLite file -- found only by running this (several HTTP tests'
+    // OWN fixed wait margins started missing intermittently). Renewing at
+    // the halfway point of the lease's own duration leaves 2-3 retry
+    // attempts before it could actually expire, comfortable margin against
+    // a single transient failure, while cutting the added overhead by 90%.
+    private static readonly TimeSpan RenewInterval = TimeSpan.FromSeconds(2.5);
+
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
+        var isLeader = false;
+        var nextRenewalAt = DateTimeOffset.MinValue; // forces an immediate first acquisition attempt
         while (!stoppingToken.IsCancellationRequested)
         {
             try
             {
                 using var scope = scopeFactory.CreateScope();
                 var db = scope.ServiceProvider.GetRequiredService<EventStoreContext>();
-                var schemaRegistry = scope.ServiceProvider.GetRequiredService<SchemaRegistryService>();
-                var upcastChain = scope.ServiceProvider.GetRequiredService<UpcastChain>();
-                var erasureKeyService = scope.ServiceProvider.GetRequiredService<ErasureKeyService>();
-                await RunOnceAsync(db, schemaRegistry, upcastChain, erasureKeyService, stoppingToken);
+
+                if (DateTimeOffset.UtcNow >= nextRenewalAt)
+                {
+                    var leaderElection = scope.ServiceProvider.GetRequiredService<LeaderElectionService>();
+                    var acquired = await leaderElection.TryAcquireOrRenewAsync(WorkerRole, LeaseHolderId.Current, LeaseDuration, stoppingToken);
+                    if (acquired != isLeader)
+                    {
+                        isLeader = acquired;
+                        logger.LogInformation("Router {State} the {WorkerRole} lease", isLeader ? "acquired" : "lost", WorkerRole);
+                    }
+                    // A failed attempt retries next TICK (200ms), not next
+                    // scheduled renewal -- losing/never having the lease
+                    // should recover as fast as this worker's own poll
+                    // interval allows, not wait out a stale renewal clock.
+                    nextRenewalAt = isLeader ? DateTimeOffset.UtcNow + RenewInterval : DateTimeOffset.MinValue;
+                }
+
+                if (isLeader)
+                {
+                    var schemaRegistry = scope.ServiceProvider.GetRequiredService<SchemaRegistryService>();
+                    var upcastChain = scope.ServiceProvider.GetRequiredService<UpcastChain>();
+                    var erasureKeyService = scope.ServiceProvider.GetRequiredService<ErasureKeyService>();
+                    await RunOnceAsync(db, schemaRegistry, upcastChain, erasureKeyService, stoppingToken);
+                }
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
             {

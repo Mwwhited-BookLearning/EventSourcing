@@ -1,6 +1,7 @@
 using EventStore.Domain.EventLog;
 using EventStore.Domain.Replication;
 using EventStore.Inbox;
+using EventStore.LeaderElection;
 using EventStore.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
@@ -27,18 +28,44 @@ public class PeerSyncWorker(
 {
     private static readonly TimeSpan PollInterval = TimeSpan.FromMilliseconds(500);
 
+    // ADR-078 -- one of the 4 named worker roles, independent of "Router"'s
+    // own lease; either can be held/lost without affecting the other.
+    private const string WorkerRole = "PeerSyncOutboxPump";
+    private static readonly TimeSpan LeaseDuration = TimeSpan.FromSeconds(5);
+    // See RouterWorker's own identical field for why this isn't renewed on
+    // every tick.
+    private static readonly TimeSpan RenewInterval = TimeSpan.FromSeconds(2.5);
+
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
+        var isLeader = false;
+        var nextRenewalAt = DateTimeOffset.MinValue; // forces an immediate first acquisition attempt
         while (!stoppingToken.IsCancellationRequested)
         {
             try
             {
                 using var scope = scopeFactory.CreateScope();
                 var db = scope.ServiceProvider.GetRequiredService<EventStoreContext>();
-                var client = scope.ServiceProvider.GetRequiredService<PeerSyncClient>();
-                var originIdOptions = scope.ServiceProvider.GetRequiredService<IOptions<OriginIdOptions>>();
-                var syncOptions = scope.ServiceProvider.GetRequiredService<IOptions<PeerSyncOptions>>();
-                await RunOnceAsync(db, client, addressBook, originIdOptions.Value.OriginId, syncOptions.Value.BatchSize, stoppingToken);
+
+                if (DateTimeOffset.UtcNow >= nextRenewalAt)
+                {
+                    var leaderElection = scope.ServiceProvider.GetRequiredService<LeaderElectionService>();
+                    var acquired = await leaderElection.TryAcquireOrRenewAsync(WorkerRole, LeaseHolderId.Current, LeaseDuration, stoppingToken);
+                    if (acquired != isLeader)
+                    {
+                        isLeader = acquired;
+                        logger.LogInformation("Peer sync {State} the {WorkerRole} lease", isLeader ? "acquired" : "lost", WorkerRole);
+                    }
+                    nextRenewalAt = isLeader ? DateTimeOffset.UtcNow + RenewInterval : DateTimeOffset.MinValue;
+                }
+
+                if (isLeader)
+                {
+                    var client = scope.ServiceProvider.GetRequiredService<PeerSyncClient>();
+                    var originIdOptions = scope.ServiceProvider.GetRequiredService<IOptions<OriginIdOptions>>();
+                    var syncOptions = scope.ServiceProvider.GetRequiredService<IOptions<PeerSyncOptions>>();
+                    await RunOnceAsync(db, client, addressBook, originIdOptions.Value.OriginId, syncOptions.Value.BatchSize, stoppingToken);
+                }
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
             {

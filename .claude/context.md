@@ -1330,9 +1330,31 @@ stale numbers here are worse than none)*
   hazard) went smoothly — verified across SQLite/PostgreSQL/SQL Server
   (`FeatureFlagScenarioAssertions.cs`) plus a dedicated poll/reload-token
   test (`EventLogFeatureFlagConfigurationProviderSqliteTests.cs`).
-- **Next up**: item 32, "Leader Election via Database-Backed Lease"
-  (`ADR-078`) — depends on Entity-Centric Core Rebuild (Done) and Sharding
-  & Replication (Done).
+- **Item 32, "Leader Election via Database-Backed Lease" (`ADR-078`), is
+  Done.** `LeaderLease` (`EventStore.Domain.LeaderElection`) + migration
+  across all 3 providers, plus a new `EventStore.LeaderElection` project
+  (`LeaderElectionService.TryAcquireOrRenewAsync`, a compare-and-swap over
+  a role's own lease row via `ExecuteUpdateAsync`). Wired into `RouterWorker`
+  (`"Router"`) and `PeerSyncWorker` (`"PeerSyncOutboxPump"`); each renews at
+  roughly half its lease duration, not every poll tick (renewing every
+  tick measurably slowed real fold work under heavy parallel test load
+  sharing one SQLite file — found only by running this). Real bug found
+  and fixed: EF Core's SQLite provider failed to translate `ExecuteUpdate`
+  with a combined OR/inequality WHERE clause at all; split into two
+  separate equality-only statements (renew, then steal-if-expired) instead.
+  **One deliberate narrowing** against the build-plan's own literal
+  "4 independent roles" text: `UpcastMaterializer` does NOT get its own
+  lease — it was built (item 14) as inline logic called directly from
+  `RouterWorker`'s own tick, never independently schedulable, so a second
+  lease would protect nothing "Router"'s own lease doesn't already cover.
+  The webhook outbox pump (the 4th named role) stays deferred to "Outbound
+  Webhooks," as the build-plan's own Depends-on paragraph already
+  anticipated. Verified across SQLite/PostgreSQL/SQL Server.
+- **Next up**: item 33, "Per-Tenant Rate Limiting" — depends on Auth +
+  Orchestration (Done) and SPIFFE/SPIRE Service Identity & API Gateway
+  (Done); `ADR-058` left its own configuration source deliberately open,
+  which item 31's feature-flag mechanism now gives a concrete, available
+  (not mandatory) answer to.
 
 ## How to resume cold
 
