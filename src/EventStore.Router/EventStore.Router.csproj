@@ -2,6 +2,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\EventStore.Erasure\EventStore.Erasure.csproj" />
+    <ProjectReference Include="..\EventStore.LeaderElection\EventStore.LeaderElection.csproj" />
     <ProjectReference Include="..\EventStore.Persistence\EventStore.Persistence.csproj" />
     <ProjectReference Include="..\EventStore.SchemaRegistry\EventStore.SchemaRegistry.csproj" />
     <ProjectReference Include="..\EventStore.Upcasting\EventStore.Upcasting.csproj" />

@@ -90,7 +90,7 @@ provider they apply to — not "code written."
 | 29 | [Digital Sign-Off for Regulated Actions](#digital-sign-off-for-regulated-actions-step-up-authentication) | Auth + Orchestration, ActorId on Every Event | Done |
 | 30 | [Control-Plane Actions as Reserved Events](#control-plane-actions-as-reserved-events) | Schema Registry, Entity-Centric Core Rebuild | Done |
 | 31 | [Dynamic Feature-Flag Configuration Provider](#dynamic-feature-flag-configuration-provider) | Scaffolding & Persistence, Control-Plane Actions as Reserved Events | Done |
-| 32 | [Leader Election via Database-Backed Lease](#leader-election-via-database-backed-lease) | Entity-Centric Core Rebuild, Sharding & Replication | Not started |
+| 32 | [Leader Election via Database-Backed Lease](#leader-election-via-database-backed-lease) | Entity-Centric Core Rebuild, Sharding & Replication | Done |
 | 33 | [Per-Tenant Rate Limiting](#per-tenant-rate-limiting) | Auth + Orchestration, SPIFFE/SPIRE Service Identity & API Gateway | Not started |
 | 34 | [Outbound Webhooks](#outbound-webhooks) | Publish API, Auth + Orchestration, Property-Level Masking, Leader Election | Not started |
 | 35 | [Data Residency (Region Pinning)](#data-residency-region-pinning) | Sharding & Replication, Multi-Tenancy | Not started |
@@ -230,7 +230,7 @@ state "Local Services" as tierLocal {
   }
   state "Control-Plane Reserved Events" as a6 #palegreen
   state "Dynamic Feature Flags" as a7 #palegreen
-  state "Leader Election" as a8
+  state "Leader Election" as a8 #palegreen
   state "Per-Tenant Rate Limiting" as a9
   state "Release Engineering,\nPackaging & Supply Chain" as a15
   state "Lineage Export +\nBitemporal Playback" as a17
@@ -2646,6 +2646,50 @@ and lose their leases completely independently; a test asserting that
 election running) does *not* prevent two concurrent fold-worker instances
 from double-applying the same event, demonstrating why this ADR's
 mechanism is doing independent work, not duplicating `ADR-024`.
+
+**Status: Done, with one deliberate narrowing against this section's own
+literal "tested across all three roles that exist at this point" text.**
+`LeaderLease` (`EventStore.Domain.LeaderElection`) plus its migration
+across all 3 providers landed first (the piece `ADR-078`'s own
+Consequences flagged as the only remaining gap). A new
+`EventStore.LeaderElection` project holds `LeaderElectionService` — one
+method, `TryAcquireOrRenewAsync`, a compare-and-swap over a role's own
+`LeaderLease` row via EF Core's `ExecuteUpdateAsync` (portable across all
+3 providers once split into two equality-only statements — renew, then
+steal — rather than one combined OR/inequality predicate, which EF Core's
+SQLite provider failed to translate at all; found only by running this) —
+and `LeaseHolderId` (a per-process identity, host name + process id).
+Wired into `RouterWorker` (`WorkerRole: "Router"`) and `PeerSyncWorker`
+(`WorkerRole: "PeerSyncOutboxPump"`): each renews at roughly half its own
+lease duration rather than on every poll tick (renewing every tick was
+tried first and measurably slowed the real fold work under heavy parallel
+test load sharing one SQLite file — found only by running this), and each
+skips its real work entirely for any tick where it doesn't currently hold
+the lease.
+
+**`UpcastMaterializer` does NOT get its own separate `LeaderLease` row,
+unlike this section's own literal 4-independent-roles framing.** Building
+the actual mechanism surfaced a real, pre-existing architectural fact this
+section's own exit-criteria text was written without: `UpcastMaterializer`
+was built (`Upcast Materialization + Downcast`, item 14) as inline logic
+called directly from `RouterWorker`'s own tick — `ReconcileBacklogAsync`/
+`TryMaterializeAsync` run only as part of `RouterWorker`'s own execution,
+never independently schedulable. A second lease row for it would protect
+nothing "Router"'s own lease doesn't already cover, since it can never run
+outside that same lease. The webhook outbox pump (the 4th named role)
+remains deferred to "Outbound Webhooks," as this section's own Depends-on
+paragraph already anticipated — that item will call
+`EventStore.LeaderElection` the same way Router/peer-sync do, once its own
+worker exists.
+
+Verified with `LeaderElectionScenarioAssertions.cs` across SQLite,
+PostgreSQL, and SQL Server: an acquire/renew/steal-on-expiry cycle for a
+single role, two roles held completely independently, and a direct,
+deterministic reproduction of the "lost update" hazard leader election
+prevents (two uncoordinated `EventStoreContext` instances, each holding a
+stale read of the same `EntityStoreRow`, both saving — one update silently
+overwrites the other) standing in for a genuine multi-threaded race, which
+would be flaky to assert on directly.
 
 ## Per-Tenant Rate Limiting
 

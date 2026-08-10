@@ -1,4 +1,5 @@
 using EventStore.Inbox;
+using EventStore.LeaderElection;
 using EventStore.Persistence;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
@@ -10,6 +11,7 @@ namespace EventStore.Replication;
 public static class PeerSyncEndpoints
 {
     public static IServiceCollection AddReplication(this IServiceCollection services) => services
+        .AddLeaderElection()
         .AddSingleton<PeerAddressBook>()
         .AddScoped<PeerSyncClient>()
         .AddHostedService<PeerSyncWorker>();
