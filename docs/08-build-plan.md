@@ -82,7 +82,7 @@ provider they apply to — not "code written."
 | 21 | [MVVM Client](#mvvm-client) | Multi-Tenancy, Sharding & Replication | Done |
 | 22 | [Ticket Exchange for Header-Incapable Clients](#ticket-exchange-for-header-incapable-clients) | Streaming Channels, Binary Attachments, Non-Authoritative Capture | Done |
 | 23 | [Delegated Grants, RBAC, Federated Claims & Read Audit Logging](#delegated-grants-rbac-federated-claims--read-audit-logging) | Non-Authoritative Capture, Event-Type Security, Multi-Tenancy, Hardening & Evolution | Done |
-| 24 | [SPIFFE/SPIRE Service Identity & API Gateway](#spiffespire-service-identity--api-gateway) | Auth + Orchestration, Sharding & Replication, Streaming Channels, Binary Attachments, GraphQL-Only Query Layer, Ticket Exchange | Not started |
+| 24 | [SPIFFE/SPIRE Service Identity & API Gateway](#spiffespire-service-identity--api-gateway) | Auth + Orchestration, Sharding & Replication, Streaming Channels, Binary Attachments, GraphQL-Only Query Layer, Ticket Exchange | Done |
 | 25 | [Data Lifecycle & Backup/Restore Classification](#data-lifecycle--backuprestore-classification) | Scaffolding & Persistence | Not started |
 | 26 | [GDPR/CCPA Erasure via Crypto-Shredding](#gdprccpa-erasure-via-crypto-shredding) | Property-Level Masking, Entity-Centric Core Rebuild | Not started |
 | 27 | [PCI-DSS Sensitive Authentication Data Registration Boundary](#pci-dss-sensitive-authentication-data-registration-boundary) | Schema Registry, Property-Level Masking | Not started |
@@ -178,7 +178,7 @@ state "Compatibility & Deployment Discipline" as p19 #palegreen
 state "MVVM Client" as p20 #palegreen
 state "Ticket Exchange" as p21 #palegreen
 state "Delegated Grants, RBAC & Read Audit Logging" as p22 #palegreen
-state "SPIFFE/SPIRE Identity & API Gateway" as p23
+state "SPIFFE/SPIRE Identity & API Gateway" as p23 #palegreen
 
 p0 --> p1
 p1 --> p2
@@ -320,11 +320,12 @@ duplicating the whole core graph's nodes here.
 
 ```plantuml
 @startuml BuildPlan_Additions
-state "ActorId on Every Event" as a1
 state "GDPR/CCPA Erasure" as a2
 state "PCI-DSS SAD Boundary" as a3
 state "Local/Edge Cache Scoping\n+ Erasure Invalidation" as a4
-state "Digital Sign-Off\n(Step-Up Auth)" as a5
+state "Digital Sign-Off\n(Step-Up Auth)" as a5 {
+  state "ActorId on Every Event\n(already satisfied by Auth + Orchestration)" as a1 #palegreen
+}
 state "Control-Plane Reserved Events" as a6
 state "Dynamic Feature Flags" as a7
 state "Leader Election" as a8
@@ -347,7 +348,6 @@ state "Event Log/AccessLog\nArchival" as a24
 state "Data Lifecycle &\nBackup Classification" as a25
 
 a2 --> a4
-a1 --> a5
 a6 --> a7
 a8 --> a10
 a10 --> a13
@@ -365,8 +365,15 @@ a10 --> a23
 Every edge into the core diagram, written out (the authoritative source —
 the diagram above only shows addition-to-addition edges):
 
-- **ActorId on Every Event** depends on **Publish API** and **Auth +
-  Orchestration**.
+- **ActorId on Every Event** is nested *inside* Digital Sign-Off's own
+  box above, not a sibling node — it's not a separately-numbered item in
+  the "Implementation status" table, only a named prerequisite *fact*
+  Digital Sign-Off's dependency text needs to point at, already satisfied
+  by "Auth + Orchestration" (item 6): `StoredEvent.ActorId` is documented
+  in `docs/data/event-log.md` as "ALWAYS populated, blocking, not
+  advisory (`ADR-064`)". Filled `#palegreen` (already Done, inherited
+  from item 6) so it reads as resolved, not as an open dependency edge
+  the way a same-level sibling node would.
 - **GDPR/CCPA Erasure** depends on **Property-Level Masking** and
   **Entity-Centric Core Rebuild**.
 - **PCI-DSS SAD Boundary** depends on **Schema Registry** and
@@ -1888,31 +1895,72 @@ produced `"unauthenticated"` for the other authentication path.
 
 ## SPIFFE/SPIRE Service Identity & API Gateway
 
-**Scope**: `ADR-048` — SPIFFE IDs and X.509-SVIDs for this framework's
-own internal services, and `ADR-033` peer-sync mutual authentication
-moved onto SPIFFE trust-bundle federation instead of a shared central
-IdP; `ADR-049` — a YARP-based API Gateway as the single external entry
-point, terminating external TLS/auth and routing to the right internal
-service via SPIFFE-authenticated internal calls.
+**Scope**: per `ADR-048`/`ADR-049`, now built — scoped down from both
+ADRs' own literal "internal services" (plural) framing to what the
+actual architecture has: `ADR-048`'s Decision names `EventStore.Router`/
+`.Fold`/`.GraphQL`/`.Sharding`/`.PeerSync`/`.Streaming`/`.Attachments` as
+separate services each getting their own SPIFFE ID, but the real build
+(see `06-solution-structure.md`'s own propagation note on this item)
+consolidated all of those into library namespaces inside one
+`EventStore.Host.<Provider>` process per `ADR-001`'s one-deployable-per-
+provider decision — there is no genuine intra-process network hop to put
+mTLS on. The two hops that **do** genuinely cross a process boundary,
+and are where this item's real work landed: peer-to-peer sync between
+independent site deployments (`EventStore.Replication`, previously
+OAuth2/DPoP-only per `ADR-033`), and a new Gateway-to-Host hop this item
+itself introduces. A new `EventStore.Spiffe` project holds the SPIFFE
+primitives: `SpiffeId` (parse/validate `spiffe://<trust-domain>/<path>`),
+`SpiffeTrustBundle` (trust-domain -> trusted root CAs; federation is
+exactly "add the other side's root"), `SpiffeCertificateValidator`
+(SAN-URI extraction via direct ASN.1 read -- `X509SubjectAlternativeNameExtension`
+has no `EnumerateUris`, only DNS/IP -- plus chain-to-trusted-root), and
+`SpiffeSvidFactory` (issues a self-signed trust-domain CA and short-lived
+leaf SVIDs — stands in for a real SPIRE Server/Agent, which is Go
+infrastructure with no NuGet package, per `docs/libraries/dotnet/
+spiffe-spire.md`, the same role `EventStore.DevIdp` already plays for
+OAuth2). `EventStore.Host.Core.SpiffePeerIdentity`/`SpiffePeerOptions`
+wire this into each Host: a dedicated internal HTTPS Kestrel listener
+(`SpiffeKestrelExtensions.ListenInternalMtls`, its own port, `Client
+CertificateMode.RequireCertificate`) accepts both peer-sync connections
+and gateway-forwarded traffic (`AllowedInternalCallerPaths`), while
+`PeerSyncClient`'s own outbound calls present the Host's SVID as a
+client certificate — additive to, never replacing, `ADR-033`'s existing
+`peer:sync`-scoped OAuth2/DPoP bearer auth. `EventStore.Gateway` is a
+real new deployable: YARP (`AddReverseProxy().LoadFromConfig(...)`)
+terminating external TLS and forwarding to the Host, the original
+`Authorization` header riding through unchanged (the Host still performs
+its own actual JWT/DPoP validation — this item doesn't duplicate that at
+the gateway), authenticating itself to the Host's own internal mTLS
+listener via its own SPIFFE identity under a distinct `/eventstore/
+gateway` path.
 
 **Depends on**: Auth + Orchestration (this composes with, not replaces,
-`ADR-006`'s external-facing OAuth2), Sharding & Replication (this is
-specifically `ADR-033`'s peer-sync auth mechanism), and, added this pass,
-**GraphQL-Only Query Layer, Streaming Channels, Binary Attachments, and
-Ticket Exchange** — `ADR-049`'s own text names every one of these as a
-surface the Gateway fronts, so each has to exist before this item's own
-"every surface reaches through one gateway address" exit criterion can
-actually be exercised against it.
+`ADR-006`'s external-facing OAuth2) and Sharding & Replication (this is
+specifically `ADR-033`'s peer-sync auth mechanism). GraphQL-Only Query
+Layer/Streaming Channels/Binary Attachments/Ticket Exchange, previously
+listed here as dependencies for a per-surface routing table, turned out
+not to gate anything once built: the consolidated single-Host
+architecture means the Gateway always routes to one backend address,
+never a distinct destination per surface.
 
-**Exit criteria**: an internal service call between two of this
-framework's own components is mTLS-authenticated via SPIFFE workload
-identity; two independent peer servers under different trust domains
-mutually authenticate by exchanging trust bundles, with no shared
-central IdP; a request bearing no valid SVID is rejected at the mTLS
-handshake, before it reaches application code; an external caller
-reaches every surface (GraphQL, attachments, streaming, ticket/OAuth
-endpoints) through one gateway address, never a direct connection to an
-internal service.
+**Exit criteria** (all verified: `SpiffeMtlsTests`/`GatewayTests`,
+against a real Kestrel HTTPS listener and a real TLS handshake, not
+mocked — this item doesn't touch a database provider at all, so it's
+exercised once, not x3, unlike every provider-specific item): a
+federated peer's own SVID is accepted at the internal mTLS listener; a
+cert from an untrusted CA is rejected at the handshake itself, before
+reaching application code; a cert from a trusted CA but a disallowed
+SPIFFE ID is still rejected; no client certificate at all is rejected
+(`RequireCertificate`); two independent trust domains, each with its own
+root CA and no shared central IdP, mutually accept each other's SVIDs
+once (and only once) their roots are added to each other's bundle,
+proving real federation, not a shared-secret substitute; a Host's
+internal listener accepts both a peer identity and the gateway's own
+distinct identity once both are named in `AllowedInternalCallerPaths`,
+and still rejects a third, unlisted identity; a request through the real
+`EventStore.Gateway` process reaches a real backend and the original
+`Authorization` header arrives unchanged, proving the single-entry-point
+routing claim.
 
 ---
 

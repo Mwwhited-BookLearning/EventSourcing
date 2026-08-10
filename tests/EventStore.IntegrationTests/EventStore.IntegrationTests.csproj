@@ -31,6 +31,7 @@
     <ProjectReference Include="..\..\src\EventStore.ViewRegistry\EventStore.ViewRegistry.csproj" />
     <ProjectReference Include="..\..\src\EventStore.Inbox\EventStore.Inbox.csproj" />
     <ProjectReference Include="..\..\src\EventStore.Derivation\EventStore.Derivation.csproj" />
+    <ProjectReference Include="..\..\src\EventStore.Spiffe\EventStore.Spiffe.csproj" />
     <ProjectReference Include="..\..\src\EventStore.Masking\EventStore.Masking.csproj" />
     <ProjectReference Include="..\..\src\EventStore.Projections.Abstractions\EventStore.Projections.Abstractions.csproj" />
     <ProjectReference Include="..\..\src\EventStore.Projections.Host\EventStore.Projections.Host.csproj" />
@@ -48,6 +49,7 @@
          top-level-statement `Program` class in the global namespace,
          so referencing both unaliased is an ambiguous-type compile error. -->
     <ProjectReference Include="..\..\src\EventStore.DevIdp\EventStore.DevIdp.csproj" Aliases="DevIdpAssembly" />
+    <ProjectReference Include="..\..\src\EventStore.Gateway\EventStore.Gateway.csproj" Aliases="GatewayAssembly" />
   </ItemGroup>
 
 </Project>

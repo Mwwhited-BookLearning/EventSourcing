@@ -954,10 +954,65 @@ stale numbers here are worse than none)*
   own "GraphQL-Only Query Layer" AND this item's own Built-scope notes
   rather than silently dropped, no later item's exit criteria names
   either one yet.
-- **Next up**: item 24, "SPIFFE/SPIRE Service Identity & API Gateway"
-  (`ADR-048`/`049`) — depends on Auth + Orchestration (Done), Sharding &
-  Replication (Done), GraphQL-Only Query Layer (Done), Streaming
-  Channels (Done), Binary Attachments (Done), Ticket Exchange (Done).
+- **Item 24, "SPIFFE/SPIRE Service Identity & API Gateway," is Done** —
+  scoped down from `ADR-048`'s own literal "internal services" (plural)
+  framing once it became clear the actual build never split `Router`/
+  `Fold`/`GraphQL`/`Sharding`/`PeerSync`/`Streaming`/`Attachments` into
+  separate deployables at all (they're library namespaces inside one
+  `EventStore.Host.<Provider>` process, per `ADR-001`) — confirmed by
+  checking every `src/EventStore.*` project for its own `Program.cs`
+  before writing any code, not assumed from the ADR's own prose. The two
+  genuine inter-process boundaries that actually exist — peer-to-peer
+  sync between independent site deployments, and a new Gateway-to-Host
+  hop this item itself introduces — are where the real work landed.
+  New `EventStore.Spiffe` project: `SpiffeId` (parse/validate `spiffe://
+  <trust-domain>/<path>`), `SpiffeTrustBundle` (trust-domain -> trusted
+  root CAs), `SpiffeCertificateValidator` (chain-to-trusted-root +
+  SAN-URI SPIFFE ID match), `SpiffeSvidFactory` (self-signed CA + short-
+  lived leaf SVID issuance — stands in for a real SPIRE Server/Agent, Go
+  infrastructure with no NuGet package, the same role `EventStore.DevIdp`
+  plays for OAuth2), `SpiffeKestrelExtensions.ListenInternalMtls` (a
+  dedicated internal HTTPS Kestrel listener, `ClientCertificateMode.
+  RequireCertificate`, rejecting at the TLS handshake itself). `EventStore.
+  Host.Core` gained `SpiffePeerIdentity`/`SpiffePeerOptions` (self-issues
+  this Host's own SVID at startup, builds a trust bundle from configured
+  `TrustedPeers`, optionally starts the internal listener) and
+  `AddSpiffePeerIdentity`, wired into all 3 Hosts' `Program.cs` in place
+  of the old bare `AddHttpClient("PeerSync")` call — additive to, never
+  replacing, `ADR-033`'s existing `peer:sync`-scoped OAuth2/DPoP bearer
+  auth (`EventStore.Replication.PeerSyncClient` now also presents its
+  SVID as a client certificate). New `EventStore.Gateway` deployable:
+  real YARP (`AddReverseProxy().LoadFromConfig(...)`), forwarding to the
+  Host with the original `Authorization` header intact (the Host still
+  does its own real JWT/DPoP validation — not duplicated at the gateway),
+  authenticating itself to the Host's internal mTLS listener under its
+  own `/eventstore/gateway` SPIFFE path — the same listener peer-sync
+  uses, not a second one, via a new `AllowedInternalCallerPaths` list.
+  **Two real bugs found only by actually running code, not by reading it
+  back**: `X509SubjectAlternativeNameExtension` has no `EnumerateUris()`
+  (only `EnumerateDnsNames`/`EnumerateIPAddresses`) — fixed with a direct
+  `System.Formats.Asn1.AsnReader` read of the SAN extension's raw DER for
+  the `[6] uniformResourceIdentifier` GeneralName; and Kestrel's
+  `UseHttps(Action<HttpsConnectionAdapterOptions>)` extension lives in
+  `Microsoft.AspNetCore.Hosting.ListenOptionsHttpsExtensions`, not
+  alongside `ListenOptions` itself — a missing `using` the compiler error
+  didn't make obvious, found by reflecting the assembly directly rather
+  than guessing. **A cross-project drift found and partly corrected**:
+  `docs/06-solution-structure.md`'s "Project layout" sketch names
+  `EventStore.PeerSync` — the real project is `EventStore.Replication`;
+  a propagation note was added at that file's top explaining the
+  divergence (this item's own scope), with the full project-by-project
+  reconciliation tracked as its own `TODO.md` item rather than attempted
+  in one pass. All exit criteria verified against a REAL Kestrel HTTPS
+  listener and real TLS handshakes (`SpiffeMtlsTests`, 2 scenarios:
+  federation accept/reject including untrusted-CA and wrong-identity-
+  but-trusted-CA cases, plus the new shared-listener `AllowedInternal
+  CallerPaths` mechanism) and a real `EventStore.Gateway` process
+  (`GatewayTests`, 1 scenario: routing + header-forwarding). Deliberately
+  exercised once, not ×3 — this item never touches a database provider
+  at all, unlike every provider-specific item so far.
+- **Next up**: item 25, "Data Lifecycle & Backup/Restore Classification"
+  (`ADR-056`) — depends on Scaffolding & Persistence (Done).
 
 ## How to resume cold
 
@@ -972,7 +1027,7 @@ stale numbers here are worse than none)*
    narrative.
 5. `dotnet build EventStore.slnx` and `dotnet test tests/EventStore.IntegrationTests` —
    confirm the build/test baseline the last session left still holds
-   before adding to it (72 tests should pass). Requires Docker running
+   before adding to it (84 tests should pass). Requires Docker running
    (Testcontainers for Postgres/SQL Server) and the SDK pinned in
    `global.json`. A full multi-provider run has a known, pre-existing,
    unrelated flake — see `TODO.md`'s entry — where one or two SQL Server
