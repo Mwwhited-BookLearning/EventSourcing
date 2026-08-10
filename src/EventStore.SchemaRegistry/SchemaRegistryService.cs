@@ -93,6 +93,22 @@ public class SchemaRegistryService(
             EnumFallbackSchemaValidator.Validate(schemaObject, errors);
         }
 
+        // ADR-066 -- naming neither AcrValues nor MaxAge is a RequiredSignature
+        // that enforces nothing at all, always genuinely a request mistake
+        // (the schema author meant to require SOME step-up), not a
+        // legitimate "no-op" configuration -- rejected the same way a
+        // present-but-empty x-masking config is elsewhere in this file.
+        RequiredSignature? requiredSignature = null;
+        if (request.RequiredSignature is { } requiredSignatureRequest)
+        {
+            if (requiredSignatureRequest.AcrValues.Count == 0 && requiredSignatureRequest.MaxAge is null)
+                errors.Add("requiredSignature must set at least one of acrValues or maxAge");
+            else if (requiredSignatureRequest.MaxAge is { } maxAge && maxAge <= 0)
+                errors.Add($"requiredSignature.maxAge must be a positive number of seconds (got: {maxAge})");
+            else
+                requiredSignature = new RequiredSignature { AcrValues = requiredSignatureRequest.AcrValues, MaxAge = requiredSignatureRequest.MaxAge };
+        }
+
         // ADR-018 -- an alias that doesn't name an actual property of the
         // destination (this registration's own) schema, or an expression that
         // fails to parse, is rejected 400 at registration time. This narrows,
@@ -152,6 +168,7 @@ public class SchemaRegistryService(
             DowncastToPrevious = request.DowncastToPrevious,
             RejectionBehavior = rejectionBehavior,
             FilterableFields = filterableFields,
+            RequiredSignature = requiredSignature,
         };
         db.EventTypeDefinitions.Add(definition);
 

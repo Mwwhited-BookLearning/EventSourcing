@@ -26,7 +26,8 @@ internal static class AuthScenarioAssertions
     // clients generates its own asymmetric key pair") -- DevIdpSeeder plays
     // the client's role too, since no separate client process exists in
     // this repo (see that seeder's own comment).
-    public static async Task<(string Token, DpopKeyPair Key)> GetTokenAsync(HttpClient devIdpClient, string clientId, string clientSecret, string scope, string? appId = null)
+    public static async Task<(string Token, DpopKeyPair Key)> GetTokenAsync(
+        HttpClient devIdpClient, string clientId, string clientSecret, string scope, string? appId = null, string? acr = null)
     {
         var key = DevIdpSeeder.GetClientKeyPair(clientId);
         var tokenUrl = new Uri(devIdpClient.BaseAddress!, "/connect/token").ToString();
@@ -43,6 +44,13 @@ internal static class AuthScenarioAssertions
         // completely unaffected.
         if (appId is not null)
             form["app_id"] = appId;
+        // "Digital Sign-Off" (ADR-066) -- this dev/POC IdP's own step-up
+        // simulation, same opt-in shape as app_id above: a real IdP would
+        // only ever grant a given acr after actually performing that
+        // authentication method, this one just takes the caller's word for
+        // it (Program.cs's own comment explains why).
+        if (acr is not null)
+            form["acr"] = acr;
 
         using var request = new HttpRequestMessage(HttpMethod.Post, "/connect/token")
         {

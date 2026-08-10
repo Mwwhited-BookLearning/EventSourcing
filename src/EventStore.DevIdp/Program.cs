@@ -231,6 +231,33 @@ app.MapPost("/connect/token", async (
     // AppId-scoped): every EXISTING client_credentials caller that never
     // passes app_id is completely unaffected, since this whole block is
     // skipped when it's absent.
+    // ADR-066 -- dev-only step-up simulation, opt-in via a new, non-standard
+    // "acr" form parameter, the same "opt-in, every existing caller
+    // unaffected" shape "app_id" above already established. A real IdP
+    // only ever grants a given acr value after ACTUALLY performing the
+    // corresponding authentication method (password re-entry, WebAuthn,
+    // ...); this dev/POC IdP has no interactive login at all for a
+    // client_credentials (machine) caller to step up through, so it just
+    // takes the caller's word for it -- the same "accept what's asserted,
+    // no real verification" posture this IdP already takes for several
+    // other dev-only simplifications (its own file header). auth_time is
+    // set to the moment this token is issued, matching a real step-up's
+    // own "just re-authenticated" semantics for RFC 9470's max_age check.
+    var acr = (string?)request.GetParameter("acr");
+    if (!string.IsNullOrEmpty(acr))
+    {
+        identity.SetClaim(Claims.AuthenticationContextReference, acr);
+        // OpenIddict's own ValidateSignInDemand handler requires auth_time
+        // to carry a genuinely numeric ClaimValueType -- found only by
+        // running this against the real pipeline ("the auth_time claim...
+        // is malformed or isn't of the expected type"), not by reading the
+        // claim-setting code back. The plain SetClaim(string, string)
+        // overload used for "acr" above sets a string-typed claim; the
+        // dedicated SetClaim(string, long?) overload is what actually
+        // produces the numeric type this specific claim needs.
+        identity.SetClaim(Claims.AuthenticationTime, (long?)DateTimeOffset.UtcNow.ToUnixTimeSeconds());
+    }
+
     var rbacAppId = (string?)request.GetParameter("app_id");
     if (!string.IsNullOrEmpty(rbacAppId))
     {

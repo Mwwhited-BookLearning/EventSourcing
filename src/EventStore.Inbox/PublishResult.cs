@@ -38,5 +38,18 @@ public abstract record PublishResult
 
     public sealed record UnresolvedParent(IReadOnlyList<Guid> MissingParentEventIds) : PublishResult; // 400 -- Strict-mode parent link, ADR-005, unaffected by ADR-023
 
+    // ADR-066 -- 401, RFC 9470's own challenge shape (WWW-Authenticate,
+    // built at the endpoint layer since that's an HTTP-response concern,
+    // not this service's). A real, distinguishable rejection before
+    // storage, the same category as Forbidden above -- about
+    // authentication STRENGTH, never about the event's own content.
+    public sealed record StepUpRequired(IReadOnlyList<string> AcrValues, int? MaxAge) : PublishResult;
+
+    // ADR-066 -- 400: the step-up itself was satisfied, but Meaning (21 CFR
+    // Part 11 §11.50's third linked element) was absent -- an incomplete
+    // envelope, never persisted with an advisory flag the way an ordinary
+    // unknown-schema publish would be.
+    public sealed record MissingSignatureMeaning : PublishResult;
+
     private PublishResult() { }
 }

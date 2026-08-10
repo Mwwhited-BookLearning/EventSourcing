@@ -19,8 +19,14 @@ public record RegisterEventTypeRequest(
     string? UpcastFromPrevious,
     string? DowncastToPrevious,
     string? EntityType = null,
-    string? RejectionBehavior = null); // Annotate | Compensate -- ADR-035, "Non-Authoritative Capture"; null keeps EventTypeDefinition's own Annotate default
+    string? RejectionBehavior = null, // Annotate | Compensate -- ADR-035, "Non-Authoritative Capture"; null keeps EventTypeDefinition's own Annotate default
+    // ADR-066 -- null (the default) means no sign-off required, completely
+    // unaffected; set means a publish targeting this type must satisfy an
+    // RFC 9470 step-up challenge first.
+    RequiredSignatureRequest? RequiredSignature = null);
 
 public record FilterableFieldRequest(string JsonPath, string DataType, bool IsIndexed);
 
 public record RequiredClaimRequest(string Direction, string Claim);
+
+public record RequiredSignatureRequest(List<string> AcrValues, int? MaxAge);

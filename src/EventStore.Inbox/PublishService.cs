@@ -1,6 +1,7 @@
 using System.Security.Claims;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using EventStore.Domain.AccessLog;
 using EventStore.Domain.EventLog;
 using EventStore.Domain.SchemaRegistry;
 using EventStore.Domain.Streaming;
@@ -79,6 +80,29 @@ public class PublishService(
         if (!RequiredClaimEvaluator.HasAny(activeDefinition.RequiredClaims, ClaimDirection.Publish, user))
             return new PublishResult.Forbidden();
 
+        // ADR-066 -- RFC 9470 step-up: a signature-required type short-
+        // circuits before storage on insufficient authentication strength,
+        // the same "real, distinguishable rejection" posture the claims
+        // check above already has -- never a content/shape rejection,
+        // which ADR-023 still forbids. Checked against the ACTIVE
+        // definition, same reasoning as RequiredClaims above.
+        string? acr = null;
+        if (activeDefinition.RequiredSignature is { } requiredSignature)
+        {
+            // JwtBearer's own default MapInboundClaims=true remaps the
+            // token's "acr" claim to this long-form URI before any resolver
+            // ever sees it -- confirmed against JwtSecurityTokenHandler.
+            // DefaultInboundClaimTypeMap, the exact same class of remapping
+            // AccessLogReaderContext.Resolve's own comment already
+            // documents for "sub"/ClaimTypes.NameIdentifier -- both checked
+            // so this works the same whether or not that remapping ran.
+            acr = user.FindFirst("http://schemas.microsoft.com/claims/authnclassreference")?.Value ?? user.FindFirst("acr")?.Value;
+            if (!StepUpSatisfied(user, requiredSignature, acr))
+                return new PublishResult.StepUpRequired(requiredSignature.AcrValues, requiredSignature.MaxAge);
+            if (string.IsNullOrWhiteSpace(request.Meaning))
+                return new PublishResult.MissingSignatureMeaning();
+        }
+
         // ADR-005 -- still real, still blocking (03-api-contracts.md's error
         // table: unaffected by ADR-023). Uses the active version's
         // ParentValidationMode for the same reason as the claims check above.
@@ -111,6 +135,13 @@ public class PublishService(
             request.ReviewPending ? "pending_review" :
             "accepted";
 
+        // ADR-064 -- the verified token subject, for EVERY publish, not just
+        // a self-attested one; AccessLogReaderContext.Resolve's own claim
+        // lookup is reused verbatim (same JWT, same claims, same
+        // JwtBearer-vs-TicketAuthenticationHandler "sub" naming quirk its
+        // own comment explains) rather than duplicated a second time.
+        var actorId = AccessLogReaderContext.Resolve(user).ReaderActorId;
+
         var storedEvent = new StoredEvent
         {
             EventId = eventId,
@@ -129,10 +160,17 @@ public class PublishService(
             ConflictFlag = false, // set by the Router's fold step (ADR-024), never at publish time
             LateArrivalFlag = false, // set by the Router's fold step (ADR-029), never at publish time
             OccurredAt = DateTimeOffset.UtcNow,
-            ActorId = "unauthenticated", // "Auth + Orchestration" doesn't populate this from the token yet
+            ActorId = actorId,
             AttestedActorId = request.AttestedActorId, // ADR-035 -- a CLAIM, never conflated with ActorId above
             AttestedClaims = request.AttestedClaims?.ToJsonString(),
             AuthorityStatus = authorityStatus,
+            // ADR-066 -- set only when this type actually required a
+            // sign-off; SignerId denormalizes ActorId above (kept explicit
+            // rather than implied), Acr records which authentication
+            // context the sign-off was actually performed under.
+            Signature = activeDefinition.RequiredSignature is not null
+                ? new Signature { SignerId = actorId, SignedAt = DateTimeOffset.UtcNow, Meaning = request.Meaning!, Acr = acr! }
+                : null,
             DerivationHopCount = derivationHopCount, // 0 for every ordinary publish; only DerivationWorker ever supplies non-zero (ADR-007, deferred)
             // ADR-031/081 -- a detector's TelemetryPointer, JSON-serialized onto the
             // same plain-text envelope column every other structured metadata field uses.
@@ -181,6 +219,30 @@ public class PublishService(
         existing.PayloadHash == candidateHash
             ? ToAccepted(existing)
             : new PublishResult.Conflict();
+
+    // ADR-066/RFC 9470 -- both checks are independent and additive: an
+    // AcrValues list with no matching acr claim fails regardless of MaxAge,
+    // and a MaxAge with no (or too-old) auth_time fails regardless of acr.
+    // Either half being unconfigured (empty AcrValues, null MaxAge) is
+    // simply never checked -- a RequiredSignature naming only one of the
+    // two is exactly as valid as naming both.
+    private static bool StepUpSatisfied(ClaimsPrincipal user, RequiredSignature requiredSignature, string? acr)
+    {
+        if (requiredSignature.AcrValues.Count > 0 && (acr is null || !requiredSignature.AcrValues.Contains(acr)))
+            return false;
+
+        if (requiredSignature.MaxAge is { } maxAgeSeconds)
+        {
+            var authTimeClaim = user.FindFirst("auth_time")?.Value;
+            if (!long.TryParse(authTimeClaim, out var authTimeUnixSeconds))
+                return false;
+            var authenticatedAt = DateTimeOffset.FromUnixTimeSeconds(authTimeUnixSeconds);
+            if (DateTimeOffset.UtcNow - authenticatedAt > TimeSpan.FromSeconds(maxAgeSeconds))
+                return false;
+        }
+
+        return true;
+    }
 
     // ADR-057 -- resolves EntityId the same way the Router will (activeDefinition's
     // EntityIdField/EntityType, never the declared version's -- ADR-021's identity

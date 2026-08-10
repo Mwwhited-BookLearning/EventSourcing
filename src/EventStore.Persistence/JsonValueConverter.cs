@@ -24,4 +24,18 @@ internal static class JsonValueConverter
         (a, b) => JsonSerializer.Serialize(a, (JsonSerializerOptions?)null) == JsonSerializer.Serialize(b, (JsonSerializerOptions?)null),
         v => JsonSerializer.Serialize(v, (JsonSerializerOptions?)null).GetHashCode(),
         v => v);
+
+    // The single-object counterpart to ListComparer above -- every list-typed
+    // converted property already gets one; RequiredSignature/Signature
+    // (single class instances, not IEnumerable, so ListComparer's own
+    // constraint doesn't fit) did not, a real gap found while testing
+    // "Digital Sign-Off" (ADR-066): EF's default reference-equality change
+    // detection for a converted class-typed property never notices an
+    // in-place mutation of the SAME instance -- only assigning a NEW
+    // instance would have been detected, silently dropping any direct edit
+    // to an already-tracked Signature/RequiredSignature otherwise.
+    public static ValueComparer<T?> NullableComparer<T>() where T : class => new(
+        (a, b) => JsonSerializer.Serialize(a, (JsonSerializerOptions?)null) == JsonSerializer.Serialize(b, (JsonSerializerOptions?)null),
+        v => v == null ? 0 : JsonSerializer.Serialize(v, (JsonSerializerOptions?)null).GetHashCode(),
+        v => v);
 }
