@@ -133,19 +133,31 @@ ordering below:
   they don't gate any single item's own exit criteria the way a real
   build dependency does.
 
-## Dependency overview — original core build (`ADR-001`–`049`)
+## Dependency overview
 
-The graph and the items it describes are unchanged from before this
-session's rework in shape — the corrections this pass made are three
-added edges (Property-Level Masking → Streaming Channels; CQRS
-Projections → Hardening & Evolution; Multi-Tenancy → GraphQL-Only Query
-Layer), two added edges onto Binary Attachments/Non-Authoritative
-Capture, one added edge onto Ticket Exchange, four added edges onto
-SPIFFE/SPIRE, one added edge onto GraphQL-Only Query Layer from Hardening
-& Evolution, and a real revision to MVVM Client's own dependency set
-(Sharding & Replication added; CQRS Projections, Streaming Channels, and
-Binary Attachments removed as ungrounded) — each one traced to specific
-ADR text during the rework and explained at the point it's used below.
+Consolidated into one diagram, this pass, per direct request — previously
+split into two (a core-build graph and an additions-since-`ADR-050`
+graph), on the reasoning that "a single 48-node graph would be denser
+than useful." That reasoning is superseded now, not silently dropped:
+merging them means every cross-edge an addition has onto the core build
+(previously written out only as prose beneath the second diagram) is now
+a real, visible edge in the one graph below, not just a citation — the
+diagram itself is the complete dependency graph, and the prose after it
+explains the *why* behind each edge rather than being the only place a
+cross-edge was recorded at all.
+
+The core-build portion's own graph and the items it describes are
+unchanged in shape from before this session's original rework — that
+pass's own corrections (three added edges: Property-Level Masking →
+Streaming Channels; CQRS Projections → Hardening & Evolution;
+Multi-Tenancy → GraphQL-Only Query Layer; two added edges onto Binary
+Attachments/Non-Authoritative Capture; one added edge onto Ticket
+Exchange; four added edges onto SPIFFE/SPIRE; one added edge onto
+GraphQL-Only Query Layer from Hardening & Evolution; and a real revision
+to MVVM Client's own dependency set — Sharding & Replication added; CQRS
+Projections, Streaming Channels, and Binary Attachments removed as
+ungrounded) are preserved exactly, each still traced to specific ADR text
+at the point it's used below.
 
 **Diagram fill color tracks the same status as the "Implementation
 status" table above, updated in lockstep**: no fill = `Not started`,
@@ -154,7 +166,7 @@ item), `#palegreen` = `Done`. Keep both in sync in the same pass — don't
 let the table move without the diagram, or vice versa.
 
 ```plantuml
-@startuml BuildPlan_CorePhases
+@startuml BuildPlan_All
 state "Scaffolding & Persistence" as p0 #palegreen
 state "Schema Registry" as p1 #palegreen
 state "Publish API" as p2 #palegreen
@@ -179,6 +191,32 @@ state "MVVM Client" as p20 #palegreen
 state "Ticket Exchange" as p21 #palegreen
 state "Delegated Grants, RBAC & Read Audit Logging" as p22 #palegreen
 state "SPIFFE/SPIRE Identity & API Gateway" as p23 #palegreen
+state "GDPR/CCPA Erasure" as a2 #palegreen
+state "PCI-DSS SAD Boundary" as a3 #palegreen
+state "Local/Edge Cache Scoping\n+ Erasure Invalidation" as a4
+state "Digital Sign-Off\n(Step-Up Auth)" as a5 {
+  state "ActorId on Every Event\n(already satisfied by Auth + Orchestration)" as a1 #palegreen
+}
+state "Control-Plane Reserved Events" as a6
+state "Dynamic Feature Flags" as a7
+state "Leader Election" as a8
+state "Per-Tenant Rate Limiting" as a9
+state "Outbound Webhooks" as a10
+state "Data Residency\n(Region Pinning)" as a11
+state "Tenant Federation Mapping" as a12
+state "Bulk Ingestion +\nInterchange Adapters" as a13
+state "Sanctions Screening Seam" as a14
+state "Release Engineering,\nPackaging & Supply Chain" as a15
+state "Signing Secret Rotation" as a16
+state "Lineage Export +\nBitemporal Playback" as a17
+state "RFC 3161 Timestamping" as a18
+state "Pluggable Outbox\nFlush Triggers" as a19
+state "Device Input Integration" as a20
+state "Accessibility Standard" as a21
+state "i18n/l10n Scope" as a22
+state "Mechanism-Level\nOTel Instrumentation" as a23
+state "Event Log/AccessLog\nArchival" as a24
+state "Data Lifecycle &\nBackup Classification" as a25 #palegreen
 
 p0 --> p1
 p1 --> p2
@@ -228,6 +266,64 @@ p14 --> p23
 p15 --> p23
 p18 --> p23
 p21 --> p23
+p8 --> a2
+p11 --> a2
+p1 --> a3
+p8 --> a3
+a2 --> a4
+p20 --> a4
+p5 --> a5
+p1 --> a6
+p11 --> a6
+a6 --> a7
+p0 --> a7
+p11 --> a8
+p16 --> a8
+p5 --> a9
+p23 --> a9
+a8 --> a10
+p2 --> a10
+p5 --> a10
+p8 --> a10
+p16 --> a11
+p12 --> a11
+a13 --> a12
+p12 --> a12
+p5 --> a12
+a10 --> a13
+p2 --> a13
+p17 --> a13
+p0 --> a14
+p17 --> a14
+p0 --> a15
+p19 --> a15
+a10 --> a16
+p5 --> a16
+p3 --> a17
+p11 --> a17
+p20 --> a17
+p18 --> a17
+p8 --> a17
+a2 --> a17
+p22 --> a17
+a5 --> a18
+a17 --> a18
+a17 --> a19
+p20 --> a19
+a19 --> a20
+p20 --> a20
+p17 --> a20
+p20 --> a21
+p20 --> a22
+a10 --> a23
+p10 --> a23
+p16 --> a23
+p11 --> a23
+a17 --> a24
+p15 --> a24
+p22 --> a24
+p10 --> a24
+p0 --> a25
 @enduml
 ```
 
@@ -310,60 +406,11 @@ own text names every one of these as a surface the Gateway fronts, so
 each has to exist before the Gateway can be verified as actually routing
 to it.
 
-## Dependency overview — additions since `ADR-050`
-
-Split into its own diagram deliberately, not merged into the one above —
-a single 48-node graph would be denser than useful. Every edge crossing
-into the diagram above (e.g. an addition depending on "Auth +
-Orchestration") is written as plain text below the diagram rather than
-duplicating the whole core graph's nodes here.
-
-```plantuml
-@startuml BuildPlan_Additions
-state "GDPR/CCPA Erasure" as a2 #palegreen
-state "PCI-DSS SAD Boundary" as a3 #palegreen
-state "Local/Edge Cache Scoping\n+ Erasure Invalidation" as a4
-state "Digital Sign-Off\n(Step-Up Auth)" as a5 {
-  state "ActorId on Every Event\n(already satisfied by Auth + Orchestration)" as a1 #palegreen
-}
-state "Control-Plane Reserved Events" as a6
-state "Dynamic Feature Flags" as a7
-state "Leader Election" as a8
-state "Per-Tenant Rate Limiting" as a9
-state "Outbound Webhooks" as a10
-state "Data Residency\n(Region Pinning)" as a11
-state "Tenant Federation Mapping" as a12
-state "Bulk Ingestion +\nInterchange Adapters" as a13
-state "Sanctions Screening Seam" as a14
-state "Release Engineering,\nPackaging & Supply Chain" as a15
-state "Signing Secret Rotation" as a16
-state "Lineage Export +\nBitemporal Playback" as a17
-state "RFC 3161 Timestamping" as a18
-state "Pluggable Outbox\nFlush Triggers" as a19
-state "Device Input Integration" as a20
-state "Accessibility Standard" as a21
-state "i18n/l10n Scope" as a22
-state "Mechanism-Level\nOTel Instrumentation" as a23
-state "Event Log/AccessLog\nArchival" as a24
-state "Data Lifecycle &\nBackup Classification" as a25 #palegreen
-
-a2 --> a4
-a6 --> a7
-a8 --> a10
-a10 --> a13
-a10 --> a16
-a13 --> a12
-a5 --> a18
-a17 --> a18
-a17 --> a19
-a19 --> a20
-a17 --> a24
-a10 --> a23
-@enduml
-```
-
-Every edge into the core diagram, written out (the authoritative source —
-the diagram above only shows addition-to-addition edges):
+The remainder of this section (the "additions since `ADR-050`" half of
+the same one diagram above) explains the *why* behind each addition's own
+edges — including every edge it draws onto the core-build portion above,
+now drawn directly in the merged diagram rather than only written out
+here as prose:
 
 - **ActorId on Every Event** is nested *inside* Digital Sign-Off's own
   box above, not a sibling node — it's not a separately-numbered item in
