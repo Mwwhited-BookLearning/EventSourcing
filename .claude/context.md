@@ -1269,10 +1269,47 @@ stale numbers here are worse than none)*
   PostgreSQL/SQL Server, plus `DigitalSignOffHttpSqliteTests` (3 real-HTTP
   scenarios: the RFC 9470 challenge header, a real step-up token round
   trip, the `Meaning`-omitted `400`). All pass.
-- **Next up**: item 30, "Control-Plane Actions as Reserved Events"
-  (`ADR-067`) — depends on Schema Registry (Done) and Entity-Centric Core
-  Rebuild (Done); **revises** "Delegated Grants, RBAC & Read Audit
-  Logging"'s (item 23) own storage mechanism.
+- **Item 30, "Control-Plane Actions as Reserved Events" (`ADR-067`), is
+  Done.** `SchemaRegisteredEventType` (new, in `EventStore.SchemaRegistry`)
+  is appended by `SchemaRegistryService.RegisterAsync` alongside its
+  existing direct write (not a replacement — every prior item's tests
+  assume synchronous read-your-own-write registration). A new
+  `EventStore.Rbac` project (`RoleGrantedEventType`/`RoleRevokedEventType`/
+  `PermissionGrantedEventType`/`AppTrustRootRegisteredEventType` +
+  `RbacEndpoints.cs`, wired into all 3 Hosts) is the new Host-side write
+  path for RBAC grants and trust-root registration, gated by
+  `registry:admin`/`registry:trust-admin` (the latter needed a NEW
+  ASP.NET Core policy in `HostCoreExtensions.cs` — it only existed as an
+  OAuth scope before). `EventStore.DevIdp`'s new `RbacProjectionWorker`
+  follows those 4 event types cross-process and folds them into DevIdp's
+  OWN existing `Role`/`UserPermission`/`AppTrustRoot` tables via
+  `RoleService`/`TrustRootService`'s own unchanged, already-idempotent
+  methods (the user's own chosen design: "fold into DevIdp via Follow," not
+  a core-engine `EntityStoreRow` fold — `docs/data/schema-registry.md`'s
+  own `Role`/`UserPermission` section had this wrong from an earlier
+  session and was corrected this pass). 4 of DevIdp's old direct-write
+  `/oauth/*` endpoints are retired; `PUT /oauth/roles` (role bundle
+  definition) and `PUT /oauth/federation-issuers` stay, unaffected — neither
+  is one of `ADR-067`'s 5 named reserved event types. Found and fixed two
+  real, pre-existing concurrency bugs while building this: `DpopKeyPair`
+  wasn't safe for concurrent use from one instance across threads (added a
+  lock), and `FollowClient` held one shared `DpopKeyPair` for its whole
+  lifetime (now generates one per call — nothing in RFC 9449 requires
+  reusing a key across unrelated token+request pairs). **Known gap**
+  (`TODO.md`): the live, cross-process `RbacProjectionWorker` Follow
+  subscription isn't exercised by any test — a `WebApplicationFactory`
+  self-reference-during-startup hazard (`BackgroundService.StartAsync`
+  runs `ExecuteAsync` synchronously inline until its first real await, and
+  the worker's self-referential "DevIdp" HttpClient recursed into its own
+  still-building factory) made it impractical to test live in-process this
+  pass; `DelegatedGrantsRbacFederationHttpSqliteTests.cs`'s two RBAC tests
+  verify the Host's real write path and DevIdp's fold-target methods
+  directly instead. Verified against SQLite only (matching SPIFFE/Gateway's
+  own provider-agnostic precedent).
+- **Next up**: item 31, "Dynamic Feature-Flag Configuration Provider"
+  (`ADR-077`) — depends on Scaffolding & Persistence (Done) and this item;
+  reuses item 30's own reserved-event pattern verbatim (a `FeatureFlagSet`
+  reserved event → `FeatureFlagState` folded table).
 
 ## How to resume cold
 

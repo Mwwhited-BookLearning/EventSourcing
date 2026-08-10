@@ -12,6 +12,16 @@ namespace EventStore.Dpop;
 public sealed class DpopKeyPair
 {
     private readonly ECDsa _key;
+    // ECDsa (specifically ECDsaCng on Windows) is not documented as safe for
+    // concurrent Sign operations against the same instance -- found while
+    // building RbacProjectionWorker (ADR-067), whose 8 concurrent Follow
+    // tail loops originally shared one FollowClient's one DpopKeyPair and
+    // hung indefinitely inside CreateToken, no exception, no timeout.
+    // FollowClient itself was fixed to stop sharing one instance across
+    // concurrent calls (see its own comment) -- this lock stays as cheap,
+    // correct insurance for any other caller that does share one instance
+    // across threads, not the primary fix.
+    private readonly object _signLock = new();
 
     public EcJwk PublicJwk { get; }
     public string Thumbprint { get; }
@@ -70,7 +80,8 @@ public sealed class DpopKeyPair
             },
         };
 
-        return new JsonWebTokenHandler().CreateToken(descriptor);
+        lock (_signLock)
+            return new JsonWebTokenHandler().CreateToken(descriptor);
     }
 
     // The general form CreateProof's own signing logic already needed --
@@ -99,6 +110,7 @@ public sealed class DpopKeyPair
             },
         };
 
-        return new JsonWebTokenHandler().CreateToken(descriptor);
+        lock (_signLock)
+            return new JsonWebTokenHandler().CreateToken(descriptor);
     }
 }

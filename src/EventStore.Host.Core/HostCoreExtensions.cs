@@ -61,6 +61,11 @@ public static class HostCoreExtensions
             .AddPolicy("events:follow", p => p.Requirements.Add(new ScopeRequirement("events:follow")))
             .AddPolicy("events:lineage:read", p => p.Requirements.Add(new ScopeRequirement("events:lineage:read")))
             .AddPolicy("registry:admin", p => p.Requirements.Add(new ScopeRequirement("registry:admin")))
+            // ADR-044 -- deliberately its own policy, not implied by
+            // registry:admin (Program.cs's own comment on this scope
+            // separation, unchanged by "Control-Plane Actions as Reserved
+            // Events" moving AppTrustRoot's write path here from DevIdp).
+            .AddPolicy("registry:trust-admin", p => p.Requirements.Add(new ScopeRequirement("registry:trust-admin")))
             .AddPolicy("telemetry:ingest", p => p.Requirements.Add(new ScopeRequirement("telemetry:ingest")))
             .AddPolicy("telemetry:read", p => p.Requirements.Add(new ScopeRequirement("telemetry:read")))
             .AddPolicy("attachments:ingest", p => p.Requirements.Add(new ScopeRequirement("attachments:ingest")))

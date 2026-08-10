@@ -27,7 +27,7 @@ public static class SchemaRegistryEndpoints
             if (!AppIdScopeEvaluator.CanAdminister(user, request.AppId))
                 return Results.Forbid();
 
-            var result = await service.RegisterAsync(eventType, request, ct);
+            var result = await service.RegisterAsync(eventType, request, ct, user);
             return result switch
             {
                 RegisterEventTypeResult.Success success => Results.Created($"/registry/{eventType}/{success.Version}", new { version = success.Version }),

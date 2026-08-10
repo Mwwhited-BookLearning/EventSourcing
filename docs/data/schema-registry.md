@@ -94,6 +94,21 @@ resolved in `ADR-044`'s Consequences — a narrow `registry:trust-admin`
 scope, separate from `registry:admin` — see
 `../comparisons/trust-root-registration-gate.md` for the full comparison.
 
+**`AppTrustRoot` is a `EventStore.DevIdp`-owned table, folded from a
+reserved control-plane event** — `AppTrustRootRegistered` (`ADR-067`'s
+control-plane-actions-as-reserved-events pattern). The write path moved:
+a Host-side, `registry:trust-admin`-gated Minimal API (`EventStore.Rbac`'s
+`PUT /rbac/trust-roots/{issuerDid}`) publishes the reserved event into the
+core engine's own Event Log; DevIdp's `RbacProjectionWorker` (a
+`BackgroundService`) follows it cross-process via the core engine's own
+Follow API and folds it into this SAME table via `TrustRootService`'s own
+already-idempotent `RegisterAsync`, reused verbatim — only the caller
+changed, from an inbound HTTP request to a Follow consumer. This table
+itself is **not** a core-engine `EntityStoreRow`-folded entity (DevIdp is
+an identity provider process, not part of the core engine) — the fold
+happens entirely within `EventStore.DevIdp`, one level removed from the
+core engine's own generic fold mechanism.
+
 ## Roles (`ADR-046`)
 
 ```csharp
@@ -115,14 +130,27 @@ public class UserPermission
 A named, `AppId`-scoped bundle of the same opaque permission strings
 used everywhere else in this design (`RequiredClaims`' claim values,
 `ADR-008`/`ADR-050`; `ADR-044`'s application-defined permission types).
-**`Role` and `UserPermission` are both core-engine entities, folded from
-reserved control-plane events** — `RoleGranted`/`RoleRevoked` and
-`PermissionGranted` respectively (`ADR-067`'s control-plane-actions-as-
-reserved-events pattern). **Corrected here**: an earlier version of this
-section said role assignment and direct per-user grants were identity-
-provider state, not core-engine data — `ADR-046` originally took that
-position but `ADR-067` (written later) explicitly superseded it, and
-this file was never updated to match until now. The IdP still expands a
+**`Role` and `UserPermission` are both `EventStore.DevIdp`-owned tables
+(identity-provider state, per `ADR-046`'s original position), and the role-
+*assignment*/direct-*grant* halves are folded from reserved control-plane
+events** — `RoleGranted`/`RoleRevoked` and `PermissionGranted`
+respectively (`ADR-067`'s control-plane-actions-as-reserved-events
+pattern); `Role`'s own permission-*bundle definition* (what a role NAME
+contains) stays a direct, synchronous DevIdp write (`PUT /oauth/roles`,
+unaffected by `ADR-067` — it names exactly 5 reserved event types, and a
+role's own bundle definition isn't one of them). **Corrected here**: an
+earlier version of this section claimed `Role`/`UserPermission` became
+core-engine entities under `ADR-067` — building the actual mechanism
+(this session) confirmed the fold happens entirely inside
+`EventStore.DevIdp` itself: a Host-side, scope-gated Minimal API
+(`EventStore.Rbac`'s `RbacEndpoints.cs`) publishes the reserved events
+into the core engine's own Event Log, and DevIdp's own
+`RbacProjectionWorker` (a `BackgroundService`) follows them cross-process
+via the core engine's Follow API, folding into these SAME tables via
+`RoleService`'s own already-idempotent `AssignRoleAsync`/`RevokeRoleAsync`/
+`GrantDirectPermissionAsync`, reused verbatim — only the caller changed,
+from an inbound HTTP request to a Follow consumer. There is no core-engine
+`EntityStoreRow` involved anywhere in this fold. The IdP still expands a
 user's roles plus any direct grants into one flattened claim set at
 token issuance; every claim check in this design (`ADR-008`, `ADR-043`,
 `ADR-044`) is unchanged and unaware whether a claim arrived via a role,

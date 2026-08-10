@@ -66,7 +66,10 @@ internal static class ReplicationScenarioAssertions
         // the same underlying database -- the append above already
         // durably committed, so there is nothing "in flight" to lose.
         await using var reopened = reopenSiteA();
-        var stillPending = await reopened.Events.AsNoTracking().Where(e => e.AppId == appId).ToListAsync();
+        // Scoped to "orderplaced" specifically, not every event under this
+        // AppId -- ADR-067's own SchemaRegistered audit event legitimately
+        // also exists here, from RegisterOrderPlaced's own registration above.
+        var stillPending = await reopened.Events.AsNoTracking().Where(e => e.AppId == appId && e.EventType == "orderplaced").ToListAsync();
         Assert.AreEqual(1, stillPending.Count, "the durable Events table itself IS the fault/abend/restart-tolerant outbox -- nothing queued is lost");
 
         // No PeerSyncCursor exists yet for "site-b" -- resuming sync after

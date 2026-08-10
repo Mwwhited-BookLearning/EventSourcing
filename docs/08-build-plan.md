@@ -88,7 +88,7 @@ provider they apply to — not "code written."
 | 27 | [PCI-DSS Sensitive Authentication Data Registration Boundary](#pci-dss-sensitive-authentication-data-registration-boundary) | Schema Registry, Property-Level Masking | Done |
 | 28 | [Local/Edge Active-Scope Caching & Erasure Invalidation](#localedge-active-scope-caching--erasure-invalidation) | MVVM Client, GDPR/CCPA Erasure | Done |
 | 29 | [Digital Sign-Off for Regulated Actions](#digital-sign-off-for-regulated-actions-step-up-authentication) | Auth + Orchestration, ActorId on Every Event | Done |
-| 30 | [Control-Plane Actions as Reserved Events](#control-plane-actions-as-reserved-events) | Schema Registry, Entity-Centric Core Rebuild | Not started |
+| 30 | [Control-Plane Actions as Reserved Events](#control-plane-actions-as-reserved-events) | Schema Registry, Entity-Centric Core Rebuild | Done |
 | 31 | [Dynamic Feature-Flag Configuration Provider](#dynamic-feature-flag-configuration-provider) | Scaffolding & Persistence, Control-Plane Actions as Reserved Events | Not started |
 | 32 | [Leader Election via Database-Backed Lease](#leader-election-via-database-backed-lease) | Entity-Centric Core Rebuild, Sharding & Replication | Not started |
 | 33 | [Per-Tenant Rate Limiting](#per-tenant-rate-limiting) | Auth + Orchestration, SPIFFE/SPIRE Service Identity & API Gateway | Not started |
@@ -228,7 +228,7 @@ state "Local Services" as tierLocal {
   state "Digital Sign-Off\n(Step-Up Auth)" as a5 #palegreen {
     state "ActorId on Every Event\n(already satisfied by Auth + Orchestration)" as a1 #palegreen
   }
-  state "Control-Plane Reserved Events" as a6
+  state "Control-Plane Reserved Events" as a6 #palegreen
   state "Dynamic Feature Flags" as a7
   state "Leader Election" as a8
   state "Per-Tenant Rate Limiting" as a9
@@ -2477,6 +2477,52 @@ link; `EventTypeDefinition`/`AppTrustRoot`/`Role`/`UserPermission` reads
 are served from folded read models that reconstruct identically via a
 full replay from `SequenceNumber 0` (also now backed by an explicit
 replay-rebuild scenario in `features/auth.md`).
+
+**Status: Done, with three deliberate narrowings against this section's own
+literal text, each reasoned through and recorded in code comments at the
+point of the decision, not silently dropped:**
+- **`EventTypeDefinition`'s own write path was NOT rearchitected onto
+  `SchemaRegistered`** — it stays a direct, synchronous write
+  (`SchemaRegistryService.RegisterAsync`); `SchemaRegistered` is appended
+  alongside it as a genuine, hash-chained, lineage-traceable audit record,
+  not a replacement mechanism. Every prior build-plan item's own tests
+  assume synchronous read-your-own-write registration, which an async
+  fold would break.
+- **`Role`/`UserPermission`/`AppTrustRoot` are folded by `EventStore.DevIdp`'s
+  own new `RbacProjectionWorker`, not by the core engine's `EntityStoreRow`
+  mechanism this section's own Scope text points to** — those three tables
+  are DevIdp-owned (an identity provider, not part of the core engine), so
+  there is no `EntityStoreRow` to fold into; the new Host-side
+  `EventStore.Rbac` project (`RbacEndpoints.cs`) publishes the 4 RBAC
+  reserved events (`RoleGranted`/`RoleRevoked`/`PermissionGranted`/
+  `AppTrustRootRegistered`, gated by `registry:admin`/`registry:trust-admin`
+  + `AppIdScopeEvaluator`), and `RbacProjectionWorker` follows them
+  cross-process, folding into DevIdp's existing tables via
+  `RoleService`/`TrustRootService`'s own already-idempotent methods,
+  reused verbatim. `RoleGranted`/`RoleRevoked` and `PermissionGranted` use
+  a synthetic composite `AssignmentKey`/`GrantKey` `EntityIdField`
+  (`actorId:roleName`/`actorId:permission`), not this section's own
+  `{appId}:role:{roleId}`-shaped example, since a role/permission can be
+  granted to many actors independently and a single per-role/per-permission
+  key would let one actor's grant silently overwrite another's.
+  `AppTrustRootRegistered` fits the literal example shape directly
+  (`$.IssuerDid`, one record per `(AppId, IssuerDid)`, no composite needed).
+  `PUT /oauth/roles` (what a role NAME bundles) and `PUT /oauth/federation-
+  issuers` stay genuine DevIdp-internal configuration, unaffected — neither
+  is one of `ADR-067`'s own 5 named reserved event types.
+- **The lineage-parent-linking and replay-rebuild exit criteria above are
+  NOT yet backed by a dedicated test** — `tests/EventStore.IntegrationTests/
+  DelegatedGrantsRbacFederationHttpSqliteTests.cs`'s two RBAC-mutation
+  scenarios verify the Host's real write path (scope-gated publish through
+  `/rbac/*`) and DevIdp's own fold-target methods directly, but simulate
+  the fold rather than running the live `RbacProjectionWorker` inside the
+  test process — a `WebApplicationFactory` self-reference-during-startup
+  hazard made that impractical this pass (worked around in production code
+  with a real startup delay, but never proven against a live, in-process
+  factory pair). Tracked in `TODO.md`, including the lineage-parent-linking
+  and replay-rebuild coverage gap. Verified against SQLite only, matching
+  the SPIFFE/Gateway items' own provider-agnostic precedent (this item's
+  Host-side and DevIdp-side mechanisms are equally provider-agnostic).
 
 ## Dynamic Feature-Flag Configuration Provider
 

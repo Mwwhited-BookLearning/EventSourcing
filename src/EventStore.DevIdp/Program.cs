@@ -2,6 +2,7 @@ using System.Security.Claims;
 using System.Security.Cryptography;
 using EventStore.DevIdp;
 using EventStore.Dpop;
+using EventStore.Projections.Host;
 using EventStore.TicketExchange;
 using EventStore.Ucan;
 using Microsoft.AspNetCore; // GetOpenIddictServerRequest() -- OpenIddictServerAspNetCoreHelpers
@@ -39,6 +40,26 @@ builder.Services.AddScoped<TrustRootService>(); // ADR-044
 builder.Services.AddScoped<RoleService>(); // ADR-046
 builder.Services.AddScoped<FederationService>(); // ADR-047
 builder.Services.AddHttpClient(); // FederationService's own JWKS fetch
+
+// ADR-067 -- RbacProjectionWorker's own Follow consumer. Registered
+// unconditionally (HttpClient BaseAddress resolution is deferred until a
+// request actually needs one), but the worker itself is a no-op whenever
+// Rbac:AppIds is empty/unconfigured (the default) -- every pre-existing
+// DevIdp-only test (no Host counterpart, no Rbac config section at all)
+// is completely unaffected.
+// Placeholder fallback BaseAddress, never a "!"-asserted required config
+// value -- found only by running this: a real WebApplicationFactory-based
+// test overrides BOTH the primary handler (TestServer-routed) AND this
+// BaseAddress via a SECOND AddHttpClient("Follow"/"DevIdp", ...) call in its
+// own ConfigureServices, but HttpClientFactoryOptions runs every registered
+// HttpClientActions delegate for a given name in order -- if THIS one threw
+// on a null config value, the test's own override never got a chance to run.
+builder.Services.AddHttpClient("Follow", c => c.BaseAddress = new Uri(builder.Configuration["Rbac:HostBaseUrl"] ?? "http://unconfigured-rbac-host/"));
+builder.Services.AddHttpClient("DevIdp", c => c.BaseAddress = new Uri(builder.Configuration["Rbac:DevIdpBaseAddress"] ?? "http://unconfigured-rbac-devidp/"));
+builder.Services.Configure<FollowClientOptions>(builder.Configuration.GetSection("Rbac:Client"));
+builder.Services.Configure<RbacProjectionOptions>(builder.Configuration.GetSection("Rbac"));
+builder.Services.AddSingleton<FollowClient>();
+builder.Services.AddHostedService<RbacProjectionWorker>();
 
 builder.Services.AddOpenIddict()
     .AddCore(options => options.UseEntityFrameworkCore().UseDbContext<DevIdpDbContext>())
@@ -550,38 +571,22 @@ app.MapPost("/oauth/introspect", async (HttpContext httpContext, TicketStore tic
 // "registry:admin" gate the CORE ENGINE's own registry endpoints
 // (SchemaRegistryEndpoints, ADR-044's Consequences), never these
 // DevIdp-internal management calls.
-app.MapPut("/oauth/trust-roots", async (RegisterTrustRootRequest request, TrustRootService trustRootService) =>
-{
-    await trustRootService.RegisterAsync(request.AppId, request.IssuerDid, request.Description);
-    return Results.Created();
-});
-
+//
+// ADR-067 retires 4 of this surface's original 6 endpoints: registering a
+// trust root, assigning/revoking a role, and granting a direct permission
+// are now real, hash-chained, scope-gated mutations published through
+// EventStore.Rbac's own Host-side endpoints (RbacEndpoints.cs) -- this
+// process only ever OBSERVES those via RbacProjectionWorker's Follow
+// subscription now, folding into the SAME RoleService/TrustRootService
+// tables below, unchanged. "PUT /oauth/roles" (defining what permissions a
+// role NAME bundles) and "PUT /oauth/federation-issuers" are deliberately
+// NOT retired -- ADR-067's own Decision names exactly 5 reserved event
+// types (SchemaRegistered + the 4 above); a role's own permission-bundle
+// definition and a federation issuer registration are neither one, and
+// stay genuine DevIdp-internal configuration, same as ever.
 app.MapPut("/oauth/roles", async (DefineRoleRequest request, RoleService roleService) =>
 {
     await roleService.DefineRoleAsync(request.AppId, request.RoleName, request.Permissions);
-    return Results.Created();
-});
-
-app.MapPost("/oauth/role-assignments", async (RoleAssignmentRequest request, RoleService roleService) =>
-{
-    await roleService.AssignRoleAsync(request.ActorId, request.AppId, request.RoleName);
-    return Results.Created();
-});
-
-// DELETE requests don't support an inferred body parameter in Minimal APIs
-// (only POST/PUT/PATCH do) -- found only by actually running this
-// ("System.InvalidOperationException: Body was inferred but the method
-// does not allow inferred body parameters"). Query parameters instead,
-// the conventional REST shape for a DELETE anyway.
-app.MapDelete("/oauth/role-assignments", async (string actorId, string appId, string roleName, RoleService roleService) =>
-{
-    await roleService.RevokeRoleAsync(actorId, appId, roleName);
-    return Results.NoContent();
-});
-
-app.MapPost("/oauth/user-permissions", async (UserPermissionRequest request, RoleService roleService) =>
-{
-    await roleService.GrantDirectPermissionAsync(request.ActorId, request.AppId, request.Permission);
     return Results.Created();
 });
 
@@ -593,10 +598,7 @@ app.MapPut("/oauth/federation-issuers", async (RegisterFederationIssuerRequest r
 
 app.Run();
 
-record RegisterTrustRootRequest(string AppId, string IssuerDid, string? Description);
 record DefineRoleRequest(string AppId, string RoleName, List<string> Permissions);
-record RoleAssignmentRequest(string ActorId, string AppId, string RoleName);
-record UserPermissionRequest(string ActorId, string AppId, string Permission);
 record RegisterFederationIssuerRequest(string AppId, string Issuer, string JwksUri, string? Description);
 
 public partial class Program;
