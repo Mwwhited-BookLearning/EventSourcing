@@ -91,7 +91,7 @@ provider they apply to — not "code written."
 | 30 | [Control-Plane Actions as Reserved Events](#control-plane-actions-as-reserved-events) | Schema Registry, Entity-Centric Core Rebuild | Done |
 | 31 | [Dynamic Feature-Flag Configuration Provider](#dynamic-feature-flag-configuration-provider) | Scaffolding & Persistence, Control-Plane Actions as Reserved Events | Done |
 | 32 | [Leader Election via Database-Backed Lease](#leader-election-via-database-backed-lease) | Entity-Centric Core Rebuild, Sharding & Replication | Done |
-| 33 | [Per-Tenant Rate Limiting](#per-tenant-rate-limiting) | Auth + Orchestration, SPIFFE/SPIRE Service Identity & API Gateway | Not started |
+| 33 | [Per-Tenant Rate Limiting](#per-tenant-rate-limiting) | Auth + Orchestration, SPIFFE/SPIRE Service Identity & API Gateway | Done |
 | 34 | [Outbound Webhooks](#outbound-webhooks) | Publish API, Auth + Orchestration, Property-Level Masking, Leader Election | Not started |
 | 35 | [Data Residency (Region Pinning)](#data-residency-region-pinning) | Sharding & Replication, Multi-Tenancy | Not started |
 | 36 | [Bulk Ingestion & External Interchange-Format Adapters](#bulk-ingestion--external-interchange-format-adapters) | Publish API, Non-Authoritative Capture, Outbound Webhooks | Not started |
@@ -231,7 +231,7 @@ state "Local Services" as tierLocal {
   state "Control-Plane Reserved Events" as a6 #palegreen
   state "Dynamic Feature Flags" as a7 #palegreen
   state "Leader Election" as a8 #palegreen
-  state "Per-Tenant Rate Limiting" as a9
+  state "Per-Tenant Rate Limiting" as a9 #palegreen
   state "Release Engineering,\nPackaging & Supply Chain" as a15
   state "Lineage Export +\nBitemporal Playback" as a17
   state "Mechanism-Level\nOTel Instrumentation" as a23
@@ -2717,20 +2717,107 @@ YARP Gateway this ADR enforces at gets built).
 Token Bucket limit receives `429` with `Retry-After`, while a burst
 within the bucket's own capacity is never throttled; a tenant opening
 more concurrent GraphQL-Subscription/Follow connections than its
-Concurrency Limiter permits is rejected `429` with `Retry-After` while
-its existing open connections stay open, unaffected, and closing one
-frees a slot for a new one; a tenant exceeding its Sliding-Window query
-limit is rejected `429` with `Retry-After`; a rejected request at any of
-the three limiters never reaches the backend service behind the Gateway
-at all; one tenant exhausting any one of its three limiters never affects
-a different tenant sharing the same deployment; passing the Gateway's
-rate limiter does not exempt a GraphQL query from `ADR-037`'s separate
-depth/cost limiter — a query within its Sliding-Window budget but
-exceeding configured nesting depth is still rejected one hop later,
-demonstrating the two mechanisms are complementary, not overlapping; a
-tenant's limit is changeable via configuration alone, with no code
-deploy, confirmed by reconfiguring it mid-test and observing the new
-limit take effect immediately.
+Concurrency Limiter permits is rejected `429` while its existing open
+connections stay open, unaffected, and closing one frees a slot for a
+new one; a tenant exceeding its Sliding-Window query limit is rejected
+`429`; a rejected request at any of the three limiters never reaches the
+backend service behind the Gateway at all; one tenant exhausting any one
+of its three limiters never affects a different tenant sharing the same
+deployment; passing the Gateway's rate limiter does not exempt a GraphQL
+query from `ADR-037`'s separate depth/cost limiter — the Gateway forwards
+a `/graphql` request byte-for-byte, so the Host's own, already-proven
+depth limiter is what actually evaluates query shape, one hop later,
+regardless of what the Gateway's own limiter decided; a tenant's limit is
+changeable via configuration alone, with no code deploy, confirmed by
+reconfiguring it mid-test and observing the new limit take effect
+immediately.
+**Correction, this item's own build pass**: `Retry-After` is dropped from
+the Concurrency- and Sliding-Window-limiter criteria above — verified
+directly against `System.Threading.RateLimiting` (a throwaway probe
+calling `ConcurrencyLimiter`/`SlidingWindowRateLimiter` outside ASP.NET
+Core entirely) that only `TokenBucketRateLimiter` ever attaches
+`MetadataName.RetryAfter` to a rejected lease in this library version;
+the other two never do, for any configuration. The original ADR-058 text
+this was derived from assumed `Retry-After` uniformly; that assumption
+didn't hold once checked against the library's actual behavior.
+
+**Status: Done, with two findings this section's own text was written
+without.** Built entirely inside `EventStore.Gateway` (the process this
+item's own Depends-on already names as the enforcement point):
+`RateLimitingOptions` (the five tunables — token/concurrency/window
+limits, replenishment period, window segmentation — as ordinary
+`Microsoft.Extensions.Configuration` values, per this section's own
+"no code deploy" requirement), `RateLimiterPolicies.AddPerTenantRateLimiting`
+(three named `Microsoft.AspNetCore.RateLimiting` policies —
+`publish-token-bucket`, `follow-concurrency`, `general-sliding-window` —
+each attached to its own YARP route via `RouteConfig.RateLimiterPolicy`
+in `appsettings.json`, `Order: 0` for `/publish`/`/follow` ahead of the
+general `Order: 10` catch-all), `TenantPartitionKey.Resolve`, and
+`AppIdBufferingMiddleware`. `app.UseMiddleware<AppIdBufferingMiddleware>()`
+then `app.UseRateLimiter()` both run before `app.MapReverseProxy()` in
+`Program.cs`, so a rejected request never reaches YARP's forwarding, let
+alone the backend Host.
+
+**Finding 1 — the Gateway has no `HttpContext.User`.** `ADR-049`'s own
+design forwards the `Authorization` header to the Host unchanged and
+performs no JWT/DPoP validation itself, so a partition key can't come
+from claims the way `ADR-058`'s text implicitly assumed. Resolved with a
+tiered fallback in `TenantPartitionKey.Resolve`: the `appId` field
+`AppIdBufferingMiddleware` already buffered out of a `/publish`/`/follow`
+JSON body, else an *unvalidated* peek at the JWT payload's `client_id`/
+`sub` claim (explicitly commented, in code, as a traffic-bucketing
+heuristic only — never a security decision; real validation still
+happens exclusively at the Host), else `"anonymous"`. `EnableBuffering()`
++ rewinding `Request.Body.Position` to 0 afterward keeps YARP's own
+downstream proxying byte-for-byte unaffected by the peek.
+
+**Finding 2 — `Retry-After` is not universal, corrected above.** Verified
+directly against `System.Threading.RateLimiting` outside ASP.NET Core
+entirely (a throwaway console probe acquiring/rejecting leases from bare
+`TokenBucketRateLimiter`/`ConcurrencyLimiter`/`SlidingWindowRateLimiter`
+instances): only the Token Bucket limiter ever attaches
+`MetadataName.RetryAfter` to a rejected lease in this library version —
+Concurrency and Sliding Window never do, for any configuration.
+`RateLimiterPolicies`'s own `OnRejected` already guarded with
+`TryGetMetadata` before this was discovered, so no code changed; only
+this section's own exit-criteria text needed correcting.
+
+**Config-hot-reload caveat, stated rather than hidden**: reading
+`IConfiguration` fresh inside each policy's own partition factory (not a
+bound snapshot at startup) means a *newly-seen* `AppId` partition, or one
+recycled after this library's own idle eviction, picks up a changed
+limit immediately — an *already-provisioned, still-active* partition's
+limiter keeps its original settings until next recreated. This is a
+standard characteristic of any partitioned rate limiter, not a gap
+specific to this implementation, and is what `ATenantsLimitIsChangeable
+ViaConfigurationAloneNoCodeDeploy` actually verifies (two separate
+`WebApplicationFactory` instances with different `RateLimiting:*`
+settings — the same binary, no rebuild, behaving differently purely from
+configuration).
+
+Verified with `RateLimitingGatewayTests.cs` (the same
+`WebApplicationFactory<GatewayAssembly::Program>` + real stand-in
+backend pattern `GatewayTests.cs` already established, extended with
+`UseSetting` overrides for tight, test-only limits): a burst within the
+Token Bucket's capacity unthrottled; sustained volume past it rejected
+`429` with `Retry-After`; a Concurrency-Limited connection beyond its
+permit rejected while the existing connection stays open and closing it
+frees a slot (a `TaskCompletionSource`-gated backend handler proves the
+first connection is still genuinely held open, not just fast); a
+Sliding-Window query limit rejected `429` once exceeded; a rejected
+request at any of the three never reaching the backend (a hit-counter on
+the stand-in backend); one tenant's exhaustion never affecting a
+different `AppId`'s own bucket; the Gateway forwarding a `/graphql` body
+byte-for-byte so `ADR-037`'s own depth limiter (already proven
+end-to-end against a real Host in `GraphQlHttpSqliteTests.
+ADeeplyNestedIntrospectionQueryIsRejectedByTheDepthLimiter`) is what
+actually governs query shape, not anything this Gateway does; and the
+config-hot-reload property above. The pre-existing `GatewayTests.cs`
+test (`ARequestThroughTheGatewayReachesTheBackendWithTheOriginalAuthorizationHeaderIntact`)
+still passes unchanged against the new 3-route config, and the full
+SQLite regression suite (57/58 — only the already-documented, unrelated
+`SubscribingOverRealHttpStreamsAMatchingEventAsSse` flake under 32-way
+parallelism) shows no regression from this item's changes.
 
 ## Outbound Webhooks
 

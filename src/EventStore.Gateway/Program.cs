@@ -1,8 +1,13 @@
+using EventStore.Gateway;
 using EventStore.Host.Core;
 using EventStore.Spiffe;
 
 var builder = WebApplication.CreateBuilder(args);
 builder.AddServiceDefaults();
+
+// ADR-058 -- per-AppId rate limiting, enforced at the Gateway (this
+// process) first, before a request ever reaches a Host behind it.
+builder.Services.AddPerTenantRateLimiting(builder.Configuration);
 
 // ADR-049 -- external TLS termination and ADR-006/017/040 authentication
 // happen at this gateway; the Host it forwards to still performs its own
@@ -24,6 +29,14 @@ builder.Services.AddReverseProxy()
 
 var app = builder.Build();
 app.MapDefaultEndpoints();
+
+// ADR-058 -- AppIdBufferingMiddleware must run BEFORE UseRateLimiter (it
+// populates the partition key each policy reads), and UseRateLimiter must
+// run BEFORE MapReverseProxy (a rejected 429 must never reach YARP's own
+// forwarding, let alone the backend Host).
+app.UseMiddleware<AppIdBufferingMiddleware>();
+app.UseRateLimiter();
+
 app.MapReverseProxy();
 app.Run();
 
