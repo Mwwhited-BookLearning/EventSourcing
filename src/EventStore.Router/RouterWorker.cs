@@ -222,7 +222,19 @@ public class RouterWorker(IServiceScopeFactory scopeFactory, ILogger<RouterWorke
         EventStoreContext db, string entityId, StoredEvent storedEvent, string entityType, ChangeKind changeKind,
         JsonObject known, JsonObject unknownProperties, CancellationToken ct)
     {
-        var row = await db.LiveEntityStore.SingleOrDefaultAsync(r => r.EntityId == entityId, ct);
+        // Checks already-tracked-but-not-yet-saved rows first (RunOnceAsync
+        // saves once per tick, after processing every "received" event in a
+        // batch loop) -- two events for the SAME entity landing in one tick is
+        // an ordinary, expected case (a burst of activity, or catching up
+        // after any delay), not an edge case. A plain SingleOrDefaultAsync
+        // query here would never see the first event's own not-yet-saved
+        // Add()ed row (a LINQ query only sees committed rows), so the second
+        // event would Add() a SECOND row with the same key and crash with an
+        // identity-conflict exception at SaveChangesAsync time -- found by
+        // actually running a multi-event-per-entity-per-tick scenario (this
+        // item's own restore-drill test), not by reading the code back.
+        var row = db.LiveEntityStore.Local.FirstOrDefault(r => r.EntityId == entityId)
+            ?? await db.LiveEntityStore.SingleOrDefaultAsync(r => r.EntityId == entityId, ct);
         if (row is null)
         {
             row = new Domain.EntityStore.LiveEntityStoreRow { EntityId = entityId, EntityType = entityType, Data = "{}", Extensions = "{}" };
@@ -273,7 +285,10 @@ public class RouterWorker(IServiceScopeFactory scopeFactory, ILogger<RouterWorke
         EventStoreContext db, string entityId, StoredEvent storedEvent, string entityType, ChangeKind changeKind,
         JsonObject known, JsonObject unknownProperties, CancellationToken ct)
     {
-        var row = await db.EntityStore.SingleOrDefaultAsync(r => r.EntityId == entityId, ct);
+        // Same not-yet-saved-local-row check as FoldLiveAsync above, and for
+        // the identical reason -- two events for one entity in the same tick.
+        var row = db.EntityStore.Local.FirstOrDefault(r => r.EntityId == entityId)
+            ?? await db.EntityStore.SingleOrDefaultAsync(r => r.EntityId == entityId, ct);
         if (row is null)
         {
             row = new EntityStoreRow

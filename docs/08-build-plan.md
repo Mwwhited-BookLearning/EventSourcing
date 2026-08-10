@@ -83,7 +83,7 @@ provider they apply to — not "code written."
 | 22 | [Ticket Exchange for Header-Incapable Clients](#ticket-exchange-for-header-incapable-clients) | Streaming Channels, Binary Attachments, Non-Authoritative Capture | Done |
 | 23 | [Delegated Grants, RBAC, Federated Claims & Read Audit Logging](#delegated-grants-rbac-federated-claims--read-audit-logging) | Non-Authoritative Capture, Event-Type Security, Multi-Tenancy, Hardening & Evolution | Done |
 | 24 | [SPIFFE/SPIRE Service Identity & API Gateway](#spiffespire-service-identity--api-gateway) | Auth + Orchestration, Sharding & Replication, Streaming Channels, Binary Attachments, GraphQL-Only Query Layer, Ticket Exchange | Done |
-| 25 | [Data Lifecycle & Backup/Restore Classification](#data-lifecycle--backuprestore-classification) | Scaffolding & Persistence | Not started |
+| 25 | [Data Lifecycle & Backup/Restore Classification](#data-lifecycle--backuprestore-classification) | Scaffolding & Persistence | Done |
 | 26 | [GDPR/CCPA Erasure via Crypto-Shredding](#gdprccpa-erasure-via-crypto-shredding) | Property-Level Masking, Entity-Centric Core Rebuild | Not started |
 | 27 | [PCI-DSS Sensitive Authentication Data Registration Boundary](#pci-dss-sensitive-authentication-data-registration-boundary) | Schema Registry, Property-Level Masking | Not started |
 | 28 | [Local/Edge Active-Scope Caching & Erasure Invalidation](#localedge-active-scope-caching--erasure-invalidation) | MVVM Client, GDPR/CCPA Erasure | Not started |
@@ -345,7 +345,7 @@ state "Accessibility Standard" as a21
 state "i18n/l10n Scope" as a22
 state "Mechanism-Level\nOTel Instrumentation" as a23
 state "Event Log/AccessLog\nArchival" as a24
-state "Data Lifecycle &\nBackup Classification" as a25
+state "Data Lifecycle &\nBackup Classification" as a25 #palegreen
 
 a2 --> a4
 a6 --> a7
@@ -1970,11 +1970,21 @@ are not repeated here.
 
 ## Data Lifecycle & Backup/Restore Classification
 
-**Scope**: `ADR-056` — classify every store as authoritative (must be
-backed up: Event Log/`EventParent`, Schema Registry, Streaming Channel
-Store, Attachment Store, and once "Delegated Grants, RBAC & Read Audit
-Logging" lands, `AccessLog`) or rebuildable (backup optional, pure RTO
-optimization: Entity Store, every CQRS snapshot, materialized upcasts).
+**Scope**: per `ADR-056`, now built. Re-checked `06-solution-structure.md`'s
+existing "Data lifecycle" classification table against the actual current
+set of `EventStoreContext` `DbSet`s and found it five tables behind —
+`DerivationDefinition`/`DerivationCursor`/`PendingJoinState` (`ADR-007`,
+deferred) and `PeerSyncCursor` (`ADR-033`) had landed with their own
+items but never been folded into this table; `ViewDefinition` (`ADR-039`)
+likewise. Classified each on the actual rebuild behavior that exists in
+code today, not by category-name resemblance alone:
+`DerivationDefinition`/`PendingJoinState`/`DerivationCursor` and
+`ViewDefinition` are **authoritative** — admin-configured metadata or
+in-flight state nothing currently regenerates (`DerivationWorker.
+ProcessDerivationAsync` silently stops consuming a source forever if its
+cursor row goes missing, rather than restarting it from zero);
+`PeerSyncCursor` is **rebuildable** — losing it only costs a slower
+resync, `ADR-033`'s own idempotency already absorbing the resend safely.
 No schema/storage change — confirms nothing in this design's existing
 choice of portable text columns (`ADR-004`) blocks each provider's own
 native backup/PITR tooling, and states the restore-then-replay path
@@ -1984,19 +1994,31 @@ rebuildable stores explicitly, rather than leaving it implicit.
 
 **Depends on**: Scaffolding & Persistence (the classification exists in
 principle from day one; its coverage of specific stores grows accurate as
-Streaming Channels, Binary Attachments, Delegated Grants/RBAC/Read Audit
-Logging, and **GDPR/CCPA Erasure via Crypto-Shredding** — added this
-pass to the re-check-triggers list, since a `IErasureKeyStore` backend
-itself becomes a store this classification needs to account for — each
-land; this item's exit criteria should be re-checked against the
-classification table each time one of those lands, not just once).
+more items land — GDPR/CCPA Erasure via Crypto-Shredding, not yet built,
+is still the next re-check trigger, since a real `IErasureKeyStore`
+backend will itself become a store this classification needs to
+account for).
 
-**Exit criteria**: the authoritative/rebuildable classification table in
-`06-solution-structure.md`'s "Data lifecycle" section matches the actual
-set of stores that exist at the time it's checked; a real restore drill —
-take a native backup of an authoritative store, restore it to a fresh
-instance, re-run fold/projection-rebuild against it, confirm the
-rebuildable stores reconstruct identically to the pre-backup state.
+**Exit criteria** (verified): the authoritative/rebuildable classification
+table in `06-solution-structure.md`'s "Data lifecycle" section matches the
+actual current set of stores; a real restore drill
+(`DataLifecycleScenarioAssertions`, all 3 providers) — wipe the
+rebuildable `EntityStoreRow`/`LiveEntityStoreRow` tables, reset every
+authoritative `StoredEvent` back to `"received"`, re-run `RouterWorker.
+RunOnceAsync` (the same public entry point the live worker already uses,
+no separate rebuild-only code path), confirm the reconstructed rows match
+the pre-wipe state field for field. **A real, pre-existing `RouterWorker`
+bug found and fixed while writing this drill, not by reading the code
+back**: `FoldAsync`/`FoldLiveAsync` queried the database directly for an
+entity's current row with no check of already-tracked-but-not-yet-saved
+local rows first — two events for the *same* entity landing in one
+`RunOnceAsync` tick (an ordinary case, not a contrived one: a burst of
+activity, or catching up after any delay) made the second event's fold
+`Add()` a duplicate row with the same key, crashing with an EF Core
+identity-conflict exception at `SaveChangesAsync`. Fixed by checking
+`DbSet.Local` first in both methods — no test before this item's own
+multi-event-per-tick restore-drill scenario had ever exercised two events
+for one entity in a single tick.
 
 ## GDPR/CCPA Erasure via Crypto-Shredding
 

@@ -839,19 +839,60 @@ the result (verify via a token request instead — see
 
 Quick-reference for whoever sizes a backup plan, so it isn't
 reconstructed from first principles across three separate data-model
-docs: **authoritative, must back up** — Event Log + `EventParent`
-(`event-log.md`), Schema Registry (`schema-registry.md`), Streaming
-Channel Store (`streaming-and-attachments.md`), Attachment Store (same),
-Read Access Audit Log (`ADR-045`), and `ADR-057`'s `EntityErasureKey`
-metadata (`entity-store.md` — losing it doesn't prevent *future*
-erasure, but does lose the mapping needed to *request* one for an
-already-existing entity without consulting the external key store's own
-listing). **Rebuildable, backup optional** — Entity Store, every CQRS
-read model/snapshot, materialized upcasts: all recoverable by re-running
-the existing fold/rebuild mechanism (`ADR-021`/`ADR-015`) against a
-restored authoritative store. Nothing about `ADR-004`'s portable-column
-choice blocks a provider's native backup/PITR tooling from working
-against any of the above.
+docs. Re-checked against the actual current set of `EventStoreContext`
+`DbSet`s while building "Data Lifecycle & Backup/Restore Classification"
+(`08-build-plan.md` item 25) — five tables this section had not yet
+named (`DerivationDefinition`/`DerivationCursor`/`PendingJoinState`,
+added by "Derived/Materialized Event Types"; `PeerSyncCursor`, added by
+"Sharding & Replication"; `ViewDefinition`, added by "Entity-Centric Core
+Rebuild") are folded in below, per this item's own dependency text
+("its coverage of specific stores grows accurate as [more items] land").
+
+**Authoritative, must back up**:
+- Event Log + `EventParent` (`event-log.md`), Schema Registry
+  (`schema-registry.md`), Streaming Channel Store (`streaming-and-
+  attachments.md`), Attachment Store (same), Read Access Audit Log
+  (`ADR-045`), and `ADR-057`'s `EntityErasureKey` metadata (`entity-
+  store.md` — losing it doesn't prevent *future* erasure, but does lose
+  the mapping needed to *request* one for an already-existing entity
+  without consulting the external key store's own listing; not yet
+  built as of this item, "GDPR/CCPA Erasure via Crypto-Shredding" is the
+  re-check trigger named below).
+- `DerivationDefinition` and `PendingJoinState` (`schema-registry.md`,
+  `ADR-007`, deferred) — a registered derivation is admin-configured
+  metadata, the same class as `EventTypeDefinition` itself; nothing
+  recomputes it from the Event Log. `PendingJoinState` is a FireOnce
+  join's own in-flight, not-yet-completed state — losing it silently
+  drops whichever sources had already arrived for that join key, and no
+  existing mechanism replays history to reconstruct which joins were
+  pending at the moment of loss.
+- `DerivationCursor` (same doc/ADR) — `DerivationWorker.ProcessDerivationAsync`
+  skips a source entirely when its cursor row is missing (`cursors.
+  TryGetValue` returning false, not "start from 0"); losing this row
+  silently and permanently stops that derivation consuming that source,
+  not merely a slower resync. Grouped with the two above rather than
+  called "rebuildable," since no code path currently regenerates it.
+- `ViewDefinition` (`entity-store.md`, "Entity-Centric Core Rebuild") —
+  admin-configured metadata, the same class as `EventTypeDefinition`;
+  nothing recomputes a registered view's shape from other data.
+
+**Rebuildable, backup optional** — Entity Store, every CQRS read model/
+snapshot, materialized upcasts: all recoverable by re-running the
+existing fold/rebuild mechanism (`ADR-021`/`ADR-015`) against a restored
+authoritative store, verified end to end for `EntityStoreRow`/
+`LiveEntityStoreRow` specifically by this item's own restore-drill test
+(`DataLifecycleScenarioAssertions`) — wipe both tables, reset every
+`StoredEvent.Status` back to `"received"`, re-run `RouterWorker.
+RunOnceAsync` (the same public entry point the live worker already
+uses, no separate rebuild-only code path), and the reconstructed rows
+match the pre-wipe state field for field. `PeerSyncCursor` (`ADR-033`,
+`schema-registry.md`) belongs here too, on the same reasoning: losing it
+only costs a slower resync (`ADR-033`'s peers naturally re-exchange
+already-acked events, its own idempotency absorbing the resend) —
+backup optional, a pure RTO trade, not a data-loss risk.
+
+Nothing about `ADR-004`'s portable-column choice blocks a provider's
+native backup/PITR tooling from working against any of the above.
 
 ## Integration test strategy
 
