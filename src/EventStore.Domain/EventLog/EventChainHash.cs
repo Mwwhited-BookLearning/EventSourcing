@@ -1,5 +1,6 @@
 using System.Security.Cryptography;
 using System.Text;
+using System.Text.Json;
 
 namespace EventStore.Domain.EventLog;
 
@@ -14,6 +15,28 @@ public static class EventChainHash
     // length, so genesis and every subsequent link share one shape.
     public static readonly string Genesis = new('0', 64);
 
-    public static string Compute(string priorChainHash, string payloadHash, long sequenceNumber) =>
-        Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes($"{priorChainHash}|{payloadHash}|{sequenceNumber}"))).ToLowerInvariant();
+    // ADR-066's own claim ("non-repudiation reuses the existing hash chain,
+    // no new primitive... exactly as tamper-evident as everything else in
+    // the log") doesn't hold against PayloadHash alone -- Signature is
+    // envelope metadata, never part of {EventType, Payload, parentEventIds}.
+    // Folded into ChainHash specifically, not PayloadHash: PayloadHash is
+    // also ADR-011's idempotency-comparison basis, and Signature.SignedAt is
+    // wall-clock-real at each publish attempt, not deterministic/convergent
+    // the way ADR-057's own classified-field ciphertext had to be made --
+    // including it there would make every legitimate retry of a signed
+    // publish look like different content. ChainHash is never compared for
+    // idempotency (only PayloadHash is, in ReplayOrConflict), so extending
+    // IT costs nothing there while still making a tamper to SignerId/
+    // SignedAt/Meaning/Acr diverge the chain at exactly that
+    // SequenceNumber. Omitted entirely (not hashed as a literal "null") for
+    // an unsigned event, so every event type that never uses
+    // RequiredSignature computes byte-identical ChainHash values to before
+    // this parameter existed.
+    public static string Compute(string priorChainHash, string payloadHash, long sequenceNumber, Signature? signature = null)
+    {
+        var input = $"{priorChainHash}|{payloadHash}|{sequenceNumber}";
+        if (signature is not null)
+            input += $"|{JsonSerializer.Serialize(signature)}";
+        return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(input))).ToLowerInvariant();
+    }
 }

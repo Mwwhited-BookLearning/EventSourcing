@@ -48,7 +48,7 @@ public static class EventAppender
 
             await db.SaveChangesAsync(ct);
 
-            storedEvent.ChainHash = EventChainHash.Compute(prior?.ChainHash ?? EventChainHash.Genesis, storedEvent.PayloadHash, storedEvent.SequenceNumber);
+            storedEvent.ChainHash = EventChainHash.Compute(prior?.ChainHash ?? EventChainHash.Genesis, storedEvent.PayloadHash, storedEvent.SequenceNumber, storedEvent.Signature);
             storedEvent.LogicalClock = HybridLogicalClock.Next(prior?.LogicalClock, observedRemoteClock);
             await db.SaveChangesAsync(ct);
             await transaction.CommitAsync(ct);

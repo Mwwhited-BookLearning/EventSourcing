@@ -63,7 +63,8 @@ public class EventStoreContext(DbContextOptions<EventStoreContext> options, IJso
                 .Metadata.SetValueComparer(JsonValueConverter.ListComparer<List<RequiredClaim>>());
 
             e.Property(x => x.RequiredSignature)
-                .HasConversion(JsonValueConverter.ForNullable<RequiredSignature>());
+                .HasConversion(JsonValueConverter.ForNullable<RequiredSignature>())
+                .Metadata.SetValueComparer(JsonValueConverter.NullableComparer<RequiredSignature>());
 
             e.HasMany(x => x.FilterableFields)
                 .WithOne()
@@ -85,7 +86,8 @@ public class EventStoreContext(DbContextOptions<EventStoreContext> options, IJso
             e.Property(x => x.Payload).IsRequired(); // portable TEXT/nvarchar(max)/text -- never a native JSON column type (ADR-004)
 
             e.Property(x => x.Signature)
-                .HasConversion(JsonValueConverter.ForNullable<Signature>());
+                .HasConversion(JsonValueConverter.ForNullable<Signature>())
+                .Metadata.SetValueComparer(JsonValueConverter.NullableComparer<Signature>());
         });
 
         modelBuilder.Entity<EventParent>(e =>

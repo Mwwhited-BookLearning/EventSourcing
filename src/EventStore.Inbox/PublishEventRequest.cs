@@ -35,4 +35,10 @@ public record PublishEventRequest(
     // ADR-042's second trigger -- an automated detector's own "not yet
     // validated" marker, distinct from the identity/self-attestation case
     // above. Starts AuthorityStatus at "pending_review" instead.
-    bool ReviewPending = false);
+    bool ReviewPending = false,
+    // ADR-066 -- the signer's stated reason ("reviewed", "approved",
+    // "authorship"), required only when the target type has
+    // RequiredSignature configured; ignored entirely otherwise, the same
+    // "completely unaffected" posture every other optional envelope field
+    // here already has.
+    string? Meaning = null);

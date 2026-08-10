@@ -17,7 +17,7 @@ public class ChainVerificationService(EventStoreContext db)
             .AsNoTracking()
             .Where(e => e.SequenceNumber <= throughSequenceNumber)
             .OrderBy(e => e.SequenceNumber)
-            .Select(e => new { e.EventId, e.SequenceNumber, e.EventType, e.Payload, e.ChainHash })
+            .Select(e => new { e.EventId, e.SequenceNumber, e.EventType, e.Payload, e.ChainHash, e.Signature })
             .ToListAsync(ct);
 
         var eventIds = events.Select(e => e.EventId).ToList();
@@ -36,7 +36,13 @@ public class ChainVerificationService(EventStoreContext db)
             // here as a divergence, matching ADR-019's own tamper-evidence promise.
             var parentIds = parentIdsByEvent.TryGetValue(e.EventId, out var ids) ? ids : [];
             var payloadHash = EventPayloadHash.Compute(e.EventType, e.Payload, parentIds);
-            expected = EventChainHash.Compute(expected, payloadHash, e.SequenceNumber);
+            // ADR-066 -- re-derived from this row's own stored Signature (not
+            // just Payload), so tampering SignerId/SignedAt/Meaning/Acr
+            // directly in the database surfaces here too, the same "recompute
+            // from the actual row, don't trust a stored column blindly"
+            // discipline the Payload/PayloadHash re-derivation above already
+            // established.
+            expected = EventChainHash.Compute(expected, payloadHash, e.SequenceNumber, e.Signature);
             if (expected != e.ChainHash)
                 return new ChainVerificationResult.Tampered(e.SequenceNumber);
         }

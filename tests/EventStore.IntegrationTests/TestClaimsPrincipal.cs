@@ -19,4 +19,10 @@ internal static class TestClaimsPrincipal
         var identity = new ClaimsIdentity([new Claim(typeValueClaim[..separatorIndex], typeValueClaim[(separatorIndex + 1)..])]);
         return new ClaimsPrincipal(identity);
     }
+
+    // Arbitrary named claims -- for scenarios naming real OIDC claim types
+    // directly (e.g. "acr"/"auth_time"/"sub", ADR-066) rather than this
+    // project's own "type:value" RequiredClaim format above.
+    public static ClaimsPrincipal WithClaims(params (string Type, string Value)[] claims) =>
+        new(new ClaimsIdentity(claims.Select(c => new Claim(c.Type, c.Value))));
 }

@@ -1217,8 +1217,62 @@ stale numbers here are worse than none)*
   untouched) plus 2 new `subscriptionBuilder.spec.ts` specs for `where`-
   clause serialization — `client-web` now has 31 passing Vitest specs (up
   from 26), `vue-tsc -b` and `vite build` both clean.
-- **Next up**: item 29, "Digital Sign-Off for Regulated Actions (Step-Up
-  Authentication)" (`ADR-066`) — depends on Auth + Orchestration (Done).
+- **Item 29, "Digital Sign-Off for Regulated Actions (Step-Up
+  Authentication)," is Done — four real bugs found while verifying this
+  item's own exit criteria, none assumed satisfied without checking.**
+  (1) This diagram's own `#palegreen` claim for "ActorId on Every Event"
+  (this item's own named dependency) was FALSE — `PublishService`
+  hardcoded the literal `"unauthenticated"` for every publish, contradicting
+  `docs/data/event-log.md`'s "ALWAYS populated" text. Fixed by reusing
+  `AccessLogReaderContext.Resolve`'s existing claim resolution verbatim.
+  (2) `ADR-066`'s own "non-repudiation reuses the existing hash chain...
+  exactly as tamper-evident as everything else" claim didn't hold —
+  `ChainHash`/`PayloadHash` only ever cover `{EventType, Payload,
+  parentEventIds}`; `Signature` sat completely outside either hash. Fixed
+  by extending `EventChainHash.Compute` specifically (not `PayloadHash`,
+  which is also `ADR-011`'s idempotency basis and would have made every
+  retry of a signed publish look like different content, since
+  `Signature.SignedAt` is genuinely wall-clock-real, not deterministic) to
+  fold in `Signature` when present — every unsigned event type's
+  `ChainHash` stays byte-identical to before. (3) `RequiredSignature`/
+  `Signature` were the only two JSON-converted envelope fields (of
+  several) missing an EF `ValueComparer` — a genuine persistence-layer gap
+  found while writing the tamper-detection test itself (a direct in-place
+  mutation of an already-tracked `Signature` silently never reached the
+  database). Fixed with a new `JsonValueConverter.NullableComparer<T>`,
+  the single-object counterpart the list-typed fields already had via
+  `ListComparer<T>`. (4) Two real OpenIddict/JWT quirks found only by
+  running the actual RFC 9470 round trip over real HTTP: OpenIddict's
+  `ValidateSignInDemand` requires `auth_time` to carry a genuinely numeric
+  `ClaimValueType` (fixed via the dedicated `SetClaim(string, long?)`
+  overload, not the string one), and `JwtBearer`'s own
+  `MapInboundClaims=true` remaps `acr` to
+  `http://schemas.microsoft.com/claims/authnclassreference` before
+  `PublishService` ever sees it (fixed by checking both names, the exact
+  same remapping class `AccessLogReaderContext.Resolve`'s own comment
+  already documents for `"sub"`).
+  Implemented: `RegisterEventTypeRequest.RequiredSignature` (parsed/
+  validated by `SchemaRegistryService`, requiring at least one of
+  `acrValues`/`maxAge`), `PublishEventRequest.Meaning`, two new
+  `PublishResult` cases (`StepUpRequired`, `MissingSignatureMeaning`),
+  `PublishEndpoints`'s hand-built RFC 9470 `WWW-Authenticate` 401 (`Bearer
+  error="insufficient_user_authentication"[, acr_values="..."][,
+  max_age="..."]`, verified against the actual RFC text via `WebFetch`
+  before writing it, not recalled from memory), and `EventStore.DevIdp`'s
+  own dev-only step-up simulation (an opt-in `acr` form parameter on the
+  ordinary `client_credentials` flow — a real IdP only grants a given
+  `acr` after actually performing that authentication method; this
+  dev/POC IdP just takes the caller's word for it, the same posture it
+  already takes for several other simplifications).
+  `EventStore.IntegrationTests` now has 98 `[TestMethod]`s (up from 92) —
+  `DigitalSignOffScenarioAssertions` (10 scenarios) run across SQLite/
+  PostgreSQL/SQL Server, plus `DigitalSignOffHttpSqliteTests` (3 real-HTTP
+  scenarios: the RFC 9470 challenge header, a real step-up token round
+  trip, the `Meaning`-omitted `400`). All pass.
+- **Next up**: item 30, "Control-Plane Actions as Reserved Events"
+  (`ADR-067`) — depends on Schema Registry (Done) and Entity-Centric Core
+  Rebuild (Done); **revises** "Delegated Grants, RBAC & Read Audit
+  Logging"'s (item 23) own storage mechanism.
 
 ## How to resume cold
 
@@ -1233,7 +1287,7 @@ stale numbers here are worse than none)*
    narrative.
 5. `dotnet build EventStore.slnx` and `dotnet test tests/EventStore.IntegrationTests` —
    confirm the build/test baseline the last session left still holds
-   before adding to it (92 tests should pass). Requires Docker running
+   before adding to it (98 tests should pass). Requires Docker running
    (Testcontainers for Postgres/SQL Server) and the SDK pinned in
    `global.json`. A full multi-provider run has a known, pre-existing,
    unrelated flake — see `TODO.md`'s entry — where one or two SQL Server

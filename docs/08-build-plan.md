@@ -87,7 +87,7 @@ provider they apply to — not "code written."
 | 26 | [GDPR/CCPA Erasure via Crypto-Shredding](#gdprccpa-erasure-via-crypto-shredding) | Property-Level Masking, Entity-Centric Core Rebuild | Done |
 | 27 | [PCI-DSS Sensitive Authentication Data Registration Boundary](#pci-dss-sensitive-authentication-data-registration-boundary) | Schema Registry, Property-Level Masking | Done |
 | 28 | [Local/Edge Active-Scope Caching & Erasure Invalidation](#localedge-active-scope-caching--erasure-invalidation) | MVVM Client, GDPR/CCPA Erasure | Done |
-| 29 | [Digital Sign-Off for Regulated Actions](#digital-sign-off-for-regulated-actions-step-up-authentication) | Auth + Orchestration, ActorId on Every Event | Not started |
+| 29 | [Digital Sign-Off for Regulated Actions](#digital-sign-off-for-regulated-actions-step-up-authentication) | Auth + Orchestration, ActorId on Every Event | Done |
 | 30 | [Control-Plane Actions as Reserved Events](#control-plane-actions-as-reserved-events) | Schema Registry, Entity-Centric Core Rebuild | Not started |
 | 31 | [Dynamic Feature-Flag Configuration Provider](#dynamic-feature-flag-configuration-provider) | Scaffolding & Persistence, Control-Plane Actions as Reserved Events | Not started |
 | 32 | [Leader Election via Database-Backed Lease](#leader-election-via-database-backed-lease) | Entity-Centric Core Rebuild, Sharding & Replication | Not started |
@@ -225,7 +225,7 @@ state "Local Services" as tierLocal {
   state "Delegated Grants, RBAC & Read Audit Logging" as p22 #palegreen
   state "GDPR/CCPA Erasure" as a2 #palegreen
   state "PCI-DSS SAD Boundary" as a3 #palegreen
-  state "Digital Sign-Off\n(Step-Up Auth)" as a5 {
+  state "Digital Sign-Off\n(Step-Up Auth)" as a5 #palegreen {
     state "ActorId on Every Event\n(already satisfied by Auth + Orchestration)" as a1 #palegreen
   }
   state "Control-Plane Reserved Events" as a6
@@ -2325,6 +2325,75 @@ criterion's literal wording, tracked as a real follow-up in `TODO.md`
 rather than silently claimed done.
 
 ## Digital Sign-Off for Regulated Actions (Step-Up Authentication)
+
+**Status: Done.** Found, and fixed in the same pass, a real drift between
+this diagram's own `#palegreen` claim and the actual code: **`ActorId on
+Every Event`, this item's own named dependency, was never actually
+populated** — `PublishService` hardcoded the literal string
+`"unauthenticated"` for every publish regardless of the caller's real,
+already-verified identity, contradicting both `docs/data/event-log.md`'s
+own "ALWAYS populated... not advisory" text and this diagram's own fill
+color. Fixed by reusing `AccessLogReaderContext.Resolve`'s existing claim
+resolution verbatim (the same JWT, the same claims, no reason for a
+second implementation) — `ActorId`/`Signature.SignerId` are both now the
+real verified token subject.
+
+**A second, more consequential gap found while verifying this item's own
+exit criteria, not assumed satisfied**: `ADR-066`'s own claim
+("non-repudiation reuses the existing hash chain... exactly as
+tamper-evident as everything else in the log") didn't hold — `ChainHash`/
+`PayloadHash` only ever cover `{EventType, Payload, parentEventIds}`;
+`Signature` (like every other envelope field) sat completely outside
+what either hash actually protects, so altering a stored `Signature`
+directly in the database would have gone undetected. Fixed by extending
+`EventChainHash.Compute` (not `PayloadHash` — that one is also `ADR-011`'s
+idempotency-comparison basis, and `Signature.SignedAt` is genuinely
+wall-clock-real per publish attempt, not deterministic the way `ADR-057`'s
+classified-field ciphertext had to be made; `ChainHash` is never compared
+for idempotency, so extending it costs nothing there) to fold in
+`Signature` when present, omitted entirely (not hashed as a literal
+`null`) for every event type that never uses `RequiredSignature` — every
+existing event type's `ChainHash` is computed byte-identically to before
+this item.
+
+**A third bug found by that same verification, in the persistence layer,
+not this item's own new code**: `RequiredSignature`/`Signature` were the
+only two JSON-`ValueConverter`-mapped envelope fields (of several) with no
+`ValueComparer` configured — every list-typed one already has one. EF's
+default reference-equality change detection for a converted class-typed
+property never notices an in-place mutation of the SAME instance, only
+assignment of a new one — meaning a direct in-place edit to an
+already-tracked `Signature`/`RequiredSignature` would silently never
+reach the database. Fixed by adding `JsonValueConverter.NullableComparer<T>`
+(the single-object counterpart to the existing `ListComparer<T>`) and
+wiring it onto both properties.
+
+**Two real OpenIddict/JWT quirks found only by running the actual step-up
+round trip over real HTTP, not by reading the claim-setting code back**:
+(1) OpenIddict's `ValidateSignInDemand` handler requires `auth_time` to
+carry a genuinely numeric `ClaimValueType` — the plain `SetClaim(string,
+string)` overload this dev IdP's own dev-only step-up simulation
+(`EventStore.DevIdp`, a new opt-in `acr` form parameter, the same
+"opt-in, every existing caller unaffected" shape `app_id`/`ADR-046`
+already established) first used threw `"the auth_time claim... is
+malformed or isn't of the expected type"`; fixed via the dedicated
+`SetClaim(string, long?)` overload. (2) `JwtBearer`'s own default
+`MapInboundClaims=true` remaps the token's `acr` claim to
+`http://schemas.microsoft.com/claims/authnclassreference` before
+`PublishService` ever sees it — the exact same remapping class
+`AccessLogReaderContext.Resolve`'s own comment already documents for
+`"sub"`/`ClaimTypes.NameIdentifier`; fixed by checking both names, same
+as that resolver already does.
+
+Verified via `DigitalSignOffScenarioAssertions` (10 scenarios: `Required
+Signature` registration validation ×3, step-up rejection for a missing/
+wrong `acr` and a stale `auth_time` ×3, missing-`Meaning` rejection, full
+`Signature` population on success, the `ChainHash` tamper-detection fix
+above, and the erasure-exemption assertion composed with "GDPR/CCPA
+Erasure"'s own test infrastructure) across SQLite/PostgreSQL/SQL Server,
+plus `DigitalSignOffHttpSqliteTests` (3 real-HTTP scenarios proving RFC
+9470's actual `WWW-Authenticate` header, a real step-up token round trip
+against DevIdp, and the `Meaning`-omitted `400`).
 
 **Scope**: `ADR-066` — resolves the framework-vs-domain-level fork
 `docs/10-open-questions.md` tracked for electronic signatures, decided in
