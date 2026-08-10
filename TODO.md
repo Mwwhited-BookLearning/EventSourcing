@@ -128,6 +128,26 @@ here instead of inlining.
   (OIDC/OpenIddict) + Orchestration" section's own note for the full
   list of *other* real orchestration bugs this same pass found and
   fixed.
+- **`client-web`'s `useEntityViewActions.subscribe()` opens every
+  Subscription (the main entity one, and "Local/Edge Active-Scope Caching
+  & Erasure Invalidation"'s new `EntityErasureRequested` one) hardcoded
+  `mode: TAIL`, with no persisted resume cursor and no `mode: Replay`/
+  `fromSequenceNumber` reconnect path at all.** Found while verifying
+  item 28's own "a client offline at the moment erasure fires still
+  purges correctly once it reconnects" exit criterion — a client that
+  reconnects AFTER missing an event while disconnected (not just one
+  already connected when it fires) has no guaranteed catch-up today and
+  may simply never see it, contradicting `ADR-039`'s own "offline is the
+  default assumption" framing for exactly the reconnect case that matters
+  most. Pre-existing since "MVVM Client" (item 21) built the subscription
+  mechanism, not introduced by item 28 — surfaced here because this is
+  the first item whose own exit criteria explicitly depend on reconnect
+  behavior being correct. Investigate: persist a per-instance last-seen
+  `SequenceNumber` cursor (IndexedDB, alongside the existing outbox/entity-
+  cache stores) and reconnect with `mode: Replay&fromSequenceNumber=
+  <cursor+1>` instead of blind `Tail` whenever a stopped subscription is
+  restarted, the same tail-then-replay-cursor shape `EventTailReader`
+  already uses server-side.
 - **`docs/06-solution-structure.md`'s solution layout still names an
   `EventStore.Bdd/` project ("Reqnroll/SpecFlow-style step definitions
   for `*.feature` files," extracted from each feature doc's fenced

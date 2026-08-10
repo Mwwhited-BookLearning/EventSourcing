@@ -131,10 +131,16 @@ offline review requires locally-usable data with no network present.
   local/edge client subscribes with an explicit scope filter — the same
   `FilterableFields`-backed argument shape any GraphQL Subscription
   already supports (`ADR-037`), e.g. "entities assigned to this site/
-  device AND still open." Falling out of scope (closed, completed,
-  reassigned) proactively evicts the local cached copy — the
-  subscription's own filter *is* the retention policy, not an unrelated
-  TTL.
+  device AND still open." **Built as a server-side subscription filter,
+  not a client-side eviction signal** — the filter bounds what the client
+  ever receives (and therefore ever caches) going forward, which is the
+  entire retention policy this ADR names; it is not a push-based "this
+  entity just fell out of scope, delete it now" notification, since
+  nothing in the underlying GraphQL Subscription mechanism sends one.
+  Honest, named limitation: an already-cached entity whose later update
+  stops matching the filter (closed, completed, reassigned) simply stops
+  receiving further updates through that connection — it goes stale
+  rather than being proactively purged the instant that happens.
 - **Receiving an `EntityErasureRequested` event for a subscribed entity
   is a mandatory, immediate local purge**, not deferred to the next
   scope-eviction cycle. `ADR-057`'s erasure event reaches a subscribed
@@ -464,12 +470,23 @@ Feature: MVVM client (entity views, client-local outbox, native/JS bridge)
     Then the receiving system should verify the bundle is complete and unaltered before importing it
     And the queued command should then be delivered to the Entity Store from the connected system
 
-  Scenario: Falling out of active scope proactively evicts the local cached copy (ADR-065)
-    Given client instance "A" subscribed with a scope filter for "entities assigned to this site AND still open"
-    And Order "o-1" is currently within that scope and cached locally
-    When Order "o-1" is closed, and no longer matches client instance "A"'s subscription filter
-    Then client instance "A" should proactively purge its local cached copy of Order "o-1"
-    And the eviction should happen without waiting for any unrelated TTL
+  Scenario: An explicit scope filter bounds what the local cache ever receives, not a client-side post-filter (ADR-065)
+    Given client instance "A" subscribes with a scope filter for "entities assigned to this site AND still open"
+    Then the filter travels as the Subscription's own "where" argument (the same [EventFilterInput!] shape ADR-037 already exposes)
+    And only events matching that filter are ever delivered to, or cached by, client instance "A"
+    # Honest, named limitation (ADR-065), decided rather than silently
+    # narrowed: the filter is enforced server-side, per event -- once a
+    # cached entity's own later update stops matching it (closed, completed,
+    # reassigned), the server simply stops delivering further updates for it
+    # through this connection. There is no push-based "you fell out of
+    # scope, evict now" signal, so an already-cached copy goes stale rather
+    # than being proactively purged the moment that happens; it is not
+    # actively wrong (no further writes reach it), and a fresh reconnect
+    # with the same filter never re-delivers it. This is the accepted
+    # trade-off of reusing ADR-037's existing filter mechanism verbatim,
+    # rather than building a new removal-notification protocol this ADR's
+    # own Consequences explicitly rule out ("no new sync protocol, no new
+    # replication tier").
 
   Scenario: Receiving an erasure event for a subscribed entity triggers an immediate, mandatory local purge (ADR-065)
     Given client instance "A" is subscribed to and has a locally cached, decrypted copy of Order "o-1"

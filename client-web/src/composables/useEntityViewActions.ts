@@ -6,7 +6,19 @@ import type { ClientOutboxEntry, FollowedEventEnvelope } from '../types'
 import { fetchToken } from '../api/authClient'
 import { publishCommand } from '../api/publishClient'
 import { graphqlQuery, graphqlSubscribe } from '../api/graphqlClient'
-import { buildIntrospectionQuery, buildSubscriptionQuery, subscriptionFieldName } from '../api/subscriptionBuilder'
+import { buildIntrospectionQuery, buildSubscriptionQuery, subscriptionFieldName, type ScopeFilterClause } from '../api/subscriptionBuilder'
+
+// ADR-057's reserved, lazily-registered event type -- EntityStore.Erasure/
+// EntityErasureRequestedEventType.cs's own Name, server-side. Only ever
+// exists (is introspectable) for an AppId once that AppId's first classified
+// field has been published; buildIntrospectionQuery/subscribe's own existing
+// "fieldNames.length === 0 -> nothing to subscribe to yet" guard already
+// covers the case where it doesn't exist yet for this instance's AppId.
+const ERASURE_EVENT_TYPE = 'EntityErasureRequested'
+
+interface ErasureEventPayload {
+  targetEntityId?: string
+}
 
 // Which EntityType/AppId/event type/subscription target a client instance
 // follows is per-instance launch configuration, per ADR-039 -- not a global
@@ -15,7 +27,11 @@ import { buildIntrospectionQuery, buildSubscriptionQuery, subscriptionFieldName 
 // hold). `entityIdField` is the GraphQL field name (already camelCased,
 // e.g. "orderId") the registered EventTypeDefinition.EntityIdField resolves
 // to -- whoever configures an instance already knows this, the same way it
-// already knows which EntityType/AppId to watch.
+// already knows which EntityType/AppId to watch. `scopeFilter` (ADR-065) is
+// the same [EventFilterInput!] shape any GraphQL Subscription already
+// supports (ADR-037) -- optional, since not every instance needs to narrow
+// its cache to an active subset; omitting it subscribes unfiltered, exactly
+// as every instance did before this item.
 export interface ClientConfig {
   instanceId: string
   appId: string
@@ -27,6 +43,7 @@ export interface ClientConfig {
   clientId: string
   clientSecret: string
   scope: string
+  scopeFilter?: ScopeFilterClause[]
 }
 
 export interface FetchTokenFn {
@@ -46,7 +63,8 @@ export function useEntityViewActions(config: ClientConfig, deps: { fetchToken?: 
   const entityCache = useEntityCacheStore()
   const viewDefinitions = useViewDefinitionsStore()
   const token = ref<string | null>(null)
-  let unsubscribe: (() => void) | null = null
+  let unsubscribeEntity: (() => void) | null = null
+  let unsubscribeErasure: (() => void) | null = null
 
   const tokenFetcher = deps.fetchToken ?? fetchToken
 
@@ -92,8 +110,21 @@ export function useEntityViewActions(config: ClientConfig, deps: { fetchToken?: 
   // (already included, since FollowSubscriptionTypeModule adds them to
   // every payload type unconditionally). Folds each arriving message into
   // the shared entity cache store keyed by this instance + the resolved
-  // EntityId.
-  async function subscribe(onUpdate?: (entityId: string) => void): Promise<void> {
+  // EntityId. `config.scopeFilter` (ADR-065), when supplied, is forwarded
+  // as the Subscription's own `where` argument -- narrowing what the
+  // server ever delivers (and therefore what this cache ever holds) to the
+  // active-scoped subset, the entire mechanism this ADR calls for. Honest,
+  // named limitation, not silently glossed over: because the filter is
+  // enforced server-side per event, an entity that later stops matching
+  // (closed, completed, reassigned) simply stops receiving further updates
+  // through this connection -- there is no push-based "you fell out of
+  // scope, evict now" signal, so an already-cached copy is not proactively
+  // purged the moment that happens. It goes stale rather than being
+  // actively wrong (no further writes reach it), and a fresh reconnect
+  // with the same filter never re-delivers it. Erasure (below) has no such
+  // gap, since ADR-057 makes it an ordinary delivered event, not a filter
+  // outcome.
+  async function subscribeToEntity(onUpdate?: (entityId: string) => void): Promise<void> {
     const currentToken = await ensureToken()
     const introspection = await graphqlQuery<{ __type: { fields: Array<{ name: string }> } | null }>(
       config.hostBaseUrl,
@@ -103,10 +134,10 @@ export function useEntityViewActions(config: ClientConfig, deps: { fetchToken?: 
     const fieldNames = introspection.__type?.fields.map((f) => f.name) ?? []
     if (fieldNames.length === 0) return // nothing registered for this event type -- nothing to subscribe to yet
 
-    const query = buildSubscriptionQuery(config.appId, config.eventType, fieldNames)
+    const query = buildSubscriptionQuery(config.appId, config.eventType, fieldNames, config.scopeFilter)
     const fieldName = subscriptionFieldName(config.appId, config.eventType)
 
-    unsubscribe = graphqlSubscribe<Record<string, FollowedEventEnvelope>>(
+    unsubscribeEntity = graphqlSubscribe<Record<string, FollowedEventEnvelope>>(
       config.hostBaseUrl,
       currentToken,
       query,
@@ -129,9 +160,52 @@ export function useEntityViewActions(config: ClientConfig, deps: { fetchToken?: 
     )
   }
 
+  // ADR-065's mandatory, immediate local purge on erasure -- a SECOND,
+  // generic subscription (the same introspect-then-subscribe shape as
+  // subscribeToEntity above) to the reserved EntityErasureRequested type
+  // for this instance's own AppId, independent of whatever entity type
+  // it's otherwise watching. `EntityErasureRequested` reaches a subscribed
+  // client through the exact same channel as any other update (ADR-057) --
+  // there is nothing special-cased about the transport, only about what
+  // this handler does with it: delete the named entity's cached copy right
+  // away, never deferred to the next scope-eviction cycle. Named
+  // limitation shared with the ADR itself: a device offline at the moment
+  // erasure fires won't purge until it reconnects and receives this event.
+  async function subscribeToErasure(): Promise<void> {
+    const currentToken = await ensureToken()
+    const introspection = await graphqlQuery<{ __type: { fields: Array<{ name: string }> } | null }>(
+      config.hostBaseUrl,
+      currentToken,
+      buildIntrospectionQuery(config.appId, ERASURE_EVENT_TYPE),
+    )
+    const fieldNames = introspection.__type?.fields.map((f) => f.name) ?? []
+    if (fieldNames.length === 0) return // this AppId has never published a classified field -- nothing to erase yet
+
+    const query = buildSubscriptionQuery(config.appId, ERASURE_EVENT_TYPE, fieldNames)
+    const fieldName = subscriptionFieldName(config.appId, ERASURE_EVENT_TYPE)
+
+    unsubscribeErasure = graphqlSubscribe<Record<string, ErasureEventPayload>>(
+      config.hostBaseUrl,
+      currentToken,
+      query,
+      (data) => {
+        const targetEntityId = data[fieldName]?.targetEntityId
+        if (targetEntityId) void entityCache.purge(config.instanceId, targetEntityId)
+      },
+      (error) => console.error('Erasure subscription error', error),
+    )
+  }
+
+  async function subscribe(onUpdate?: (entityId: string) => void): Promise<void> {
+    await subscribeToEntity(onUpdate)
+    await subscribeToErasure()
+  }
+
   function stopSubscription(): void {
-    unsubscribe?.()
-    unsubscribe = null
+    unsubscribeEntity?.()
+    unsubscribeEntity = null
+    unsubscribeErasure?.()
+    unsubscribeErasure = null
   }
 
   // EntityView's own lookup step (docs/features/mvvm-client.md's rendering

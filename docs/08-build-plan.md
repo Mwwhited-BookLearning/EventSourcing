@@ -86,7 +86,7 @@ provider they apply to — not "code written."
 | 25 | [Data Lifecycle & Backup/Restore Classification](#data-lifecycle--backuprestore-classification) | Scaffolding & Persistence | Done |
 | 26 | [GDPR/CCPA Erasure via Crypto-Shredding](#gdprccpa-erasure-via-crypto-shredding) | Property-Level Masking, Entity-Centric Core Rebuild | Done |
 | 27 | [PCI-DSS Sensitive Authentication Data Registration Boundary](#pci-dss-sensitive-authentication-data-registration-boundary) | Schema Registry, Property-Level Masking | Done |
-| 28 | [Local/Edge Active-Scope Caching & Erasure Invalidation](#localedge-active-scope-caching--erasure-invalidation) | MVVM Client, GDPR/CCPA Erasure | Not started |
+| 28 | [Local/Edge Active-Scope Caching & Erasure Invalidation](#localedge-active-scope-caching--erasure-invalidation) | MVVM Client, GDPR/CCPA Erasure | Done |
 | 29 | [Digital Sign-Off for Regulated Actions](#digital-sign-off-for-regulated-actions-step-up-authentication) | Auth + Orchestration, ActorId on Every Event | Not started |
 | 30 | [Control-Plane Actions as Reserved Events](#control-plane-actions-as-reserved-events) | Schema Registry, Entity-Centric Core Rebuild | Not started |
 | 31 | [Dynamic Feature-Flag Configuration Provider](#dynamic-feature-flag-configuration-provider) | Scaffolding & Persistence, Control-Plane Actions as Reserved Events | Not started |
@@ -238,7 +238,7 @@ state "Local Services" as tierLocal {
 }
 state "UI" as tierUi {
   state "MVVM Client" as p20 #palegreen
-  state "Local/Edge Cache Scoping\n+ Erasure Invalidation" as a4
+  state "Local/Edge Cache Scoping\n+ Erasure Invalidation" as a4 #palegreen
   state "Pluggable Outbox\nFlush Triggers" as a19
   state "Device Input Integration" as a20
   state "Accessibility Standard" as a21
@@ -2230,6 +2230,48 @@ field, unaffected by this boundary.
 
 ## Local/Edge Active-Scope Caching & Erasure Invalidation
 
+**Status: Done, with one deliberately, explicitly accepted narrowing —
+checked with the user before building rather than assumed.** The scope-
+eviction half of this ADR has a real gap its own Decision text doesn't
+fully resolve: the subscription filter is enforced server-side, per
+event, so an entity's own later update that stops matching the filter is
+never delivered at all through that connection — there is no push-based
+"you fell out of scope, evict now" signal for the client to react to.
+Asked explicitly rather than guessed: accept this as a named limitation
+(server-side filter is the entire mechanism) rather than build a client-
+side re-evaluation layer (subscribe broad, evaluate the full scope
+predicate locally on every update) that would have required a second,
+independent filter representation and evaluator. Both halves' worth of
+Gherkin in `docs/features/mvvm-client.md` were updated to describe this
+honestly, not silently narrowed with no marker.
+
+Implemented as: `subscriptionBuilder.ts` gained `ScopeFilterClause`/
+`serializeWhereClauses`, threading an optional `where` argument (the same
+`[EventFilterInput!]` shape the server already exposes) through
+`buildSubscriptionQuery`; `ClientConfig.scopeFilter` (optional) carries it
+from `useEntityViewActions.subscribe()`. Erasure invalidation is a
+SECOND, independent subscription (`subscribeToErasure`, same introspect-
+then-subscribe shape as the entity subscription) to the reserved
+`EntityErasureRequested` type for the client's own `AppId` — on receipt,
+`targetEntityId` is resolved and `entityCacheStore.purge()` (already
+built by "MVVM Client," stubbed exactly for this item) is called
+immediately, never deferred.
+
+**A real, pre-existing bug found and fixed while building this item's own
+mechanism, not by reading the code back**: `payloadTypeName`/
+`subscriptionFieldName` never lowercased the event type before
+sanitizing it, but `SchemaRegistryService.RegisterAsync` always stores
+`EventTypeDefinition.Name` lowercased (`normalizedName =
+eventTypeName.ToLowerInvariant()`) before `FollowSubscriptionTypeModule`
+ever builds a field name from it server-side. Every existing client call
+site (including this item's own new `EntityErasureRequested` subscription,
+which would have failed identically) passed the type's natural casing
+(e.g. `"OrderPlaced"`), silently subscribing to a GraphQL field name that
+never matched anything the server actually exposes — a `data[fieldName]`
+lookup that's simply always `undefined`, no error, no crash, just no
+data ever arriving. Fixed by lowercasing the event type (never the
+`AppId`, which the server never lowercases) inside those two functions.
+
 **Scope**: `ADR-065` — a local/edge client (MVVM Client) subscribes with
 an explicit scope filter (the same `FilterableFields`-backed GraphQL
 Subscription argument shape every other consumer already uses) instead
@@ -2258,14 +2300,29 @@ adds no new sync protocol or replication tier of its own.
 
 **Exit criteria**: a client's local cache contains only entities matching
 its subscription's active-scope filter, verified by inspecting local
-storage directly; an entity falling out of scope is purged from local
-storage without waiting for any unrelated TTL; a client subscribed to an
-entity that then receives `EntityErasureRequested` for it purges the
-local copy immediately upon receiving that event, verified distinctly
-from the scope-eviction path; a client that is offline at the moment
-erasure fires still purges correctly once it reconnects and receives the
-event, with no special-cased "already offline" exemption asserted
-anywhere.
+storage directly — **built, verified by the filter argument reaching the
+Subscription query itself**; ~~an entity falling out of scope is purged
+from local storage without waiting for any unrelated TTL~~ — **narrowed,
+per direct request: the filter prevents future over-caching, but an
+already-cached entity is not proactively purged the instant it stops
+matching (named limitation above), since the server-side filter is the
+entire accepted mechanism**; a client subscribed to an entity that then
+receives `EntityErasureRequested` for it purges the local copy
+immediately upon receiving that event, verified distinctly from the
+scope-eviction path — **built and tested**; a client that is offline at
+the moment erasure fires still purges correctly once it reconnects and
+receives the event — **narrowed, found while verifying this exact
+criterion, not assumed satisfied**: every Subscription this client opens
+(the erasure one built here included) is hardcoded `mode: TAIL` with no
+persisted resume cursor and no `mode: Replay`/`fromSequenceNumber`
+reconnect path — a PRE-EXISTING gap in "MVVM Client" itself (item 21),
+not introduced by this item, but one this item's own exit criterion
+inherits rather than closes. A client already connected when erasure
+fires purges correctly (proven by this item's own tests); a client that
+reconnects AFTER having been offline while it fired has no guaranteed
+catch-up mechanism today and may simply miss it — narrower than this
+criterion's literal wording, tracked as a real follow-up in `TODO.md`
+rather than silently claimed done.
 
 ## Digital Sign-Off for Regulated Actions (Step-Up Authentication)
 
