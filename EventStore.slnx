@@ -33,6 +33,7 @@
     <Project Path="src/EventStore.Upcasting/EventStore.Upcasting.csproj" />
     <Project Path="src/EventStore.SpecGeneration/EventStore.SpecGeneration.csproj" />
     <Project Path="src/EventStore.ViewRegistry/EventStore.ViewRegistry.csproj" />
+    <Project Path="src/EventStore.Webhooks/EventStore.Webhooks.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/EventStore.IntegrationTests/EventStore.IntegrationTests.csproj" />

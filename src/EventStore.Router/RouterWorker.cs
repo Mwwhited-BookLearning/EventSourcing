@@ -6,9 +6,11 @@ using EventStore.Domain.EventLog;
 using EventStore.Domain.SchemaRegistry;
 using EventStore.Erasure;
 using EventStore.LeaderElection;
+using EventStore.Masking;
 using EventStore.Persistence;
 using EventStore.SchemaRegistry;
 using EventStore.Upcasting;
+using EventStore.Webhooks;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -86,7 +88,8 @@ public class RouterWorker(IServiceScopeFactory scopeFactory, ILogger<RouterWorke
                     var schemaRegistry = scope.ServiceProvider.GetRequiredService<SchemaRegistryService>();
                     var upcastChain = scope.ServiceProvider.GetRequiredService<UpcastChain>();
                     var erasureKeyService = scope.ServiceProvider.GetRequiredService<ErasureKeyService>();
-                    await RunOnceAsync(db, schemaRegistry, upcastChain, erasureKeyService, stoppingToken);
+                    var payloadMasker = scope.ServiceProvider.GetRequiredService<IPayloadMasker>();
+                    await RunOnceAsync(db, schemaRegistry, upcastChain, erasureKeyService, payloadMasker, stoppingToken);
                 }
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
@@ -112,7 +115,8 @@ public class RouterWorker(IServiceScopeFactory scopeFactory, ILogger<RouterWorke
     // Trigger 2 backlog reconciliation runs every tick too, but isn't counted
     // here since it's not driven by "received" events at all).
     public static async Task<int> RunOnceAsync(
-        EventStoreContext db, SchemaRegistryService schemaRegistry, UpcastChain upcastChain, ErasureKeyService? erasureKeyService = null, CancellationToken ct = default)
+        EventStoreContext db, SchemaRegistryService schemaRegistry, UpcastChain upcastChain, ErasureKeyService? erasureKeyService = null,
+        IPayloadMasker? payloadMasker = null, CancellationToken ct = default)
     {
         var received = await db.Events
             .Where(e => e.Status == "received")
@@ -120,7 +124,7 @@ public class RouterWorker(IServiceScopeFactory scopeFactory, ILogger<RouterWorke
             .ToListAsync(ct);
 
         foreach (var storedEvent in received)
-            await ProcessEventAsync(db, schemaRegistry, upcastChain, erasureKeyService, storedEvent, ct);
+            await ProcessEventAsync(db, schemaRegistry, upcastChain, erasureKeyService, payloadMasker, storedEvent, ct);
 
         if (received.Count > 0)
             await db.SaveChangesAsync(ct);
@@ -134,7 +138,7 @@ public class RouterWorker(IServiceScopeFactory scopeFactory, ILogger<RouterWorke
 
     private static async Task ProcessEventAsync(
         EventStoreContext db, SchemaRegistryService schemaRegistry, UpcastChain upcastChain, ErasureKeyService? erasureKeyService,
-        StoredEvent storedEvent, CancellationToken ct)
+        IPayloadMasker? payloadMasker, StoredEvent storedEvent, CancellationToken ct)
     {
         // ADR-027's critical invariant -- a materialization is never folded
         // and never re-materialized. Its shape was already fully validated as
@@ -192,9 +196,11 @@ public class RouterWorker(IServiceScopeFactory scopeFactory, ILogger<RouterWorke
         JsonObject known;
         JsonObject unknownProperties;
         ChangeKind changeKind;
+        JsonNode? declaredSchemaNode = null;
         if (declaredDefinition is not null)
         {
-            var schemaNode = JsonNode.Parse(declaredDefinition.JsonSchema);
+            declaredSchemaNode = JsonNode.Parse(declaredDefinition.JsonSchema);
+            var schemaNode = declaredSchemaNode;
             var errors = new List<string>();
             var conformant = JsonSchemaInstanceValidator.Validate(schemaNode, payloadNode, errors);
             storedEvent.SchemaStatus = conformant ? "conformant" : "invalid";
@@ -262,6 +268,13 @@ public class RouterWorker(IServiceScopeFactory scopeFactory, ILogger<RouterWorke
         // this reserved type and have nothing to react to.
         if (storedEvent.EventType == "entityerasurerequested" && erasureKeyService is not null)
             await EntityErasureResolver.ProcessAsync(erasureKeyService, storedEvent, ct);
+
+        // ADR-060 -- same "ordinary fold above, additional reactor effect
+        // here" shape as the two reactors just above. payloadMasker is null
+        // only for call sites (most existing tests) that never wire webhooks
+        // and have no subscriptions to match against.
+        if (payloadMasker is not null)
+            await WebhookEnqueueResolver.ProcessAsync(db, payloadMasker, storedEvent, declaredSchemaNode, ct);
 
         storedEvent.Status = "applied";
     }

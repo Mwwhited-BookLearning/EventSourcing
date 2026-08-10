@@ -16,6 +16,7 @@
     <ProjectReference Include="..\EventStore.Streaming\EventStore.Streaming.csproj" />
     <ProjectReference Include="..\EventStore.Attachments\EventStore.Attachments.csproj" />
     <ProjectReference Include="..\EventStore.Replication\EventStore.Replication.csproj" />
+    <ProjectReference Include="..\EventStore.Webhooks\EventStore.Webhooks.csproj" />
     <ProjectReference Include="..\EventStore.GraphQL\EventStore.GraphQL.csproj" />
     <ProjectReference Include="..\EventStore.ServiceDefaults\EventStore.ServiceDefaults.csproj" />
   </ItemGroup>

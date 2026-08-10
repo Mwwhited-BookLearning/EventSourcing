@@ -216,8 +216,10 @@ live re-check, the same "claims fixed for a connection's lifetime" rule
 `ADR-009` already applies to a Follow connection. `WebhookOutbox`/
 `WebhookDeliveryCursor` (the delivery-side durable queue and per-
 subscription cursor) are a separate concern from this registration
-record — not yet placed in this file, still flagged as remaining
-propagation work per `ADR-060`'s own Consequences.
+record — see "Webhook outbox and delivery cursor" below (a stale note
+here once called this remaining propagation work per `ADR-060`'s own
+Consequences; that section already exists in this same file, corrected
+in place while building the matching build-plan item).
 
 ## Entity view definitions (`ADR-039`)
 
@@ -267,7 +269,8 @@ public class WebhookOutbox
 {
     public long SequenceNumber { get; set; }               // own append-only sequence, matched against StoredEvent's for resumption
     public Guid SubscriptionId { get; set; }               // FK -> WebhookSubscription
-    public string EventPayloadSnapshot { get; set; } = default!; // masked (ADR-009) against FixedClaimsSnapshot at enqueue time
+    public string EventPayloadSnapshot { get; set; } = default!; // masked (ADR-009) against FixedClaimsSnapshot -- refreshed on every delivery attempt, not written once and left stale
+    public long SourceSequenceNumber { get; set; }         // FK -> StoredEvent.SequenceNumber
     public DateTimeOffset EnqueuedAt { get; set; }
 }
 
@@ -286,6 +289,19 @@ share — `WebhookOutbox` is a durable table (never an in-memory queue),
 and `WebhookDeliveryCursor` is structurally identical to
 `PeerSyncCursor` above, confirming this really does inherit the
 primitive rather than merely resembling it.
+
+**`SourceSequenceNumber`, added while implementing this item's own build-
+plan work**: `ADR-060`'s own Consequences state a *retry* attempted after
+a crypto-shredding erasure must "correctly re-mask through `IPayloadMasker`
+against the now-erased key" — but `IPayloadMasker`'s reveal path decrypts
+the ORIGINAL ciphertext live, checking the erasure key's current state
+each call (`ADR-057`); a value already baked into `EventPayloadSnapshot`
+at enqueue time can't be re-derived from itself. `SourceSequenceNumber`
+lets `WebhookOutboxPump` re-fetch the originating `StoredEvent`'s raw
+`Payload`/`EntityId` and re-run `IPayloadMasker.MaskAsync` fresh on every
+delivery attempt (first attempt or retry alike) — `EventPayloadSnapshot`
+is then this row's own record of what was actually just sent, not a
+frozen, potentially-stale copy from enqueue time.
 
 ## Feature flag state (`ADR-077`)
 

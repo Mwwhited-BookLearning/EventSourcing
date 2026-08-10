@@ -809,6 +809,94 @@ namespace EventStore.Persistence.Migrations.Postgres.Migrations
                     b.ToTable("ViewDefinitions");
                 });
 
+            modelBuilder.Entity("EventStore.Domain.Webhooks.WebhookDeliveryCursor", b =>
+                {
+                    b.Property<Guid>("SubscriptionId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("LastAttemptAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<long>("LastDeliveredSequenceNumber")
+                        .HasColumnType("bigint");
+
+                    b.Property<DateTimeOffset?>("LastSuccessAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("SubscriptionId");
+
+                    b.ToTable("WebhookDeliveryCursors");
+                });
+
+            modelBuilder.Entity("EventStore.Domain.Webhooks.WebhookOutbox", b =>
+                {
+                    b.Property<long>("SequenceNumber")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("SequenceNumber"));
+
+                    b.Property<DateTimeOffset>("EnqueuedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("EventPayloadSnapshot")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<long>("SourceSequenceNumber")
+                        .HasColumnType("bigint");
+
+                    b.Property<Guid>("SubscriptionId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("SequenceNumber");
+
+                    b.HasIndex("SubscriptionId");
+
+                    b.ToTable("WebhookOutbox");
+                });
+
+            modelBuilder.Entity("EventStore.Domain.Webhooks.WebhookSubscription", b =>
+                {
+                    b.Property<Guid>("SubscriptionId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<bool>("Active")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("AppId")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("EventTypes")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("FixedClaimsSnapshot")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("PreviousSigningSecret")
+                        .HasColumnType("text");
+
+                    b.Property<DateTimeOffset>("RegisteredAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("SigningSecret")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("TargetUrl")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.HasKey("SubscriptionId");
+
+                    b.ToTable("WebhookSubscriptions");
+                });
+
             modelBuilder.Entity("EventStore.Domain.SchemaRegistry.FilterableField", b =>
                 {
                     b.HasOne("EventStore.Domain.SchemaRegistry.EventTypeDefinition", null)

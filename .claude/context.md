@@ -1381,11 +1381,44 @@ stale numbers here are worse than none)*
   shape. Full multi-provider Sqlite regression suite re-run clean
   (57/58 — only the pre-existing, unrelated `SubscribingOverRealHttpStreams
   AsMatchingEventAsSse` flake).
-- **Next up**: item 34, "Outbound Webhooks" — depends on Publish API
-  (Done), Auth + Orchestration (Done), Property-Level Masking (Done), and
-  Leader Election via Database-Backed Lease (Done, item 32) — the webhook
-  outbox pump is the 4th leader-elected role item 32's own build-plan
-  section deferred to this item.
+- **Item 34, "Outbound Webhooks" (`ADR-060`), is Done.** New
+  `EventStore.Domain.Webhooks` shapes (`WebhookSubscription`/
+  `WebhookOutbox`/`WebhookDeliveryCursor`) + a new `EventStore.Webhooks`
+  project: `WebhookSubscriptionService` freezes `FixedClaimsSnapshot` once
+  at registration (a JSON array of "type:value" claims, `ADR-008`'s own
+  primitive reused); `WebhookEnqueueResolver` is a reactor `RouterWorker`
+  invokes for every event (the same shape `AuthorityDecisionResolver`/
+  `EntityErasureResolver` already use), masking via `IPayloadMasker` and
+  enqueuing a durable `WebhookOutbox` row; `WebhookOutboxPump` is the 4th
+  of `ADR-078`'s 4 named worker roles — its own genuinely independent
+  leader-elected lease — draining and delivering with Standard Webhooks
+  signing and exponential backoff+jitter. **Decision 1**: `WebhookOutbox`
+  gained a `SourceSequenceNumber` column (added to `docs/data/schema-
+  registry.md` in the same pass) so a retry can re-fetch the ORIGINAL
+  event and re-mask fresh — `IPayloadMasker`'s reveal path checks live
+  erasure-key state each call, which a value baked in at enqueue time
+  can't reflect. **Decision 2**: the dead-letter `WebhookDeliveryFailed`
+  event is appended via `EventAppender` directly (`Status: "received"`,
+  Router's own next tick folds it), never `PublishService` — routing
+  through `PublishService` (in `EventStore.Inbox`, which references
+  `EventStore.Router`) would have made `EventStore.Webhooks` depend on
+  `EventStore.Inbox` while `EventStore.Router` already depends on
+  `EventStore.Webhooks` for the enqueue reactor — a genuine circular
+  project reference, caught by the build failing (`MSB4006`) before any
+  code ran. A permanently-broken target's cursor still advances past a
+  dead-lettered row after `MaxAttempts`, so one broken subscriber can
+  never head-of-line-block every later event behind it forever — a
+  narrowing beyond this item's own literal exit-criteria text, but
+  necessarily implied by having a `MaxAttempts` at all. Verified across
+  SQLite/PostgreSQL/SQL Server for enqueue mechanics, plus a dedicated
+  SQLite-only `WebhookDeliveryHttpSqliteTests.cs` for real HTTP delivery
+  (signing, retry-to-eventual-success, dead-letter queryable via Lineage
+  + subscription unblocking, a simulated pump restart proving no lost/
+  duplicated delivery, and the erasure/retry interaction both ways). Full
+  SQLite regression suite re-run clean (65/66 — only the pre-existing,
+  unrelated SSE-subscription flake).
+- **Next up**: item 35, "Data Residency (Region Pinning)" — depends on
+  Sharding & Replication (Done) and Multi-Tenancy (Done).
 
 ## How to resume cold
 
@@ -1400,9 +1433,10 @@ stale numbers here are worse than none)*
    narrative.
 5. `dotnet build EventStore.slnx` and `dotnet test tests/EventStore.IntegrationTests` —
    confirm the build/test baseline the last session left still holds
-   before adding to it (105 tests should pass — 98 plus item 33's new
-   `RateLimitingGatewayTests.cs`, 7 methods, SQLite-only/no-DB-provider
-   since it's a pure Gateway-process test). Requires Docker running
+   before adding to it (115 tests should pass — 105 (98 plus item 33's
+   `RateLimitingGatewayTests.cs`, 7 methods) plus item 34's 10 new methods
+   across `WebhookSqliteTests`/`WebhookPostgresTests`/`WebhookSqlServerTests`/
+   `WebhookDeliveryHttpSqliteTests.cs`). Requires Docker running
    (Testcontainers for Postgres/SQL Server) and the SDK pinned in
    `global.json`. A full multi-provider run has a known, pre-existing,
    unrelated flake — see `TODO.md`'s entry — where one or two SQL Server

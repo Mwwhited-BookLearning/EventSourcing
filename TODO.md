@@ -207,3 +207,13 @@ here instead of inlining.
   across everything already built) or revise `06-solution-structure.md`'s
   own text to describe the testing approach actually adopted, so the doc
   stops promising a project that, ten items in, evidently isn't coming.
+- **`EventStore.slnx` is missing several real, already-built `src/`
+  projects** (`EventStore.FeatureFlags`, `EventStore.LeaderElection`,
+  `EventStore.Erasure`, `EventStore.Rbac` at minimum) — noticed while
+  adding `EventStore.Webhooks` to it (item 34) and finding the list
+  already stale going in. Each missing project still builds and runs
+  fine (`dotnet build <project>.csproj`/the Host projects that reference
+  it directly), so this has never blocked anything — only IDE/`dotnet
+  build EventStore.slnx`-at-the-solution-level discoverability is
+  affected. Needs a pass reconciling the full `src/` directory listing
+  against this file's `<Project Path=...>` entries.

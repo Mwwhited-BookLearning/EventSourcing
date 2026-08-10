@@ -92,7 +92,7 @@ provider they apply to — not "code written."
 | 31 | [Dynamic Feature-Flag Configuration Provider](#dynamic-feature-flag-configuration-provider) | Scaffolding & Persistence, Control-Plane Actions as Reserved Events | Done |
 | 32 | [Leader Election via Database-Backed Lease](#leader-election-via-database-backed-lease) | Entity-Centric Core Rebuild, Sharding & Replication | Done |
 | 33 | [Per-Tenant Rate Limiting](#per-tenant-rate-limiting) | Auth + Orchestration, SPIFFE/SPIRE Service Identity & API Gateway | Done |
-| 34 | [Outbound Webhooks](#outbound-webhooks) | Publish API, Auth + Orchestration, Property-Level Masking, Leader Election | Not started |
+| 34 | [Outbound Webhooks](#outbound-webhooks) | Publish API, Auth + Orchestration, Property-Level Masking, Leader Election | Done |
 | 35 | [Data Residency (Region Pinning)](#data-residency-region-pinning) | Sharding & Replication, Multi-Tenancy | Not started |
 | 36 | [Bulk Ingestion & External Interchange-Format Adapters](#bulk-ingestion--external-interchange-format-adapters) | Publish API, Non-Authoritative Capture, Outbound Webhooks | Not started |
 | 37 | [Tenant-to-Tenant Federation Mapping](#tenant-to-tenant-federation-mapping) | Multi-Tenancy, Auth + Orchestration, Bulk Ingestion & Interchange Adapters | Not started |
@@ -189,7 +189,7 @@ as expected for a backend-first event-sourcing engine.
 state "External Services" as tierExternal {
   state "Auth + Orchestration" as p5 #palegreen
   state "SPIFFE/SPIRE Identity & API Gateway" as p23 #palegreen
-  state "Outbound Webhooks" as a10
+  state "Outbound Webhooks" as a10 #palegreen
   state "Tenant Federation Mapping" as a12
   state "Bulk Ingestion +\nInterchange Adapters" as a13
   state "Sanctions Screening Seam" as a14
@@ -2874,6 +2874,90 @@ erasure remains exactly as originally sent, while a retry attempted
 `{"erased": true}` for that field — this last scenario depends on
 "GDPR/CCPA Erasure via Crypto-Shredding" already existing to produce the
 `{erased}` branch it exercises.
+
+**Status: Done, with two design decisions this section's own text was
+written without.** New `EventStore.Domain.Webhooks` shapes
+(`WebhookSubscription`/`WebhookOutbox`/`WebhookDeliveryCursor`, migrated
+across all 3 providers) and a new `EventStore.Webhooks` project:
+`WebhookSubscriptionService.RegisterAsync` freezes `FixedClaimsSnapshot`
+as a JSON array of the registering caller's own "type:value" claims
+(`ADR-008`'s existing primitive, reused, not a second parser);
+`WebhookEnqueueResolver` is a "special-purpose reactor" `RouterWorker.
+ProcessEventAsync` invokes for every event, the same shape
+`AuthorityDecisionResolver`/`EntityErasureResolver` already established —
+matches Active subscriptions by `EventTypes`, masks via `IPayloadMasker`
+against the subscription's frozen snapshot, and inserts a durable
+`WebhookOutbox` row (never in-memory); `WebhookOutboxPump` is the 4th of
+`ADR-078`'s 4 named worker roles, its own genuinely independent
+leader-elected lease (unlike `UpcastMaterializer`, which "Leader Election"
+found was never independently schedulable) — drains one subscription's
+oldest pending row per tick, signs it (`WebhookSigner`, Standard
+Webhooks' HMAC-SHA256 construction, used as specified), and retries with
+exponential backoff + jitter (`WebhookRetryTracker`, deliberately
+in-memory/per-process — a restart just resets the attempt count, never
+the durable cursor, so no delivery is ever lost or duplicated).
+
+**Decision 1 — `WebhookOutbox` gained a `SourceSequenceNumber` column
+this section's own schema text never named.** `ADR-060`'s Consequences
+require a retry after erasure to "correctly re-mask... against the
+now-erased key," but `IPayloadMasker`'s reveal path decrypts the
+ORIGINAL ciphertext live, checking the erasure key's CURRENT state each
+call — a value already baked into `EventPayloadSnapshot` at enqueue time
+can't be re-derived from itself. `SourceSequenceNumber` (added to
+`docs/data/schema-registry.md` in the same pass, per this repo's own
+"the ADR that adds a field is that field's shape authority" rule) lets
+`WebhookOutboxPump` re-fetch the originating `StoredEvent` and re-run
+`IPayloadMasker.MaskAsync` fresh on every delivery attempt, first try or
+retry alike — found necessary before writing any code, not patched in
+after a test failure.
+
+**Decision 2 — `WebhookOutboxPump` appends `WebhookDeliveryFailed` via
+`EventAppender` directly, with `Status: "received"`, never
+`PublishService.PublishAsync`.** `EventStore.Webhooks` needs `EventStore.
+Router` to reference it (for `WebhookEnqueueResolver`); `PublishService`
+lives in `EventStore.Inbox`, which itself references `EventStore.Router`
+(`EntityIdResolver`) — routing the dead-letter publish through
+`PublishService` would have made `EventStore.Webhooks` depend on
+`EventStore.Inbox`, a genuine circular project reference, caught by the
+build failing (`MSB4006`) before any code even ran. Appending directly
+with `Status: "received"` means Router's own next tick folds/validates
+it exactly like any ordinary publish (resolving `EntityId` per
+`WebhookDeliveryFailedEventType`'s own `EntityIdField`) — the same lower-
+level primitive `UpcastMaterializer`/`PeerSyncReceiver` already bypass
+`PublishService` for, for their own, different reasons.
+
+**A real, deliberate scoping decision found while building the
+enqueue reactor**: an event whose own declared schema version isn't
+registered (`SchemaStatus: "unknown"`) is never enqueued for webhook
+delivery at all — there is no schema to safely mask an unknown shape's
+sensitive fields against. Narrower than `ADR-060`'s own text, which
+never actually considers this case; stated here rather than left
+implicit.
+
+**One narrowing beyond a single dead-lettered row**: a permanently-
+broken target's cursor still advances past the poison row after
+`MaxAttempts` — otherwise one broken subscriber would head-of-line-block
+every later event behind it forever. Not stated in this section's own
+exit criteria, but necessarily implied by it having a `MaxAttempts` at
+all; the failure itself is never silently dropped (the `WebhookDeliveryFailed`
+event is the permanent, queryable record), only the blocking is relieved.
+
+Verified with `WebhookScenarioAssertions.cs`/`WebhookSqliteTests.cs`/
+`WebhookPostgresTests.cs`/`WebhookSqlServerTests.cs` (claim-snapshot
+freeze, masked-and-enqueued, non-matching-never-enqueued, across all 3
+providers) and `WebhookDeliveryHttpSqliteTests.cs` (SQLite-only — nothing
+about HTTP delivery is provider-specific): Standard Webhooks header/
+signature verification, a failed delivery eventually succeeding with the
+cursor advancing only on actual success, exhausted retries dead-lettering
+as a `WebhookDeliveryFailed` event confirmed queryable through the
+ordinary Lineage API and unblocking the subscription for its next event,
+a simulated pump restart (a fresh `WebhookRetryTracker`, same durable
+cursor) proving no lost or duplicated delivery, and the crypto-shredding
+erasure/retry interaction in both directions (an already-delivered
+payload staying exactly as sent; a not-yet-delivered retry correctly
+carrying `{"erased": true}`). Full SQLite regression suite re-run clean
+(65/66 — only the pre-existing, unrelated
+`SubscribingOverRealHttpStreamsAMatchingEventAsSse` flake).
 
 ## Data Residency (Region Pinning)
 
