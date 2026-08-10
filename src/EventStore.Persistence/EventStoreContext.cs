@@ -39,6 +39,8 @@ public class EventStoreContext(DbContextOptions<EventStoreContext> options, IJso
     public DbSet<PeerSyncCursor> PeerSyncCursors => Set<PeerSyncCursor>();
     public DbSet<ViewDefinition> ViewDefinitions => Set<ViewDefinition>();
     public DbSet<AccessLogEntry> AccessLogEntries => Set<AccessLogEntry>();
+    public DbSet<EntityErasureKey> EntityErasureKeys => Set<EntityErasureKey>();
+    public DbSet<LocalErasureKeyMaterial> LocalErasureKeyMaterials => Set<LocalErasureKeyMaterial>();
 
     protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder) =>
         optionsBuilder.ReplaceService<IModelCacheKeyFactory, ProviderAwareModelCacheKeyFactory>();
@@ -201,6 +203,16 @@ public class EventStoreContext(DbContextOptions<EventStoreContext> options, IJso
         {
             e.HasKey(x => x.SequenceNumber);
             e.HasIndex(x => x.ReaderActorId); // ADR-045 -- "every read by this reader" lookups
+        });
+
+        modelBuilder.Entity<EntityErasureKey>(e =>
+        {
+            e.HasKey(x => x.EntityId);
+        });
+
+        modelBuilder.Entity<LocalErasureKeyMaterial>(e =>
+        {
+            e.HasKey(x => x.KeyReference);
         });
     }
 

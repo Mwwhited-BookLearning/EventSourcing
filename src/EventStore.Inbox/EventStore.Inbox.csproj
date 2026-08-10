@@ -2,6 +2,8 @@
 
   <ItemGroup>
     <ProjectReference Include="..\EventStore.SchemaRegistry\EventStore.SchemaRegistry.csproj" />
+    <ProjectReference Include="..\EventStore.Erasure\EventStore.Erasure.csproj" />
+    <ProjectReference Include="..\EventStore.Router\EventStore.Router.csproj" />
   </ItemGroup>
 
   <ItemGroup>

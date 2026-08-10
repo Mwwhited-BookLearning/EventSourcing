@@ -4,7 +4,9 @@ using System.Text.Json.Nodes;
 using EventStore.Domain.EventLog;
 using EventStore.Domain.SchemaRegistry;
 using EventStore.Domain.Streaming;
+using EventStore.Erasure;
 using EventStore.Persistence;
+using EventStore.Router;
 using EventStore.SchemaRegistry;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
@@ -17,11 +19,19 @@ namespace EventStore.Inbox;
 // validation, upcast checking, and entity resolution all move to the async
 // Router (EventStore.Router) -- this class never rejects on content anymore,
 // only on "there is nothing to persist against" or "the caller may not call
-// this at all."
+// this at all." ADR-057's crypto-shredding is the one exception to "content
+// is the Router's problem": encryption of x-masking.regulatoryClassification
+// fields has to happen HERE, synchronously, before Payload is persisted and
+// hashed (that ADR's own explicit ordering requirement) -- PayloadEncryptor's
+// own comment explains why that means this class independently resolves
+// EntityId too, via the same EntityIdResolver utility the Router uses,
+// without changing StoredEvent.EntityId's own "starts empty, Router fills
+// it in" contract.
 public class PublishService(
     EventStoreContext db,
     SchemaRegistryService schemaRegistry,
     IUniqueConstraintViolationDetector uniqueConstraintViolationDetector,
+    PayloadEncryptor? payloadEncryptor = null,
     IOptions<OriginIdOptions>? originIdOptions = null)
 {
     // ADR-033 -- defaults every existing 3-arg construction site (every
@@ -43,13 +53,22 @@ public class PublishService(
         if (activeDefinition is null)
             return new PublishResult.UnregisteredEventType();
 
+        // ADR-057 -- computed once, up front, and used everywhere request.Payload
+        // would otherwise appear below: PayloadHash (both the idempotency
+        // short-circuit's comparison basis immediately below AND the stored
+        // event's own hash) must be computed over the SAME (post-encryption)
+        // representation every time, or a legitimate idempotent retry of a
+        // publish containing a classified field would hash differently from
+        // what's already stored and be wrongly reported as a 409 Conflict.
+        var payloadJson = await EncryptClassifiedFieldsAsync(request, activeDefinition, ct);
+
         // ADR-011 -- the eventId short-circuit happens before the parent-link
         // check, immediately after confirming the event type is registered.
         if (request.EventId is { } suppliedEventId)
         {
             var existing = await db.Events.AsNoTracking().SingleOrDefaultAsync(e => e.EventId == suppliedEventId, ct);
             if (existing is not null)
-                return ReplayOrConflict(existing, ComputeHash(normalizedName, request.Payload, parentEventIds));
+                return ReplayOrConflict(existing, ComputeHash(normalizedName, payloadJson, parentEventIds));
         }
 
         // ADR-008/050 -- checked against the ACTIVE version's claims, not the
@@ -74,7 +93,7 @@ public class PublishService(
                 return new PublishResult.UnresolvedParent(missing);
         }
 
-        var payloadHash = ComputeHash(normalizedName, request.Payload, parentEventIds);
+        var payloadHash = ComputeHash(normalizedName, payloadJson, parentEventIds);
         var eventId = request.EventId ?? Guid.NewGuid();
 
         // ADR-042 -- AuthorityStatus defaults to "accepted" for an ordinary,
@@ -102,7 +121,7 @@ public class PublishService(
             EventType = normalizedName,
             SchemaVersion = request.SchemaVersion,
             ExpectedVersion = request.ExpectedVersion,
-            Payload = request.Payload,
+            Payload = payloadJson,
             PayloadHash = payloadHash,
             ChainHash = "", // computed below, once SequenceNumber is known
             Status = "received", // ADR-023 -- the Router advances this to "applied" asynchronously
@@ -162,6 +181,39 @@ public class PublishService(
         existing.PayloadHash == candidateHash
             ? ToAccepted(existing)
             : new PublishResult.Conflict();
+
+    // ADR-057 -- resolves EntityId the same way the Router will (activeDefinition's
+    // EntityIdField/EntityType, never the declared version's -- ADR-021's identity
+    // resolution is a per-event-TYPE decision, stable across versions), then walks
+    // the DECLARED version's schema for x-masking.regulatoryClassification leaves
+    // (the version RouterWorker's own fold-time validation will check the STORED
+    // result against, so encryption and that later validation must agree on which
+    // schema they're each looking at). An unregistered declared version, or an
+    // unresolvable EntityId, means nothing to encrypt -- returns the payload
+    // unchanged, same as PayloadEncryptor's own no-op path.
+    private async Task<string> EncryptClassifiedFieldsAsync(PublishEventRequest request, EventTypeDefinition activeDefinition, CancellationToken ct)
+    {
+        // ADR-057's own encryption machinery is opt-in via DI, same reasoning
+        // as _originId above -- every pre-"GDPR/CCPA Erasure" test file (~37
+        // of them) constructs this class directly with no PayloadEncryptor at
+        // all, and none of them ever register an x-masking.regulatoryClassification
+        // field, so there is nothing for a real one to do differently. A real
+        // Host always supplies a real, DI-resolved PayloadEncryptor.
+        if (payloadEncryptor is null)
+            return request.Payload;
+
+        var declaredDefinition = await schemaRegistry.GetVersionAsync(request.AppId, activeDefinition.Name, request.SchemaVersion, ct);
+        if (declaredDefinition is null)
+            return request.Payload;
+
+        var payloadNode = JsonNode.Parse(request.Payload);
+        var uniqueId = EntityIdResolver.ResolveUniqueId(payloadNode, activeDefinition.EntityIdField);
+        var entityId = uniqueId is null ? null : $"{request.AppId}:{activeDefinition.EntityType}:{uniqueId}";
+
+        var schemaNode = JsonNode.Parse(declaredDefinition.JsonSchema);
+        var encrypted = await payloadEncryptor.EncryptClassifiedFieldsAsync(schemaNode, payloadNode, request.AppId, entityId, ct);
+        return encrypted?.ToJsonString() ?? request.Payload;
+    }
 
     private static string ComputeHash(string eventType, string payloadJson, IReadOnlyList<Guid> parentEventIds) =>
         EventPayloadHash.Compute(eventType, payloadJson, parentEventIds);

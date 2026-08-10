@@ -4,6 +4,7 @@ using System.Text.Json.Nodes;
 using EventStore.Domain.EntityStore;
 using EventStore.Domain.EventLog;
 using EventStore.Domain.SchemaRegistry;
+using EventStore.Erasure;
 using EventStore.Persistence;
 using EventStore.SchemaRegistry;
 using EventStore.Upcasting;
@@ -40,7 +41,8 @@ public class RouterWorker(IServiceScopeFactory scopeFactory, ILogger<RouterWorke
                 var db = scope.ServiceProvider.GetRequiredService<EventStoreContext>();
                 var schemaRegistry = scope.ServiceProvider.GetRequiredService<SchemaRegistryService>();
                 var upcastChain = scope.ServiceProvider.GetRequiredService<UpcastChain>();
-                await RunOnceAsync(db, schemaRegistry, upcastChain, stoppingToken);
+                var erasureKeyService = scope.ServiceProvider.GetRequiredService<ErasureKeyService>();
+                await RunOnceAsync(db, schemaRegistry, upcastChain, erasureKeyService, stoppingToken);
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
             {
@@ -64,7 +66,8 @@ public class RouterWorker(IServiceScopeFactory scopeFactory, ILogger<RouterWorke
     // number of events processed this tick (received events only -- ADR-027's
     // Trigger 2 backlog reconciliation runs every tick too, but isn't counted
     // here since it's not driven by "received" events at all).
-    public static async Task<int> RunOnceAsync(EventStoreContext db, SchemaRegistryService schemaRegistry, UpcastChain upcastChain, CancellationToken ct = default)
+    public static async Task<int> RunOnceAsync(
+        EventStoreContext db, SchemaRegistryService schemaRegistry, UpcastChain upcastChain, ErasureKeyService? erasureKeyService = null, CancellationToken ct = default)
     {
         var received = await db.Events
             .Where(e => e.Status == "received")
@@ -72,7 +75,7 @@ public class RouterWorker(IServiceScopeFactory scopeFactory, ILogger<RouterWorke
             .ToListAsync(ct);
 
         foreach (var storedEvent in received)
-            await ProcessEventAsync(db, schemaRegistry, upcastChain, storedEvent, ct);
+            await ProcessEventAsync(db, schemaRegistry, upcastChain, erasureKeyService, storedEvent, ct);
 
         if (received.Count > 0)
             await db.SaveChangesAsync(ct);
@@ -85,7 +88,8 @@ public class RouterWorker(IServiceScopeFactory scopeFactory, ILogger<RouterWorke
     }
 
     private static async Task ProcessEventAsync(
-        EventStoreContext db, SchemaRegistryService schemaRegistry, UpcastChain upcastChain, StoredEvent storedEvent, CancellationToken ct)
+        EventStoreContext db, SchemaRegistryService schemaRegistry, UpcastChain upcastChain, ErasureKeyService? erasureKeyService,
+        StoredEvent storedEvent, CancellationToken ct)
     {
         // ADR-027's critical invariant -- a materialization is never folded
         // and never re-materialized. Its shape was already fully validated as
@@ -206,6 +210,13 @@ public class RouterWorker(IServiceScopeFactory scopeFactory, ILogger<RouterWorke
         // purpose reactor" shape ADR-020/027's own handling already use.
         if (storedEvent.EventType == "authoritydecision")
             await AuthorityDecisionResolver.ProcessAsync(db, schemaRegistry, storedEvent, ct);
+
+        // ADR-057 -- same "ordinary fold above, additional reactor effect
+        // here" shape as authoritydecision just above. erasureKeyService is
+        // null only for call sites (most existing tests) that never publish
+        // this reserved type and have nothing to react to.
+        if (storedEvent.EventType == "entityerasurerequested" && erasureKeyService is not null)
+            await EntityErasureResolver.ProcessAsync(erasureKeyService, storedEvent, ct);
 
         storedEvent.Status = "applied";
     }

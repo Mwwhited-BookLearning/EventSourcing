@@ -47,7 +47,7 @@ public class FollowSqliteTests
         var cache = new MemoryCache(new MemoryCacheOptions());
         var registry = new SchemaRegistryService(db, new SqliteFilterableFieldIndexDdlGenerator(), cache, UpcastingTestSupport.CreateEvaluator());
         var publish = new PublishService(db, registry, new SqliteUniqueConstraintViolationDetector());
-        var (payloadMasker, _) = MaskingTestSupport.CreatePayloadMasker();
+        var (payloadMasker, _) = MaskingTestSupport.CreatePayloadMasker(db, registry);
         var follow = new FollowService(db, registry, new EventTailReader(db, registry, payloadMasker, UpcastingTestSupport.CreateChain(), UpcastingTestSupport.CreateDowncastChain()));
         var specBuilder = new AsyncApiDocumentBuilder(db, new EventSchemaConverter(), new MaskingSchemaTransformer(), cache);
 

@@ -1,4 +1,5 @@
 using EventStore.Derivation;
+using EventStore.Erasure;
 using EventStore.Follow.Api;
 using EventStore.GraphQL;
 using EventStore.Host.Core;
@@ -34,6 +35,7 @@ builder.Services.AddRouter();
 builder.Services.AddDerivation();
 builder.Services.AddSpecGeneration();
 builder.Services.AddLineageApi();
+builder.Services.AddErasure(builder.Configuration);
 builder.Services.AddMasking(
     builder.Configuration.GetSection("Masking:HmacKeys").GetChildren().ToDictionary(c => c.Key, c => c.Value!));
 builder.Services.AddFollowApi();

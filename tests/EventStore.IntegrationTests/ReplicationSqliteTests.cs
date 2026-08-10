@@ -49,7 +49,7 @@ public class ReplicationSqliteTests
         new(db, new SqliteFilterableFieldIndexDdlGenerator(), new MemoryCache(new MemoryCacheOptions()), UpcastingTestSupport.CreateEvaluator());
 
     private static PublishService NewPublishService(EventStoreContext db, SchemaRegistryService registry, string originId) =>
-        new(db, registry, new SqliteUniqueConstraintViolationDetector(), Options.Create(new OriginIdOptions { OriginId = originId }));
+        new(db, registry, new SqliteUniqueConstraintViolationDetector(), originIdOptions: Options.Create(new OriginIdOptions { OriginId = originId }));
 
     [TestMethod]
     public async Task AllReplicationScenarios()

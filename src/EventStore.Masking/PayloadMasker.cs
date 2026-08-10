@@ -1,4 +1,6 @@
+using System.Text;
 using System.Text.Json.Nodes;
+using EventStore.Erasure;
 using Microsoft.Extensions.Compliance.Classification;
 using Microsoft.Extensions.Compliance.Redaction;
 using Microsoft.Extensions.DependencyInjection;
@@ -21,25 +23,28 @@ namespace EventStore.Masking;
 // matching redactor -- reusing the same classification metadata ADR-009
 // already declares, for a sink the original query/stream-response-only
 // masking never covered.
-public class PayloadMasker(IServiceProvider serviceProvider, IRedactorProvider redactorProvider, ILogger<PayloadMasker> logger) : IPayloadMasker
+public class PayloadMasker(
+    IServiceProvider serviceProvider, IRedactorProvider redactorProvider, ILogger<PayloadMasker> logger, ErasureKeyService erasureKeyService)
+    : IPayloadMasker
 {
-    public JsonNode? Mask(JsonNode schema, JsonNode? payload, Func<string, bool> hasClaim) =>
-        MaskNode(schema as JsonObject, payload, hasClaim);
+    public Task<JsonNode?> MaskAsync(JsonNode schema, JsonNode? payload, string? entityId, Func<string, bool> hasClaim, CancellationToken ct = default) =>
+        MaskNodeAsync(schema as JsonObject, payload, payload, entityId, hasClaim, ct);
 
-    private JsonNode? MaskNode(JsonObject? schemaNode, JsonNode? payload, Func<string, bool> hasClaim)
+    private async Task<JsonNode?> MaskNodeAsync(
+        JsonObject? schemaNode, JsonNode? payload, JsonNode? rootPayload, string? entityId, Func<string, bool> hasClaim, CancellationToken ct)
     {
         if (schemaNode is null || payload is null)
             return payload?.DeepClone();
 
         if (schemaNode.TryGetPropertyValue("x-masking", out var maskingNode) && maskingNode is JsonObject maskingConfig)
-            return MaskLeaf(payload, maskingConfig, hasClaim);
+            return await MaskLeafAsync(payload, maskingConfig, rootPayload, entityId, hasClaim, ct);
 
         if (schemaNode["properties"] is JsonObject properties && payload is JsonObject payloadObject)
         {
             var result = new JsonObject();
             foreach (var (propertyName, propertyValue) in payloadObject)
                 result[propertyName] = properties.TryGetPropertyValue(propertyName, out var propertySchema) && propertySchema is JsonObject propertySchemaObject
-                    ? MaskNode(propertySchemaObject, propertyValue, hasClaim)
+                    ? await MaskNodeAsync(propertySchemaObject, propertyValue, rootPayload, entityId, hasClaim, ct)
                     : propertyValue?.DeepClone();
             return result;
         }
@@ -48,16 +53,18 @@ public class PayloadMasker(IServiceProvider serviceProvider, IRedactorProvider r
         {
             var result = new JsonArray();
             foreach (var element in payloadArray)
-                result.Add(MaskNode(itemsSchema, element, hasClaim));
+                result.Add(await MaskNodeAsync(itemsSchema, element, rootPayload, entityId, hasClaim, ct));
             return result;
         }
 
         return payload.DeepClone();
     }
 
-    private JsonNode MaskLeaf(JsonNode realValue, JsonObject maskingConfig, Func<string, bool> hasClaim)
+    private async Task<JsonNode> MaskLeafAsync(
+        JsonNode realValue, JsonObject maskingConfig, JsonNode? rootPayload, string? entityId, Func<string, bool> hasClaim, CancellationToken ct)
     {
-        if (maskingConfig["regulatoryClassification"]?.GetValue<string>() is { } classification)
+        var classification = maskingConfig["regulatoryClassification"]?.GetValue<string>();
+        if (classification is not null)
         {
             var redactor = redactorProvider.GetRedactor(new DataClassification("MaskingLogRedaction", classification));
             logger.LogDebug("Evaluating masking for a {Classification}-classified field: {RedactedValue}",
@@ -66,11 +73,38 @@ public class PayloadMasker(IServiceProvider serviceProvider, IRedactorProvider r
 
         var requiredClaim = maskingConfig["requiredClaim"]?.GetValue<string>();
         if (requiredClaim is not null && hasClaim(requiredClaim))
-            return new JsonObject { ["value"] = realValue.DeepClone() };
+            return await RevealAsync(realValue, maskingConfig, rootPayload, entityId, classification, ct);
 
         var strategyName = maskingConfig["strategy"]!.GetValue<string>();
         var strategy = serviceProvider.GetRequiredKeyedService<IMaskingStrategy>(strategyName);
         return new JsonObject { ["masked"] = strategy.Mask(realValue, maskingConfig) };
+    }
+
+    // ADR-057 -- a claim holder sees {"erased": true} unconditionally once an
+    // entity's DEK is destroyed, even though they hold every claim ("shown
+    // even to a caller who holds every claim"). A claims-gated field that
+    // was never classified (regulatoryClassification absent) has no DEK to
+    // check at all and is revealed exactly as ADR-009 always did, before
+    // ADR-057 existed.
+    private async Task<JsonNode> RevealAsync(
+        JsonNode realValue, JsonObject maskingConfig, JsonNode? rootPayload, string? entityId, string? classification, CancellationToken ct)
+    {
+        if (classification is null || entityId is null)
+            return new JsonObject { ["value"] = realValue.DeepClone() };
+
+        var scopedEntityId = ErasureScopeResolver.Resolve(rootPayload, maskingConfig, entityId);
+        var resolved = await erasureKeyService.ResolveAsync(scopedEntityId, ct);
+        if (resolved is null)
+            return new JsonObject { ["value"] = realValue.DeepClone() };
+        if (resolved.Value.Erased)
+            return new JsonObject { ["erased"] = true };
+
+        var ciphertextBytes = Convert.FromBase64String(realValue.GetValue<string>());
+        var plaintextBytes = await resolved.Value.Backend.DecryptAsync(resolved.Value.KeyReference, ciphertextBytes, ct);
+        if (plaintextBytes is null)
+            return new JsonObject { ["erased"] = true };
+
+        return new JsonObject { ["value"] = JsonNode.Parse(Encoding.UTF8.GetString(plaintextBytes)) };
     }
 
     internal static string ExtractRawText(JsonNode node) =>

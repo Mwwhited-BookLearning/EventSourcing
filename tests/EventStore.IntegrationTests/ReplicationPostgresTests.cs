@@ -46,7 +46,7 @@ public class ReplicationPostgresTests
         new(db, new PostgresFilterableFieldIndexDdlGenerator(), new MemoryCache(new MemoryCacheOptions()), UpcastingTestSupport.CreateEvaluator());
 
     private static PublishService NewPublishService(EventStoreContext db, SchemaRegistryService registry, string originId) =>
-        new(db, registry, new PostgresUniqueConstraintViolationDetector(), Options.Create(new OriginIdOptions { OriginId = originId }));
+        new(db, registry, new PostgresUniqueConstraintViolationDetector(), originIdOptions: Options.Create(new OriginIdOptions { OriginId = originId }));
 
     [TestMethod]
     public async Task AllReplicationScenarios()

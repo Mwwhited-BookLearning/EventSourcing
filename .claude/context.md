@@ -1037,9 +1037,119 @@ stale numbers here are worse than none)*
   are code-complete but unverified this session — Docker was not running
   in this environment for this stretch of work (confirmed via `docker
   ps`), a pure local-environment gap, not a code regression.
-- **Next up**: item 26, "GDPR/CCPA Erasure via Crypto-Shredding"
-  (`ADR-057`) — depends on Property-Level Masking (Done) and
-  Entity-Centric Core Rebuild (Done).
+- **Item 26, "GDPR/CCPA Erasure via Crypto-Shredding," is Done.** New
+  `EventStore.Erasure` project: `IErasureKeyStore` (keyed-DI Strategy seam,
+  same shape as `IMaskingStrategy`/`ADR-052`'s `IStreamRedactionStrategy`),
+  `LocalErasureKeyStore` (AES-256-GCM, key material in a new
+  `EventStoreContext`-backed `LocalErasureKeyMaterial` table — deliberately
+  durable, not in-memory), `HashiCorpVaultErasureKeyStore` (real VaultSharp
+  transit-engine calls, `ConvergentEncryption`+`Derived`+a fixed context),
+  `ErasureKeyService` (orchestrates `EntityErasureKey` metadata against
+  whichever backend an `AppId` is configured for), `PayloadEncryptor`
+  (publish-time walk), `ErasureScopeResolver` (shared `erasureScope`
+  JSON-pointer resolution, used by both the encrypt and decrypt paths),
+  and `EntityErasureRequestedEventType`/`EntityErasureResolver` (the
+  reserved event + its `RouterWorker` reactor). Cloud KMS backends (Azure/
+  AWS/GCP) are documented in `08-build-plan.md`'s own section as future,
+  same-seam additions, not built this pass — flagged there, not silently
+  dropped.
+  **A real architecture-vs-ADR conflict found before writing any code**:
+  `ADR-057` assumed the pre-"Entity-Centric Core Rebuild" synchronous
+  validate-then-persist pipeline; encryption still has to happen
+  synchronously at publish time (this ADR's own explicit ordering
+  requirement), so `PublishService` now independently resolves `EntityId`
+  for encryption-scoping purposes only, via the same `EntityIdResolver`
+  pure function `RouterWorker` uses — `StoredEvent.EntityId` itself is
+  unaffected, still starting empty and still filled in only by the Router.
+  **A second conflict found the same way**: random-nonce AES-GCM would
+  break `ADR-011`'s publish-idempotency hash-matching (retrying an
+  identical logical publish would encrypt differently each time, falsely
+  reporting `409 Conflict`) — resolved via deterministic/convergent
+  encryption (an HMAC-derived nonce for Local; Vault's own
+  `ConvergentEncryption`+`Derived`+fixed context for Vault), verified via a
+  standalone probe *before* any integration test was written, not
+  discovered by a failing test later.
+  **A real, narrow doc bug found and fixed via reflection, not
+  guessed**: `docs/libraries/dotnet/hashicorp-vault.md`'s own usage
+  snippet named a non-existent `vaultClient.V1.System.DeleteTransitKeyAsync`
+  — the real API is `ITransitSecretsEngine.DeleteEncryptionKeyAsync`
+  (requires `UpdateEncryptionKeyConfigAsync(..., DeletionAllowed: true)`
+  first) — verified against the actual installed VaultSharp assembly,
+  fixed in the same pass.
+  **`JsonSchemaInstanceValidator`** (shared by `RouterWorker`'s fold-time
+  re-validation and `UpcastMaterializer`'s upcast-result check) gained one
+  exemption: a field carrying `x-masking.regulatoryClassification` is
+  always stored as ciphertext (always a string), so its declared type
+  (e.g. `"number"`) would otherwise always fail re-validation — fixed in
+  the one shared validator, not taught to each caller individually.
+  **`MaskingSchemaValidator`** gained format validation for the new
+  optional `x-masking.erasureScope` field (the same safe-subset grammar
+  `EntityIdField` already validates against).
+  **`EntityErasureRequested` is registered lazily**, the first time a
+  given `AppId` ever creates its first DEK (`ErasureKeyService.
+  GetOrCreateAsync`) — the same "not seeded up front" treatment `ADR-031`'s
+  `ChannelLagDetectedEventType` already established — rather than at Host
+  startup (no `AppId` is known then) or via a bespoke endpoint: requesting
+  erasure is an ordinary publish of this reserved type through the SAME
+  Publish API any other event type uses, gated by an ordinary
+  `requiredClaim` (`erasure:request`).
+  **A real bug caught while writing the erasure test suite, not by
+  reading the code back**: `RequiredClaimRequest.Direction` only parses to
+  `"Publish"` or `"Read"` (`ClaimDirection`'s two actual members) — an
+  initial `"Write"` value silently failed `Enum.TryParse` inside
+  `SchemaRegistryService.RegisterAsync`, which records a validation error
+  rather than throwing, so `EntityErasureRequestedEventType`'s own
+  registration would have quietly stored no required claim at all; caught
+  because the erasure-request test explicitly asserted claim enforcement,
+  not because registration itself failed loudly.
+  **`PublishService`'s new `PayloadEncryptor` constructor parameter, and
+  `IPayloadMasker.MaskAsync`'s signature change (now `async`, now taking
+  `entityId`), each had a real test-migration cost, handled two different
+  ways**: `PayloadEncryptor` was made *optional* (`= null`, matching
+  `IOptions<OriginIdOptions>?`'s own established precedent immediately
+  above it in the same file, for the identical reason — ~37 pre-existing
+  test files construct `PublishService` directly and never register a
+  classified field, so a null encryptor correctly means "nothing to
+  encrypt," not a missing dependency) — avoiding a 37-file mechanical
+  sweep for a concern almost none of those files exercise. `IPayloadMasker`
+  itself has no such optional-dependency escape (every real caller needs
+  real decrypt/erasure-check behavior), so its one real production call
+  site (`EventTailReader.MaskPayload`, confirmed via `grep` to be the
+  ONLY one — `PartialRevealStreamRedactionStrategy`'s similarly-named
+  `.Mask(...)` call is a *different* interface, `IMaskingStrategy`,
+  unaffected) was updated directly, and `MaskingTestSupport.
+  CreatePayloadMasker` was changed to take the caller's own already-
+  constructed `db`/`registry` (needed to resolve the new `ErasureKeyService`
+  dependency `PayloadMasker` now has) — a handful of call-site fixes
+  (`Masking*Tests`, `Follow*Tests`, `Replication*Tests`' `IOptions`
+  argument needing to move from positional to named once a new optional
+  parameter was inserted before it), not a large sweep.
+  New `ErasureScenarioAssertions` (5 scenarios: ciphertext at rest via
+  direct DB inspection, claim-holder decrypt with non-claim-holder masking
+  proven unaffected by encryption, erasure producing `{"erased": true}`
+  unconditionally even for a claim holder, the hash chain surviving
+  erasure completely unchanged, and a cross-entity `erasureScope` erasing
+  the *scoped-to* entity's key, not the event's own) run identically
+  against SQLite/PostgreSQL/SQL Server (`ErasureSqliteTests`/`Postgres`/
+  `SqlServer`), plus a dedicated `ErasureVaultTests` (2 scenarios) against
+  a REAL `hashicorp/vault:1.19` dev-mode Testcontainer, not a mock —
+  `IErasureKeyStore`'s own round trip against Vault's real HTTP API, and
+  `ADR-057`'s own named exit-criteria example: two `AppId`s in one
+  deployment, one on the default Local backend and one explicitly
+  configured to HashiCorp Vault, both correctly decrypting through their
+  own backend, confirmed via direct inspection that the Vault-backed key
+  never touches `LocalErasureKeyMaterial` at all.
+  `EventStore.IntegrationTests` now has 92 `[TestMethod]`s (up from 87) —
+  all pass reliably alone and in the SQLite-only subset; the full
+  multi-provider run hit the same pre-existing, unrelated Testcontainers
+  resource-contention flake already tracked in `TODO.md` (this run: 5-6
+  container-startup-race failures across `Replication`/`Streaming`/
+  `ViewDefinition`/`UpcastMaterialization`/a plain insert test — a
+  different rotating set each run, none touching this item's own code,
+  every one confirmed passing standalone).
+- **Next up**: item 27, "PCI-DSS Sensitive Authentication Data
+  Registration Boundary" (`ADR-071`) — depends on Schema Registry (Done)
+  and Property-Level Masking (Done).
 
 ## How to resume cold
 
@@ -1054,7 +1164,7 @@ stale numbers here are worse than none)*
    narrative.
 5. `dotnet build EventStore.slnx` and `dotnet test tests/EventStore.IntegrationTests` —
    confirm the build/test baseline the last session left still holds
-   before adding to it (87 tests should pass). Requires Docker running
+   before adding to it (92 tests should pass). Requires Docker running
    (Testcontainers for Postgres/SQL Server) and the SDK pinned in
    `global.json`. A full multi-provider run has a known, pre-existing,
    unrelated flake — see `TODO.md`'s entry — where one or two SQL Server
