@@ -165,58 +165,85 @@ status" table above, updated in lockstep**: no fill = `Not started`,
 item), `#palegreen` = `Done`. Keep both in sync in the same pass — don't
 let the table move without the diagram, or vice versa.
 
+**Framed into four application tiers, this pass, per direct request** —
+purely a visual grouping (PlantUML composite states) laid over the exact
+same node set and edges as before; it changes nothing about what depends
+on what. Tier assignment is a rough architectural framing, not a rigid
+boundary, and follows the item's own primary *purpose* rather than
+strictly where its code happens to run: **External Services** is anything
+whose whole point is talking to a system outside this framework's own
+control (an OAuth2 IdP, SPIFFE/SPIRE + the Gateway boundary, a webhook
+receiver, a federation partner, an interchange/bulk-ingestion source, a
+sanctions-screening provider, an RFC 3161 TSA); **Persistence** is the
+data/storage layer itself (the DB schema, region pinning, archival,
+backup/restore classification); **UI** is what runs on the client device
+(the MVVM Client and everything that extends it — accessibility, i18n,
+device input, outbox flush triggers, local cache scoping); **Local
+Services** is everything else — the bulk of Duplex's own in-process
+engine (Publish/Follow/Lineage/Router/GraphQL/Masking/Erasure/Multi-
+Tenancy/RBAC/feature flags/etc.), the majority tier by node count, exactly
+as expected for a backend-first event-sourcing engine.
+
 ```plantuml
 @startuml BuildPlan_All
-state "Scaffolding & Persistence" as p0 #palegreen
-state "Schema Registry" as p1 #palegreen
-state "Publish API" as p2 #palegreen
-state "Lineage API" as p3 #palegreen
-state "Follow API + Filter Pushdown" as p4 #palegreen
-state "Auth + Orchestration" as p5 #palegreen
-state "Event-Type Security" as p6 #palegreen
-state "Derived Event Types (deferred)" as p7 #palegreen
-state "Property-Level Masking" as p8 #palegreen
-state "CQRS Projections" as p9 #palegreen
-state "Hardening & Evolution" as p10 #palegreen
-state "Entity-Centric Core Rebuild" as p11 #palegreen
-state "Multi-Tenancy" as p12 #palegreen
-state "Upcast Materialization + Downcast" as p13 #palegreen
-state "Streaming Channels" as p14 #palegreen
-state "Binary Attachments" as p15 #palegreen
-state "Sharding & Replication" as p16 #palegreen
-state "Non-Authoritative Capture" as p17 #palegreen
-state "GraphQL-Only Query Layer" as p18 #palegreen
-state "Compatibility & Deployment Discipline" as p19 #palegreen
-state "MVVM Client" as p20 #palegreen
-state "Ticket Exchange" as p21 #palegreen
-state "Delegated Grants, RBAC & Read Audit Logging" as p22 #palegreen
-state "SPIFFE/SPIRE Identity & API Gateway" as p23 #palegreen
-state "GDPR/CCPA Erasure" as a2 #palegreen
-state "PCI-DSS SAD Boundary" as a3 #palegreen
-state "Local/Edge Cache Scoping\n+ Erasure Invalidation" as a4
-state "Digital Sign-Off\n(Step-Up Auth)" as a5 {
-  state "ActorId on Every Event\n(already satisfied by Auth + Orchestration)" as a1 #palegreen
+state "External Services" as tierExternal {
+  state "Auth + Orchestration" as p5 #palegreen
+  state "SPIFFE/SPIRE Identity & API Gateway" as p23 #palegreen
+  state "Outbound Webhooks" as a10
+  state "Tenant Federation Mapping" as a12
+  state "Bulk Ingestion +\nInterchange Adapters" as a13
+  state "Sanctions Screening Seam" as a14
+  state "Signing Secret Rotation" as a16
+  state "RFC 3161 Timestamping" as a18
 }
-state "Control-Plane Reserved Events" as a6
-state "Dynamic Feature Flags" as a7
-state "Leader Election" as a8
-state "Per-Tenant Rate Limiting" as a9
-state "Outbound Webhooks" as a10
-state "Data Residency\n(Region Pinning)" as a11
-state "Tenant Federation Mapping" as a12
-state "Bulk Ingestion +\nInterchange Adapters" as a13
-state "Sanctions Screening Seam" as a14
-state "Release Engineering,\nPackaging & Supply Chain" as a15
-state "Signing Secret Rotation" as a16
-state "Lineage Export +\nBitemporal Playback" as a17
-state "RFC 3161 Timestamping" as a18
-state "Pluggable Outbox\nFlush Triggers" as a19
-state "Device Input Integration" as a20
-state "Accessibility Standard" as a21
-state "i18n/l10n Scope" as a22
-state "Mechanism-Level\nOTel Instrumentation" as a23
-state "Event Log/AccessLog\nArchival" as a24
-state "Data Lifecycle &\nBackup Classification" as a25 #palegreen
+state "Persistence" as tierPersistence {
+  state "Scaffolding & Persistence" as p0 #palegreen
+  state "Data Residency\n(Region Pinning)" as a11
+  state "Event Log/AccessLog\nArchival" as a24
+  state "Data Lifecycle &\nBackup Classification" as a25 #palegreen
+}
+state "Local Services" as tierLocal {
+  state "Schema Registry" as p1 #palegreen
+  state "Publish API" as p2 #palegreen
+  state "Lineage API" as p3 #palegreen
+  state "Follow API + Filter Pushdown" as p4 #palegreen
+  state "Event-Type Security" as p6 #palegreen
+  state "Derived Event Types (deferred)" as p7 #palegreen
+  state "Property-Level Masking" as p8 #palegreen
+  state "CQRS Projections" as p9 #palegreen
+  state "Hardening & Evolution" as p10 #palegreen
+  state "Entity-Centric Core Rebuild" as p11 #palegreen
+  state "Multi-Tenancy" as p12 #palegreen
+  state "Upcast Materialization + Downcast" as p13 #palegreen
+  state "Streaming Channels" as p14 #palegreen
+  state "Binary Attachments" as p15 #palegreen
+  state "Sharding & Replication" as p16 #palegreen
+  state "Non-Authoritative Capture" as p17 #palegreen
+  state "GraphQL-Only Query Layer" as p18 #palegreen
+  state "Compatibility & Deployment Discipline" as p19 #palegreen
+  state "Ticket Exchange" as p21 #palegreen
+  state "Delegated Grants, RBAC & Read Audit Logging" as p22 #palegreen
+  state "GDPR/CCPA Erasure" as a2 #palegreen
+  state "PCI-DSS SAD Boundary" as a3 #palegreen
+  state "Digital Sign-Off\n(Step-Up Auth)" as a5 {
+    state "ActorId on Every Event\n(already satisfied by Auth + Orchestration)" as a1 #palegreen
+  }
+  state "Control-Plane Reserved Events" as a6
+  state "Dynamic Feature Flags" as a7
+  state "Leader Election" as a8
+  state "Per-Tenant Rate Limiting" as a9
+  state "Release Engineering,\nPackaging & Supply Chain" as a15
+  state "Lineage Export +\nBitemporal Playback" as a17
+  state "Mechanism-Level\nOTel Instrumentation" as a23
+}
+state "UI" as tierUi {
+  state "MVVM Client" as p20 #palegreen
+  state "Local/Edge Cache Scoping\n+ Erasure Invalidation" as a4
+  state "Pluggable Outbox\nFlush Triggers" as a19
+  state "Device Input Integration" as a20
+  state "Accessibility Standard" as a21
+  state "i18n/l10n Scope" as a22
+}
 
 p0 --> p1
 p1 --> p2
