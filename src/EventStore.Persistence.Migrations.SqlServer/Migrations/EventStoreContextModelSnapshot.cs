@@ -328,6 +328,26 @@ namespace EventStore.Persistence.Migrations.SqlServer.Migrations
                     b.ToTable("Events");
                 });
 
+            modelBuilder.Entity("EventStore.Domain.FeatureFlags.FeatureFlagState", b =>
+                {
+                    b.Property<string>("AppId")
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<string>("Key")
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<long>("LastAppliedSequenceNumber")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("Value")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.HasKey("AppId", "Key");
+
+                    b.ToTable("FeatureFlags");
+                });
+
             modelBuilder.Entity("EventStore.Domain.Replication.PeerSyncCursor", b =>
                 {
                     b.Property<string>("PeerId")

@@ -5,6 +5,7 @@
     <ProjectReference Include="..\EventStore.Persistence.Migrations.SqlServer\EventStore.Persistence.Migrations.SqlServer.csproj" />
     <ProjectReference Include="..\EventStore.SchemaRegistry\EventStore.SchemaRegistry.csproj" />
     <ProjectReference Include="..\EventStore.Rbac\EventStore.Rbac.csproj" />
+    <ProjectReference Include="..\EventStore.FeatureFlags\EventStore.FeatureFlags.csproj" />
     <ProjectReference Include="..\EventStore.Inbox\EventStore.Inbox.csproj" />
     <ProjectReference Include="..\EventStore.Derivation\EventStore.Derivation.csproj" />
     <ProjectReference Include="..\EventStore.Erasure\EventStore.Erasure.csproj" />

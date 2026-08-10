@@ -1,6 +1,7 @@
 using EventStore.Domain.AccessLog;
 using EventStore.Domain.EntityStore;
 using EventStore.Domain.EventLog;
+using EventStore.Domain.FeatureFlags;
 using EventStore.Domain.Replication;
 using EventStore.Domain.SchemaRegistry;
 using EventStore.Domain.Streaming;
@@ -41,6 +42,7 @@ public class EventStoreContext(DbContextOptions<EventStoreContext> options, IJso
     public DbSet<AccessLogEntry> AccessLogEntries => Set<AccessLogEntry>();
     public DbSet<EntityErasureKey> EntityErasureKeys => Set<EntityErasureKey>();
     public DbSet<LocalErasureKeyMaterial> LocalErasureKeyMaterials => Set<LocalErasureKeyMaterial>();
+    public DbSet<FeatureFlagState> FeatureFlags => Set<FeatureFlagState>(); // ADR-077
 
     protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder) =>
         optionsBuilder.ReplaceService<IModelCacheKeyFactory, ProviderAwareModelCacheKeyFactory>();
@@ -215,6 +217,11 @@ public class EventStoreContext(DbContextOptions<EventStoreContext> options, IJso
         modelBuilder.Entity<LocalErasureKeyMaterial>(e =>
         {
             e.HasKey(x => x.KeyReference);
+        });
+
+        modelBuilder.Entity<FeatureFlagState>(e =>
+        {
+            e.HasKey(x => new { x.AppId, x.Key }); // ADR-077
         });
     }
 
