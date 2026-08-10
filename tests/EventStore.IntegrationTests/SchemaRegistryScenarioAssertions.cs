@@ -171,6 +171,39 @@ internal static class SchemaRegistryScenarioAssertions
         Assert.IsInstanceOfType<RegisterEventTypeResult.Success>(result);
     }
 
+    public static async Task RegisteringAFieldDeclaringPciSadIsRejected(SchemaRegistryService service)
+    {
+        var schema = """
+            { "type": "object", "properties": { "Cvv": { "type": "string", "x-masking": {
+                "strategy": "FixedValue", "requiredClaim": "pci:view", "regulatoryClassification": "PCI-SAD" } } } }
+            """;
+        var result = await service.RegisterAsync("BadMaskingPciSad", new RegisterEventTypeRequest(
+            AppId: "demo", JsonSchema: schema, FilterableFields: [],
+            ChangeKind: "Full", EntityIdField: "$.Id",
+            ParentValidationMode: null, RequiredClaims: null, UpcastFromPrevious: null, DowncastToPrevious: null));
+
+        Assert.IsInstanceOfType<RegisterEventTypeResult.ValidationFailed>(result,
+            "ADR-071: a field declaring PCI-SAD must never become an active, registered type");
+    }
+
+    public static async Task RegisteringTheOrdinaryPciClassificationForAFullCardNumberSucceedsUnaffectedByTheSadBoundary(
+        SchemaRegistryService service)
+    {
+        var schema = """
+            { "type": "object", "properties": { "CardNumber": { "type": "string", "x-masking": {
+                "strategy": "PartialReveal", "requiredClaim": "pci:view", "regulatoryClassification": "PCI" } } } }
+            """;
+        var result = await service.RegisterAsync("GoodMaskingPci", new RegisterEventTypeRequest(
+            AppId: "demo", JsonSchema: schema, FilterableFields: [],
+            ChangeKind: "Full", EntityIdField: "$.Id",
+            ParentValidationMode: null, RequiredClaims: null, UpcastFromPrevious: null, DowncastToPrevious: null));
+
+        if (result is RegisterEventTypeResult.ValidationFailed vf)
+            Assert.Fail("Unexpected validation errors: " + string.Join(" | ", vf.Errors));
+        Assert.IsInstanceOfType<RegisterEventTypeResult.Success>(result,
+            "the ordinary \"PCI\" classification (full PAN) is unaffected by the PCI-SAD boundary");
+    }
+
     public static async Task ListingSupportsTopAndSkipPagination(SchemaRegistryService service)
     {
         foreach (var name in new[] { "TypeA", "TypeB", "TypeC" })

@@ -1147,9 +1147,32 @@ stale numbers here are worse than none)*
   `ViewDefinition`/`UpcastMaterialization`/a plain insert test — a
   different rotating set each run, none touching this item's own code,
   every one confirmed passing standalone).
-- **Next up**: item 27, "PCI-DSS Sensitive Authentication Data
-  Registration Boundary" (`ADR-071`) — depends on Schema Registry (Done)
-  and Property-Level Masking (Done).
+- **Item 27, "PCI-DSS Sensitive Authentication Data Registration
+  Boundary," is Done — much smaller than item 26, same day.** `ADR-071`'s
+  own Decision text already said this needs no new mechanism, just an
+  extension of an existing one — held true: one added check inside
+  [`MaskingSchemaValidator.ValidateMaskingConfig`](../src/EventStore.SchemaRegistry/MaskingSchemaValidator.cs)
+  (`EventStore.SchemaRegistry`) rejects registration outright when any
+  field declares `x-masking.regulatoryClassification: "PCI-SAD"` — no new
+  project, no publish-path change, no Host wiring, since registration-time
+  rejection already flows through `SchemaRegistryService.RegisterAsync`'s
+  existing `errors` list the exact same way `EnumFallbackSchemaValidator`/
+  every other structural `x-masking` check already does.
+  `docs/data/schema-registry.md` already carried the `PCI-SAD` cross-
+  reference to `ADR-071` from an earlier documentation-only pass — no doc
+  drift found this time, only code catching up to what the doc already
+  said. `EventStore.IntegrationTests` still has 92 `[TestMethod]`s (no new
+  test files — this item's 2 new `SchemaRegistryScenarioAssertions`
+  scenarios, a `PCI-SAD`-declaring field rejected `400` and the ordinary
+  `"PCI"` classification for a full card number still registering
+  successfully, confirming the boundary is scoped to SAD specifically and
+  not every PCI-related field, were added as new calls inside
+  `SchemaRegistrySqliteTests`/`Postgres`/`SqlServer`'s existing single
+  `AllSchemaRegistryScenarios` `[TestMethod]` each). All pass across
+  SQLite/PostgreSQL/SQL Server.
+- **Next up**: item 28, "Local/Edge Active-Scope Caching & Erasure
+  Invalidation" (`ADR-065`) — depends on MVVM Client (Done) and GDPR/CCPA
+  Erasure (Done).
 
 ## How to resume cold
 
