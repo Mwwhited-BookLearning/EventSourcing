@@ -1516,9 +1516,28 @@ stale numbers here are worse than none)*
   count — since fixed with a bounded retry in the test's own sync
   helper, verified with 3 isolated + 3 full-suite clean re-runs, see
   `TODO.md`).
-- **Next up**: item 38, "Sanctions/Watchlist Screening Extensibility
-  Seam" — depends on Non-Authoritative Capture (Done) and Delegated
-  Grants, RBAC, Federated Claims & Read Audit Logging (Done).
+- **Item 38, "Sanctions/Watchlist Screening Extensibility Seam"
+  (`ADR-079`), is Done** — the first domain-scoped (non-core) extension
+  point in this design. `ISanctionsScreeningProvider`/`ScreeningResult`
+  and one fake backend are declared and keyed-DI-registered entirely
+  inside `SanctionsScreeningExtensibilityHttpSqliteTests.cs`'s own
+  `WebApplicationFactory.ConfigureServices` block, standing in for the
+  KYC/Meridian application's own composition root — never in any core
+  `EventStore.*` project, the same "hosting team's own `Program.cs`"
+  simulation item 37 established. A screening pipeline helper stands in
+  for the domain doc's own `PeriodicScreeningWorker`, publishing
+  `SanctionsScreeningPerformed` with `reviewPending: true` whenever
+  `MatchFound` regardless of confidence (verified at 0.87 and 0.52).
+  Resolution reuses item 18's `AuthorityDecisionResolver` and item 23's
+  RBAC role-to-permission flattening completely unchanged — a
+  `ComplianceOfficer` role bundling `identity:aml-review` gates who can
+  resolve a hit; no new framework mechanism introduced. Six tests, SQLite
+  only (auth/RBAC is provider-agnostic). Full SQLite regression suite
+  re-run clean.
+- **Next up**: item 39, "Release Engineering, Packaging & Supply Chain"
+  — bundles five release-process ADRs (`ADR-062`/`074`/`076`/`080`/`091`),
+  depends on nothing further (no code prerequisite; a build/release-time
+  concern).
 
 ## How to resume cold
 
