@@ -880,6 +880,9 @@ namespace EventStore.Persistence.Migrations.Sqlite.Migrations
                         .IsRequired()
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("OutboundAdapterKey")
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("PreviousSigningSecret")
                         .HasColumnType("TEXT");
 

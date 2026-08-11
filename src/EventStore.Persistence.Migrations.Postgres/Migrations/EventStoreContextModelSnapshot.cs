@@ -895,6 +895,9 @@ namespace EventStore.Persistence.Migrations.Postgres.Migrations
                         .IsRequired()
                         .HasColumnType("text");
 
+                    b.Property<string>("OutboundAdapterKey")
+                        .HasColumnType("text");
+
                     b.Property<string>("PreviousSigningSecret")
                         .HasColumnType("text");
 

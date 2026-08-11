@@ -17,7 +17,7 @@ public static class WebhookEndpoints
     {
         app.MapPost("/webhooks/subscriptions", async (RegisterWebhookSubscriptionRequest request, ClaimsPrincipal user, WebhookSubscriptionService subscriptions, CancellationToken ct) =>
         {
-            var subscription = await subscriptions.RegisterAsync(request.AppId, request.TargetUrl, request.EventTypes, request.SigningSecret, user, ct);
+            var subscription = await subscriptions.RegisterAsync(request.AppId, request.TargetUrl, request.EventTypes, request.SigningSecret, user, request.OutboundAdapterKey, ct);
             return Results.Created($"/webhooks/subscriptions/{subscription.SubscriptionId}", new
             {
                 subscriptionId = subscription.SubscriptionId,
@@ -29,4 +29,4 @@ public static class WebhookEndpoints
     }
 }
 
-public record RegisterWebhookSubscriptionRequest(string AppId, string TargetUrl, List<string> EventTypes, string? SigningSecret);
+public record RegisterWebhookSubscriptionRequest(string AppId, string TargetUrl, List<string> EventTypes, string? SigningSecret, string? OutboundAdapterKey = null);

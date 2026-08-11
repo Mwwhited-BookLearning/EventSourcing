@@ -74,6 +74,20 @@ EventStore.sln
     EventStore.Attachments/         -- content-addressed binary storage; POST upload, GET with Range, browsable via the GraphQL Gateway (ADR-032)
     EventStore.InterchangeAdapters/  -- IInterchangeFormatAdapter seam + built-in adapters (Hl7V2Adapter, FhirAdapter, IchE2bR3Adapter, Gs1EpcisAdapter, ADR-072); inbound transforms publish through the ordinary Inbox path unchanged, outbound composes ahead of EventStore.Webhooks' delivery
     EventStore.InterchangeAdapters.Hl7v2MllpListener/  -- a dedicated background TCP listener speaking MLLP (ADR-072) -- HL7v2's real transport, unlike every other component in this solution (all HTTP/GraphQL); FHIR's own inbound path is ordinary HTTP, no separate listener needed. Transport security (TLS termination or network isolation) is the deploying team's own responsibility -- MLLP carries none itself
+    -- Actual build (item 36) consolidated the two sketch names above into
+       ONE project, EventStore.Interchange (Hl7V2Adapter/FhirAdapter/
+       IchE2bR3Adapter/Gs1EpcisAdapter + Hl7V2MllpListener as one class
+       inside it, not its own project) -- the same "concept accurate,
+       exact wiring unverified" gap this file's own Router/Fold entry
+       already covers, applied here too. A SECOND, separate project,
+       EventStore.Interchange.Abstractions, was needed beyond the sketch's
+       own single-project framing: EventStore.Webhooks needs
+       IInterchangeFormatAdapter for its own outbound-composition step,
+       and EventStore.Router already depends on EventStore.Webhooks
+       (WebhookEnqueueResolver) -- so the interface itself had to carry
+       zero dependency on EventStore.Inbox to avoid recreating the exact
+       circular project reference "Outbound Webhooks" (item 34) already
+       found and fixed once.
     EventStore.SpecGeneration/      -- OpenAPI builder (publish) + GraphQL SDL builder (supersedes the AsyncAPI builder for Follow -- Follow itself is gone, replaced by GraphQL Subscription); the two specs this project generates are what Kiota / GraphQL Code Generator / Strawberry Shake regenerate typed client SDKs from at consumer build time (ADR-054) -- no SDK-generation project lives in this solution itself, since generated code is never committed here, only in a consuming application's own build
     EventStore.Host.Core/           -- shared, provider-agnostic composition root logic (see below)
     EventStore.Host.Sqlite/         -- the actual deployable: Host.Core + SQLite wiring (ADR-001)

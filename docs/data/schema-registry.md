@@ -206,6 +206,7 @@ public class WebhookSubscription
     public string FixedClaimsSnapshot { get; set; } = default!; // JSON -- the claim set computed once at registration time (ADR-060), never re-evaluated per delivery
     public bool Active { get; set; } = true;
     public DateTimeOffset RegisteredAt { get; set; }
+    public string? OutboundAdapterKey { get; set; }           // ADR-072 -- names a registered IInterchangeFormatAdapter's own keyed-DI key; null delivers the ordinary masked JSON unchanged
 }
 ```
 

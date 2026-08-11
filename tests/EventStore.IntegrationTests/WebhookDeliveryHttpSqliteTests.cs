@@ -1,7 +1,10 @@
 using System.Net;
 using System.Text;
+using System.Xml.Linq;
 using EventStore.Domain.Webhooks;
 using EventStore.Inbox;
+using EventStore.Interchange;
+using EventStore.Interchange.Abstractions;
 using EventStore.Lineage.Api;
 using EventStore.Persistence;
 using EventStore.Persistence.Migrations.Sqlite;
@@ -156,6 +159,64 @@ public class WebhookDeliveryHttpSqliteTests
         var cursor = await db.WebhookDeliveryCursors.AsNoTracking().SingleAsync(c => c.SubscriptionId == subscriptionId);
         Assert.IsTrue(cursor.LastDeliveredSequenceNumber > 0);
         Assert.IsNotNull(cursor.LastSuccessAt);
+
+        await backend.StopAsync();
+    }
+
+    [TestMethod]
+    public async Task AnOutboundAdapterTransformsTheEventIntoItsExternalFormatImmediatelyBeforeDeliveryUsingTheSubscriptionsUnmodifiedSigningRetryMechanics()
+    {
+        // "Bulk Ingestion & External Interchange-Format Adapters" (ADR-072)
+        // -- composes with "Outbound Webhooks"'s own delivery/signing/retry
+        // pipeline unchanged: only the wire bytes actually sent/signed
+        // change (real E2B(R3) XML instead of the ordinary masked JSON),
+        // never the mechanics around it.
+        using var db = CreateContext();
+        var registry = new SchemaRegistryService(db, new SqliteFilterableFieldIndexDdlGenerator(), new MemoryCache(new MemoryCacheOptions()), UpcastingTestSupport.CreateEvaluator());
+        var (_, payloadMasker, _) = ErasureTestSupport.CreateErasureStack(db, registry);
+        var publish = new PublishService(db, registry, new SqliteUniqueConstraintViolationDetector());
+        var upcastChain = UpcastingTestSupport.CreateChain();
+        var subscriptions = new WebhookSubscriptionService(db);
+
+        var (backend, address, requests) = await StartBackendAsync(_ => Results.Ok());
+        const string appId = "webhooks-outbound-adapter-demo";
+        await registry.RegisterAsync("AdverseEventReported", new RegisterEventTypeRequest(
+            AppId: appId, JsonSchema: """{ "type": "object", "properties": { "CaseId": { "type": "string" }, "PatientId": { "type": "string" }, "DrugName": { "type": "string" }, "ReactionTerm": { "type": "string" } }, "required": ["CaseId"] }""",
+            FilterableFields: [], ChangeKind: "Full", EntityIdField: "$.CaseId", ParentValidationMode: "Permissive",
+            RequiredClaims: null, UpcastFromPrevious: null, DowncastToPrevious: null));
+
+        var subscription = await subscriptions.RegisterAsync(
+            appId, address, ["AdverseEventReported"], "whsec_e2b-test-secret", TestClaimsPrincipal.None, outboundAdapterKey: "IchE2bR3");
+
+        var published = await publish.PublishAsync("AdverseEventReported",
+            new PublishEventRequest(appId, 1, """{ "CaseId": "case-9", "PatientId": "pat-9", "DrugName": "Ibuprofen", "ReactionTerm": "Nausea" }""", null, null),
+            TestClaimsPrincipal.None);
+        Assert.IsInstanceOfType<PublishResult.Accepted>(published);
+        await RouterWorker.RunOnceAsync(db, registry, upcastChain, payloadMasker: payloadMasker);
+
+        var services = new ServiceCollection();
+        services.AddKeyedScoped<IInterchangeFormatAdapter, IchE2bR3Adapter>("IchE2bR3");
+        var serviceProvider = services.BuildServiceProvider();
+
+        using var httpClient = new HttpClient();
+        var options = new WebhookOptions();
+        var retryTracker = new WebhookRetryTracker();
+        await WebhookOutboxPump.RunOnceAsync(db, httpClient, registry, payloadMasker, options, retryTracker, serviceProvider);
+
+        Assert.AreEqual(1, requests.Count);
+        var sentBody = requests[0].Body;
+        var document = XDocument.Parse(sentBody);
+        var hl7V3 = (XNamespace)"urn:hl7-org:v3";
+        Assert.AreEqual(hl7V3 + "MCCI_IN200100UV01", document.Root!.Name, "the real ICH E2B(R3) envelope, not the ordinary masked JSON");
+        Assert.AreEqual("Ibuprofen", document.Descendants(hl7V3 + "medicinalproduct").Single().Value);
+
+        // The signature was computed over the SAME XML bytes actually
+        // sent, never the untransformed JSON -- a receiver verifying
+        // against what it actually received must succeed.
+        Assert.IsTrue(WebhookSigner.Verify(sentBody, "whsec_e2b-test-secret", requests[0].WebhookId, requests[0].Timestamp, requests[0].Signature));
+
+        var cursor = await db.WebhookDeliveryCursors.AsNoTracking().SingleAsync(c => c.SubscriptionId == subscription.SubscriptionId);
+        Assert.IsTrue(cursor.LastDeliveredSequenceNumber > 0, "delivery/retry mechanics are otherwise completely unaffected by the outbound transform");
 
         await backend.StopAsync();
     }

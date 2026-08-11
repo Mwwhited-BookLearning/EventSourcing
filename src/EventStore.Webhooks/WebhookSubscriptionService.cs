@@ -17,7 +17,8 @@ namespace EventStore.Webhooks;
 public class WebhookSubscriptionService(EventStoreContext db)
 {
     public async Task<WebhookSubscription> RegisterAsync(
-        string appId, string targetUrl, IReadOnlyList<string> eventTypes, string? signingSecret, ClaimsPrincipal registeringCaller, CancellationToken ct = default)
+        string appId, string targetUrl, IReadOnlyList<string> eventTypes, string? signingSecret, ClaimsPrincipal registeringCaller,
+        string? outboundAdapterKey = null, CancellationToken ct = default)
     {
         var subscription = new WebhookSubscription
         {
@@ -29,6 +30,7 @@ public class WebhookSubscriptionService(EventStoreContext db)
             FixedClaimsSnapshot = SnapshotClaims(registeringCaller),
             Active = true,
             RegisteredAt = DateTimeOffset.UtcNow,
+            OutboundAdapterKey = outboundAdapterKey,
         };
 
         db.WebhookSubscriptions.Add(subscription);

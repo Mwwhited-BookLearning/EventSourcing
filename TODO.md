@@ -217,3 +217,28 @@ here instead of inlining.
   build EventStore.slnx`-at-the-solution-level discoverability is
   affected. Needs a pass reconciling the full `src/` directory listing
   against this file's `<Project Path=...>` entries.
+- **The full SQLite regression suite's own known load-induced flakiness
+  (see `.claude/context.md`'s repeated notes on
+  `SubscribingOverRealHttpStreamsAMatchingEventAsSse` and the leader-
+  election renewal-cadence fix) got noticeably worse, once, while
+  building item 36** (Bulk Ingestion & Interchange Adapters): one run out
+  of four produced 21 failures (vs. the usual 0-2), though every failing
+  test passed cleanly on its own and three OTHER full-suite runs
+  immediately after came back clean or near-clean (only the
+  already-known SSE flake, plus once an unrelated Windows file-lock
+  error in `AuthSqliteTests.ClassCleanup` — "process cannot access the
+  file... being used by another process," a generic concurrent-SQLite-
+  file-deletion race, not caused by this item). No interchange-specific
+  test ever appeared in any failing run. Plausible cause, not yet
+  confirmed: this item added a 4th real background poller
+  (`Hl7V2MllpListener`, real TCP sockets) on top of the 3 already
+  running (Router/PeerSync/WebhookOutboxPump), and the tests in this file
+  spin up several MORE real `WebApplicationFactory` Hosts than most
+  other items' own test files — plausibly enough added load under
+  MSTest's 32-way parallelism to occasionally push several OTHER tests'
+  own fixed wait margins past the edge in one unlucky run. Investigate if
+  this recurs: capture a full, untruncated log (a `tail`-truncated
+  capture already lost the one reproduction this session had) and check
+  whether the failures cluster around a specific resource (DB file
+  handles, TCP ports, thread-pool starvation) the same way the leader-
+  election cadence fix's own root cause did.
