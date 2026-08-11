@@ -4327,6 +4327,8 @@ own header comment already documents for its own file, for the
 identical reason. Full non-container suite: 125/125 (up from 123),
 re-run 3× for the new peer-sync fixture specifically with zero flakes.
 
+## Event Log/AccessLog Archival Segment Detachment
+
 **Scope**: `ADR-089` — detach a verified, contiguous segment of
 `StoredEvent` rows (or, independently, `AccessLogEntry` rows) once past
 `ADR-056`'s deployment-configured retention window, serialized as an
