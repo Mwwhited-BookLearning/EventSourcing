@@ -37,6 +37,7 @@ public static class GraphQlServiceCollectionExtensions
             .AddQueryType<Query>()
             .AddTypeExtension<RegistryQueries>()
             .AddTypeExtension<LineageQueries>()
+            .AddTypeExtension<LineageExportQueries>()
             .AddTypeExtension<CapabilitiesQueries>()
             .AddTypeExtension<ViewDefinitionQueries>()
             .AddMutationType<Mutation>()

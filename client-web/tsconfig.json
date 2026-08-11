@@ -17,5 +17,5 @@
     "noFallthroughCasesInSwitch": true,
     "types": ["vite/client"]
   },
-  "include": ["src/**/*.ts", "src/**/*.vue", "vitest.setup.ts"]
+  "include": ["src/**/*.ts", "src/**/*.vue", "vitest.setup.ts", "offline-player/**/*.ts"]
 }

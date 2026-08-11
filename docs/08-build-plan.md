@@ -99,7 +99,7 @@ provider they apply to — not "code written."
 | 38 | [Sanctions/Watchlist Screening Extensibility Seam](#sanctionswatchlist-screening-extensibility-seam) | Scaffolding & Persistence, Non-Authoritative Capture | Done |
 | 39 | [Release Engineering, Packaging & Supply Chain](#release-engineering-packaging--supply-chain) | Scaffolding & Persistence, Compatibility & Deployment Discipline | Done |
 | 40 | [Signing Secret Rotation, Dual Signature](#signing-secret-rotation-dual-signature) | Outbound Webhooks | Done (webhook half only — ticket-exchange half descoped, see `TODO.md`) |
-| 41 | [Lineage Export & Bitemporal Playback](#lineage-export--bitemporal-playback) | Lineage API, Entity-Centric Core Rebuild, MVVM Client, GraphQL-Only Query Layer, Property-Level Masking, GDPR/CCPA Erasure, Delegated Grants/RBAC/Read Audit Logging | Not started |
+| 41 | [Lineage Export & Bitemporal Playback](#lineage-export--bitemporal-playback) | Lineage API, Entity-Centric Core Rebuild, MVVM Client, GraphQL-Only Query Layer, Property-Level Masking, GDPR/CCPA Erasure, Delegated Grants/RBAC/Read Audit Logging | Done |
 | 42 | [RFC 3161 Trusted Timestamping](#rfc-3161-trusted-timestamping) | Digital Sign-Off, Lineage Export & Bitemporal Playback | Not started |
 | 43 | [Pluggable Outbox Flush Triggers](#pluggable-outbox-flush-triggers) | MVVM Client, Lineage Export & Bitemporal Playback | Not started |
 | 44 | [Device Input Integration](#device-input-integration) | MVVM Client, Pluggable Outbox Flush Triggers, Non-Authoritative Capture | Not started |
@@ -233,7 +233,7 @@ state "Local Services" as tierLocal {
   state "Leader Election" as a8 #palegreen
   state "Per-Tenant Rate Limiting" as a9 #palegreen
   state "Release Engineering,\nPackaging & Supply Chain" as a15 #palegreen
-  state "Lineage Export +\nBitemporal Playback" as a17
+  state "Lineage Export +\nBitemporal Playback" as a17 #palegreen
   state "Mechanism-Level\nOTel Instrumentation" as a23
 }
 state "UI" as tierUi {
@@ -3638,6 +3638,54 @@ the player performs **no** masking/claims enforcement of its own; a
 bundle whose manifest records a newer major `FrameworkVersion` than the
 player was built against is **not** guaranteed correctly readable by
 that player.
+
+**Status: Done.** Server-side (`EventStore.LineageExport/`):
+`LineageExportService.ExportAsync`/`ImportAsync`/`CheckRootAsync`,
+`BitemporalPlaybackService.ReconstructAsync`, `ExportManifest`/
+`ExportedEventLine`/`LineageExportBundle` (NDJSON), `ManifestHash`,
+`LineageExportBundleStore` (15-minute `IMemoryCache` TTL). Two new
+GraphQL Query fields (`exportLineage`/`playbackAsOf`,
+`LineageExportQueries.cs`) and two new REST endpoints
+(`/lineage-exports/{id}`, `/lineage-imports`,
+`LineageExportEndpoints.cs`), wired into all three Hosts.
+`LineageExportHttpSqliteTests.cs` (7 tests, real HTTP through the actual
+Gateway) covers root-visibility rejection, manifest-hash correctness,
+import provenance (`OriginalSequenceNumber`/`OriginalChainHash`/
+`ImportedFrom`) against a genuinely separate receiving database, tampered-
+manifest rejection before any write, and the late-arrival playback
+correction landing/not-landing at the correct `SequenceNumber`. `Rfc3161Timestamp`
+stays null, per this repo's "never build ahead of dependencies" rule —
+populated once RFC 3161 Trusted Timestamping (next item) lands.
+
+Client-side (`client-web/`): `BitemporalPlaybackControl.vue` (the live
+VCR-style control, calling `playbackAsOf`) and `OfflineBundleViewer.vue`
+(the verification-result + event-list screen, reading either a
+downloaded bundle or the offline build's embedded one) — one shared
+component pair mounted from two entry points, per `ADR-068 §3`.
+`client-web/src/playback/verifyBundle.ts` recomputes the manifest hash
+(cross-checked this session against a real C# `ManifestHash.Compute`
+run, including the `DateTimeOffset`-fractional-second-trimming edge case
+`System.Text.Json` applies) and counts masked/erased fields — see
+`ADR-068`'s own "Corrected, 2026-08-11" Consequences note for the one
+honest scope narrowing found while building (no per-event `PayloadHash`
+re-derivation, since `ExportedEventLine` carries no `ParentEventIds`).
+`client-web/offline-player/` + `vite.offline-player.config.ts`
+(`vite-plugin-singlefile`) build the self-contained HTML player;
+`client-web/scripts/embed-bundle.mjs` does the per-export "embed and
+rebuild" step. Verified genuinely end-to-end, not just unit-tested: built
+the offline player, embedded a real exported bundle via the script, and
+rendered the resulting double-clickable HTML file headlessly in a real
+browser, confirming it independently reports "Fully independently
+verified" with no server, network, or test-runner involved — this also
+caught a real bug (the placeholder-substitution comment in `offline-
+player/index.html` accidentally containing its own literal marker text,
+so the embed script patched the wrong occurrence) that unit tests alone
+had not surfaced. Client test suite: 49/49 (10 files, `npm test`).
+Full SQLite/Postgres/SqlServer regression suite re-run clean except
+pre-existing SqlServer-testcontainers Docker-contention flakiness under
+parallel load (confirmed unrelated to this item — none of the failing
+test names touch `LineageExport`, and a dedicated SqlServer-only rerun
+passed clean).
 
 ## RFC 3161 Trusted Timestamping
 

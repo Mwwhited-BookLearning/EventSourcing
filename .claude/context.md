@@ -1617,11 +1617,46 @@ stale numbers here are worse than none)*
   OpenIddict credential-validation handler, or a stopgap second
   application) is real, undesigned follow-up work — tracked in
   `TODO.md`, not built.
-- **Next up**: item 41, "Lineage Export & Bitemporal Playback"
-  (`ADR-068`) — depends on Lineage API (Done), Entity-Centric Core
-  Rebuild (Done), MVVM Client (Done), GraphQL-Only Query Layer (Done),
-  Property-Level Masking (Done), and GDPR/CCPA Erasure via
-  Crypto-Shredding (Done).
+- **Item 41, "Lineage Export & Bitemporal Playback," is Done — new
+  session, continuing directly from item 40.** Server-side:
+  `EventStore.LineageExport/` (`ExportAsync`/`ImportAsync`/
+  `CheckRootAsync`, `BitemporalPlaybackService.ReconstructAsync`, NDJSON
+  bundle format, `ManifestHash`, a 15-minute-TTL `IMemoryCache` bundle
+  store), two new GraphQL Query fields (`exportLineage`/`playbackAsOf`)
+  and two new REST endpoints. Fixed a test-design bug (not a service
+  bug) inherited from the prior session: an import test had round-
+  tripped a bundle back into the SAME database it was exported from,
+  colliding on `EventId` (imports correctly preserve it) — rewrote to
+  import into a genuinely separate destination database.
+  `LineageExportHttpSqliteTests.cs`, 7/7 passing.
+  **Offline player (`ADR-068 §3`) also built this pass** — flagged
+  mid-session as a real scope gap rather than silently skipped:
+  `client-web/src/playback/{bundle,verifyBundle}.ts`,
+  `BitemporalPlaybackControl.vue`/`OfflineBundleViewer.vue`,
+  `client-web/offline-player/` + `vite.offline-player.config.ts`
+  (`vite-plugin-singlefile`) + `scripts/embed-bundle.mjs`. One
+  cross-language correctness issue caught by direct verification, not
+  assumption: `System.Text.Json` trims a `DateTimeOffset`'s trailing-
+  zero fractional digits before `ManifestHash.Compute` hashes the
+  UN-trimmed `:"O"` format — the client reconstructs the untrimmed form
+  and the exact hash was cross-checked against a real C# run. Also
+  decided, and recorded as an additive `ADR-068` correction, NOT to
+  attempt a per-event `PayloadHash`-from-`Payload` re-derivation in the
+  player (`ExportedEventLine` carries no `ParentEventIds`, so it would
+  false-flag any event with real causal parents as tampered) — "fully
+  verified" vs. "verified except N masked fields" is derived from the
+  manifest-hash check plus a masked/erased-field count instead. Verified
+  genuinely end-to-end: built the offline player, embedded a real
+  bundle, and rendered the resulting double-clickable HTML file
+  headlessly in a real installed browser — this caught a real bug
+  (the embed script's `.replace()` matching the wrong occurrence of the
+  placeholder marker, because the explanatory HTML comment happened to
+  spell it out too) that the 49-test client-side `vitest` suite alone
+  had not caught. Full narrative: `docs/changes/2026-08-11.md`.
+- **Next up**: item 42, "RFC 3161 Trusted Timestamping" (`ADR-086`) —
+  depends on Digital Sign-Off (Done) and Lineage Export & Bitemporal
+  Playback (Done). Will populate the `Rfc3161Timestamp`/
+  `RFC3161Timestamp` fields both those items deliberately left null.
 
 ## How to resume cold
 
@@ -1636,21 +1671,26 @@ stale numbers here are worse than none)*
    narrative.
 5. `dotnet build EventStore.slnx` and `dotnet test tests/EventStore.IntegrationTests` —
    confirm the build/test baseline the last session left still holds
-   before adding to it (132 tests should pass — 130 (118 (115, itself
-   105 — 98 plus item 33's `RateLimitingGatewayTests.cs` — plus item 34's
-   10 webhook methods, plus item 35's 3 residency methods)) plus item
-   36's 12 new methods across `BatchPublishHttpSqliteTests`/
-   `InterchangeAdapterTests`/`Hl7V2MllpListenerTests`/
-   `FhirIngestionHttpSqliteTests`/one new `WebhookDeliveryHttpSqliteTests`
-   scenario) plus item 37's 2 new `TenantFederationHttpSqliteTests`
-   methods). Requires Docker running
-   (Testcontainers for Postgres/SQL Server) and the SDK pinned in
-   `global.json`. A full multi-provider run has a known, pre-existing,
-   unrelated flake — see `TODO.md`'s entry — where one or two SQL Server
-   test classes occasionally fail their own container `ClassInit` under
-   host resource contention (`fs.aio-max-nr` exhaustion from cumulative
-   `MsSqlContainer` starts); re-running just that class alone always
-   passes. Don't mistake this for a real regression.
+   before adding to it. **As of item 41 (2026-08-11): 157 `[TestMethod]`s
+   total** (`grep -rc "\[TestMethod\]" tests/EventStore.IntegrationTests/*.cs`
+   is the reliable way to recheck this count directly — don't hand-thread
+   a running tally through prose any further, it already drifted
+   silently across items 38-40 before this pass caught it). Requires
+   Docker running (Testcontainers for Postgres/SQL Server) and the SDK
+   pinned in `global.json`. A full multi-provider run has a known, pre-
+   existing, unrelated flake — see `TODO.md`'s entry — where one or more
+   SQL Server test classes occasionally fail their own container
+   readiness/`ClassInit` under host resource contention from many
+   concurrent `MsSqlContainer`s (seen as high as 10/21 failing in one
+   SqlServer-only rerun this pass); re-running the same class(es) alone
+   always passes. Don't mistake this for a real regression — confirm by
+   checking whether any failing test name actually touches the feature
+   just built before assuming otherwise.
+6. `client-web/`: `npm test` (49 tests, `vitest`), `npm run build`, and
+   `npm run build:offline-player` — the last of these is easy to assume
+   works from a clean `vite build` exit code alone; it isn't a full
+   check (see item 41's own note above about a bug only an actual
+   headless-browser render of the built output caught).
 
 ## Working notes not yet written down elsewhere
 

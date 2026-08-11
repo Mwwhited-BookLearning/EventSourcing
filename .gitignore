@@ -430,6 +430,7 @@ FodyWeavers.xsd
 
 # client-web/ (ADR-039, "MVVM Client") -- npm workspace, not a .NET project
 client-web/dist/
+client-web/dist-offline-player/
 client-web/.vite/
 client-web/*.tsbuildinfo
 
