@@ -74,6 +74,34 @@ describe('ClientOutbox (ADR-039)', () => {
     expect(store.pendingFor('instance-a')).toHaveLength(0)
   })
 
+  it('exports pending entries to a verifiable bundle and imports them into a fresh instance (ADR-069 sneakernet transfer)', async () => {
+    const source = useOutboxStore()
+    await source.enqueue(makeEntry({ commandId: 'cmd-export-1' }))
+    const bundle = await source.exportBundle('instance-a')
+
+    setActivePinia(createPinia())
+    const destination = useOutboxStore()
+    const result = await destination.importBundle(bundle)
+
+    expect(result.verified).toBe(true)
+    expect(result.importedCount).toBe(1)
+    expect(destination.pendingFor('instance-a')).toHaveLength(1)
+    expect(destination.pendingFor('instance-a')[0]?.commandId).toBe('cmd-export-1')
+  })
+
+  it('importing the same bundle twice never duplicates an already-present command', async () => {
+    const store = useOutboxStore()
+    await store.enqueue(makeEntry({ commandId: 'cmd-export-2' }))
+    const bundle = await store.exportBundle('instance-a')
+
+    const first = await store.importBundle(bundle)
+    const second = await store.importBundle(bundle)
+
+    expect(first.importedCount).toBe(0) // already present locally -- exported from THIS same store
+    expect(second.importedCount).toBe(0)
+    expect(store.pendingFor('instance-a')).toHaveLength(1)
+  })
+
   it('two client instances scoped to different entity types never share outbox state', async () => {
     const store = useOutboxStore()
     await store.enqueue(makeEntry({ commandId: 'cmd-a', instanceId: 'instance-a' }))

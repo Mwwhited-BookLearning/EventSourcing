@@ -42,6 +42,16 @@ self.addEventListener('sync', (event) => {
   if (event.tag === 'flush-outbox') event.waitUntil(flushOutbox())
 })
 
+// ADR-069's "scheduled ('phone home')" trigger -- registered from
+// src/main.ts (feature/permission-detected there), fires on the browser's
+// own schedule even when the app isn't open, reusing the exact same
+// flushOutbox() the opportunistic trigger above already uses -- neither
+// this Service Worker nor the outbox itself needs to know or care which
+// trigger category fired (ADR-069's own stated principle).
+self.addEventListener('periodicsync', (event) => {
+  if (event.tag === 'flush-outbox-periodic') event.waitUntil(flushOutbox())
+})
+
 function openDb() {
   return new Promise((resolve, reject) => {
     const request = indexedDB.open(DB_NAME, DB_VERSION)
