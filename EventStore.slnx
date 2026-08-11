@@ -52,5 +52,8 @@
   </Folder>
   <Folder Name="/samples/">
     <Project Path="src/Samples.Orders.Projections/Samples.Orders.Projections.csproj" />
+    <Folder Name="/samples/Vitals/">
+      <Project Path="src/Samples.Vitals/Samples.Vitals.csproj" />
+    </Folder>
   </Folder>
 </Solution>
