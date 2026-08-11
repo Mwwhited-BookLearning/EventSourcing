@@ -39,13 +39,29 @@ const container = ref<HTMLDivElement | null>(null)
 // here (the same two legitimate non-literal shapes on both sides).
 const INTERPOLATION = /\{\{\s*(?:(t):([\w.]+)|([\w.]+)(?::(date|number))?)\s*\}\}/g
 
+// A masked field (x-masking, ADR-009) resolves over the live subscription
+// path (subscriptionBuilder.ts's own masked-aware selection) to the same
+// three-way { value, masked, erased } wrapper server-side masking already
+// produces everywhere else (revealField, the offline bundle) -- exactly
+// one of value/masked is ever populated per MaskedFieldTypes.cs's own
+// comment, erased is a separate, later-arriving flag. Never a raw scalar
+// once a field is masked, so this must be checked before falling through
+// to String(value) below (which would otherwise render "[object Object]").
+function isMaskedWrapper(value: unknown): value is { value: unknown; masked: string | null; erased: boolean | null } {
+  return typeof value === 'object' && value !== null && !Array.isArray(value) && ('value' in value || 'masked' in value || 'erased' in value)
+}
+
 function interpolate(template: string, entry: ClientEntityCacheEntry, locale: string, translations: Record<string, string>): string {
   return template.replace(INTERPOLATION, (_match, translationMarker: string | undefined, translationKey: string | undefined, fieldPath: string | undefined, format: string | undefined) => {
     if (translationMarker === 't') return translations[translationKey!] ?? `[${translationKey}]` // an unresolved key is surfaced visibly, never silently blanked -- easier to catch a missing placeholder resource during development
     const path = fieldPath!
     if (path === 'entityId') return entry.entityId
     if (path === 'entityType') return entry.entityType
-    const value = entry.data[path]
+    let value: unknown = entry.data[path]
+    if (isMaskedWrapper(value)) {
+      if (value.erased) return translations['field_erased'] ?? '(erased)'
+      value = value.value ?? value.masked ?? ''
+    }
     if (value === undefined || value === null) return ''
     if (format === 'number' && typeof value === 'number') return new Intl.NumberFormat(locale).format(value)
     if (format === 'date') return new Intl.DateTimeFormat(locale, { dateStyle: 'medium' }).format(new Date(String(value)))
