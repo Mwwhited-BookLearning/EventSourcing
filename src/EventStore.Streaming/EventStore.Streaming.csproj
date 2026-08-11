@@ -1,6 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <ItemGroup>
+    <ProjectReference Include="..\EventStore.Abstractions\EventStore.Abstractions.csproj" />
     <ProjectReference Include="..\EventStore.Persistence\EventStore.Persistence.csproj" />
     <ProjectReference Include="..\EventStore.SchemaRegistry\EventStore.SchemaRegistry.csproj" />
     <ProjectReference Include="..\EventStore.Masking\EventStore.Masking.csproj" />

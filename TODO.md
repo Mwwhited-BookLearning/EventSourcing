@@ -266,3 +266,46 @@ here instead of inlining.
   more times afterward (0-1 failures each, only the pre-existing SSE
   flake, zero `DataResidencyHttpSqliteTests` failures) — no reproduction
   of either this race or the original 21-failure anomaly above.
+
+- **`client-web`'s own devDependencies (vitest/vite/esbuild) carry a
+  known moderate/high/critical vulnerability chain** (`npm audit`, found
+  while building "Release Engineering, Packaging & Supply Chain," item
+  39) with no non-breaking fix available — `npm audit fix --force` would
+  bump vitest across a major version (2.x → 4.x), real risk to that
+  client's own test suite/config that wasn't attempted this pass. Every
+  affected package is dev-only (the Vite dev server / Vitest UI server),
+  never shipped in a production build; `npm audit --omit=dev` reports
+  clean, and `.github/workflows/ci.yml`'s own vulnerability-scan job is
+  scoped to that flag for exactly this reason, not to hide the finding.
+  If this needs closing later: attempt the vitest 4.x upgrade in its own
+  isolated pass, run the full client-web test suite before/after to
+  isolate any breakage from the version bump itself.
+- **`ADR-076`'s deploy-time migration-bundle-apply step is NOT wired
+  into `EventStore.AppHost`/`docker-compose.yml`** (found/deliberately
+  scoped while building item 39) — `Database.MigrateAsync()` was removed
+  from all 3 `EventStore.Host.<Provider>` composition roots (no replica
+  calls it at startup anymore, per that ADR), and a real, verified local
+  replacement exists (`scripts/generate-migration-bundle.sh`/
+  `apply-migration-bundle.sh` — actually run against a fresh Sqlite file
+  this pass, all 17 migrations applied in one bundle execution), but
+  nothing automatically runs that bundle before `aspire run`/`docker
+  compose up` starts a Host. Per direct request this pass ("local
+  scripts for POC/PoV are perfect"), wiring an actual init step into
+  either orchestration path was deliberately not attempted — `ADR-076`'s
+  own Consequences already named this as separate, not-yet-built
+  pipeline work, not a gap this pass introduced. A human running `aspire
+  run`/`docker compose up` against a brand-new database today must run
+  the generate/apply scripts by hand first.
+- **`.github/workflows/ci.yml`/`.github/dependabot.yml` have never
+  actually been run by GitHub Actions** (item 39) — this environment has
+  no push access to trigger a real run, an explicit, deliberate scope
+  limit agreed with the user rather than a gap discovered afterward.
+  Every command the workflow calls (`dotnet build`/`test`/`pack`,
+  `dotnet list package --vulnerable`, `npm audit --omit=dev`, `sbom-tool
+  generate`) was verified working against this exact repository first;
+  only the YAML orchestration itself (both files YAML-parse-checked, not
+  execution-checked) and the GitHub-native `actions/attest-build-
+  provenance` step are unexecuted. If this repo ever gets a real
+  `origin` with Actions enabled: push a branch and confirm the workflow
+  actually goes green, especially the provenance-attestation job (the
+  one step with no local equivalent at all).

@@ -432,3 +432,8 @@ FodyWeavers.xsd
 client-web/dist/
 client-web/.vite/
 client-web/*.tsbuildinfo
+
+# ADR-076 -- scripts/generate-migration-bundle.sh's own output: a real,
+# large (tens of MB), self-contained executable per provider, regenerated
+# on demand from the committed migrations, never itself a source artifact.
+scripts/bundles/

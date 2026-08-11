@@ -1,6 +1,7 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <ItemGroup>
+    <ProjectReference Include="..\EventStore.Abstractions\EventStore.Abstractions.csproj" />
     <ProjectReference Include="..\EventStore.Erasure\EventStore.Erasure.csproj" />
   </ItemGroup>
 

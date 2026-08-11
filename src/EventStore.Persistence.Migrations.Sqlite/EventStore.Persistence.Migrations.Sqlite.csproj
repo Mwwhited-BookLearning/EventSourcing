@@ -6,12 +6,21 @@
 
   <ItemGroup>
     <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="10.0.10" />
+    <!-- ADR-080 (dependency-vulnerability scanning) found this pulling
+         SQLitePCLRaw.lib.e_sqlite3 2.1.11 (GHSA-2m69-gcr7-jv3q, high). A
+         direct override bumps NuGet's higher-version-wins resolution to a
+         patched release. -->
+    <PackageReference Include="SQLitePCLRaw.lib.e_sqlite3" Version="2.1.12" />
   </ItemGroup>
 
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
+    <!-- ADR-062: provider-specific migration glue, not one of the
+         published packages, a consumer references EventStore.Host.Sqlite
+         (which already pulls this in transitively), never this directly. -->
+    <IsPackable>false</IsPackable>
   </PropertyGroup>
 
 </Project>

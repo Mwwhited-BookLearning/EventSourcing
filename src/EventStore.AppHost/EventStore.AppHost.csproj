@@ -6,6 +6,9 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <UserSecretsId>7d6d19cf-e90e-4fb3-aecc-4fd8e063c1ce</UserSecretsId>
+    <!-- ADR-062: Aspire orchestration for local dev only (ADR-026), an
+         executable, never a package a downstream project references. -->
+    <IsPackable>false</IsPackable>
   </PropertyGroup>
 
   <ItemGroup>

@@ -12,6 +12,10 @@
     <TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
+    <!-- ADR-062: provider-specific migration glue, not one of the
+         published packages, a consumer references EventStore.Host.SqlServer
+         (which already pulls this in transitively), never this directly. -->
+    <IsPackable>false</IsPackable>
   </PropertyGroup>
 
 </Project>

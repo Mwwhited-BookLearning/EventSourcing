@@ -4,6 +4,10 @@
     <TargetFramework>net10.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
+    <!-- ADR-062: dev-only mock IdP (docs/06-solution-structure.md's own
+         "dev-only" label), never a published package, a real deployment
+         brings its own IdP. -->
+    <IsPackable>false</IsPackable>
   </PropertyGroup>
 
   <ItemGroup>

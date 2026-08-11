@@ -77,13 +77,14 @@ builder.AddSpiffePeerIdentity(); // ADR-048 -- wires the "PeerSync" named HttpCl
 
 var app = builder.Build();
 
-// Applies pending migrations against whatever database this deployment
-// points at (Aspire's freshly-provisioned container, docker-compose's
-// volume, or an existing one) -- found missing by actually running the
-// Postgres Host under `aspire run` against a brand-new container, which
-// had no schema at all and 500'd on first request.
-await using (var scope = app.Services.CreateAsyncScope())
-    await scope.ServiceProvider.GetRequiredService<EventStoreContext>().Database.MigrateAsync();
+// ADR-076 -- no replica ever calls Database.Migrate()/MigrateAsync() at
+// startup (this line used to be here; two replicas starting concurrently
+// against a fresh database is a known race). Schema is applied as a
+// single deploy-time step BEFORE this Host starts, via an EF Core
+// Migration Bundle -- see scripts/generate-migration-bundle.sh and
+// scripts/apply-migration-bundle.sh for the local/POC equivalent of that
+// deploy-time step (a real deployment pipeline would run the same bundle,
+// sequenced ahead of every replica, per that ADR's own Consequences).
 
 app.MapDefaultEndpoints();
 app.MapEventStoreCommonEndpoints();

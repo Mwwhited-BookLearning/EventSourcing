@@ -3,6 +3,7 @@ extern alias DevIdpAssembly;
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
+using EventStore.Domain.EventLog;
 using EventStore.Persistence;
 using EventStore.Persistence.Migrations.Sqlite;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
@@ -261,6 +262,24 @@ public class SanctionsScreeningExtensibilityHttpSqliteTests
         return response.StatusCode;
     }
 
+    // RouterWorker's own 200ms poll cycle occasionally needs more than a
+    // fixed 500ms wait under this suite's heavier full-run parallel load
+    // (found running the full regression suite alongside 82 other tests,
+    // never in isolation) -- the same load-induced flake class TODO.md
+    // already tracks for other HTTP test files. Polls the actual
+    // condition instead of assuming one fixed wait is always enough.
+    private static async Task<StoredEvent> WaitForAuthorityStatusAsync(EventStoreContext db, Guid eventId, string expectedStatus)
+    {
+        var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(10);
+        while (true)
+        {
+            var target = await db.Events.AsNoTracking().SingleAsync(e => e.EventId == eventId);
+            if (target.AuthorityStatus == expectedStatus || DateTime.UtcNow >= deadline)
+                return target;
+            await Task.Delay(150);
+        }
+    }
+
     private static EventStoreContext OpenDb() => new(
         new DbContextOptionsBuilder<EventStoreContext>()
             .UseSqlite($"Data Source={_dbPath}", x => x.MigrationsAssembly("EventStore.Persistence.Migrations.Sqlite"))
@@ -322,9 +341,8 @@ public class SanctionsScreeningExtensibilityHttpSqliteTests
         var decisionStatus = await PublishAuthorityDecisionAsync(eventId, "accepted", "publisher-client", asComplianceOfficer: true);
         Assert.AreEqual(HttpStatusCode.Accepted, decisionStatus);
 
-        await Task.Delay(500); // RouterWorker's own 200ms poll -- same real-Host wait every other GraphQL/webhook HTTP test already uses
         await using var db = OpenDb();
-        var target = await db.Events.AsNoTracking().SingleAsync(e => e.EventId == eventId);
+        var target = await WaitForAuthorityStatusAsync(db, eventId, "accepted");
         Assert.AreEqual("accepted", target.AuthorityStatus, "the compliance officer's own authorityDecision -- not the provider -- is what actually resolves the hit");
     }
 
@@ -338,9 +356,8 @@ public class SanctionsScreeningExtensibilityHttpSqliteTests
         var decisionStatus = await PublishAuthorityDecisionAsync(eventId, "rejected", "publisher-client", asComplianceOfficer: true);
         Assert.AreEqual(HttpStatusCode.Accepted, decisionStatus);
 
-        await Task.Delay(500);
         await using var db = OpenDb();
-        var target = await db.Events.AsNoTracking().SingleAsync(e => e.EventId == eventId);
+        var target = await WaitForAuthorityStatusAsync(db, eventId, "rejected");
         Assert.AreEqual("rejected", target.AuthorityStatus, "a false-positive clearance resolves to rejected, never leaving the hit stuck pending_review");
     }
 }
