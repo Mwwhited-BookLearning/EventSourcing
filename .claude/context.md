@@ -1973,9 +1973,51 @@ stale numbers here are worse than none)*
   `docs/features/auth.md`, `docs/changes/2026-08-04.md` itself) —
   resolved additively (keep both sides' genuinely new content) in every
   case, not by picking one side.
-- **Next up**: build-plan item 49, "Expected-Response Tracking"
-  (`ADR-094`) — depends on CQRS Read-Model Projections, Streaming
-  Channels, Outbound Webhooks, and Leader Election (all Done).
+- **Item 49, "Expected-Response Tracking" (`ADR-094`), is now Done —
+  same session, immediately after the merge above.** New
+  `EventStore.ExpectedResponse` project (`ExpectedResponseWatcher`,
+  leader-lease-gated `BackgroundService` + static `RunOnceAsync`, the
+  same shape `RouterWorker`/`DerivationWorker`/`WebhookOutboxPump`
+  already use) reading `EventStoreContext` directly rather than the
+  Follow-over-HTTP shape `ADR-094`'s own text sketched — recorded as an
+  additive "Corrected, 2026-08-11" note on that ADR, and
+  `docs/features/auth.md`'s seeded-clients table put back to its real 11
+  rows (the merge had added a 12th, `expected-response-watcher-client`,
+  that turned out unneeded). `RegisterEventTypeRequest` gained a real
+  `ExpectedResponseRequest` field. Migrated across all 3 providers; 6
+  scenarios verified on Sqlite/Postgres/SqlServer. **All 49
+  `08-build-plan.md` items are now Done — there is no unbuilt backlog
+  left in that file at all.**
+- Same session, before item 49: a 9-agent doc audit (report-only,
+  consolidated centrally) fixed scattered drift across `docs/07-adrs.md`'s
+  index, `docs/glossary.md`, `docs/patterns/README.md`,
+  `docs/references.md`/`libraries/README.md`, and — the largest single
+  fix — `docs/06-solution-structure.md`'s project-layout reconciliation
+  (corrected 4 entries wrongly sketched as separate deployables, added
+  tree lines for the 16 real projects it had never named once including
+  `EventStore.ExpectedResponse` itself, and fixed the `tests/` tree's own
+  identical `UnitTests`/`E2ETests`/`Bdd`-never-built gap). Also that
+  session: a new `EventStore.Migrator` project + AppHost
+  `WaitForCompletion` realizes `ADR-076`'s migration discipline for local
+  Aspire orchestration; `client-web`'s Vite dev server is now a real
+  `AddViteApp` AppHost resource; `postgres-server`/`migrator`/`devidp`/
+  `client-web` are all dashboard-grouped under `eventstore` via
+  `WithParentRelationship` (no dedicated "resource group" primitive
+  exists in this Aspire version, confirmed by reflecting over the
+  installed DLLs). Full narrative: `docs/changes/2026-08-11.md`.
+- **Next up, per direct request ("After all that is done I would like
+  the providing ground applications to be built out")**: build the two
+  proving-ground reference applications — Vitals (clinical trials +
+  device telemetry) and Meridian (digital identity/KYC) — under a new
+  `samples/` folder, one subfolder per domain (direct request: "the
+  proving ground projects should show under the sample folder but also
+  within subfolders for each proving ground model"). Once built, apply
+  the same Aspire dashboard-grouping pattern just established
+  (`WithParentRelationship`) to each proving-ground app's own resources,
+  per direct request ("can aspire create a pool for the common resources
+  as well as for each of the proving grounds... nice to have the stuff
+  logically grouped in the UI") — the pattern is proven, just not yet
+  applied to resources that don't exist yet.
 
 ## How to resume cold
 
@@ -1990,24 +2032,29 @@ stale numbers here are worse than none)*
    narrative.
 5. `dotnet build EventStore.slnx` and `dotnet test tests/EventStore.IntegrationTests` —
    confirm the build/test baseline the last session left still holds
-   before adding to it. **As of item 48 (2026-08-11, the last build-plan
-   item): 172 `[TestMethod]`s total** (`grep -rc "\[TestMethod\]" tests/EventStore.IntegrationTests/*.cs`
+   before adding to it. **As of item 49 (2026-08-11, now the last
+   build-plan item — all 49 Done): 175 `[TestMethod]`s total**
+   (`grep -rc "\[TestMethod\]" tests/EventStore.IntegrationTests/*.cs`
    is the reliable way to recheck this count directly — don't hand-thread
    a running tally through prose any further, it already drifted
-   silently across items 38-40 before this pass caught it). Requires
+   silently across items 38-40 before an earlier pass caught it). Requires
    Docker running (Testcontainers for Postgres/SQL Server) and the SDK
-   pinned in `global.json`. A full multi-provider run has TWO known,
-   pre-existing, unrelated flakes — see `TODO.md`'s entry — (a) one or
-   more SQL Server test classes occasionally fail their own container
+   pinned in `global.json`. A full multi-provider run has known,
+   pre-existing, unrelated flakes that get WORSE (more failures, not new
+   ones) as more test classes are added under MSTest's parallelism — see
+   `TODO.md`'s "load-induced flakiness" entry — including (a) one or more
+   SQL Server test classes occasionally failing their own container
    readiness/`ClassInit` under host resource contention from many
-   concurrent `MsSqlContainer`s (seen as high as 10/21 failing in one
-   SqlServer-only rerun this pass), and (b) `DigitalSignOffHttpSqliteTests.
-   ClassCleanup`'s temp-file deletion/`GraphQlHttpSqliteTests.
+   concurrent `MsSqlContainer`s, (b) `GraphQlHttpSqliteTests.
    SubscribingOverRealHttpStreamsAMatchingEventAsSse`'s cross-test pickup
-   under full-suite load; re-running the same class(es) alone always
-   passes. Don't mistake either for a real regression — confirm by
-   checking whether any failing test name actually touches the feature
-   just built before assuming otherwise.
+   under full-suite load, and (c), first seen while building item 49,
+   `TimestampingHttpSqliteTests.APublishNotOptingIntoRfc3161TimestampLeavesItNull`
+   failing with a DPoP-proof "kid is missing" error under heavy load (one
+   run produced 36 failures, all DPoP-related; two immediate reruns
+   produced 1-2). Re-running the same class(es) alone always passes.
+   Don't mistake any of these for a real regression — confirm by checking
+   whether any failing test name actually touches the feature just built,
+   and by re-running that specific class alone, before assuming otherwise.
 6. `client-web/`: `npm test` (108 tests, `vitest`), `npm run build`, and
    `npm run build:offline-player` — the last of these is easy to assume
    works from a clean `vite build` exit code alone; it isn't a full
