@@ -221,6 +221,9 @@ namespace EventStore.Persistence.Migrations.Sqlite.Migrations
                         .IsRequired()
                         .HasColumnType("TEXT");
 
+                    b.Property<DateTimeOffset>("AppendedAt")
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("AttestedActorId")
                         .HasColumnType("TEXT");
 

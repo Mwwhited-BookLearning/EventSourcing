@@ -13,6 +13,14 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <!-- ADR-088: EventStore.Domain is a true leaf project (zero
+         dependencies of its own), so referencing it here to reach
+         DuplexInstrumentation's shared Meter/ActivitySource introduces no
+         circularity risk. -->
+    <ProjectReference Include="..\EventStore.Domain\EventStore.Domain.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
 
     <PackageReference Include="Microsoft.Extensions.Http.Resilience" Version="10.6.0" />

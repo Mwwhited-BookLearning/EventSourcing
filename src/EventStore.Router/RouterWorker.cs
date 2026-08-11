@@ -3,6 +3,7 @@ using System.Text;
 using System.Text.Json.Nodes;
 using EventStore.Domain.EntityStore;
 using EventStore.Domain.EventLog;
+using EventStore.Domain.Observability;
 using EventStore.Domain.SchemaRegistry;
 using EventStore.Erasure;
 using EventStore.LeaderElection;
@@ -239,8 +240,24 @@ public class RouterWorker(IServiceScopeFactory scopeFactory, ILogger<RouterWorke
                 // Event Log and the Live View, but doesn't yet update the
                 // authoritative store.
                 await FoldLiveAsync(db, entityId, storedEvent, activeDefinition.EntityType, changeKind, known, unknownProperties, ct);
+
+                // ADR-088 -- fold-lag is recorded ONLY on this branch,
+                // never for FoldLiveAsync above: an unattested/
+                // pending_review event still folds into the Live View
+                // immediately, but this histogram measures the
+                // AUTHORITATIVE fold specifically, the one an
+                // unattested/pending_review event does NOT reach here at
+                // all (it waits on open-ended human review instead,
+                // ADR-042) -- mixing the two would conflate mechanism
+                // latency with review-workflow duration.
                 if (storedEvent.AuthorityStatus == "accepted")
+                {
+                    using var activity = DuplexInstrumentation.ActivitySource.StartActivity("duplex.router.fold");
                     await FoldAsync(db, entityId, storedEvent, activeDefinition.EntityType, changeKind, known, unknownProperties, ct);
+                    DuplexInstrumentation.RouterFoldLagMs.Record(
+                        (DateTimeOffset.UtcNow - storedEvent.AppendedAt).TotalMilliseconds,
+                        new KeyValuePair<string, object?>("app.id", storedEvent.AppId));
+                }
             }
 
             // ADR-027 Trigger 1 -- a lagging publish that's already conformant

@@ -1840,9 +1840,67 @@ stale numbers here are worse than none)*
   cross-test pickup) — confirmed pre-existing, not a regression, by
   re-running 3 times (different/no failure each time) and by `git log`
   showing neither file touched this session.
-- **Next up**: item 47, "Mechanism-Level OpenTelemetry Instrumentation"
-  (`ADR-088`) — depends on Entity-Centric Core Rebuild, Hardening &
-  Evolution, Sharding & Replication, and Outbound Webhooks (all Done).
+- **Item 47, "Mechanism-Level OpenTelemetry Instrumentation," is Done —
+  same session, continuing directly from item 46.** New `EventStore.
+  Domain/Observability/DuplexInstrumentation.cs` — one shared `Meter`/
+  `ActivitySource` (`"Duplex.Core"`), placed in `EventStore.Domain`
+  specifically because it's the one project already a common dependency
+  of all four mechanism projects (`Router`/`Replication`/`Webhooks`/
+  `Inbox`), confirmed by checking project references first, not assumed.
+  `EventStore.ServiceDefaults/Extensions.cs` gained `.AddMeter("Duplex.
+  Core")` and `.AddSource("Duplex.Core")` — the latter a correction to
+  `ADR-088`'s own original "traces need zero pipeline change" claim,
+  which didn't survive contact with a static, DI-free instrumentation
+  shape (`RouterWorker.RunOnceAsync` and its peers are directly callable
+  by a test with no DI container at all — the same seam their existing
+  optional `erasureKeyService`/`payloadMasker` parameters already
+  depend on).
+  **A genuine gap found while instrumenting the fold-lag histogram**:
+  nothing anywhere persisted the "SequenceNumber assignment" timestamp
+  this metric's own text names — `OccurredAt` is explicitly
+  client-declared logical time (`ADR-029`), never server receipt time.
+  Added `StoredEvent.AppendedAt` (server-assigned, stamped once by
+  `EventAppender.AppendAsync` the same moment `SequenceNumber` itself
+  becomes known), migrated across all 3 providers, documented in
+  `docs/data/event-log.md` per this repo's own field-shape-authority
+  rule — not scope creep, the metric is unbuildable without it.
+  `RouterWorker.ProcessEventAsync` records fold-lag + a `duplex.router.
+  fold` Activity strictly inside the `AuthorityStatus == "accepted"`
+  branch (proven by a dedicated NEGATIVE-case test too, not just the
+  positive one). `PeerSyncWorker.SyncOnceWithAsync` computes each peer's
+  own post-tick remaining depth/oldest-pending-age and reports it into a
+  snapshot cache the `ObservableGauge<T>` callbacks read back
+  synchronously (the OTel SDK's own callback contract forbids I/O inside
+  the callback itself). `WebhookOutboxPump.DeliverNextAsync` records
+  delivery lag only in the CONFIRMED-delivery branch. `ChainVerificationService.
+  VerifyAsync` increments a counter tagged `outcome=verified`/`tampered`
+  at its own two existing return points.
+  **A real test-isolation bug found by actually running it, not
+  assumed**: the peer-sync outbox gauge scenario needed a real
+  `PeerSyncWorker.RunOnceAsync` tick (every existing replication test
+  drives `PeerSyncReceiver` directly instead, never touching
+  `SyncOnceWithAsync`'s own gauge code) — adding it as a second
+  `[TestMethod]` to the already-passing `ReplicationHttpSqliteTests.cs`
+  caused ITS OWN pre-existing test to intermittently 500, because both
+  methods then drove the SAME shared two-Host/SQLite-file `ClassInit`
+  fixture concurrently (`MSTestSettings.cs`'s `ExecutionScope.
+  MethodLevel`) — the identical class of bug `WebhookDeliveryHttpSqliteTests.cs`'s
+  own header comment already documents for its own file. Fixed by giving
+  it a fully isolated test class (`PeerSyncOutboxTelemetryHttpSqliteTests.cs`),
+  not by weakening either test. `OpenTelemetryTestSupport.cs` is this
+  repo's first `MeterListener`/`ActivityListener` test infrastructure —
+  no prior precedent existed to follow. Full non-container suite:
+  125/125 (up from 123); Postgres-provider spot-check (Router/
+  Replication/hash-chain) also passing, confirming the new migration.
+  **Found and fixed in passing, unrelated to this item's own code**:
+  `PackagingScenarioAssertions.EventStoreAbstractionsCarriesEveryCurrentlyBuiltImplementerFacingSeam`
+  still hardcoded a count of 5 interfaces from before item 42 added
+  `ITimestampAuthorityClient` as the 6th — surfaced by running the full
+  suite as part of this item's own verification, not caused by it.
+- **Next up**: item 48, "Event Log/AccessLog Archival Segment
+  Detachment" — the last item in `08-build-plan.md`. No further
+  dependency notes recorded here; check that item's own "Depends on"
+  text directly.
 
 ## How to resume cold
 
@@ -1857,7 +1915,7 @@ stale numbers here are worse than none)*
    narrative.
 5. `dotnet build EventStore.slnx` and `dotnet test tests/EventStore.IntegrationTests` —
    confirm the build/test baseline the last session left still holds
-   before adding to it. **As of item 46 (2026-08-11): 165 `[TestMethod]`s
+   before adding to it. **As of item 47 (2026-08-11): 169 `[TestMethod]`s
    total** (`grep -rc "\[TestMethod\]" tests/EventStore.IntegrationTests/*.cs`
    is the reliable way to recheck this count directly — don't hand-thread
    a running tally through prose any further, it already drifted

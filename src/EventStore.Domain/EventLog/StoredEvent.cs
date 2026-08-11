@@ -25,6 +25,14 @@ public class StoredEvent
     public bool ConflictFlag { get; set; }
     public bool LateArrivalFlag { get; set; }
     public DateTimeOffset OccurredAt { get; set; }
+    // ADR-088 -- server-assigned, set once by EventAppender.AppendAsync at
+    // the same moment SequenceNumber becomes known (never client-supplied,
+    // never revised). Distinct from OccurredAt (client-declared LOGICAL
+    // occurrence time, fold-order-bearing) -- this is wall-clock ARRIVAL
+    // time at this site, the timestamp Router fold-lag instrumentation
+    // diffs against, the same distinction ADR-029 already draws for
+    // OccurredAt itself.
+    public DateTimeOffset AppendedAt { get; set; }
     public string ActorId { get; set; } = default!;
     public string? AttestedActorId { get; set; }
     public string? AttestedClaims { get; set; }

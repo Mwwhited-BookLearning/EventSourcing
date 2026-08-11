@@ -1,4 +1,5 @@
 using EventStore.Domain.EventLog;
+using EventStore.Domain.Observability;
 using EventStore.Domain.Replication;
 using EventStore.Inbox;
 using EventStore.LeaderElection;
@@ -137,6 +138,8 @@ public class PeerSyncWorker(
         EventStoreContext db, PeerSyncClient client, PeerAddressBook addressBook, string address, string selfOriginId, int batchSize,
         IReadOnlyDictionary<string, List<string>> residencyPolicies, CancellationToken ct)
     {
+        using var activity = DuplexInstrumentation.ActivitySource.StartActivity("duplex.peersync.outbox_pump");
+
         var peerId = addressBook.PeerIdFor(address);
         if (peerId is null)
         {
@@ -194,6 +197,24 @@ public class PeerSyncWorker(
         if (isNewCursor)
             db.PeerSyncCursors.Add(cursor);
         await db.SaveChangesAsync(ct);
+
+        // ADR-088 -- the outbox's own REMAINING backlog after this tick's
+        // batch, not the pre-tick candidate window above (batchSize-capped,
+        // and about to be superseded the moment this save commits) -- what
+        // a dashboard actually wants is "how much is still pending right
+        // now," the same distinction ADR-033's own depth/age framing draws.
+        var remainingDepth = await db.Events
+            .AsNoTracking()
+            .CountAsync(e => e.SequenceNumber > cursor.LastAckedSequenceNumber, ct);
+        var oldestPendingAppendedAt = remainingDepth > 0
+            ? await db.Events
+                .AsNoTracking()
+                .Where(e => e.SequenceNumber > cursor.LastAckedSequenceNumber)
+                .OrderBy(e => e.SequenceNumber)
+                .Select(e => e.AppendedAt)
+                .FirstAsync(ct)
+            : DateTimeOffset.UtcNow;
+        DuplexInstrumentation.ReportPeerSyncOutbox(peerId, remainingDepth, DateTimeOffset.UtcNow - oldestPendingAppendedAt);
     }
 
     // Exposed for tests exercising PeerSyncReceiver directly, without a
