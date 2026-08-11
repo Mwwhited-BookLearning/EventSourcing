@@ -83,7 +83,7 @@ after-the-fact.
 | Vitals | C — Trial Data Export & Subject Rights | [Trial Data Export and Subject Rights](clinical-trials-device-telemetry/features/trial-data-export-and-subject-rights.md) | Done (erasure half only — export/playback deliberately reuses the already-proven core mechanism unchanged, see note below) |
 | Vitals | D — Intraoperative Monitoring & Alert Response | [Intraoperative Monitoring and Alert Response](clinical-trials-device-telemetry/features/intraoperative-monitoring-and-alert-response.md) | Done |
 | Meridian | A — Document/Biometric Capture → Verification | [Document and Biometric Capture](digital-identity-kyc/features/document-and-biometric-capture.md), [Customer Onboarding and Identity Verification](digital-identity-kyc/features/customer-onboarding-and-identity-verification.md) | Done |
-| Meridian | B — Relying-Party Access | [Relying-Party Verification Request](digital-identity-kyc/features/relying-party-verification-request.md) | Not started |
+| Meridian | B — Relying-Party Access | [Relying-Party Verification Request](digital-identity-kyc/features/relying-party-verification-request.md) | Done |
 | Meridian | C — Ongoing Screening & SAR Escalation | [Periodic Screening and SAR Escalation](digital-identity-kyc/features/periodic-screening-and-sar-escalation.md) | Not started |
 
 **One real, load-bearing implementation note, found while scoping this
@@ -197,3 +197,20 @@ workflow in this file already reuses — skipping the doc's own unbuilt
 The real `UcanDelegation` + Token Exchange mechanism this domain's own
 Workflow B (relying-party access) actually needs gets built there
 instead, the same way it was for Vitals' own secondary-opinion access.
+
+**A sixth, building that same Workflow B**: the doc's own `accessGrant`/
+`accessGrantRevoked` published-as-events plus a generic `QUERY { entity(id)
+{ ... } }` GraphQL field have no real counterpart either — delegation is
+a client-signed `UcanDelegation` token, never a `StoredEvent`, and the
+only real claims-gated, entity-scoped read is `revealField`, the exact
+same gap Vitals' own secondary-opinion access already found. No live
+revocation-before-expiry mechanism exists either (already recorded
+above) — `MeridianWorkflowBHttpSqliteTests.cs` proves expiry instead,
+using a deliberately-past `exp` well beyond `TokenValidationParameters`'
+own 5-minute default clock skew, not a live wait. The customer's own
+freshly-generated DID key is registered as this `AppId`'s own
+`AppTrustRoot` (`ADR-044`) — a genuinely self-issued, root-of-trust
+delegation needing no pre-existing granter credential, which is exactly
+the shape "a customer signs a delegation with their own DID key" the
+feature doc's own narrative describes, realized for real rather than
+reusing an already-seeded client's own identity.
