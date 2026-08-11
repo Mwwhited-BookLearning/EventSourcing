@@ -10,6 +10,8 @@ import { graphqlQuery, graphqlSubscribe } from '../api/graphqlClient'
 import { buildIntrospectionQuery, buildSubscriptionQuery, subscriptionFieldName, type ScopeFilterClause } from '../api/subscriptionBuilder'
 import type { DeviceReading } from '../deviceInput/types'
 import { toOutboxEntry, type ReadingMapping } from '../deviceInput/deviceReadingOutbox'
+import { negotiateLocale } from '../api/localeClient'
+import { resolveTranslations } from '../i18n/translations'
 
 // ADR-057's reserved, lazily-registered event type -- EntityStore.Erasure/
 // EntityErasureRequestedEventType.cs's own Name, server-side. Only ever
@@ -47,6 +49,13 @@ export interface ClientConfig {
   clientSecret: string
   scope: string
   scopeFilter?: ScopeFilterClause[]
+  // ADR-087 -- the Accept-Language VALUE this instance sends; defaults to
+  // the browser's own negotiated preference, never a bespoke locale query
+  // parameter. The SERVER'S negotiated response (Content-Language, which
+  // may legitimately differ -- e.g. an unsupported culture falls back to
+  // the server's own default) is what actually drives translation-key
+  // resolution, not this raw request value.
+  acceptLanguage?: string
 }
 
 export interface FetchTokenFn {
@@ -66,10 +75,24 @@ export function useEntityViewActions(config: ClientConfig, deps: { fetchToken?: 
   const entityCache = useEntityCacheStore()
   const viewDefinitions = useViewDefinitionsStore()
   const token = ref<string | null>(null)
+  const locale = ref('en-US')
+  const translations = ref<Record<string, string>>(resolveTranslations('en-US'))
   let unsubscribeEntity: (() => void) | null = null
   let unsubscribeErasure: (() => void) | null = null
 
   const tokenFetcher = deps.fetchToken ?? fetchToken
+
+  // ADR-087 -- negotiates once per instance (locale doesn't change mid-
+  // session in this client), reading the server's own resolved
+  // Content-Language rather than trusting the browser's preference
+  // directly. EntityView calls this alongside loadViewDefinition so a
+  // TemplateRenderer always has a real, server-confirmed locale by the
+  // time it first renders.
+  async function resolveLocale(): Promise<void> {
+    const acceptLanguage = config.acceptLanguage ?? (typeof navigator === 'undefined' ? 'en-US' : navigator.language)
+    locale.value = await negotiateLocale(config.hostBaseUrl, acceptLanguage)
+    translations.value = resolveTranslations(locale.value)
+  }
 
   async function ensureToken(): Promise<string> {
     if (!token.value) token.value = await tokenFetcher(config.authBaseUrl, config.clientId, config.clientSecret, config.scope)
@@ -237,5 +260,5 @@ export function useEntityViewActions(config: ClientConfig, deps: { fetchToken?: 
     await viewDefinitions.fetchAndCache(config.hostBaseUrl, currentToken, config.entityType, viewKind)
   }
 
-  return { dispatchCommand, flush, subscribe, stopSubscription, loadViewDefinition, captureDeviceReading }
+  return { dispatchCommand, flush, subscribe, stopSubscription, loadViewDefinition, captureDeviceReading, resolveLocale, locale, translations }
 }

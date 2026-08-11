@@ -372,6 +372,26 @@ sequence diagram (above) shows, and to the client generally:
   `ViewDefinition` rendering today regardless, the same way the
   Accessibility section above treats WCAG 2.1 AA as already governing
   every screen before every implementation detail is filled in.
+
+  **Implementation note (added once built, 2026-08-11):** the previously-
+  open resource-key convention is now `{{ t:key }}` — reusing this same
+  format's existing `{{ field }}` interpolation shape rather than
+  inventing a second templating syntax, disambiguated by the literal `t:`
+  marker. `{{ field:date }}`/`{{ field:number }}` apply `Intl.
+  DateTimeFormat`/`Intl.NumberFormat` to a bound field for the resolved
+  locale (the "Locale-aware formatting" bullet below, made concrete).
+  Enforced server-side at registration time by
+  `EventStore.ViewRegistry/TranslationKeyValidator.cs` (strips every
+  `{{ }}` interpolation and HTML tag/comment via regex, matching this
+  format's own "small injected binding runtime" style rather than adding
+  an HTML-parser dependency; any non-whitespace text left over is a
+  hardcoded literal and rejected), and resolved client-side by
+  `client-web/src/components/entity/TemplateRenderer.vue` against
+  `client-web/src/i18n/translations.ts`'s resource map for the locale
+  `client-web/src/api/localeClient.ts` negotiated. An unresolved key
+  renders visibly as `[key]` rather than silently blanking, matching this
+  doc's own "never a blank/failed render" framing for the generic
+  fallback.
 - **Locale-aware formatting via built-in culture APIs.** Any date/number/
   currency value a `ViewDefinition` template binds renders through the
   `Intl` API (`Intl.DateTimeFormat`, `Intl.NumberFormat`) in the embedded

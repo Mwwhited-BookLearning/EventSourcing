@@ -64,7 +64,7 @@ const rows = computed(() => [
 }
 .generic-fallback th {
   font-weight: normal;
-  text-align: left;
+  text-align: start; /* ADR-087 -- a CSS Logical Property, flips with dir="rtl" instead of staying pinned physically left */
 }
 /* Standard screen-reader-only pattern: announced by assistive tech,
    never rendered visually -- this table's purpose is already clear

@@ -1,3 +1,4 @@
+using EventStore.Abstractions;
 using EventStore.Attachments;
 using EventStore.Erasure;
 using EventStore.Masking;
@@ -35,7 +36,7 @@ public class PackagingScenarioAssertions
     [TestMethod]
     public void EventStoreAbstractionsCarriesEveryCurrentlyBuiltImplementerFacingSeam()
     {
-        // The 5 catalogued interfaces (docs/extensibility-points.md) that
+        // The 6 catalogued interfaces (docs/extensibility-points.md) that
         // are genuinely implementer-facing with no back-reference into the
         // engine's own internals -- see EventStore.Abstractions.csproj's
         // own header comment for why IEventLineageQueryProvider/
@@ -51,6 +52,7 @@ public class PackagingScenarioAssertions
             nameof(IUpcastExpressionEvaluator),
             nameof(IErasureKeyStore),
             nameof(IAttachmentContentStore),
+            nameof(ITimestampAuthorityClient),
         };
         foreach (var name in expected)
             Assert.IsTrue(interfaceNames.Contains(name), $"expected {name} in EventStore.Abstractions");

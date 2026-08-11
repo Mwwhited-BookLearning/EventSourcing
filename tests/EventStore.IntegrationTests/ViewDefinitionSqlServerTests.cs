@@ -46,5 +46,6 @@ public class ViewDefinitionSqlServerTests
         await ViewDefinitionScenarioAssertions.ASchemaVersionTheActiveTemplateDoesNotDeclareCompatibilityWithFallsBackToTheDeprecatedButCompatibleVersion(registry);
         await ViewDefinitionScenarioAssertions.AnEntityTypeWithNothingRegisteredReturnsNullTheClientsOwnSignalToRenderTheGenericFallback(registry);
         await ViewDefinitionScenarioAssertions.RegistrationValidatesViewKindTemplateContentAndCompatibleSchemaVersions(registry);
+        await ViewDefinitionScenarioAssertions.ATemplateContainingAHardcodedLiteralInsteadOfATranslationKeyIsRejected(registry);
     }
 }

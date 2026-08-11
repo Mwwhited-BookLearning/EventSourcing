@@ -56,4 +56,63 @@ describe('TemplateRenderer (ADR-039\'s "small injected binding runtime")', () =>
     })
     expect(wrapper.text()).toContain('ConflictFlag')
   })
+
+  // ADR-087 -- {{ t:key }} translation-key resolution, {{ field:date }}/
+  // {{ field:number }} locale-aware formatting, and the RTL dir attribute,
+  // matching TranslationKeyValidator.cs's own server-side pattern exactly.
+  describe('i18n/l10n (ADR-087)', () => {
+    it('resolves a {{ t:key }} translation key against the supplied translations map', () => {
+      const wrapper = mount(TemplateRenderer, {
+        props: {
+          templateContent: '<div class="label">{{ t:carrier_label }}</div>',
+          entry: makeEntry(),
+          translations: { carrier_label: 'Carrier' },
+        },
+      })
+      expect(wrapper.get('.label').text()).toBe('Carrier')
+    })
+
+    it('surfaces an unresolved translation key visibly, never silently blanking it', () => {
+      const wrapper = mount(TemplateRenderer, {
+        props: { templateContent: '<div class="label">{{ t:missing_key }}</div>', entry: makeEntry(), translations: {} },
+      })
+      expect(wrapper.get('.label').text()).toBe('[missing_key]')
+    })
+
+    it('formats a {{ field:number }} binding using Intl.NumberFormat for the given locale', () => {
+      const wrapper = mount(TemplateRenderer, {
+        props: { templateContent: '<div class="amount">{{ amount:number }}</div>', entry: makeEntry({ data: { amount: 12345.6 } }), locale: 'de-DE' },
+      })
+      expect(wrapper.get('.amount').text()).toBe(new Intl.NumberFormat('de-DE').format(12345.6))
+    })
+
+    it('formats a {{ field:date }} binding using Intl.DateTimeFormat for the given locale', () => {
+      const wrapper = mount(TemplateRenderer, {
+        props: {
+          templateContent: '<div class="placed">{{ placedAt:date }}</div>',
+          entry: makeEntry({ data: { placedAt: '2026-08-11T10:00:00.000Z' } }),
+          locale: 'en-US',
+        },
+      })
+      expect(wrapper.get('.placed').text()).toBe(new Intl.DateTimeFormat('en-US', { dateStyle: 'medium' }).format(new Date('2026-08-11T10:00:00.000Z')))
+    })
+
+    it('sets dir="rtl" on the rendered container for an RTL locale, and "ltr" otherwise', async () => {
+      const wrapper = mount(TemplateRenderer, {
+        props: { templateContent: '<div>{{ orderId }}</div>', entry: makeEntry(), locale: 'ar-SA' },
+      })
+      expect(wrapper.get('[data-testid="template-container"]').attributes('dir')).toBe('rtl')
+
+      await wrapper.setProps({ locale: 'en-US' })
+      expect(wrapper.get('[data-testid="template-container"]').attributes('dir')).toBe('ltr')
+    })
+
+    it('defaults to en-US/ltr and an empty translations map when neither prop is supplied', () => {
+      const wrapper = mount(TemplateRenderer, {
+        props: { templateContent: '<div class="label">{{ t:carrier_label }}</div>', entry: makeEntry() },
+      })
+      expect(wrapper.get('.label').text()).toBe('[carrier_label]')
+      expect(wrapper.get('[data-testid="template-container"]').attributes('dir')).toBe('ltr')
+    })
+  })
 })
