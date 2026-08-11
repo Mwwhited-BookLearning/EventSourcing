@@ -49,4 +49,14 @@ Consequences:
   the workflow file has been written but never actually executed by
   GitHub Actions itself. "The build now exists too, though unexecuted,"
   not "verified running in CI."
+  **Corrected again, 2026-08-11, direct request, a further narrowing
+  not a reversal**: `ci.yml` no longer includes SBOM generation
+  (`ADR-074`) or build-provenance attestation (`ADR-080`) at all — those
+  moved to a local-only script, `scripts/generate-sbom.sh`, at this
+  time. `ci.yml` now covers only the test-suite/vulnerability-scan half
+  of item 39's exit criteria; the SBOM/provenance half is proven working
+  as a standalone local command, deliberately not (yet) wired into any
+  CI platform. This doesn't touch this ADR's own Decision (GitHub
+  Actions is still the CI/CD platform, when one is used) — only how
+  much of item 39's *scope* currently runs through it.
 - Resolves `docs/10-open-questions.md` row 5.
