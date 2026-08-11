@@ -5,8 +5,11 @@ import { useViewDefinitionsStore } from '../stores/viewDefinitions'
 import type { ClientOutboxEntry, FollowedEventEnvelope } from '../types'
 import { fetchToken } from '../api/authClient'
 import { publishCommand } from '../api/publishClient'
+import { ingestSamples } from '../api/streamingClient'
 import { graphqlQuery, graphqlSubscribe } from '../api/graphqlClient'
 import { buildIntrospectionQuery, buildSubscriptionQuery, subscriptionFieldName, type ScopeFilterClause } from '../api/subscriptionBuilder'
+import type { DeviceReading } from '../deviceInput/types'
+import { toOutboxEntry, type ReadingMapping } from '../deviceInput/deviceReadingOutbox'
 
 // ADR-057's reserved, lazily-registered event type -- EntityStore.Erasure/
 // EntityErasureRequestedEventType.cs's own Name, server-side. Only ever
@@ -101,7 +104,24 @@ export function useEntityViewActions(config: ClientConfig, deps: { fetchToken?: 
 
   async function flush(): Promise<void> {
     const currentToken = await ensureToken()
-    await outbox.flush((entry) => publishCommand(config.hostBaseUrl, currentToken, entry))
+    await outbox.flush(
+      (entry) => publishCommand(config.hostBaseUrl, currentToken, entry),
+      (entry) => ingestSamples(config.hostBaseUrl, currentToken, entry.channelId!, [
+        { timestamp: entry.enqueuedAt, value: JSON.parse(entry.patch), monotonicElapsedMicros: entry.monotonicElapsedMicros },
+      ]),
+    )
+  }
+
+  // ADR-070 -- the ONE thing every IDeviceInputSource adapter's captured
+  // reading feeds into, regardless of which browser API (or the native
+  // bridge) produced it: the same durable outbox any other client-
+  // originated write already uses, immediately attempting a flush if
+  // online (identical posture to dispatchCommand above). Which mapping
+  // applies (discrete publish vs. continuous streaming sample) is the
+  // caller's own per-integration configuration, never inferred here.
+  async function captureDeviceReading(reading: DeviceReading, mapping: ReadingMapping): Promise<void> {
+    await outbox.enqueue(toOutboxEntry(config.instanceId, reading, mapping))
+    if (typeof navigator === 'undefined' || navigator.onLine) await flush()
   }
 
   // Discovers the dynamically-built payload type's own fields via GraphQL
@@ -217,5 +237,5 @@ export function useEntityViewActions(config: ClientConfig, deps: { fetchToken?: 
     await viewDefinitions.fetchAndCache(config.hostBaseUrl, currentToken, config.entityType, viewKind)
   }
 
-  return { dispatchCommand, flush, subscribe, stopSubscription, loadViewDefinition }
+  return { dispatchCommand, flush, subscribe, stopSubscription, loadViewDefinition, captureDeviceReading }
 }

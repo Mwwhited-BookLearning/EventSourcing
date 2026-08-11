@@ -102,7 +102,7 @@ provider they apply to — not "code written."
 | 41 | [Lineage Export & Bitemporal Playback](#lineage-export--bitemporal-playback) | Lineage API, Entity-Centric Core Rebuild, MVVM Client, GraphQL-Only Query Layer, Property-Level Masking, GDPR/CCPA Erasure, Delegated Grants/RBAC/Read Audit Logging | Done |
 | 42 | [RFC 3161 Trusted Timestamping](#rfc-3161-trusted-timestamping) | Digital Sign-Off, Lineage Export & Bitemporal Playback | Done |
 | 43 | [Pluggable Outbox Flush Triggers](#pluggable-outbox-flush-triggers) | MVVM Client, Lineage Export & Bitemporal Playback | Done |
-| 44 | [Device Input Integration](#device-input-integration) | MVVM Client, Pluggable Outbox Flush Triggers, Non-Authoritative Capture | Not started |
+| 44 | [Device Input Integration](#device-input-integration) | MVVM Client, Pluggable Outbox Flush Triggers, Non-Authoritative Capture | Done |
 | 45 | [Accessibility Standard](#accessibility-standard) | MVVM Client | Not started |
 | 46 | [i18n/l10n Architectural Scope](#i18nl10n-architectural-scope) | MVVM Client | Not started |
 | 47 | [Mechanism-Level OpenTelemetry Instrumentation](#mechanism-level-opentelemetry-instrumentation) | Hardening & Evolution, Sharding & Replication, Entity-Centric Core Rebuild, Outbound Webhooks | Not started |
@@ -240,7 +240,7 @@ state "UI" as tierUi {
   state "MVVM Client" as p20 #palegreen
   state "Local/Edge Cache Scoping\n+ Erasure Invalidation" as a4 #palegreen
   state "Pluggable Outbox\nFlush Triggers" as a19 #palegreen
-  state "Device Input Integration" as a20
+  state "Device Input Integration" as a20 #palegreen
   state "Accessibility Standard" as a21
   state "i18n/l10n Scope" as a22
 }
@@ -3932,6 +3932,109 @@ agent capturing both `Timestamp` and `MonotonicElapsedMicros` side by
 side lets a downstream analysis flag a sample whose claimed wall-clock
 delta diverges sharply from its actual monotonic delta as a suspiciously
 inconsistent wall clock.
+
+**Status: Done.** Built inside `client-web/src/deviceInput/`, not a
+separate `EventStore.Client.DeviceInput` project — the four browser
+Hardware APIs only make sense inside an actual browser context, which
+`client-web` already is (loaded in a real tab or, if `EventStore.Client.
+WebViewBridge` is ever built, inside its WebView unchanged, since the
+whole point of Web APIs is that hosting context is transparent to them);
+consistent with item 21's own explicit deferral of the native shell, not
+a further narrowing. `IDeviceInputSource` (`types.ts`) plus five real
+adapters: `WebUsbInputSource`/`WebHidInputSource`/`WebSerialInputSource`/
+`WebBluetoothInputSource` (each takes an injected `parse: (DataView) =>
+unknown`, since byte-level parsing is the registering integration's own
+business, never generic) and `NativeBridgeInputSource` (a real
+`WebSocket` client, `DeviceCaptureUnavailableError` when nothing answers
+the connection). `RecordingAgent` (`performance.now()`-based) is
+`ADR-083`'s "recording agent" concept, realized — `TelemetrySample.
+MonotonicElapsedMicros` and `IngestSamplesRequest`'s support for it
+already existed server-side (an earlier pass), so this item's own job
+was populating it from real client-side capture, not adding the field.
+
+**A genuine design ambiguity, resolved and documented, not glossed
+over**: this item's own exit criteria describe a device-sourced discrete
+reading as defaulting to `AuthorityStatus: non_authoritative` unless
+attested — but `non_authoritative` is not a real `AuthorityStatus`
+value (`PublishService.cs`'s own three real values are `"accepted"`,
+`"unattested"`, and `"pending_review"`, `ADR-042`), and the *literal*
+default (no `AttestedActorId`/`AttestedClaims` at all) actually produces
+`"accepted"` — the opposite of non-authoritative. Resolved by using
+`ADR-042`'s OTHER trigger instead: `ReviewPending` (`"a content/
+confidence case, not an identity one"`, per that file's own comment) —
+an honest fit for "a raw, un-reviewed reading with no identity claim
+attached," which `attestedActorId`/`unattested` (an IDENTITY-claim
+case) does not describe as precisely. A device carrying a **real**
+self-attested identity uses the identity path instead
+(`attestedActorId`/`attestedClaims`, `deviceReadingOutbox.ts`'s
+`DiscreteMapping.deviceAttestation`), giving the two Gherkin scenarios
+("defaults to non-authoritative" vs. "carries its own attestation
+through instead, not forced to the default") two genuinely different
+starting states, not the same one reached twice. Threading `reviewPending`/
+`attestedActorId`/`attestedClaims` through `ClientOutboxEntry`/
+`publishCommand` at all was itself new — nothing in `client-web` used
+either `PublishEventRequest` field before this item, another real,
+pre-existing gap closed in passing.
+
+**Continuous vs. discrete mapping** realized as a `ClientOutboxEntry`
+discriminator (`deliveryKind?: 'streamingSample'`, `channelId?`) — the
+SAME durable outbox for both, per this ADR's own "no new local-storage
+mechanism" rule, routed at flush time to either `/publish/{eventType}`
+or `/telemetry/{channelId}/samples` (`api/streamingClient.ts`, new).
+`useOutboxStore.flush` gained an optional, trailing `ingestSample`
+parameter (every pre-item-44 call site passing only `publish` is
+unaffected); a `streamingSample` entry flushed with no `ingestSample`
+supplied is left `Pending`, never misrouted.
+
+**Verified genuinely end-to-end for the one adapter that has a real,
+runnable non-browser counterpart**: `NativeBridgeInputSource.spec.ts`
+spins up a REAL `ws` `WebSocketServer` (not a mock) and connects the
+real client class over real TCP sockets on localhost, proving the wire
+protocol (connect message, base64-framed readings, connection-refused →
+`DeviceCaptureUnavailableError`) actually round-trips. `client-web/
+native-bridge-reference/server.mjs` is a genuinely-runnable reference
+implementation of the companion-app side of that same protocol (a
+simulated fixed-interval sensor, since there's no real hardware to
+read from here) — run directly (`node native-bridge-reference/
+server.mjs`) and driven by a plain WebSocket client this pass, confirmed
+producing real, correctly-framed readings. It is explicitly **not** the
+shipped, production companion app a real deployer would run (real
+OS-level USB/serial/BLE access is genuinely separate software this
+framework does not build, per `ADR-070`'s own Decision text) — the
+same "provide the reference, not the product" scope this repo already
+applied to `EventStore.LineageExport`'s offline player and other
+seams. The four browser-API adapters (`WebUsb`/`WebHid`/`WebSerial`/
+`WebBluetooth`) have no headless/Node equivalent to run against for
+real at all — each is tested against a hand-built mock of its own
+documented API surface instead, proving this adapter's own logic
+(feature detection, the connect/read/parse/disconnect lifecycle)
+against the real API shape, the most this framework's own test
+environment can verify without an actual browser and physical device.
+
+**Built-scope note, honestly flagged**: the feature doc's own 4-screen
+UI mockup (Connect a Device, the browser's native picker, a Connected
+Devices dashboard, a reading's diagnostic detail view) is not built as
+real Vue components this pass — the underlying mechanism
+(`captureDeviceReading`, the five adapters, the outbox routing) is the
+load-bearing deliverable and is fully real; the dashboard/detail screens
+are presentation atop it, buildable later using the same `EntityView`/
+`GenericFallbackView` patterns item 21 already established, with no
+new mechanism needed to do so.
+
+Tests: `RecordingAgent.spec.ts`, one spec per adapter (2-3 scenarios
+each), `deviceReadingOutbox.spec.ts` (4 scenarios covering both mapping
+branches and the reviewPending/attestation fork), 2 new scenarios in
+`stores/outbox.spec.ts` (streamingSample routing, and the no-
+ingestSample-supplied fail-safe), 2 new scenarios in
+`useEntityViewActions.spec.ts` (`captureDeviceReading`'s own two
+branches). Client suite: 80/80 (19 files). `npm run build`/`npm run
+build:offline-player` both still succeed. No server-side code changed
+at all — every mechanism this item needed (`TelemetrySample.
+MonotonicElapsedMicros`, `IngestSamplesRequest`, `PublishEventRequest`'s
+`ReviewPending`/`AttestedActorId`/`AttestedClaims`, non-authoritative
+capture's lifecycle) already existed from earlier items, the second
+consecutive client-only item this session (43, then 44) confirming
+those foundations were built solidly enough to not need touching.
 
 ## Accessibility Standard
 

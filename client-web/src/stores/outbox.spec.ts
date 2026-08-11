@@ -62,6 +62,33 @@ describe('ClientOutbox (ADR-039)', () => {
     expect(publishCallCount).toBe(1)
   })
 
+  it('routes a streamingSample entry to ingestSample, never to publish (ADR-070 per-integration schema choice)', async () => {
+    const store = useOutboxStore()
+    await store.enqueue(makeEntry({ commandId: 'cmd-continuous', deliveryKind: 'streamingSample', channelId: 'vitals-waveform-1', appId: '', eventType: '', entityId: '' }))
+
+    let publishCalls = 0
+    let ingestCalls = 0
+    await store.flush(
+      async () => { publishCalls += 1; return { ok: true } },
+      async () => { ingestCalls += 1; return { ok: true } },
+    )
+
+    expect(publishCalls).toBe(0)
+    expect(ingestCalls).toBe(1)
+    expect(store.pendingFor('instance-a')).toHaveLength(0)
+  })
+
+  it('leaves a streamingSample entry Pending, never misrouted to publish, when no ingestSample function is supplied', async () => {
+    const store = useOutboxStore()
+    await store.enqueue(makeEntry({ commandId: 'cmd-continuous-2', deliveryKind: 'streamingSample', channelId: 'vitals-waveform-1', appId: '', eventType: '', entityId: '' }))
+
+    let publishCalls = 0
+    await store.flush(async () => { publishCalls += 1; return { ok: true } })
+
+    expect(publishCalls).toBe(0)
+    expect(store.pendingFor('instance-a')).toHaveLength(1)
+  })
+
   it('a failed delivery leaves the entry Pending, retried on the next flush', async () => {
     const store = useOutboxStore()
     await store.enqueue(makeEntry())

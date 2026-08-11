@@ -4,6 +4,7 @@ import * as clientDb from '../db/indexedDb'
 import { exportOutboxBundle, importOutboxBundle } from '../outbox/exportImport'
 
 export type PublishFn = (entry: ClientOutboxEntry) => Promise<{ ok: boolean }>
+export type IngestSampleFn = (entry: ClientOutboxEntry) => Promise<{ ok: boolean }>
 
 // ADR-069's "opportunistic" category, armed: registering the SAME sync
 // tag public/sw.js's own `sync` event listener already handles -- a real,
@@ -72,12 +73,22 @@ export const useOutboxStore = defineStore('outbox', {
     // a Pending entry that's already mid-flight and gets asked to flush
     // again simply gets redelivered with the SAME commandId, which the
     // server's own Idempotent Receiver (ADR-011) safely dedups.
-    async flush(publish: PublishFn) {
+    // `ingestSample` is optional and trailing (the same low-invasiveness
+    // convention this repo's own server-side constructors already use for
+    // an additive dependency) -- every pre-item-44 call site passing only
+    // `publish` is completely unaffected. A 'streamingSample' entry
+    // flushed with no `ingestSample` supplied is left Pending rather than
+    // silently dropped or misrouted to `publish` -- the same fail-safe
+    // "retry on the next flush" posture every other delivery failure here
+    // already has.
+    async flush(publish: PublishFn, ingestSample?: IngestSampleFn) {
       const pending = this.entries.filter((e) => e.status === 'Pending')
       for (const entry of pending) {
+        if (entry.deliveryKind === 'streamingSample' && !ingestSample) continue
+
         let delivered = false
         try {
-          const result = await publish(entry)
+          const result = entry.deliveryKind === 'streamingSample' ? await ingestSample!(entry) : await publish(entry)
           delivered = result.ok
         } catch {
           delivered = false

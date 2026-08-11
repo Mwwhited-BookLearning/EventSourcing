@@ -1706,9 +1706,50 @@ stale numbers here are worse than none)*
   suite concurrency (a single `setTimeout(0)` wasn't always enough for
   `crypto.subtle.digest`) — widened to several short ticks, stable across
   3 reruns after. Client suite: 56/56 (12 files).
-- **Next up**: item 44, "Device Input Integration" (`ADR-070`) — depends
-  on MVVM Client (Done), Pluggable Outbox Flush Triggers (Done), and
-  Non-Authoritative Capture (Done).
+- **Item 44, "Device Input Integration," is Done — same session,
+  continuing directly from item 43. Second consecutive client-only
+  item; no server-side code changed.** Built inside `client-web/src/
+  deviceInput/` (not a separate `EventStore.Client.DeviceInput`
+  project — Web Hardware APIs work the same hosted in a real browser tab
+  or, if ever built, inside `EventStore.Client.WebViewBridge`'s WebView,
+  consistent with item 21's own already-documented deferral of the
+  native shell). `IDeviceInputSource` + 5 real adapters (`WebUsb`/
+  `WebHid`/`WebSerial`/`WebBluetooth`InputSource, each taking an injected
+  byte-parse function since parsing is the integration's own business;
+  `NativeBridgeInputSource`, a real `WebSocket` client).
+  `RecordingAgent` (`performance.now()`) realizes `ADR-083`'s "recording
+  agent" concept — `TelemetrySample.MonotonicElapsedMicros` already
+  existed server-side, this item populates it from real capture for the
+  first time.
+  **A genuine design ambiguity, resolved and documented in an additive
+  ADR-070 note**: the item's own exit criteria describe a default
+  `AuthorityStatus: non_authoritative`, but that's not a real
+  `AuthorityStatus` value, and the literal "no attestation fields set"
+  default actually produces `"accepted"` per `PublishService.cs`. Used
+  `ReviewPending` (the content/confidence trigger) for the honest
+  default instead of `AttestedActorId`/`AttestedClaims` (the identity
+  trigger, reserved for a device with a REAL self-attested identity) —
+  giving the two Gherkin scenarios genuinely different starting states.
+  Neither field had ever been threaded through `client-web` before this
+  item — another real, pre-existing gap closed in passing.
+  Continuous-vs-discrete mapping realized as a `ClientOutboxEntry`
+  discriminator (`deliveryKind?: 'streamingSample'`), routed at flush
+  time to either `/publish/{eventType}` or the new `api/streamingClient.
+  ts`'s `/telemetry/{channelId}/samples` call — the SAME outbox for
+  both, per `ADR-070`'s "no new local-storage mechanism" rule.
+  `NativeBridgeInputSource.spec.ts` proves the one adapter with a real
+  non-browser counterpart against an ACTUAL `ws` `WebSocketServer`
+  (real TCP sockets); `client-web/native-bridge-reference/server.mjs` is
+  a genuinely-runnable reference companion app (explicitly not the
+  shipped production one — real OS-level hardware access is separate
+  software this framework doesn't build). The four browser-API adapters
+  have no headless equivalent to test against for real at all — each is
+  tested against a hand-built mock of its own documented API surface
+  instead. Client suite: 80/80 (19 files). Built-scope note: the feature
+  doc's own 4-screen UI mockup isn't built as real Vue components this
+  pass — the underlying mechanism is the load-bearing deliverable.
+- **Next up**: item 45, "Accessibility Standard" (`ADR-073`) — depends
+  only on MVVM Client (Done).
 
 ## How to resume cold
 

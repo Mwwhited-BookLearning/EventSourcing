@@ -26,6 +26,13 @@ export async function publishCommand(hostBaseUrl: string, token: string, entry: 
       schemaVersion: entry.schemaVersion,
       expectedVersion: entry.expectedVersion,
       payload: entry.patch,
+      // Absent/false on every pre-existing entry and ordinary command --
+      // PublishService's own existing AuthorityStatus logic already
+      // treats a request with none of these three set as the ordinary
+      // "accepted" default, unchanged by this addition (ADR-070).
+      reviewPending: entry.reviewPending,
+      attestedActorId: entry.attestedActorId,
+      attestedClaims: entry.attestedClaims,
     }),
   })
   if (!response.ok) return { ok: false }

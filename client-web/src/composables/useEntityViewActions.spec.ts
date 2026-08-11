@@ -6,9 +6,14 @@ import { useOutboxStore } from '../stores/outbox'
 import { useEntityCacheStore } from '../stores/entityCache'
 import * as publishClientModule from '../api/publishClient'
 import * as graphqlClientModule from '../api/graphqlClient'
+import * as streamingClientModule from '../api/streamingClient'
 
 vi.mock('../api/publishClient', () => ({
   publishCommand: vi.fn(),
+}))
+
+vi.mock('../api/streamingClient', () => ({
+  ingestSamples: vi.fn(),
 }))
 
 vi.mock('../api/graphqlClient', () => ({
@@ -34,8 +39,47 @@ describe('useEntityViewActions (docs/patterns/mvvm-client-architecture.md\'s "Ac
     setActivePinia(createPinia())
     resetDbConnectionForTests()
     vi.mocked(publishClientModule.publishCommand).mockReset()
+    vi.mocked(streamingClientModule.ingestSamples).mockReset()
     vi.mocked(graphqlClientModule.graphqlQuery).mockReset()
     vi.mocked(graphqlClientModule.graphqlSubscribe).mockReset()
+  })
+
+  // ADR-070 -- the seam every IDeviceInputSource adapter's captured
+  // reading ultimately reaches, regardless of which adapter (browser API
+  // or native bridge) produced it.
+  describe('captureDeviceReading (device input integration)', () => {
+    it('a discrete-mapped reading is delivered via the ordinary publish path, defaulting to reviewPending', async () => {
+      vi.mocked(publishClientModule.publishCommand).mockResolvedValue({ ok: true, status: 'applied', entityId: 'x', conflictFlag: false })
+      const fetchToken = vi.fn().mockResolvedValue('token-123')
+      const actions = useEntityViewActions(config, { fetchToken })
+
+      await actions.captureDeviceReading(
+        { timestamp: '2026-08-11T10:00:00.000Z', value: { bpm: 72 } },
+        { kind: 'discrete', appId: 'clinical-1', eventType: 'InstrumentReading', entityId: 'clinical-1:instrumentreading:r-1' },
+      )
+
+      expect(publishClientModule.publishCommand).toHaveBeenCalledTimes(1)
+      expect(streamingClientModule.ingestSamples).not.toHaveBeenCalled()
+      const [, , entry] = vi.mocked(publishClientModule.publishCommand).mock.calls[0]!
+      expect(entry.reviewPending).toBe(true)
+    })
+
+    it('a continuous-mapped reading is delivered via the streaming ingest path, never as an ordinary publish', async () => {
+      vi.mocked(streamingClientModule.ingestSamples).mockResolvedValue({ ok: true, samplesWritten: 1, lateArrivalCount: 0 })
+      const fetchToken = vi.fn().mockResolvedValue('token-123')
+      const actions = useEntityViewActions(config, { fetchToken })
+
+      await actions.captureDeviceReading(
+        { timestamp: '2026-08-11T10:00:00.000Z', value: 98.6, monotonicElapsedMicros: 42_000 },
+        { kind: 'continuous', channelId: 'vitals-waveform-1' },
+      )
+
+      expect(streamingClientModule.ingestSamples).toHaveBeenCalledTimes(1)
+      expect(publishClientModule.publishCommand).not.toHaveBeenCalled()
+      const [, , channelId, samples] = vi.mocked(streamingClientModule.ingestSamples).mock.calls[0]!
+      expect(channelId).toBe('vitals-waveform-1')
+      expect(samples).toEqual([{ timestamp: '2026-08-11T10:00:00.000Z', value: 98.6, monotonicElapsedMicros: 42_000 }])
+    })
   })
 
   it('dispatching a command while online enqueues then delivers immediately, with no duplicate delivery on a redundant flush', async () => {
