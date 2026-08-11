@@ -79,7 +79,7 @@ after-the-fact.
 | Domain | Workflow | Feature doc(s) | Status |
 |---|---|---|---|
 | Vitals | A — Enrollment & Consent | [Patient Enrollment and Informed Consent](clinical-trials-device-telemetry/features/patient-enrollment-and-informed-consent.md) | Done |
-| Vitals | B — Device Monitoring → Adverse Event Review | [Device Onboarding and Continuous Monitoring](clinical-trials-device-telemetry/features/device-onboarding-and-continuous-monitoring.md), [Adverse Event Capture and Review](clinical-trials-device-telemetry/features/adverse-event-capture-and-review.md) | Not started |
+| Vitals | B — Device Monitoring → Adverse Event Review | [Device Onboarding and Continuous Monitoring](clinical-trials-device-telemetry/features/device-onboarding-and-continuous-monitoring.md), [Adverse Event Capture and Review](clinical-trials-device-telemetry/features/adverse-event-capture-and-review.md) | Done |
 | Vitals | C — Trial Data Export & Subject Rights | [Trial Data Export and Subject Rights](clinical-trials-device-telemetry/features/trial-data-export-and-subject-rights.md) | Not started |
 | Vitals | D — Intraoperative Monitoring & Alert Response | [Intraoperative Monitoring and Alert Response](clinical-trials-device-telemetry/features/intraoperative-monitoring-and-alert-response.md) | Not started |
 | Meridian | A — Document/Biometric Capture → Verification | [Document and Biometric Capture](digital-identity-kyc/features/document-and-biometric-capture.md), [Customer Onboarding and Identity Verification](digital-identity-kyc/features/customer-onboarding-and-identity-verification.md) | Not started |
@@ -112,3 +112,24 @@ domain-invented type name — a deliberate, honestly-recorded divergence
 from a feature doc's own narrative choice of name, not a silent
 substitution, per this repo's own "say when something is only partially
 borrowed" convention.
+
+**A second such divergence, found building Workflow B's "secondary
+opinion" half**: `adverse-event-capture-and-review.md`'s own sequence
+diagram shows a delegated grant read via `QUERY liveAdverseEvent(entityId)`
+against a generic Live View field — no such GraphQL field exists;
+"GraphQL-Only Query Layer"'s own build-scope note says explicitly "no
+generic entity/`extensions: JSON` query... nothing built here ever needs
+one." The only real, claims-gated, entity-scoped read this framework
+actually built is `revealField` (masked-field reveal, `ADR-009`/`043`),
+so `VitalsWorkflowBSecondaryOpinionHttpSqliteTests.cs` exercises that
+instead — an AE's own masked `SubjectId` field, delegated via a real
+`UcanDelegation` + OAuth Token Exchange round trip, the exact mechanism
+`DelegatedGrantsRbacFederationHttpSqliteTests.cs` already proves for the
+core engine. Also reuses the already-seeded `clinician-spa-client`/
+`colleague-client` pair and their real `clearance:phi` claim rather than
+seeding an unused `review:secondary-opinion` claim no client in this dev
+IdP actually holds — and the feature doc's own `accessGrantRevoked`
+event type has no real counterpart at all: a `UcanDelegation` is capped
+only by its own TTL, with no revocation-before-expiry mechanism built
+anywhere in `EventStore.Ucan`/`EventStore.Rbac` (confirmed by search, not
+assumed) — a genuine, open gap, not one this sample works around.
