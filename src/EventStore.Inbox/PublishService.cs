@@ -1,6 +1,9 @@
 using System.Security.Claims;
+using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using EventStore.Abstractions;
 using EventStore.Domain.AccessLog;
 using EventStore.Domain.EventLog;
 using EventStore.Domain.SchemaRegistry;
@@ -33,7 +36,8 @@ public class PublishService(
     SchemaRegistryService schemaRegistry,
     IUniqueConstraintViolationDetector uniqueConstraintViolationDetector,
     PayloadEncryptor? payloadEncryptor = null,
-    IOptions<OriginIdOptions>? originIdOptions = null)
+    IOptions<OriginIdOptions>? originIdOptions = null,
+    ITimestampAuthorityClient? timestampAuthorityClient = null)
 {
     // ADR-033 -- defaults every existing 3-arg construction site (every
     // pre-"Sharding & Replication" test file, ~26 of them) to a single-
@@ -190,6 +194,33 @@ public class PublishService(
             db.ChangeTracker.Clear();
             var winner = await db.Events.AsNoTracking().SingleAsync(e => e.EventId == eventId, ct);
             return ReplayOrConflict(winner, payloadHash);
+        }
+
+        // ADR-086 -- opt-in per event type (RequiredSignature.EnableRfc3161Timestamp),
+        // never global. Necessarily AFTER EventAppender.AppendAsync: ChainHash isn't
+        // known until that call assigns this row's own SequenceNumber, and
+        // EventChainHash.Compute already folds Signature (SignerId/SignedAt/Meaning/
+        // Acr) into ChainHash -- RFC3161Timestamp is added as a pure additive update
+        // to the SAME Signature afterward, timestamping the chain value that was
+        // computed WITHOUT it, never a circular "ChainHash commits to its own
+        // timestamp" dependency. "A hash of the signed event's ChainHash" (ADR-086's
+        // own Decision text) -- SHA-256 over the ChainHash hex string's UTF-8 bytes,
+        // not the ChainHash's own already-hex-decoded bytes (ChainHash is a hash OF
+        // prior state, not "the event" itself; hashing it again is what the ADR's
+        // wording literally asks for).
+        if (storedEvent.Signature is { } signature && activeDefinition.RequiredSignature?.EnableRfc3161Timestamp == true)
+        {
+            var hashOfChainHash = SHA256.HashData(Encoding.UTF8.GetBytes(storedEvent.ChainHash));
+            var timestampToken = await timestampAuthorityClient!.TimestampHashAsync(hashOfChainHash, ct);
+            // A NEW Signature instance, never an in-place mutation of the
+            // tracked one -- JsonValueConverter.NullableComparer<T>()'s own
+            // documented gap: its snapshot function returns the same
+            // reference, so EF's change tracker never notices an in-place
+            // edit to an already-tracked converted object, only a
+            // reassignment (this exact class of bug already found once
+            // before, per that file's own comment).
+            storedEvent.Signature = new Signature { SignerId = signature.SignerId, SignedAt = signature.SignedAt, Meaning = signature.Meaning, Acr = signature.Acr, RFC3161Timestamp = timestampToken };
+            await db.SaveChangesAsync(ct);
         }
 
         // ADR-032 -- completes the two-step handoff: POST /attachments already

@@ -1,5 +1,6 @@
 using System.Security.Claims;
 using System.Text.Json.Nodes;
+using EventStore.Abstractions;
 using EventStore.Domain.EventLog;
 using EventStore.Domain.SchemaRegistry;
 using EventStore.Masking;
@@ -18,7 +19,12 @@ public enum LineageExportRootCheck { NotFound, Forbidden, Ok }
 // authorization primitive -- this class only ever reads what the caller
 // could already see via the ordinary Lineage API, one call at a time.
 public class LineageExportService(
-    EventStoreContext db, IEventLineageQueryProvider lineageQueryProvider, SchemaRegistryService schemaRegistry, IPayloadMasker payloadMasker)
+    EventStoreContext db, IEventLineageQueryProvider lineageQueryProvider, SchemaRegistryService schemaRegistry, IPayloadMasker payloadMasker,
+    // ADR-086 -- optional: not every deployment configures a TSA. Unlike
+    // Signature's per-event-type opt-in, an export always gets timestamped
+    // when a TSA IS configured (ADR-086's own Decision text names no
+    // separate opt-in for this consumer).
+    ITimestampAuthorityClient? timestampAuthorityClient = null)
 {
     // Unlike event-chains.md's own per-EventId Lineage API, ADR-068's export
     // starts from an EntityId -- an entity can fold from more than one event
@@ -79,11 +85,22 @@ public class LineageExportService(
 
         var exportedAt = DateTimeOffset.UtcNow;
         var manifestHash = ManifestHash.Compute(exportedLines.Select(e => e.ChainHash), exportedByActorId, exportedAt);
-        // ADR-086 ("RFC 3161 Trusted Timestamping") is a later item this one
-        // depends ON -- Rfc3161Timestamp stays null until that item exists to
-        // populate it (this repo's own "never build ahead of dependencies"
-        // discipline), not an oversight.
-        var manifest = new ExportManifest(entityId, referencedDefinitions.ToList(), manifestHash, exportedByActorId, exportedAt, FrameworkVersion.Current);
+        // ADR-086 -- "an RFC 3161 timestamp over its own manifest hash":
+        // ManifestHash is already a SHA-256 hex digest, so its hex-decoded
+        // bytes are submitted AS the RFC 3161 message imprint directly
+        // (algorithm SHA-256), not re-hashed a second time -- the literal
+        // opposite of PublishService's "a hash OF ChainHash" wording for
+        // Signature, which explicitly asks for a second hash. Null when no
+        // TSA is configured -- not every deployment needs this, and this
+        // was correctly left null until this item existed to populate it.
+        string? rfc3161Timestamp = null;
+        if (timestampAuthorityClient is not null)
+        {
+            var manifestHashBytes = Convert.FromHexString(manifestHash);
+            var tokenBytes = await timestampAuthorityClient.TimestampHashAsync(manifestHashBytes, ct);
+            rfc3161Timestamp = Convert.ToBase64String(tokenBytes);
+        }
+        var manifest = new ExportManifest(entityId, referencedDefinitions.ToList(), manifestHash, exportedByActorId, exportedAt, FrameworkVersion.Current, rfc3161Timestamp);
 
         return new LineageExportBundle(manifest, exportedLines);
     }

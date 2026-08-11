@@ -49,6 +49,7 @@ public class RequiredSignature
 {
     public List<string> AcrValues { get; set; } = new(); // RFC 9470 acr_values -- which authentication context the caller's token must carry
     public int? MaxAge { get; set; }                      // RFC 9470 max_age (seconds) -- how recently that authentication must have occurred
+    public bool EnableRfc3161Timestamp { get; set; }      // ADR-086 -- opt-in per event type; true also obtains an RFC 3161 TimeStampToken over hash(ChainHash), stored on the resulting Signature.RFC3161Timestamp
 }
 
 public enum RejectionBehavior

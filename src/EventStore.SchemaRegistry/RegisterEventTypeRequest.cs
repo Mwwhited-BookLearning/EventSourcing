@@ -29,4 +29,4 @@ public record FilterableFieldRequest(string JsonPath, string DataType, bool IsIn
 
 public record RequiredClaimRequest(string Direction, string Claim);
 
-public record RequiredSignatureRequest(List<string> AcrValues, int? MaxAge);
+public record RequiredSignatureRequest(List<string> AcrValues, int? MaxAge, bool EnableRfc3161Timestamp = false);

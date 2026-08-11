@@ -42,11 +42,17 @@ distinction matters.
 `src/` this pass (not repeated per row above, since it cuts across rows
 rather than following the table's own per-seam structure): `IMaskingStrategy`,
 `IStreamRedactionStrategy`, `IUpcastExpressionEvaluator`, `IErasureKeyStore`,
-and `IAttachmentContentStore` all now ship in one consolidated
+`IAttachmentContentStore`, and, added by `08-build-plan.md` item 42,
+`ITimestampAuthorityClient`, all now ship in one consolidated
 `EventStore.Abstractions` package (`ADR-062`, `08-build-plan.md` item 39) —
-a hosting team's custom implementation of any of these five references
+a hosting team's custom implementation of any of these six references
 only that one small assembly, never the framework's own larger internal
-projects. `IEventLineageQueryProvider` and `IJsonPathTranslator`
+projects. `ITimestampAuthorityClient`'s own default implementation
+(`HttpTimestampAuthorityClient`, a real RFC 3161 HTTP client using the
+BCL's `System.Security.Cryptography.Pkcs` types) ships in a separate new
+`EventStore.Timestamping` package instead, the same "interface in
+Abstractions, default implementation in its own small package"
+split `IErasureKeyStore`/`EventStore.Erasure` already established. `IEventLineageQueryProvider` and `IJsonPathTranslator`
 deliberately stay in `EventStore.Persistence` instead — both are
 provider-specific, build-time-selected (`ADR-001`), never a hosting-team
 extension point the way the five `EventStore.Abstractions` interfaces are,
