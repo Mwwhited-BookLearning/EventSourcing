@@ -1,0 +1,25 @@
+version: 2
+
+# ADR-080 -- dependency-vulnerability scanning has two halves: Dependabot's
+# own scheduled version-bump PRs (this file), plus the CI-time gate in
+# .github/workflows/ci.yml's vulnerability-scan job (dotnet list package
+# --vulnerable, npm audit) that fails a PR outright if a known-vulnerable
+# version is actually introduced. Three ecosystems this repo actually has
+# a real dependency manifest for: NuGet (the whole EventStore.slnx tree),
+# npm (client-web), and the GitHub Actions workflow files themselves
+# (actions/checkout, actions/attest-build-provenance, ...).
+updates:
+  - package-ecosystem: nuget
+    directory: /
+    schedule:
+      interval: weekly
+
+  - package-ecosystem: npm
+    directory: /client-web
+    schedule:
+      interval: weekly
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly

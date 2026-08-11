@@ -97,7 +97,7 @@ provider they apply to — not "code written."
 | 36 | [Bulk Ingestion & External Interchange-Format Adapters](#bulk-ingestion--external-interchange-format-adapters) | Publish API, Non-Authoritative Capture, Outbound Webhooks | Done |
 | 37 | [Tenant-to-Tenant Federation Mapping](#tenant-to-tenant-federation-mapping) | Multi-Tenancy, Auth + Orchestration, Bulk Ingestion & Interchange Adapters | Done |
 | 38 | [Sanctions/Watchlist Screening Extensibility Seam](#sanctionswatchlist-screening-extensibility-seam) | Scaffolding & Persistence, Non-Authoritative Capture | Done |
-| 39 | [Release Engineering, Packaging & Supply Chain](#release-engineering-packaging--supply-chain) | Scaffolding & Persistence, Compatibility & Deployment Discipline | Not started |
+| 39 | [Release Engineering, Packaging & Supply Chain](#release-engineering-packaging--supply-chain) | Scaffolding & Persistence, Compatibility & Deployment Discipline | Done |
 | 40 | [Signing Secret Rotation, Dual Signature](#signing-secret-rotation-dual-signature) | Outbound Webhooks, Auth + Orchestration | Not started |
 | 41 | [Lineage Export & Bitemporal Playback](#lineage-export--bitemporal-playback) | Lineage API, Entity-Centric Core Rebuild, MVVM Client, GraphQL-Only Query Layer, Property-Level Masking, GDPR/CCPA Erasure, Delegated Grants/RBAC/Read Audit Logging | Not started |
 | 42 | [RFC 3161 Trusted Timestamping](#rfc-3161-trusted-timestamping) | Digital Sign-Off, Lineage Export & Bitemporal Playback | Not started |
@@ -232,7 +232,7 @@ state "Local Services" as tierLocal {
   state "Dynamic Feature Flags" as a7 #palegreen
   state "Leader Election" as a8 #palegreen
   state "Per-Tenant Rate Limiting" as a9 #palegreen
-  state "Release Engineering,\nPackaging & Supply Chain" as a15
+  state "Release Engineering,\nPackaging & Supply Chain" as a15 #palegreen
   state "Lineage Export +\nBitemporal Playback" as a17
   state "Mechanism-Level\nOTel Instrumentation" as a23
 }
@@ -3381,6 +3381,106 @@ produces a valid SPDX SBOM covering both the NuGet and npm dependency
 graphs in one pass; a GitHub Actions workflow runs the existing test
 suite and produces build provenance attestations for at least one
 published package.
+
+**Status: Done, split honestly between what runs locally (verified this
+pass) and what only GitHub Actions itself can verify (written, not yet
+executed).**
+
+- **`ADR-062` (NuGet packaging)**: a new root `Directory.Build.props` sets
+  `PackageId` to `$(MSBuildProjectName)` once for every project (no
+  per-project line to keep in sync across ~35 projects), plus shared
+  Authors/Company/Product/`PackageLicenseFile` (this repo's actual custom
+  "MIT NON-AI License", not a bare SPDX `MIT` expression, which would have
+  misdescribed it)/`RepositoryUrl` metadata. `EventStore.Abstractions` is
+  new, carrying the 5 catalogued interfaces that are genuinely
+  implementer-facing with no back-reference into the engine's own
+  internals (`IMaskingStrategy`, `IStreamRedactionStrategy`,
+  `IUpcastExpressionEvaluator`, `IErasureKeyStore`,
+  `IAttachmentContentStore`) — moved out of their original projects,
+  keeping each interface's ORIGINAL namespace to avoid a consumer-side
+  `using` churn (assembly identity and C# namespace are orthogonal).
+  `IEventLineageQueryProvider`/`IJsonPathTranslator` deliberately stay in
+  `EventStore.Persistence` (parameterized directly over
+  `EventStoreContext`/EF Core's own `SqlExpression` — moving them
+  wouldn't shrink an implementer's footprint at all); `IProjection<T>`/
+  `IInterchangeFormatAdapter` deliberately stay in their own pre-existing
+  `EventStore.Projections.Abstractions`/`EventStore.Interchange.
+  Abstractions` packages (items 10/36) rather than being folded in
+  (already interfaces-only, merging would be pure churn).
+  `IEventUpcaster`/`IDeviceInputSource`/`ITimestampAuthorityClient` are
+  NOT yet in `EventStore.Abstractions` since they don't exist as built
+  interfaces yet (items 8/44/42's own scope) — this repo's own "never
+  build ahead of dependencies" discipline, not an oversight.
+  `IsPackable=false` on the 6 genuinely non-shipping projects (3
+  provider-specific migration assemblies, `EventStore.DevIdp`,
+  `EventStore.AppHost`, `EventStore.ServiceDefaults`) plus
+  `Samples.Orders.Projections`; `IsPackable=true` overrides on the 4
+  `Microsoft.NET.Sdk.Web` deployables (`EventStore.Gateway`,
+  `EventStore.Host.Sqlite`/`.Postgres`/`.SqlServer`) whose SDK defaults
+  IsPackable to false. **Found and fixed a real, pre-existing gap while
+  wiring this up**: `EventStore.Erasure`/`.FeatureFlags`/`.LeaderElection`/
+  `.Rbac` (built by earlier items) were never added to `EventStore.slnx`
+  at all — silently skipped by any solution-level `build`/`pack`, though
+  never by the individual `dotnet test tests/EventStore.IntegrationTests`
+  command this session's own regression runs always use, which is why it
+  went unnoticed. Fixed by adding all 4 plus the new
+  `EventStore.Abstractions` to the solution file. Verified: `dotnet pack
+  EventStore.slnx -c Release` now produces exactly 35 `.nupkg` files,
+  matching every eligible project; a new automated build-time check
+  (`PackagingScenarioAssertions.cs`) reflects over the actual
+  `EventStore.Abstractions.dll` and asserts every exported type is an
+  interface, closing the exit criterion's own "confirmed by a build-time
+  check" text literally, not just a one-time manual eyeball.
+- **`ADR-076` (EF Core Migration Bundles)**: `Database.MigrateAsync()` is
+  removed from all 3 `EventStore.Host.<Provider>` composition roots — no
+  replica calls it at startup anymore. Per direct request ("local scripts
+  for POC/PoV are perfect"), the deploy-time apply step is two local shell
+  scripts (`scripts/generate-migration-bundle.sh`,
+  `scripts/apply-migration-bundle.sh`) rather than a full `EventStore.
+  AppHost`/`docker-compose.yml` orchestration resource — wiring an actual
+  init step into either of those remains flagged, not done this pass,
+  exactly as `ADR-076`'s own Consequences already named as separate,
+  not-yet-built pipeline work. Verified for real: generated an actual
+  self-contained Sqlite bundle (`dotnet ef migrations bundle`), ran it
+  against a brand-new, zero-migration Sqlite file, and confirmed all 17
+  migrations on disk applied in that one execution (`__EFMigrationsHistory`
+  populated, no errors) — the exact exit criterion text. Removing the
+  runtime call is safe for every existing test: every `*HttpSqliteTests`
+  class already migrates its own database explicitly in `ClassInit`
+  before ever constructing a `WebApplicationFactory`, so the app's own
+  (now-removed) startup call was already redundant there.
+- **`ADR-074`/`ADR-080` (SBOM + vulnerability scanning)**: actually ran
+  `sbom-tool` (Microsoft's own `Microsoft.Sbom.DotNetTool`) against this
+  repo's real packed output — produced a genuine, valid SPDX 2.2 manifest
+  covering 592 packages across BOTH the NuGet graph (this solution) and
+  the npm graph (`client-web`) in one pass, the exit criterion's own text,
+  proven working locally rather than only asserted in a workflow file.
+  `dotnet list package --vulnerable` surfaced two real, fixable findings
+  before this pass ever wrote a CI file: a critical `System.Drawing.
+  Common` 4.7.0 CVE (transitively via `Cel.NET`'s own dependency graph,
+  pulled into `EventStore.Upcasting`) and a high `SQLitePCLRaw.
+  lib.e_sqlite3` 2.1.11 CVE (via `Microsoft.EntityFrameworkCore.Sqlite`,
+  pulled into 3 projects) — both fixed with a direct `PackageReference`
+  override bumping NuGet's higher-version-wins resolution to a patched
+  release; the whole solution now reports zero vulnerable packages.
+  `npm audit` found `client-web`'s own devDependencies (vitest/vite/
+  esbuild) carrying a moderate/high/critical chain with no non-breaking
+  fix available (`npm audit fix --force` would bump vitest across a major
+  version, real risk to that client's own test suite, not attempted this
+  pass) — scoped to `npm audit --omit=dev` instead, the more meaningful
+  check anyway (a dev-only tool vulnerability never ships), which reports
+  clean; the finding itself is tracked in `TODO.md`, not silently dropped.
+- **`ADR-091` (GitHub Actions CI)**: `.github/workflows/ci.yml` and
+  `.github/dependabot.yml` are real, structurally-valid files (both
+  YAML-parse-checked) wiring together every command actually verified
+  locally above (`dotnet build`/`test`/`pack`, the vulnerability scans,
+  `sbom-tool generate`, GitHub's own native `actions/attest-build-
+  provenance` for one published package). **Never actually executed by
+  GitHub Actions itself** — this environment has no push access to
+  trigger a real run, an explicit, deliberate scope limit agreed with the
+  user rather than a gap discovered afterward. Every step's underlying
+  command was proven to work against this exact repository first; only
+  the YAML orchestration around them is unexecuted.
 
 ## Signing Secret Rotation, Dual Signature
 

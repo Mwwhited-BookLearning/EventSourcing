@@ -1534,10 +1534,54 @@ stale numbers here are worse than none)*
   resolve a hit; no new framework mechanism introduced. Six tests, SQLite
   only (auth/RBAC is provider-agnostic). Full SQLite regression suite
   re-run clean.
-- **Next up**: item 39, "Release Engineering, Packaging & Supply Chain"
-  — bundles five release-process ADRs (`ADR-062`/`074`/`076`/`080`/`091`),
-  depends on nothing further (no code prerequisite; a build/release-time
-  concern).
+- **Item 39, "Release Engineering, Packaging & Supply Chain," is Done**
+  — bundles 5 release-process ADRs, split honestly between what's
+  verified locally this pass and what only GitHub Actions itself can
+  verify (written, not executed — no push access here). `ADR-062`: new
+  root `Directory.Build.props` sets `PackageId=$(MSBuildProjectName)`
+  once for every project; new `EventStore.Abstractions` carries the 5
+  catalogued interfaces genuinely implementer-facing with no engine
+  back-reference (`IMaskingStrategy`/`IStreamRedactionStrategy`/
+  `IUpcastExpressionEvaluator`/`IErasureKeyStore`/
+  `IAttachmentContentStore`), each keeping its ORIGINAL namespace to
+  avoid consumer `using` churn. **Found and fixed a real, pre-existing
+  gap**: `EventStore.Erasure`/`.FeatureFlags`/`.LeaderElection`/`.Rbac`
+  were never added to `EventStore.slnx` at all (silently skipped by any
+  solution-level build/pack, though never by this session's own
+  per-project test commands, which is why it went unnoticed until now).
+  Verified: `dotnet pack EventStore.slnx -c Release` now produces exactly
+  35 `.nupkg`s; a new build-time check
+  (`PackagingScenarioAssertions.cs`) reflects over the real
+  `EventStore.Abstractions.dll` asserting every exported type is an
+  interface. `ADR-076`: `Database.MigrateAsync()` removed from all 3
+  Hosts' composition roots; a real Sqlite migration bundle was generated
+  and applied against a brand-new db, all 17 migrations landing in one
+  execution — verified, not just written. Local scripts
+  (`scripts/generate-migration-bundle.sh`/`apply-migration-bundle.sh`)
+  stand in for the deploy-time step per direct request ("local scripts
+  for POC/PoV are perfect"); wiring an init step into `EventStore.
+  AppHost`/`docker-compose.yml` remains deferred, per `ADR-076`'s own
+  Consequences. `ADR-074`/`080`: actually ran `sbom-tool` against this
+  repo's packed output (592 packages, both NuGet and npm graphs, one
+  valid SPDX 2.2 manifest); `dotnet list package --vulnerable` found and
+  fixed two real CVEs (critical `System.Drawing.Common` via `Cel.NET`,
+  high `SQLitePCLRaw.lib.e_sqlite3` via EF Core Sqlite) via direct
+  `PackageReference` overrides — whole solution now reports zero
+  vulnerable packages. `npm audit` found `client-web`'s own
+  devDependencies (vitest/vite/esbuild) with no non-breaking fix
+  available — tracked in `TODO.md`, CI scoped to `npm audit --omit=dev`
+  (production deps only, the more meaningful check) rather than silently
+  dropped. `ADR-091`: `.github/workflows/ci.yml`/`.github/dependabot.yml`
+  are real, YAML-valid files wiring together every command verified
+  above — never actually run by GitHub Actions itself (no push access
+  here). Also fixed, found while regression-testing this item: a load-
+  induced flake in `SanctionsScreeningExtensibilityHttpSqliteTests` (item
+  38's own fixed 500ms wait was insufficient under this suite's full-run
+  parallel load) — same bounded-poll fix pattern as item 37's
+  `DataResidencyHttpSqliteTests` flake.
+- **Next up**: item 40, "Signing Secret Rotation, Dual Signature"
+  (`ADR-093`) — depends on Outbound Webhooks (Done) and Auth (OIDC/
+  OpenIddict) + Orchestration (Done).
 
 ## How to resume cold
 

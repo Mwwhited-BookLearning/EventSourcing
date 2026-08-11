@@ -33,6 +33,10 @@
     <TargetFramework>net10.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
+    <!-- ADR-062: Microsoft.NET.Sdk.Web defaults IsPackable to false, but
+         this Host is explicitly named as a published package/quickstart
+         template a downstream project can reference. -->
+    <IsPackable>true</IsPackable>
   </PropertyGroup>
 
 </Project>

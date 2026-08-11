@@ -5,6 +5,11 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <IsAspireSharedProject>true</IsAspireSharedProject>
+    <!-- ADR-062: Aspire's own convention for a shared project is to be
+         copied per-solution, not distributed via NuGet, IsAspireSharedProject
+         above is that same signal; this mirrors it explicitly for the
+         packaging build-time check. -->
+    <IsPackable>false</IsPackable>
   </PropertyGroup>
 
   <ItemGroup>
