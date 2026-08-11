@@ -82,7 +82,7 @@ after-the-fact.
 | Vitals | B — Device Monitoring → Adverse Event Review | [Device Onboarding and Continuous Monitoring](clinical-trials-device-telemetry/features/device-onboarding-and-continuous-monitoring.md), [Adverse Event Capture and Review](clinical-trials-device-telemetry/features/adverse-event-capture-and-review.md) | Done |
 | Vitals | C — Trial Data Export & Subject Rights | [Trial Data Export and Subject Rights](clinical-trials-device-telemetry/features/trial-data-export-and-subject-rights.md) | Done (erasure half only — export/playback deliberately reuses the already-proven core mechanism unchanged, see note below) |
 | Vitals | D — Intraoperative Monitoring & Alert Response | [Intraoperative Monitoring and Alert Response](clinical-trials-device-telemetry/features/intraoperative-monitoring-and-alert-response.md) | Done |
-| Meridian | A — Document/Biometric Capture → Verification | [Document and Biometric Capture](digital-identity-kyc/features/document-and-biometric-capture.md), [Customer Onboarding and Identity Verification](digital-identity-kyc/features/customer-onboarding-and-identity-verification.md) | Not started |
+| Meridian | A — Document/Biometric Capture → Verification | [Document and Biometric Capture](digital-identity-kyc/features/document-and-biometric-capture.md), [Customer Onboarding and Identity Verification](digital-identity-kyc/features/customer-onboarding-and-identity-verification.md) | Done |
 | Meridian | B — Relying-Party Access | [Relying-Party Verification Request](digital-identity-kyc/features/relying-party-verification-request.md) | Not started |
 | Meridian | C — Ongoing Screening & SAR Escalation | [Periodic Screening and SAR Escalation](digital-identity-kyc/features/periodic-screening-and-sar-escalation.md) | Not started |
 
@@ -169,3 +169,31 @@ outcome (`AuthorityStatus` correctly reaches `accepted`; the Entity
 Store's `Data` gains `AckedBy` but not `Finding`/`Severity`), not the
 feature doc's own idealized assumption that all three would end up
 present together.
+
+**A fifth, found scoping Meridian's own Workflow A — the largest single
+divergence yet.** `customer-onboarding-and-identity-verification.md`'s
+own sequence diagram shows an applicant publishing `IdentityClaimSubmitted`
+with a raw UCAN riding in `AttestedClaims`, and the Router LATER
+performing an asynchronous OAuth Token Exchange call to `EventStore.
+DevIdp` on the platform's own behalf, upgrading `AuthorityStatus` from
+`unattested` to `pending_review` once the exchange succeeds. No such
+logic exists anywhere in `EventStore.Router`/`EventStore.Inbox`
+(confirmed by search) — the real, built UCAN/Token-Exchange mechanism is
+entirely CALLER-initiated (a client calls the exchange endpoint itself,
+then uses the resulting JWT as an ordinary Bearer credential for
+whatever it does next), and every real UCAN issuer key must already be
+a registered `AppTrustRoot` or a seeded client identity — confirmed
+directly against `ADelegationWithNoProofRootedInAnUnregisteredKeyIsRejected`
+in the core suite, there is no path for a genuinely first-time, walk-up
+applicant's own freshly-generated DID key to self-attest with zero prior
+registration. `Samples.Meridian`'s own `MeridianWorkflowA.cs` models the
+central self-attestation step using the mechanism that IS real and
+already fully proven for exactly this shape instead — `ADR-035`'s
+credential-agnostic `AttestedActorId`/`AttestedClaims` (an opaque blob
+the core engine never itself validates), landing at `unattested`,
+resolved directly by the same `authorityDecision` reactor every other
+workflow in this file already reuses — skipping the doc's own unbuilt
+`pending_review`-via-successful-exchange intermediate stage entirely.
+The real `UcanDelegation` + Token Exchange mechanism this domain's own
+Workflow B (relying-party access) actually needs gets built there
+instead, the same way it was for Vitals' own secondary-opinion access.

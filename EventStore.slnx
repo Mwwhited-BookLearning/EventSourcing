@@ -55,5 +55,8 @@
     <Folder Name="/samples/Vitals/">
       <Project Path="src/Samples.Vitals/Samples.Vitals.csproj" />
     </Folder>
+    <Folder Name="/samples/Meridian/">
+      <Project Path="src/Samples.Meridian/Samples.Meridian.csproj" />
+    </Folder>
   </Folder>
 </Solution>

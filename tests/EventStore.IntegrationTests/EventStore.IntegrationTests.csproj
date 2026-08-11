@@ -40,6 +40,7 @@
     <ProjectReference Include="..\..\src\EventStore.Derivation\EventStore.Derivation.csproj" />
     <ProjectReference Include="..\..\src\EventStore.ExpectedResponse\EventStore.ExpectedResponse.csproj" />
     <ProjectReference Include="..\..\src\Samples.Vitals\Samples.Vitals.csproj" />
+    <ProjectReference Include="..\..\src\Samples.Meridian\Samples.Meridian.csproj" />
     <ProjectReference Include="..\..\src\EventStore.Spiffe\EventStore.Spiffe.csproj" />
     <ProjectReference Include="..\..\src\EventStore.Masking\EventStore.Masking.csproj" />
     <ProjectReference Include="..\..\src\EventStore.Projections.Abstractions\EventStore.Projections.Abstractions.csproj" />
