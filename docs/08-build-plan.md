@@ -101,7 +101,7 @@ provider they apply to — not "code written."
 | 40 | [Signing Secret Rotation, Dual Signature](#signing-secret-rotation-dual-signature) | Outbound Webhooks | Done (webhook half only — ticket-exchange half descoped, see `TODO.md`) |
 | 41 | [Lineage Export & Bitemporal Playback](#lineage-export--bitemporal-playback) | Lineage API, Entity-Centric Core Rebuild, MVVM Client, GraphQL-Only Query Layer, Property-Level Masking, GDPR/CCPA Erasure, Delegated Grants/RBAC/Read Audit Logging | Done |
 | 42 | [RFC 3161 Trusted Timestamping](#rfc-3161-trusted-timestamping) | Digital Sign-Off, Lineage Export & Bitemporal Playback | Done |
-| 43 | [Pluggable Outbox Flush Triggers](#pluggable-outbox-flush-triggers) | MVVM Client, Lineage Export & Bitemporal Playback | Not started |
+| 43 | [Pluggable Outbox Flush Triggers](#pluggable-outbox-flush-triggers) | MVVM Client, Lineage Export & Bitemporal Playback | Done |
 | 44 | [Device Input Integration](#device-input-integration) | MVVM Client, Pluggable Outbox Flush Triggers, Non-Authoritative Capture | Not started |
 | 45 | [Accessibility Standard](#accessibility-standard) | MVVM Client | Not started |
 | 46 | [i18n/l10n Architectural Scope](#i18nl10n-architectural-scope) | MVVM Client | Not started |
@@ -239,7 +239,7 @@ state "Local Services" as tierLocal {
 state "UI" as tierUi {
   state "MVVM Client" as p20 #palegreen
   state "Local/Edge Cache Scoping\n+ Erasure Invalidation" as a4 #palegreen
-  state "Pluggable Outbox\nFlush Triggers" as a19
+  state "Pluggable Outbox\nFlush Triggers" as a19 #palegreen
   state "Device Input Integration" as a20
   state "Accessibility Standard" as a21
   state "i18n/l10n Scope" as a22
@@ -3812,6 +3812,69 @@ receiving system verifies the bundle is complete and unaltered before
 importing it, with each command applied exactly once; Background Sync
 unavailability still falls back to flush-on-focus, never dropping a
 queued command.
+
+**Status: Done.** Found and closed a real, pre-existing gap while
+building this item: `public/sw.js`'s own `sync` event listener (from
+item 21) has existed since that item, but nothing anywhere in `src/`
+ever called `registration.sync.register('flush-outbox')` to actually
+arm it — `docs/patterns/pwa-offline-outbox.md`'s own sequence diagram
+already specified this exact call, it was simply never wired. Fixed in
+`stores/outbox.ts`'s `enqueue` action (feature-detected, silently
+skipped where `SyncManager` doesn't exist — Firefox/Safari — never
+thrown), so the "opportunistic" category (this item's own point 1,
+"existing, unchanged") is now actually armed end to end, not just
+listened for.
+
+**Scheduled ("phone home")**: `main.ts` registers Web Periodic
+Background Sync (feature- and permission-detected —
+`'periodicSync' in registration` plus a `navigator.permissions.query`
+check, silently skipped everywhere unsupported) with a 12-hour
+`minInterval` floor; `public/sw.js` gained a matching `periodicsync`
+listener reusing the exact same `flushOutbox()` the opportunistic
+listener already calls — neither the client nor the Service Worker
+needs to know which trigger category fired, per this ADR's own stated
+principle.
+
+**Explicit/manual**: the "sync now" action already existed
+(`useEntityViewActions.flush()`, called by `GenericFallbackView`'s
+"Retry sync" button since item 21) — genuinely nothing new needed for
+the ordinary case. The **air-gapped sneakernet** half is new:
+`client-web/src/outbox/{bundle,exportImport}.ts` reuse `ADR-068`'s
+NDJSON-plus-manifest SHAPE directly (via `playback/verifyBundle.ts`'s
+own `computeManifestHash`, exported and shared rather than
+duplicated), adapted for a queued *command* rather than a stored
+*event*: `ClientOutboxEntry` has no `ChainHash` (it hasn't been
+published yet), so a per-entry `contentHash` — a `SHA-256` over the same
+fields `ADR-011`'s Idempotent Receiver treats as this command's
+identity — plays `ChainHash`'s role for the manifest hash. `Outbox
+Store.exportBundle`/`importBundle` wrap it; import verifies the
+manifest hash AND re-derives every entry's own `contentHash` against
+its current content before returning anything, rejecting (not silently
+accepting) either kind of tamper.
+
+**One real gap found by writing an adversarial test against my own
+first draft, fixed before it shipped**: the first `importOutboxBundle`
+only checked the manifest hash over the *list* of `contentHash` values
+— tampering an entry's `patch` field while leaving its own carried
+`contentHash` untouched would have passed verification, since nothing
+re-derived that hash from the entry's own current content.
+Closed by adding exactly that re-derivation, the same "recompute,
+never trust the stored value" discipline
+`EventStore.Domain.EventLog.ChainVerificationService` already applies
+server-side for `PayloadHash`.
+
+Tests: `outbox/bundle.spec.ts` (NDJSON round-trip), `outbox/
+exportImport.spec.ts` (3 scenarios: only-Pending export, tamper-the-
+manifest rejection, tamper-an-entry-post-export rejection), plus 2 new
+scenarios in `stores/outbox.spec.ts` (export→import into a fresh
+instance; re-importing the same bundle never duplicates an already-
+present command). Client suite: 56/56 (12 files). One test-infra
+lesson from this pass, applied retroactively: `OfflineBundleViewer.
+spec.ts`'s own `flushAll()` helper (item 41) needed a more robust wait
+than a single `setTimeout(0)` tick once run under this session's fuller
+suite concurrency — caught by a real, if intermittent, failure, not
+hypothesized; widened to several short ticks. `npm run build` and
+`npm run build:offline-player` both still succeed.
 
 ## Device Input Integration
 

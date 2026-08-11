@@ -1681,10 +1681,34 @@ stale numbers here are worse than none)*
   regression suite re-run clean except the two already-tracked flakes
   (SqlServer container contention, SSE subscription timing) — neither
   touches this item.
-- **Next up**: item 43, "Pluggable Outbox Flush Triggers" (`ADR-069`) —
-  depends on MVVM Client (Done) and Lineage Export & Bitemporal Playback
-  (Done, including its portable NDJSON+manifest bundle format the
-  air-gapped "explicit/manual" trigger category reuses).
+- **Item 43, "Pluggable Outbox Flush Triggers," is Done — same session,
+  continuing directly from item 42. Client-only, no server-side changes
+  at all.** Found and closed a real, pre-existing gap from item 21:
+  `public/sw.js`'s `sync` event listener existed but nothing ever called
+  `.register('flush-outbox')` to arm it — fixed in `stores/outbox.ts`'s
+  `enqueue` (feature-detected). New: Web Periodic Background Sync
+  ("phone home," `main.ts` + a matching `periodicsync` listener in
+  `sw.js`, feature/permission-detected, 12h floor) and the air-gapped
+  sneakernet export/import (`client-web/src/outbox/{bundle,exportImport}
+  .ts`, reusing `ADR-068`'s NDJSON+manifest shape via `playback/
+  verifyBundle.ts`'s shared `computeManifestHash`, adapted with a
+  per-entry `contentHash` standing in for `ChainHash` since a queued
+  command has none). The "explicit/manual" ordinary case needed nothing
+  new (`useEntityViewActions.flush()` + the existing "Retry sync" button
+  already covered it, since item 21). One real gap found by writing an
+  adversarial test against my own first draft: `importOutboxBundle` only
+  checked the manifest hash over the *list* of `contentHash` values, not
+  that each entry's own hash still matched its own current content —
+  fixed before it shipped, mirroring `ChainVerificationService`'s
+  server-side "recompute, don't trust the stored value" discipline. One
+  test-infra fix applied retroactively: item 41's `OfflineBundleViewer.
+  spec.ts` `flushAll()` helper flaked once under this session's fuller
+  suite concurrency (a single `setTimeout(0)` wasn't always enough for
+  `crypto.subtle.digest`) — widened to several short ticks, stable across
+  3 reruns after. Client suite: 56/56 (12 files).
+- **Next up**: item 44, "Device Input Integration" (`ADR-070`) — depends
+  on MVVM Client (Done), Pluggable Outbox Flush Triggers (Done), and
+  Non-Authoritative Capture (Done).
 
 ## How to resume cold
 

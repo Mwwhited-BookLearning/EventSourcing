@@ -5,11 +5,15 @@ import { computeManifestHash } from '../../playback/verifyBundle'
 
 // crypto.subtle.digest resolves via a macrotask, not a plain microtask --
 // flushPromises() alone (a microtask-queue drain) doesn't wait long enough
-// for it, confirmed by direct observation this session rather than assumed.
-// One real setTimeout tick after flushPromises reliably lets it settle.
+// for it, confirmed by direct observation this session rather than
+// assumed. A SINGLE setTimeout(0) tick was enough in isolation but proved
+// flaky once the full suite's own concurrency put more load on the event
+// loop (caught by a real, if intermittent, failure this session, not
+// hypothesized) -- several ticks with a short real delay is the more
+// robust wait.
 async function flushAll(): Promise<void> {
   await flushPromises()
-  await new Promise((resolve) => setTimeout(resolve, 0))
+  for (let i = 0; i < 5; i++) await new Promise((resolve) => setTimeout(resolve, 5))
 }
 
 async function makeNdjson(payloads: string[]): Promise<string> {

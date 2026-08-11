@@ -21,7 +21,7 @@ export interface BundleVerificationResult {
 // library: available unconditionally in both a normal browser tab and the
 // vite-plugin-singlefile offline build (no server, no network, but
 // `crypto.subtle` is a standard Web Platform API, not a network call).
-async function sha256Hex(input: string): Promise<string> {
+export async function sha256Hex(input: string): Promise<string> {
   const bytes = new TextEncoder().encode(input)
   const digest = await crypto.subtle.digest('SHA-256', bytes)
   return Array.from(new Uint8Array(digest))
