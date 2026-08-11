@@ -8,18 +8,35 @@ requirements, including the browser `fetch()`-based SSE story, in
 [`auth.md`](auth.md); the `mode`/`fromSequenceNumber` tail-vs-replay design
 in `ADR-010` (`../07-adrs.md`) and `../06-solution-structure.md`.
 
-**Transport, post-`ADR-037`**: Follow is a GraphQL **Subscription**,
-served through the GraphQL Gateway over the [GraphQL over Server-Sent
-Events Protocol](https://github.com/enisdenjo/graphql-sse/blob/master/PROTOCOL.md)
+**Transport, post-`ADR-037`**: for an externally-facing caller, Follow is
+a GraphQL **Subscription**, served through the GraphQL Gateway over the
+[GraphQL over Server-Sent Events Protocol](https://github.com/enisdenjo/graphql-sse/blob/master/PROTOCOL.md)
 ("distinct connections mode" — one SSE connection per subscription
 operation), which HotChocolate implements natively. The connection is
 opened with `QUERY /graphql` (`ADR-012`), carrying the subscription
 document as the request body — never `GET`, since a `where` argument can
 carry PII/PHI. `mode`/`fromSequenceNumber` (`ADR-010`) are ordinary
 subscription-field arguments now, not URL-shaped query-string
-parameters; there is no more bare `QUERY /follow/{event-type}` endpoint.
-This doc writes every request as a literal GraphQL document rather than
-the pre-`ADR-037` `?$filter=...&mode=...` shorthand.
+parameters. This doc writes every request as a literal GraphQL document
+rather than the pre-`ADR-037` `?$filter=...&mode=...` shorthand.
+
+**Correction, found against the live code**: the bare `QUERY
+/follow/{event-type}` REST+SSE endpoint (`EventStore.Follow.Api`,
+`FollowEndpoints.cs`) is **not** retired — it's still mapped in every Host
+`Program.cs` that calls `.MapFollowEndpoints()` and is exactly what
+`ProjectionHost`'s own `FollowClient`
+(`src/EventStore.Projections.Host/FollowClient.cs`) uses to tail/replay,
+with no GraphQL document anywhere in that path (see
+[`cqrs-projections.md`](cqrs-projections.md)'s own corrected banner).
+`ADR-037` added the GraphQL Subscription surface this doc otherwise
+describes for ad hoc/external consumers; it did not delete the older
+endpoint that at least one real, first-party internal consumer still
+depends on. Both surfaces share the same underlying `EventTailReader`
+poll loop and `IJsonPathTranslator`/`FilterableField` pushdown mechanics
+([`filter-pushdown.md`](filter-pushdown.md)) — this doc's scenarios below
+still exercise the GraphQL Subscription surface specifically, since that
+is the one `ADR-037` actually adds and the one meant for a caller other
+than `ProjectionHost`.
 
 ## Sequence diagram
 
@@ -29,11 +46,16 @@ autonumber
 actor "Consuming System" as follower
 participant "GraphQL Gateway\n(HotChocolate, graphql-sse over SSE)" as gateway
 participant "Auth\n(JWT Bearer + scope policy)" as auth
-participant "[UseFiltering]\n(see filter-pushdown.md)" as filtering
+participant "GraphQlFilterPredicateBuilder\n(see filter-pushdown.md)" as filtering
 participant "EventTailReader" as tailReader
 database "Event & Schema Store" as db
 
-follower -> gateway: QUERY /graphql\nAuthorization: Bearer <JWT>\nbody: subscription { onOrderPlaced(where: {...}, mode: TAIL[, fromSequenceNumber: N]) { ... } }
+follower -> gateway: QUERY /graphql\nAuthorization: Bearer <JWT>\nbody: subscription { on_demo_OrderPlaced(where: [{...}], mode: TAIL[, fromSequenceNumber: N]) { ... } }
+note right of follower
+  Field name is on_{appId}_{name} (FollowSubscriptionTypeModule, ADR-037's
+  own per-AppId qualification, needed since two AppIds can register the
+  same event-type Name -- ADR-030); this doc uses AppId "demo" throughout.
+end note
 gateway -> auth: validate token (header only -- no query-string fallback, ADR-012) + events:follow scope
 alt missing/invalid token
   auth --> follower: connection rejected 401
@@ -42,14 +64,16 @@ else valid token, missing scope
 else authorized
   alt event type has no corresponding subscription field in this AppId's schema
     gateway --> follower: GraphQL validation error -- unknown field, rejected\nbefore any resolver runs (ADR-037: schema is composed\nonly from registered event types)
-  else where references a field not declared FilterableField
-    gateway --> follower: GraphQL validation error -- field not present on the\ngenerated filter-input type (ADR-037; see filter-pushdown.md),\nrejected before any resolver runs
+  else where names a field not declared FilterableField
+    gateway -> filtering: Build(fields, where) -- looked up at RESOLVER\nRUNTIME against this event type's own FilterableFields
+    filtering --> gateway: GraphQLException("... is not a declared\nFilterableField for this event type.")
+    gateway --> follower: subscription rejected with that GraphQLException\n(a runtime check, not a schema-composition-time\nvalidation error -- see filter-pushdown.md's own note\non this honest narrowing from ADR-037's literal guarantee)
   else a Read-direction RequiredClaims entry is configured and\ncaller's token holds none of them
     gateway --> follower: connection rejected 403 (ADR-008/ADR-050)
   else fromSequenceNumber given with mode=TAIL (or default)
     gateway --> follower: subscription rejected -- invalid mode/fromSequenceNumber\ncombination (ADR-010)
   else where valid or absent, mode valid
-    gateway -> filtering: build predicate against declared FilterableFields
+    gateway -> filtering: Build(fields, where) -- succeeds, predicate built
     gateway -> gateway: initialize lastSeen (see follow-tail-vs-replay-cursor\nin 06-solution-structure.md):\nmode=TAIL -> current max SequenceNumber\nmode=REPLAY -> fromSequenceNumber ?? 0
     gateway -> follower: graphql-sse "distinct connections" SSE stream open (200)
     loop every poll interval, while connection open
@@ -57,7 +81,7 @@ else authorized
       tailReader -> db: SELECT ... (predicate pushed down, see filter-pushdown.md)
       db --> tailReader: matching StoredEvent rows (if any)
       tailReader --> gateway: matching events
-      gateway -> follower: SSE "next" event(s): data{ onOrderPlaced: { ...selected fields,\nparentEventIds (any restricted parent omitted, ADR-008) } }
+      gateway -> follower: SSE "next" event(s): data{ on_demo_OrderPlaced: { ...selected fields,\nparentEventIds (any restricted parent omitted, ADR-008) } }
     end
   end
 end
@@ -106,11 +130,20 @@ etd ||--o{ ff : "(Name, Version) = (EventTypeName, EventTypeVersion)"
 etd ..> event : "logical only -- EventType/SchemaVersion,\nNOT a DB foreign key"
 
 note right of ff
-  A where argument may only reference a JsonPath
-  declared here -- a client cannot even construct a
-  query referencing an undeclared field, since the
-  per-AppId filter-input type only exposes declared
-  FilterableFields (ADR-037; see filter-pushdown.md).
+  A where argument's field name is checked against
+  JsonPaths declared here, but at RESOLVER RUNTIME by
+  GraphQlFilterPredicateBuilder, not by the GraphQL
+  schema itself -- EventFilterInput is a static, flat
+  { field, eq, neq, gt, gte, lt, lte, contains } type
+  that can syntactically name anything (see
+  filter-pushdown.md's own note on why: no bound CLR
+  type for [UseFiltering] to reflect over here). An
+  honest, narrower guarantee than ADR-037's literal
+  schema-shape claim for FILTERING specifically --
+  still literally true for the subscription field
+  NAME and its payload fields, which this dynamic
+  schema module genuinely composes per registered
+  event type.
 end note
 @enduml
 ```
@@ -134,7 +167,11 @@ Feature: Follow an event type via a GraphQL Subscription over SSE
 
   # Every connection in this file carries a Bearer token with the
   # events:follow scope unless a scenario says otherwise. See auth.md for
-  # authentication/authorization behavior itself.
+  # authentication/authorization behavior itself. Every registration below
+  # is under AppId "demo", so the real subscription field name is
+  # on_demo_OrderPlaced (FollowSubscriptionTypeModule's on_{appId}_{name}
+  # convention, ADR-037/ADR-030) -- not the bare onOrderPlaced a single-
+  # tenant reading might expect.
 
   Background:
     Given the event type "OrderPlaced" version 1 is registered with schema:
@@ -149,7 +186,7 @@ Feature: Follow an event type via a GraphQL Subscription over SSE
   Scenario: Connecting without a where argument streams all events of the type
     Given I open a GraphQL Subscription connection with document:
       """
-      subscription { onOrderPlaced { amount status } }
+      subscription { on_demo_OrderPlaced { amount status } }
       """
     When an "OrderPlaced" event with body {"Amount": 50, "Status": "Paid"} is published
     Then I should receive that event on the SSE stream
@@ -157,30 +194,37 @@ Feature: Follow an event type via a GraphQL Subscription over SSE
   Scenario: Connecting with a where argument only streams matching events
     Given I open a GraphQL Subscription connection with document:
       """
-      subscription { onOrderPlaced(where: { amount: { gt: 100 } }) { amount status } }
+      subscription { on_demo_OrderPlaced(where: [{ field: "Amount", gt: "100" }]) { amount status } }
       """
     When an "OrderPlaced" event with body {"Amount": 50, "Status": "Paid"} is published
     And an "OrderPlaced" event with body {"Amount": 150, "Status": "Paid"} is published
     Then I should receive only the event with Amount 150 on the SSE stream
 
-  Scenario: Filtering on a field not marked filterable cannot even be constructed
+  Scenario: Filtering on a field not marked filterable is rejected at resolver runtime
     When I open a GraphQL Subscription connection with document:
       """
-      subscription { onOrderPlaced(where: { internalNotes: { eq: "x" } }) { amount } }
+      subscription { on_demo_OrderPlaced(where: [{ field: "internalNotes", eq: "x" }]) { amount } }
       """
-    Then the subscription should be rejected as a GraphQL validation error
-    And the error should state "internalNotes" is not a field on the OrderPlaced filter-input type
-    # Unlike the pre-ADR-037 400-at-parse-time behavior, this field never
-    # existed on the generated schema at all -- see filter-pushdown.md.
+    Then the subscription should be rejected with a GraphQLException
+    And the error should state "internalNotes" is not a declared FilterableField for this event type
+    # Unlike a schema-composition-time rejection, "internalNotes" is
+    # syntactically valid on EventFilterInput's own static, flat shape --
+    # GraphQlFilterPredicateBuilder.Build looks it up against this event
+    # type's declared FilterableFields and throws at resolver runtime, not
+    # before. See filter-pushdown.md's own note on this honest narrowing
+    # from ADR-037's literal guarantee, for FILTERING specifically.
 
   Scenario: Filtering combines multiple conditions
     Given I open a GraphQL Subscription connection with document:
       """
-      subscription { onOrderPlaced(where: { and: [{ amount: { gt: 100 } }, { status: { eq: "Paid" } }] }) { amount status } }
+      subscription { on_demo_OrderPlaced(where: [{ field: "Amount", gt: "100" }, { field: "Status", eq: "Paid" }]) { amount status } }
       """
     When an "OrderPlaced" event with body {"Amount": 150, "Status": "Pending"} is published
     And an "OrderPlaced" event with body {"Amount": 150, "Status": "Paid"} is published
     Then I should receive only the second event on the SSE stream
+    # Two entries in the same where LIST, AND-combined -- there is no
+    # and/or combinator keyword (EventFilterInput.cs's own note on why: a
+    # static, hand-written input type, not a dynamically composed one).
 
   Scenario: Connecting to an unknown event type cannot even be constructed
     When I open a GraphQL Subscription connection with document:
@@ -190,16 +234,18 @@ Feature: Follow an event type via a GraphQL Subscription over SSE
     Then the subscription should be rejected as a GraphQL validation error
     And the error should state no field "onNonExistentType" exists on the Subscription type
     # The per-AppId schema (ADR-037) only ever composes a subscription field
-    # for a type actually registered -- there is no separate 404 branch to
-    # reach, the same schema-shape guarantee filter-pushdown.md describes
-    # for undeclared filter fields.
+    # (on_{appId}_{name}) for a type actually registered, active, under
+    # that AppId -- there is no separate 404 branch to reach. Unlike the
+    # where-argument field-name check above, THIS guarantee genuinely is
+    # schema-shape, enforced by FollowSubscriptionTypeModule's dynamic
+    # CreateTypesAsync, not a resolver-runtime check.
 
   Scenario: A restricted parent's ID is omitted from the envelope, not exposed unresolved
     Given the event type "PatientAdmitted" is registered with read claim "clearance:phi"
     And a "PatientAdmitted" event "admit-1" was published with body {"PatientId": "abc-123"}
     And I open a GraphQL Subscription connection with document:
       """
-      subscription { onOrderPlaced { amount status parentEventIds } }
+      subscription { on_demo_OrderPlaced { amount status parentEventIds } }
       """
       with no additional claims
     When an "OrderPlaced" event with body {"Amount": 50, "Status": "Paid"} parented off "admit-1" is published
@@ -213,7 +259,7 @@ Feature: Follow an event type via a GraphQL Subscription over SSE
     And an "OrderPlaced" event with body {"Amount": 150, "Status": "Paid"} was published
     When I open a GraphQL Subscription connection with document:
       """
-      subscription { onOrderPlaced(mode: REPLAY) { amount status } }
+      subscription { on_demo_OrderPlaced(mode: REPLAY) { amount status } }
       """
     Then I should receive both existing events on the SSE stream
     When an "OrderPlaced" event with body {"Amount": 75, "Status": "Paid"} is published
@@ -224,7 +270,7 @@ Feature: Follow an event type via a GraphQL Subscription over SSE
     And an "OrderPlaced" event "order-2" with body {"Amount": 150, "Status": "Paid"} was published
     When I open a GraphQL Subscription connection with document:
       """
-      subscription { onOrderPlaced(mode: REPLAY, fromSequenceNumber: {order-1's SequenceNumber}) { amount status } }
+      subscription { on_demo_OrderPlaced(mode: REPLAY, fromSequenceNumber: {order-1's SequenceNumber}) { amount status } }
       """
     Then I should receive "order-2" on the SSE stream
     And I should not receive "order-1" on the SSE stream
@@ -234,7 +280,7 @@ Feature: Follow an event type via a GraphQL Subscription over SSE
     And an "OrderPlaced" event with body {"Amount": 150, "Status": "Paid"} was published
     When I open a GraphQL Subscription connection with document:
       """
-      subscription { onOrderPlaced(mode: REPLAY, where: { amount: { gt: 100 } }) { amount status } }
+      subscription { on_demo_OrderPlaced(mode: REPLAY, where: [{ field: "Amount", gt: "100" }]) { amount status } }
       """
     Then I should receive only the event with Amount 150 from the replay
 
@@ -242,14 +288,14 @@ Feature: Follow an event type via a GraphQL Subscription over SSE
     Given an "OrderPlaced" event with body {"Amount": 50, "Status": "Paid"} was published
     When I open a GraphQL Subscription connection with document:
       """
-      subscription { onOrderPlaced { amount status } }
+      subscription { on_demo_OrderPlaced { amount status } }
       """
     Then I should not receive that pre-existing event on the SSE stream
 
   Scenario: Supplying fromSequenceNumber without mode: REPLAY is rejected
     When I open a GraphQL Subscription connection with document:
       """
-      subscription { onOrderPlaced(fromSequenceNumber: 0) { amount } }
+      subscription { on_demo_OrderPlaced(fromSequenceNumber: 0) { amount } }
       """
     Then the subscription should be rejected with a GraphQL error stating
       fromSequenceNumber is only valid alongside mode: REPLAY

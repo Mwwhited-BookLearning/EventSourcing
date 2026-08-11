@@ -1195,9 +1195,12 @@ working system, per `ADR-017`, `ADR-018`, `ADR-019`:
   `DevIdpSeeder`; `cnf.jkt` embedding at token issuance; the DPoP-proof
   validation middleware in `EventStore.Host.Core`, alongside the existing
   JWT-bearer validation.
-- **Event upcasting** (`ADR-018`): `IEventUpcaster` + `UpcastChain`, wired
-  into `FollowEndpoint` (before masking's transform) and `ProjectionHost`
-  (before `SnapshotMerger`).
+- **Event upcasting** (`ADR-018`): `IUpcastExpressionEvaluator`
+  (`src/EventStore.Abstractions/IUpcastExpressionEvaluator.cs`, per
+  `ADR-053` — not `IEventUpcaster`, a distinct, separately-catalogued,
+  still-undelivered seam, `docs/extensibility-points.md` row 4) +
+  `UpcastChain`, wired into `FollowEndpoint` (before masking's transform)
+  and `ProjectionHost` (before `SnapshotMerger`).
 - **Hash-chained tamper evidence** (`ADR-019`): `ChainHash` computed in
   `EventAppender` alongside the existing `SequenceNumber`/`PayloadHash`
   assignment; the `GET /events/verify?throughSequenceNumber=<n>`
@@ -1413,8 +1416,18 @@ stored object, two `AttachmentRef` rows); a `GET` against a
 content-addressed attachment URL with a `Range` header returns `206
 Partial Content` for exactly the requested byte range. The GraphQL-
 browse scenario (`contentHash`/`filename`/`mimeType`/`sizeBytes` listing)
-is deferred to be re-verified once "GraphQL-Only Query Layer" lands, per
-the note above.
+**has now been re-verified, per the note above, and confirmed FAILED —
+not merely still deferred**: "GraphQL-Only Query Layer" (item 19) landed
+and is Done, but its own Built-scope note states there is "no generic
+'get current entity' query field... anywhere" in `EventStore.GraphQL` —
+none of Follow/Lineage/Registry listing, the only read surfaces that
+item actually built, ever queries current Entity Store state, and there
+is no GraphQL type an `attachments` field could attach to. A search of
+`src/EventStore.GraphQL/` confirms no attachment-related type or
+resolver exists at all. The GraphQL-browse half of this item's own exit
+criteria remains genuinely unbuilt, a confirmed gap, not an open
+deferral — it would need its own new item (a `entity(id) { ... }`-shaped
+query surface, or an `attachments` field hung off one) to close.
 
 **Built-scope note**: `ADR-032`'s Consequences additionally describe a
 hot/cool/cold tiering mover and content-defined chunking (`ChunkIndex`)
@@ -1646,11 +1659,20 @@ honestly flagged rather than silently dropped:
   though both share the identical self-signed-JWT primitive) remains not
   built**, along with its own real DID/UCAN offline chain verification —
   neither is named in any later item's own exit criteria yet, so neither
-  has an obvious next home. `revealField`'s own step-up-authentication
-  refinement (`ADR-066`) is similarly still deferred, to "Digital Sign-Off
-  for Regulated Actions." Its `ADR-045` `AccessLogEntry` audit write is
-  no longer deferred — built in "Delegated Grants, RBAC, Federated
-  Claims & Read Audit Logging," the item that actually built that table.
+  has an obvious next home. **`revealField`'s own step-up-authentication
+  refinement (`ADR-066`) remains open even now that "Digital Sign-Off for
+  Regulated Actions" (item 29) has landed and is Done** — that item only
+  wired RFC 9470 step-up enforcement into `POST /publish/{event-type}`
+  (`PublishService.PublishAsync`'s `StepUpSatisfied` check); `x-masking`
+  itself has no step-up configuration surface, and `RevealFieldMutation.
+  RevealFieldAsync` (`src/EventStore.GraphQL/RevealFieldMutation.cs`)
+  checks only `requiredClaim`, exactly as this note originally described
+  before item 29 landed. This is a confirmed still-open gap, not
+  something item 29 already closed — see `03-api-contracts.md`,
+  "`revealField`," for the caller-facing statement of the same gap. Its
+  `ADR-045` `AccessLogEntry` audit write is no longer deferred — built in
+  "Delegated Grants, RBAC, Federated Claims & Read Audit Logging," the
+  item that actually built that table.
 
 ## Compatibility & Deployment Discipline
 

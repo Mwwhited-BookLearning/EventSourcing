@@ -65,12 +65,28 @@ var svidResponse = await workloadClient.FetchX509SvidAsync();
 
 `ADR-048` — issues workload identity (a SPIFFE ID + X.509-SVID) for every
 internal service (`EventStore.Router`, `.Fold`, `.GraphQL`, `.Sharding`,
-`.PeerSync`, `.Streaming`, `.Attachments`); `ADR-033`'s peer-sync
+`.Replication`, `.Streaming`, `.Attachments`); `ADR-033`'s peer-sync
 authentication moves onto SPIFFE/SPIRE's cross-trust-domain federation for
 mutual mTLS between independently-administered peer servers. `ADR-049`'s
 [YARP](yarp.md) gateway hands off to this for internal
 gateway-to-service calls, once external auth (`ADR-006`) has already
 validated the caller.
+
+**Propagation note, matching `../../06-solution-structure.md`'s own note
+for the same drift**: the actual build consolidated
+`EventStore.Router`/`.Fold`/`.GraphQL`/`.Sharding`/`.Streaming`/
+`.Attachments` into library namespaces inside each `EventStore.Host.
+<Provider>` process rather than splitting them into independently-
+addressable services as sketched above, and what was sketched as
+`EventStore.PeerSync` was actually implemented as `EventStore.Replication`
+(renamed here to match). `EventStore.Gateway` (YARP) and `EventStore.
+Spiffe` (this doc's own SPIFFE ID/trust-bundle/mTLS primitives) **are**
+real, separate projects. Since there is no real internal network hop
+*between* Router/Fold/GraphQL/etc. in the actual build (they share one
+process), SPIFFE/mTLS is only actually exercised at the two genuine
+inter-process boundaries that exist: peer-to-peer sync between
+independent site deployments, and the Gateway-to-Host hop — both share
+one internal mTLS listener per Host, not one per service named above.
 
 ## Links
 

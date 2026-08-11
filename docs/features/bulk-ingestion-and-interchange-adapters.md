@@ -119,20 +119,20 @@ per-event path, never a single all-or-nothing transaction.
 @startuml BulkIngestion_Hl7v2Inbound_Sequence
 autonumber
 participant "Hospital EMR\n(HL7v2 sender)" as emr
-participant "MLLP Listener\n(TCP, no inherent security -- ADR-072)" as mllp
-participant "Hl7V2Adapter\n(IInterchangeFormatAdapter, keyed DI)" as adapter
-participant "InboxEndpoint\n(ADR-023)" as endpoint
+participant "Hl7V2MllpListener\n(BackgroundService, TCP,\nno inherent security -- ADR-072)" as mllp
+participant "Hl7V2Adapter\n(IInterchangeFormatAdapter,\nkeyed DI, key \"Hl7V2\")" as adapter
+participant "PublishService" as publish
 database "Event & Schema Store" as db
 
 emr -> mllp: HL7v2 ADT^A01 message, over TLS-terminated\nMLLP/TCP (transport security is the DEPLOYMENT's\nresponsibility -- MLLP itself has none, ADR-072)
 mllp -> mllp: parse MLLP framing (start/end block characters),\nextract the raw HL7v2 message
-mllp -> adapter: Transform(rawHl7v2Message)
+mllp -> adapter: ParseInboundAsync(appId, rawHl7v2Message)\n-- resolved via GetRequiredKeyedService, not hardcoded\nto the concrete Hl7V2Adapter type
 adapter -> adapter: map HL7v2 segments/fields (e.g. PID, PV1)\nto this AppId's registered "PatientAdmitted" JsonSchema shape
-adapter --> mllp: transformed payload, ready to publish
-mllp -> endpoint: POST /publish/PatientAdmitted\n{ payload: <transformed>,\n  attestedClaims: { source: "hl7v2-mllp", reviewPending: true } }\n(authenticated as the MLLP listener's own service identity)
-endpoint -> db: INSERT StoredEvent (Status: received,\nAuthorityStatus: "pending_review" -- ADR-035's\nreasonable default for EMR-sourced, interface-engine data)
-endpoint --> mllp: 202 { status: "received", authorityStatus: "pending_review" }
-mllp --> emr: MLLP ACK (application-level acknowledgment,\nHL7v2's own convention -- distinct from this\nframework's 202, translated by the listener)
+adapter --> mllp: InterchangeInboundResult { EventType: "PatientAdmitted",\n  Payload: <transformed>, ReviewPending: true }
+mllp -> publish: PublishAsync("PatientAdmitted", ...)\n-- an IN-PROCESS call, not a second HTTP hop --\nauthenticated as an empty SystemPrincipal (MLLP has\nno bearer token of its own; TLS/network isolation is\nthe real gate here, ADR-035/042)
+publish -> db: INSERT StoredEvent (Status: received,\nAuthorityStatus: "pending_review" -- ADR-035's\nreasonable default for EMR-sourced, interface-engine data)
+publish --> mllp: PublishResult.Accepted { CorrelationId, SequenceNumber }
+mllp --> emr: MLLP ACK (application-level acknowledgment,\nHL7v2's own convention -- distinct from this\nframework's PublishResult, translated by the listener)
 @enduml
 ```
 
@@ -142,25 +142,39 @@ mllp --> emr: MLLP ACK (application-level acknowledgment,\nHL7v2's own conventio
 @startuml BulkIngestion_FhirInbound_Sequence
 autonumber
 participant "Hospital EMR\n(FHIR client)" as emr
-participant "FhirAdapter\n(IInterchangeFormatAdapter, keyed DI)" as adapter
-participant "InboxEndpoint\n(ADR-023)" as endpoint
+participant "InterchangeEndpoints\n(generic POST /interchange/{adapterKey}/{appId},\nADR-072/082 -- ONE route, not one per adapter/resource type)" as interchange
+participant "FhirAdapter\n(IInterchangeFormatAdapter,\nkeyed DI, key \"Fhir\")" as adapter
+participant "PublishService" as publish
 database "Event & Schema Store" as db
 
-emr -> adapter: POST /interchange/fhir/Observation\n(ordinary HTTPS -- FHIR is RESTful/HTTP-native,\nno MLLP-style bridge needed, ADR-072)
+emr -> interchange: POST /interchange/Fhir/clinic1\n(ordinary HTTPS -- FHIR is RESTful/HTTP-native,\nno MLLP-style bridge needed, ADR-072)
+interchange -> interchange: resolve IInterchangeFormatAdapter keyed\n"Fhir" (GetRequiredKeyedService("Fhir"));\na miskeyed adapterKey returns 404 here, never\nfalling back to any other registered adapter
+interchange -> adapter: ParseInboundAsync(appId, rawBody)
 adapter -> adapter: map the FHIR Observation resource to this\nAppId's registered "VitalSignRecorded" JsonSchema shape
-adapter -> endpoint: POST /publish/VitalSignRecorded\n{ payload: <transformed> }\n(authenticated as the FhirAdapter's own service identity)
-endpoint -> db: INSERT StoredEvent -- identical persist-everything\npath as any other publish (ADR-023)
-endpoint --> adapter: 202 { status: "received" }
-adapter --> emr: 201/200 (FHIR-conventional acknowledgment,\ntranslated by the adapter, not this framework's own 202)
+adapter --> interchange: InterchangeInboundResult { EventType: "VitalSignRecorded",\n  Payload: <transformed> }
+interchange -> publish: PublishAsync("VitalSignRecorded", ...)\n-- an IN-PROCESS call, not a second HTTP hop --\nauthenticated as this request's own caller (events:publish)
+publish -> db: INSERT StoredEvent -- identical persist-everything\npath as any other publish (ADR-023)
+publish --> interchange: PublishResult.Accepted { CorrelationId, SequenceNumber }
+interchange --> emr: 202 Accepted { correlationId, sequenceNumber }
 @enduml
 ```
 
 The contrast between this diagram and the HL7v2 one above is the point
-`ADR-072` makes explicitly: FHIR's own transport is already HTTP, so
-its adapter is an ordinary HTTP resource consumer sitting in front of
-`POST /publish/{event-type}` — no dedicated listener component, no
+`ADR-072` makes explicitly: FHIR's own transport is already HTTP, so its
+adapter is resolved and driven entirely by the one generic
+`InterchangeEndpoints` route — no dedicated listener component, no
 transport-security caveat beyond what any other HTTPS endpoint already
-carries.
+carries. **Both diagrams correct a real drift from an earlier draft**:
+neither adapter is itself a distinct HTTP participant a caller reaches
+directly, and neither hands off to a second, separately-routed
+`POST /publish/{event-type}` call — `InterchangeEndpoints`/
+`Hl7V2MllpListener` each call `adapter.ParseInboundAsync(...)` and then
+`PublishService.PublishAsync(...)` as ordinary in-process method calls,
+verified against `src/EventStore.Interchange/InterchangeEndpoints.cs`
+and `Hl7V2MllpListener.cs`. The one real HTTP route FHIR (and any other
+adapter registered by key) is reached through is the single generic
+`POST /interchange/{adapterKey}/{appId}` endpoint — not a bespoke
+per-resource-type route like `/interchange/fhir/Observation`.
 
 ## Sequence diagram — outbound interchange adapter composing with webhook delivery
 
@@ -324,7 +338,7 @@ Feature: Bulk/batch ingestion and external interchange-format adapters
     # for non-authoritative capture (ADR-035) -- not itself re-derived here.
 
   Scenario: An inbound FHIR resource is transformed and published over ordinary HTTP, with no MLLP bridge
-    Given a FHIR Observation resource for patient "P-4471" is POSTed to the FhirAdapter's HTTP endpoint
+    Given a FHIR Observation resource for patient "P-4471" is POSTed to "/interchange/Fhir/clinic1" (the generic InterchangeEndpoints route, keyed to the FhirAdapter)
     When the FhirAdapter transforms it to "VitalSignRecorded"
     Then a "VitalSignRecorded" event should be published for EntityId "clinic1:Patient:P-4471"
     And no MLLP or TCP listener should have been involved in receiving it

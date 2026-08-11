@@ -18,9 +18,18 @@ Gateway every other query goes through (`ADR-037`, `03-api-contracts.md`
 key is `(AppId, Name, Version)`, not just `(Name, Version)` (`ADR-030`) —
 two independent applications can register a type named `OrderPlaced`
 with completely different shapes/claims/`ChangeKind` and never collide,
-because they're different rows entirely; `AppId` is resolved from the
-caller's `registry:admin:{appId}` scope (or the unscoped, cross-tenant
-`registry:admin`), never a body field. `ChangeKind` (`ADR-016`) and
+because they're different rows entirely; `AppId` is a required field on
+the registration request body itself
+(`RegisterEventTypeRequest.AppId`), checked against — never resolved
+from — the caller's `registry:admin:{appId}` scope (or the unscoped,
+cross-tenant `registry:admin`, which authorizes any `AppId`) via
+`AppIdScopeEvaluator.CanAdminister`. This is still true even though both
+"Auth + Orchestration" and "Multi-Tenancy" (`08-build-plan.md`) have
+since landed — the coarse `registry:admin`-shaped scope check happens as
+an ASP.NET Core authorization policy ahead of the handler, and the
+fine-grained per-`AppId` check happens inside it, but neither step ever
+derives `AppId` itself from the token; the caller must still assert it.
+`ChangeKind` (`ADR-016`) and
 `EntityIdField` (`ADR-021`) are both required registration fields with no
 default — `UpcastFromPrevious`/`DowncastToPrevious` (`ADR-018`/`ADR-028`)
 are optional, meaningful only for version `>= 2`, and evaluated via a
@@ -45,38 +54,43 @@ participant "IJsonPathTranslator\n(impl per provider)" as jsonPath
 participant "IUpcastExpressionEvaluator\n(CEL by default, ADR-053)" as evaluator
 database "Event & Schema Store" as db
 
-operator -> endpoint: PUT /registry/{event-type}\nAuthorization: Bearer <JWT>\n{ jsonSchema, filterableFields, changeKind,\n  entityIdField, entityType?, parentValidationMode?,\n  upcastFromPrevious?, downcastToPrevious? }
-endpoint -> auth: validate token + registry:admin OR registry:admin:{appId} scope (ADR-030)
+operator -> endpoint: PUT /registry/{event-type}\nAuthorization: Bearer <JWT>\n{ appId, jsonSchema, filterableFields, changeKind,\n  entityIdField, entityType?, parentValidationMode?,\n  upcastFromPrevious?, downcastToPrevious? }
+endpoint -> auth: validate token + hold SOME registry:admin-shaped scope\n(coarse ASP.NET Core policy, ahead of the handler)
 alt missing/invalid token
   auth --> operator: 401
-else valid token, missing scope
+else valid token, no registry:admin-shaped scope at all
   auth --> operator: 403
-else authorized
-  auth --> endpoint: appId (from the scoped-token variant, or caller-supplied\nfor the unscoped cross-tenant form)
-  endpoint -> registry: register(appId, eventType, jsonSchema, filterableFields,\nchangeKind, entityIdField, parentValidationMode,\nupcastFromPrevious, downcastToPrevious)
-  registry -> registry: validate jsonSchema is well-formed JSON Schema
-  registry -> registry: validate each filterableFields[].jsonPath resolves in jsonSchema
-  registry -> registry: validate changeKind is present and is Full or Partial (ADR-016 -- no default, 400 if missing/invalid)
-  registry -> registry: validate entityIdField is present (ADR-021 -- no default, 400 if missing)
-  registry -> registry: validate parentValidationMode in {Strict, Permissive}
-  alt upcastFromPrevious or downcastToPrevious supplied (version >= 2 only)
-    registry -> evaluator: parse expression list, validate every alias\nnames a real property of this version's schema
-    evaluator --> registry: ok, or parse/alias error
-  end
-  alt any validation fails
-    registry --> operator: 400
-  else all valid
-    registry -> registry: determine version = active version for (AppId, Name) + 1 (or 1 if new)
-    registry -> db: BEGIN TRANSACTION
-    registry -> db: INSERT EventTypeDefinition (AppId, Name, Version, ...), FilterableField rows
-    loop for each filterableFields[i] where IsIndexed = true
-      registry -> jsonPath: apply provider-specific index/computed-column migration
-      jsonPath -> db: CREATE INDEX / ALTER TABLE ... ADD computed column + index
+else coarse scope present
+  auth --> endpoint: ok (caller's own scope claim; AppId itself is never\nderived from it -- the caller must still assert it in the body)
+  endpoint -> endpoint: AppIdScopeEvaluator.CanAdminister(user, request.AppId) --\nscopes.Contains("registry:admin") OR\nscopes.Contains($"registry:admin:{request.AppId}") (ADR-030's\nfine-grained half, checked against the body's OWN appId)
+  alt caller's scope doesn't cover this request's AppId
+    endpoint --> operator: 403
+  else authorized for this AppId
+    endpoint -> registry: register(request.AppId, eventType, jsonSchema, filterableFields,\nchangeKind, entityIdField, parentValidationMode,\nupcastFromPrevious, downcastToPrevious)
+    registry -> registry: validate jsonSchema is well-formed JSON Schema
+    registry -> registry: validate each filterableFields[].jsonPath resolves in jsonSchema
+    registry -> registry: validate changeKind is present and is Full or Partial (ADR-016 -- no default, 400 if missing/invalid)
+    registry -> registry: validate entityIdField is present (ADR-021 -- no default, 400 if missing)
+    registry -> registry: validate parentValidationMode in {Strict, Permissive}
+    alt upcastFromPrevious or downcastToPrevious supplied (version >= 2 only)
+      registry -> evaluator: parse expression list, validate every alias\nnames a real property of this version's schema
+      evaluator --> registry: ok, or parse/alias error
     end
-    registry -> db: mark new (AppId, Name) version IsActive = true, prior version IsActive = false
-    registry -> db: COMMIT
-    registry -> registry: invalidate OpenAPI cache and this AppId's GraphQL SDL cache (ADR-002, ADR-037)
-    registry --> operator: 201
+    alt any validation fails
+      registry --> operator: 400
+    else all valid
+      registry -> registry: determine version = active version for (AppId, Name) + 1 (or 1 if new)
+      registry -> db: BEGIN TRANSACTION
+      registry -> db: INSERT EventTypeDefinition (AppId, Name, Version, ...), FilterableField rows
+      loop for each filterableFields[i] where IsIndexed = true
+        registry -> jsonPath: apply provider-specific index/computed-column migration
+        jsonPath -> db: CREATE INDEX / ALTER TABLE ... ADD computed column + index
+      end
+      registry -> db: mark new (AppId, Name) version IsActive = true, prior version IsActive = false
+      registry -> db: COMMIT
+      registry -> registry: invalidate OpenAPI cache and this AppId's GraphQL SDL cache (ADR-002, ADR-037)
+      registry --> operator: 201
+    end
   end
 end
 @enduml
@@ -194,14 +208,18 @@ Feature: Schema registry
   So that publishers and followers have a single, versioned source of truth
 
   # Every request in this file carries a Bearer token scoped to
-  # registry:admin:demo (AppId "demo") unless a scenario says otherwise.
-  # See auth.md for authentication/authorization behavior itself, and
-  # ADR-030 for the AppId-scoped vs. unscoped registry:admin distinction.
+  # registry:admin:demo unless a scenario says otherwise, AND every
+  # request body below names "appId": "demo" explicitly -- AppId is a
+  # required field on the request body itself
+  # (RegisterEventTypeRequest.AppId), checked against the token's scope
+  # by AppIdScopeEvaluator, never derived from that scope (ADR-030). See
+  # auth.md for authentication/authorization behavior itself.
 
   Scenario: Registering a new event type creates version 1
     When I PUT "/registry/OrderPlaced" with body:
       """
       {
+        "appId": "demo",
         "jsonSchema": { "type": "object", "properties": { "Amount": { "type": "number" } }, "required": ["Amount"] },
         "filterableFields": [ { "jsonPath": "$.Amount", "dataType": "Number", "isIndexed": true } ],
         "changeKind": "Full",
@@ -219,9 +237,10 @@ Feature: Schema registry
       """
       { "type": "object", "properties": { "Amount": { "type": "number" } }, "required": ["Amount"] }
       """
-    When I PUT "/registry/OrderPlaced" with body, authenticated as AppId "acme":
+    When I PUT "/registry/OrderPlaced" with a Bearer token scoped to "registry:admin:acme" and body:
       """
       {
+        "appId": "acme",
         "jsonSchema": { "type": "object", "properties": { "TotalCents": { "type": "integer" } }, "required": ["TotalCents"] },
         "filterableFields": [],
         "changeKind": "Partial",
@@ -231,6 +250,23 @@ Feature: Schema registry
     Then the response status should be 201
     And "acme:OrderPlaced" version 1 should be the active version, independent of "demo:OrderPlaced"
 
+  Scenario: Registering with a body appId the caller's scoped token does not cover is rejected
+    # AppIdScopeEvaluator.CanAdminister -- a registry:admin:demo-scoped
+    # token never authorizes a request whose OWN body names a different
+    # AppId, even though the coarse registry:admin-shaped policy above it
+    # already let the request reach the handler.
+    When I PUT "/registry/OrderPlaced" with a Bearer token scoped to "registry:admin:demo" and body:
+      """
+      {
+        "appId": "acme",
+        "jsonSchema": { "type": "object", "properties": { "Amount": { "type": "number" } }, "required": ["Amount"] },
+        "filterableFields": [],
+        "changeKind": "Full",
+        "entityIdField": "$.OrderId"
+      }
+      """
+    Then the response status should be 403
+
   Scenario: Registering an updated schema creates a new version and deactivates the previous one
     Given "demo:OrderPlaced" version 1 is registered with schema:
       """
@@ -239,6 +275,7 @@ Feature: Schema registry
     When I PUT "/registry/OrderPlaced" with body:
       """
       {
+        "appId": "demo",
         "jsonSchema": { "type": "object", "properties": { "Amount": { "type": "number" }, "Status": { "type": "string" } }, "required": ["Amount"] },
         "filterableFields": [ { "jsonPath": "$.Amount", "dataType": "Number", "isIndexed": true } ],
         "changeKind": "Full",
@@ -256,6 +293,7 @@ Feature: Schema registry
     When I PUT "/registry/OrderPlaced" with body:
       """
       {
+        "appId": "demo",
         "jsonSchema": { "type": "object", "properties": { "Amount": { "type": "number" } }, "required": ["Amount"] },
         "filterableFields": []
       }
@@ -266,6 +304,7 @@ Feature: Schema registry
     When I PUT "/registry/OrderPlaced" with body:
       """
       {
+        "appId": "demo",
         "jsonSchema": { "type": "object", "properties": { "Amount": { "type": "number" } }, "required": ["Amount"] },
         "filterableFields": [ { "jsonPath": "$.DoesNotExist", "dataType": "String", "isIndexed": false } ],
         "changeKind": "Full",
@@ -279,7 +318,7 @@ Feature: Schema registry
       """
       { "type": "object", "properties": { "Amount": { "type": "number" } }, "required": ["Amount"] }
       """
-    When I GET "/registry/OrderPlaced"
+    When I GET "/registry/OrderPlaced?appId=demo"
     Then the response status should be 200
     And the response body should equal the registered schema for version 1
 
@@ -287,6 +326,7 @@ Feature: Schema registry
     When I PUT "/registry/OrderPlaced" with body:
       """
       {
+        "appId": "demo",
         "jsonSchema": { "type": "object", "properties": { "Amount": { "type": "number" } }, "required": ["Amount"] },
         "filterableFields": [],
         "changeKind": "Full",
@@ -294,12 +334,13 @@ Feature: Schema registry
       }
       """
     Then "/openapi.json" should include a path "/publish/OrderPlaced"
-    And AppId "demo"'s GraphQL schema should include a Subscription field "onOrderPlaced"
+    And AppId "demo"'s GraphQL schema should include a Subscription field "on_demo_OrderPlaced"
 
   Scenario: Registering a schema publishes a traceable, hash-chained SchemaRegistered reserved event (ADR-067)
     When I PUT "/registry/OrderPlaced" with body:
       """
       {
+        "appId": "demo",
         "jsonSchema": { "type": "object", "properties": { "Amount": { "type": "number" } }, "required": ["Amount"] },
         "filterableFields": [],
         "changeKind": "Full",
@@ -316,6 +357,7 @@ Feature: Schema registry
     When I PUT "/registry/CardAuthorization" with body:
       """
       {
+        "appId": "demo",
         "jsonSchema": {
           "type": "object",
           "properties": {

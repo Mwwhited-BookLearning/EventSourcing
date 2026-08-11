@@ -18,7 +18,7 @@ public class StoredEvent
     public long? ExpectedVersion { get; set; }          // Entity Store Version this patch was based on — optional, enables conflict detection (ADR-024)
     public string Payload { get; set; } = default!;    // JSON text; known properties typed, unknown routed to Extensions at fold time (ADR-022)
     public string PayloadHash { get; set; } = default!; // hash of {EventType, Payload, sorted parentEventIds} -- ADR-011
-    public string ChainHash { get; set; } = default!;    // SHA-256(prior ChainHash || PayloadHash || SequenceNumber) -- ADR-019
+    public string ChainHash { get; set; } = default!;    // SHA-256(prior ChainHash || PayloadHash || SequenceNumber [|| JSON(Signature) if present]) -- ADR-019, extended by ADR-066 (docs/changes/2026-08-10.md)
     public string Status { get; set; } = default!;      // received | processing | applied | rejected — transport-level only (ADR-023)
     public string? SchemaStatus { get; set; }           // unknown | invalid | conformant — advisory, never gates Status (ADR-023)
     public bool ConflictFlag { get; set; }              // set by the fold step if a concurrent conflicting patch was detected (ADR-024)
@@ -124,6 +124,24 @@ onto the immediately preceding event's `ChainHash`, so altering any past
 row breaks every `ChainHash` after it — detectable by replaying the chain
 from `SequenceNumber = 1`, not just comparing one row to itself. See
 `ADR-019` for why this is a linear chain, not a full Merkle tree.
+
+`EventChainHash.Compute` (`src/EventStore.Domain/EventLog/EventChainHash.cs`,
+called by `EventAppender` at insert time and `ChainVerificationService` at
+verify time — `src/EventStore.Persistence/EventAppender.cs` and
+`src/EventStore.Inbox/ChainVerificationService.cs`) additionally folds in
+`JSON(Signature)` when `Signature` is non-null: `ChainHash[n] =
+SHA-256(ChainHash[n-1] || PayloadHash[n] || SequenceNumber[n] ||
+JSON(Signature[n]))` for a signed event, or the unextended
+`SHA-256(ChainHash[n-1] || PayloadHash[n] || SequenceNumber[n])` when
+`Signature` is absent — so every event type that never uses
+`RequiredSignature` computes byte-identical `ChainHash` values to before
+this extension existed. Added so a tamper to `SignerId`/`SignedAt`/
+`Meaning`/`Acr` (none of which are part of `PayloadHash`, which is also
+`ADR-011`'s idempotency-comparison basis and can't include a field that
+varies across a legitimate retry) diverges the chain at exactly that
+`SequenceNumber`, closing a gap in `ADR-066`'s original "reuses the
+existing hash chain, no new primitive" claim (`docs/changes/2026-08-
+10.md`).
 
 ## Event upcasting (`ADR-018`) and materialization (`ADR-027`)
 

@@ -68,21 +68,31 @@ api -> api: validate JWT signature/expiry (existing check, ADR-006 -- unchanged)
 alt Authorization header missing or JWT invalid/expired
   api --> client: 401 (type: unauthenticated)
 else DPoP header missing entirely
-  api --> client: 401 (type: dpop-proof-invalid, reason: "missing_proof")
+  api --> client: 401 (type: dpop-proof-invalid, reason: "missing Authorization: Bearer token"\nor "access token is not DPoP-bound (missing cnf.jkt)")
 else DPoP proof signature does not verify against its own embedded jwk
-  api --> client: 401 (type: dpop-proof-invalid, reason: "signature_invalid")
+  api --> client: 401 (type: dpop-proof-invalid, reason: "DPoP proof signature invalid: ...")
 else proof's htm/htu does not match this request's method/URL
-  api --> client: 401 (type: dpop-proof-invalid, reason: "htu_mismatch")
+  api --> client: 401 (type: dpop-proof-invalid, reason: "DPoP proof \"htm\"/\"htu\" does not\nmatch the request (expected ...)")
 else proof's ath does not match a hash of the presented access_token
-  api --> client: 401 (type: dpop-proof-invalid, reason: "ath_mismatch")
+  api --> client: 401 (type: dpop-proof-invalid, reason: "DPoP proof \"ath\" does not match\nthe presented access token")
 else proof's jwk thumbprint does not match the token's cnf.jkt
-  api --> client: 401 (type: dpop-proof-invalid, reason: "cnf_mismatch")
+  api --> client: 401 (type: dpop-proof-invalid, reason: "DPoP proof key does not match\nthe access token's cnf.jkt")
   note right: this is the actual value this ADR buys -- a leaked\naccess_token replayed with a different key fails exactly here
 else proof's jti was already seen within its iat freshness window\n(replay)
-  api --> client: 401 (type: dpop-proof-invalid, reason: "replay_detected")
+  api --> client: 401 (type: dpop-proof-invalid, reason: "DPoP proof \"jti\" has already\nbeen used (replay)")
 else every check passes
   api --> client: normal response for the underlying request\n(e.g. 202 + SchemaStatus, ADR-023 -- unchanged by this ADR)
 end
+note over api
+  Every "reason" string above is illustrative, not a fixed enum --
+  DpopProofValidator/DpopValidationMiddleware (EventStore.Dpop,
+  EventStore.Host.Core) return free-text sentences describing what
+  failed, not short machine-matchable codes like "missing_proof" or
+  "signature_invalid". AuthScenarioAssertions.cs (the integration
+  tests exercising these branches) only ever asserts the 401 status
+  code, never a specific reason string -- no test locks the exact
+  wording in place, so it should not be treated as a stable contract.
+end note
 @enduml
 ```
 
@@ -187,24 +197,31 @@ Feature: DPoP-Bound Access Tokens and Hash-Chained Tamper Evidence
     Given I have an access token for client "publisher-client" (cnf.jkt bound to K1)
     When I POST to "/publish/OrderPlaced" with Authorization: Bearer <token> and no DPoP header
     Then the response status should be 401
-    And the problem type should be "dpop-proof-invalid" with reason "missing_proof"
+    And the problem type should be "dpop-proof-invalid"
+    # The "reason" extension is implementation-defined free text (e.g.
+    # "missing DPoP proof"), not a fixed short code -- see the note on
+    # the sequence diagram above. Only the 401 status/problem type is a
+    # stable, tested contract; AuthScenarioAssertions.cs never asserts
+    # the exact reason string either.
 
   Scenario: A request with a DPoP proof signed by the wrong key is rejected
     Given I have an access token for client "publisher-client" (cnf.jkt bound to K1)
     And I hold a second, unrelated key pair "K2"
     When I POST to "/publish/OrderPlaced" with Authorization: Bearer <token> and a DPoP proof signed by K2 (htm/htu/ath otherwise all correct)
     Then the response status should be 401
-    And the problem type should be "dpop-proof-invalid" with reason "cnf_mismatch"
+    And the problem type should be "dpop-proof-invalid"
     # This is the scenario ADR-017 exists for: a leaked access_token, replayed
     # by an attacker holding a different key, still fails here even though
-    # the bearer token itself is genuine and unexpired.
+    # the bearer token itself is genuine and unexpired. (Free-text reason,
+    # not a fixed code -- see note above.)
 
   Scenario: Replaying an already-used DPoP proof (same jti) is rejected
     Given I have an access token for client "publisher-client" (cnf.jkt bound to K1)
     And I successfully POSTed to "/publish/OrderPlaced" using a DPoP proof with jti "j-1"
     When I POST again to "/publish/OrderPlaced" reusing the exact same proof (jti "j-1")
     Then the response status should be 401
-    And the problem type should be "dpop-proof-invalid" with reason "replay_detected"
+    And the problem type should be "dpop-proof-invalid"
+    # Free-text reason, not a fixed code -- see note above.
 
   Scenario: Verifying an intact chain reports no divergence
     When I GET "/events/verify?throughSequenceNumber=5"

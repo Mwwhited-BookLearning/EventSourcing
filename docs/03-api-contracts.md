@@ -250,10 +250,8 @@ mutation {
 }
 ```
 
-Checks the field's `requiredClaim` (and, if configured, `ADR-066`'s
-step-up authentication — a field can require a *fresh* re-
-authentication specifically to reveal it, not just an ordinary claim)
-**at the moment of the request**, writes an `ADR-045` `AccessLogEntry`
+Checks the field's `requiredClaim` **at the moment of the request**,
+writes an `ADR-045` `AccessLogEntry`
 with `Action: "reveal"` naming the specific field path (sharper audit
 granularity than an ordinary bulk query already has), and returns the
 real value only if authorized — otherwise the same `403` Problem
@@ -261,6 +259,21 @@ Details shape any other claim-gated read uses. Never affects the
 underlying event's stored shape; a caller without the claim, or who
 never calls `revealField` at all, keeps seeing the ordinary
 `{masked: "..."}`/`{erased: true}` wrapper.
+
+**`ADR-066`'s step-up-authentication refinement for `revealField` — a
+masked field requiring a *fresh* re-authentication specifically to
+reveal it, not just an ordinary claim — is still not built.** Build-plan
+item 29 ("Digital Sign-Off for Regulated Actions") wired RFC 9470
+step-up enforcement into `POST /publish/{event-type}` only
+(`PublishService.PublishAsync`'s `StepUpSatisfied` check); `x-masking`
+itself has no step-up configuration surface yet (`MaskingSchemaValidator`
+validates only `strategy`/`requiredClaim`/`regulatoryClassification`/
+`governanceBody`/`regulationReference`/`erasureScope`), and
+`RevealFieldMutation.RevealFieldAsync` (`src/EventStore.GraphQL/
+RevealFieldMutation.cs`) checks only `requiredClaim`. This gap is
+honestly flagged in the mutation's own code comment and remains open
+post-item-29 — tracked in `08-build-plan.md`, not silently implied
+closed by item 29 landing.
 
 ## Lineage export and bitemporal playback (`ADR-068`)
 
@@ -360,26 +373,29 @@ format is being generated.
 - One path template: `POST /publish/{event-type}`, with `event-type` as a
   path parameter constrained by an `enum` populated from active event types
   in the registry.
-- Request body is an **envelope**: `schemaVersion` (**required** — which
-  registered version of `{event-type}`'s schema `payload` is shaped for,
-  `ADR-020`), `payload` (validated against *that* version specifically,
-  not automatically "whichever is active"), plus optional
-  `parentEventIds` (lineage metadata — see `docs/data/event-log.md`, "Event
-  lineage"), optional `eventId` (idempotency key — see "Publish
-  idempotency", `ADR-011`), optional `expectedVersion` (the Entity Store
-  `Version` this patch was based on — enables conflict detection,
-  `ADR-024`), and optional `uniqueId` (resolves `EntityId` — omit only
-  for an event type whose `EntityIdField`, `ADR-021`, is itself derivable
-  from a field already inside `payload`). If `schemaVersion` is behind
+- Request body is an **envelope**: `schemaVersion` (**optional**, `int`,
+  defaults to `0` when omitted — which registered version of
+  `{event-type}`'s schema `payload` is shaped for, `ADR-020`; `payload`
+  is validated against *that* version specifically, not automatically
+  "whichever is active" — but see below, this is advisory, never
+  blocking), `payload` (the one field that actually is required), plus
+  optional `parentEventIds` (lineage metadata — see
+  `docs/data/event-log.md`, "Event lineage"), optional `eventId`
+  (idempotency key — see "Publish idempotency", `ADR-011`), and optional
+  `expectedVersion` (the Entity Store `Version` this patch was based on
+  — enables conflict detection, `ADR-024`). If `schemaVersion` is behind
   the active version, the payload is also run through `UpcastChain`
   (`ADR-018`, now CEL/JSONata-driven per `ADR-053`, not OData `compute()`)
   as a live compatibility check. **Per `ADR-023`, none of
-  this blocks persistence** — an unknown `schemaVersion`, a
-  schema-invalid `payload`, or a failed upcast no longer produce a `400`;
-  they persist with an advisory `SchemaStatus` instead (see the response
-  shape below). None of these fields is ever part of the registered JSON
-  Schema itself; each is validated against its own rule, advisory or
-  blocking as stated — never against `payload`'s schema.
+  this blocks persistence** — an unknown or unresolvable `schemaVersion`
+  (`PublishService.EncryptClassifiedFieldsAsync` and the Router's schema
+  lookup both simply no-op when the declared version isn't registered,
+  never rejecting), a schema-invalid `payload`, or a failed upcast no
+  longer produce a `400`; they persist with an advisory `SchemaStatus`
+  instead (see the response shape below). None of these fields is ever
+  part of the registered JSON Schema itself; each is validated against
+  its own rule, advisory or blocking as stated — never against
+  `payload`'s schema.
 - `payload`'s schema per event type is a `$ref` into a `components/schemas`
   section built directly from each `EventTypeDefinition.JsonSchema`.
 
@@ -406,16 +422,19 @@ paths:
           application/json:
             schema:
               type: object
-              required: [schemaVersion, payload]
+              required: [payload]
               properties:
                 schemaVersion:
                   type: integer
+                  default: 0
                   description: >
                     Which registered version of this event type's schema
-                    payload is shaped for (ADR-020). Rejected 400 if that
-                    version doesn't exist; if it's behind the active
-                    version, the payload is upcast-validated live before
-                    the response is returned.
+                    payload is shaped for (ADR-020). Optional -- defaults
+                    to 0 when omitted. Never rejected, including when the
+                    named version doesn't exist (ADR-023): if it's behind
+                    the active version, the payload is upcast-validated
+                    live as an advisory check only, reflected in the
+                    response's SchemaStatus, never a 400.
                 payload:
                   oneOf:
                     - $ref: '#/components/schemas/OrderPlaced'
@@ -545,7 +564,7 @@ adopting, not assumed.
 
 ```graphql
 subscription {
-  onOrderPlaced(where: { amount: { gt: 100 } }, mode: TAIL) {
+  onOrderPlaced(where: [{ field: "amount", gt: "100" }], mode: TAIL) {
     orderId
     amount
     customerTaxId { value masked erased }   # x-masking wrapper, ADR-009/050/057
@@ -557,11 +576,23 @@ subscription {
   document as the request body — never `GET`, for the same PII/PHI-in-
   URL reason every other GraphQL operation avoids it (a `where` argument
   can carry PII).
-- **Filtering**: HotChocolate's `[UseFiltering]` middleware resolves
-  `where` against the event type's `FilterableField`-declared schema
-  shape — see `04-*.md` (formerly `04-odata-filter-pushdown.md`) for the
-  full per-provider pushdown mechanism this drives, unchanged from the
-  OData era underneath.
+- **Filtering**: `where` is a flat list of `EventFilterInput` items
+  (`Field`, plus one of `Eq`/`Neq`/`Gt`/`Gte`/`Lt`/`Lte`/`Contains`, all
+  carried as strings and cast server-side to the field's own declared
+  `FilterableFieldType`) — a static, hand-written GraphQL input type,
+  not HotChocolate's `[UseFiltering]` middleware (which infers a
+  per-CLR-type filter input by reflection; there is no bound CLR type to
+  reflect over here, since this schema is generated dynamically per
+  registered event type). Every item in the list is AND-ed together;
+  there is no `and`/`or` combinator and no nested-object syntax.
+  `GraphQlFilterPredicateBuilder` (`src/EventStore.GraphQL/
+  GraphQlFilterPredicateBuilder.cs`) rejects an undeclared `Field` with a GraphQL
+  error before it ever reaches the database — a deliberate, honestly-
+  flagged narrowing of `ADR-037`'s schema-level guarantee to a runtime
+  check for filtering specifically (still schema-enforced for the
+  subscription field name and payload fields). See `04-*.md` (formerly
+  `04-odata-filter-pushdown.md`) for the full per-provider pushdown
+  mechanism this drives.
 - **`mode`** (`ADR-010`, unchanged semantics): `TAIL` (default — only
   events from connection time forward) or `REPLAY` (replay matching
   history first, then tail with no gap or duplicate), with an optional
@@ -617,12 +648,17 @@ query {
 
 Same semantics as the pre-`ADR-037` REST paths, expressed as GraphQL
 fields on a resolved `event` root instead of four separate `QUERY
-/events/{id}/...` paths: `first`/`after` cursor-style arguments replace
-`$top`/`$skip` (HotChocolate's `[UsePaging]`, the GraphQL-native
-pagination shape, rather than a bespoke offset/limit pair); everything
-else — the `resolved`/`restricted` flag semantics, cycle-safety
-regardless of `ParentValidationMode`, `DataLoader`-batched traversal
-across shards/replicas (`ADR-034`/`ADR-033`) — is unchanged.
+/events/{id}/...` paths: `ancestors`/`descendants`/`parents`/`children`
+each take plain `first`/`skip` integer arguments (`LineageQueries.cs`),
+the exact replacement for the pre-`ADR-037` `$top`/`$skip` — **not**
+HotChocolate's `[UsePaging]` Relay-style `Connection`/`edges`/`node`
+cursor wrapping, and no `after` argument exists. This is a deliberate,
+honestly-flagged narrowing from a full Relay cursor implementation
+(`08-build-plan.md`) — `first`/`skip` are applied inside
+`LineageService` exactly as its pre-existing `top`/`skip` parameters
+were. Everything else — the `resolved`/`restricted` flag semantics,
+cycle-safety regardless of `ParentValidationMode`, `DataLoader`-batched
+traversal across shards/replicas (`ADR-034`/`ADR-033`) — is unchanged.
 
 Two independent reasons a node can be a leaf, each with its own flag —
 either flag makes traversal stop at that node, but they mean different

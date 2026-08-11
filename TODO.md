@@ -309,3 +309,53 @@ here instead of inlining.
   `origin` with Actions enabled: push a branch and confirm the workflow
   actually goes green, especially the provenance-attestation job (the
   one step with no local equivalent at all).
+
+- **A full docs-vs-implementation audit across all 39 completed
+  build-plan items (this pass) found and fixed ~65 stale-doc findings
+  across 44 files** — narrated in full in `docs/changes/2026-08-11.md`.
+  A handful of the findings were CODE-side gaps the docs now correctly
+  describe as open, rather than doc bugs to fix; listed here since they
+  represent real remaining work, not narrative to restate elsewhere:
+  - **`ChainCheckpoint` (`ADR-089`'s archival mechanism) doesn't exist
+    anywhere in `src/`** — not even as a plain class, let alone a
+    registered `DbSet`. `docs/data/dbcontext-and-conventions.md`
+    previously presented it as a live table; now correctly marked "not
+    yet a registered DbSet." Build it when "Event Log/AccessLog Archival
+    Segment Detachment" (item 48) is reached, or drop it from the doc
+    entirely if archival ends up not needing it.
+  - **`IUpcastExpressionEvaluator`'s CEL/JSONata choice is not actually
+    swappable via configuration**, contradicting `ADR-053`'s "no core-
+    engine change" claim — `src/EventStore.Upcasting/
+    UpcastingServiceCollectionExtensions.cs` hardcodes
+    `AddSingleton<IUpcastExpressionEvaluator, CelUpcastExpressionEvaluator>()`;
+    `JsonataUpcastExpressionEvaluator` exists but is registered nowhere
+    outside a test. Docs now say "a code-level DI edit today, not a
+    deployment-time switch" rather than overclaiming. Build a real
+    config-driven registration switch if this ever needs to be genuinely
+    swappable without a rebuild.
+  - **`src/EventStore.SchemaRegistry/RegisterEventTypeRequest.cs`'s own
+    code comment is stale**: it calls the required `AppId` body field
+    "temporary... removed once Auth + Orchestration lands," but both
+    Auth + Orchestration (item 6) and Multi-Tenancy (item 13) have long
+    since shipped and the field is still required, still never resolved
+    from the caller's scope. Update or remove that comment — a small,
+    low-risk fix, just not done this pass since it's source code, not a
+    doc.
+  - **`revealField`'s `ADR-066` step-up-authentication gap did not close
+    when "Digital Sign-Off for Regulated Actions" (item 29) landed** —
+    item 29 only wired RFC 9470 step-up into publish-time
+    `RequiredSignature` enforcement; `src/EventStore.GraphQL/
+    RevealFieldMutation.cs` never gained it, and `docs/data/
+    schema-registry.md`'s `revealOnDemand` shape has no step-up/Acr
+    field at all. Previously implied closed by cross-referencing item
+    29; docs now say explicitly it's still open. Build it if a masked
+    field with `RequiredSignature`-equivalent step-up protection is ever
+    actually needed.
+  - **GraphQL browsing of attachments (`entity(id) { attachments {...} } }`)
+    was documented and Gherkin-tested as if built; it isn't** — no
+    `entity(id)` field or `attachments` field exists anywhere in
+    `src/EventStore.GraphQL/`. This was already indirectly explained by
+    item 19's own text (no generic "get current entity" query field
+    exists), but the re-verification item 16's own note promised, once
+    "GraphQL-Only Query Layer" landed, never actually happened until this
+    pass. Docs now state the gap as confirmed, not deferred.

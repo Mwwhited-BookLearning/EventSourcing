@@ -80,6 +80,7 @@ per kind).
 | Rate limiting (Token Bucket / Sliding Window / Concurrency Limiter) | Bound a caller's request volume or concurrent resource usage, partitioned per tenant so one caller can't starve another | `ADR-058` | Catalog only |
 | Bitemporal modeling (valid time vs. transaction time) | Track two independent time axes — when something was true in reality, vs. when the system learned about it — so "what do we know now" and "what did we show at the time" can both be queried honestly | `ADR-068` | Catalog only |
 | Expand/Contract (Parallel Change) database migration | Add new structures without touching existing ones (Expand), cut over writers/readers to the new shape (Migrate), remove the old shape only once nothing depends on it, much later if ever (Contract) — a rolling deployment's binary rollback then just works, since the database never stops understanding the old code | `ADR-038`, layered on this design's existing "never lose data" posture (`ADR-023`) | Catalog only |
+| Leader Election | Exactly one instance of a singleton background-worker role is ever actively running per site at a time, arbitrated via a database-backed lease rather than an external coordination service — so two fold/upcast-materializer/outbox-pump instances never double-process the same work | `ADR-078` | Catalog only |
 
 ## Standards
 

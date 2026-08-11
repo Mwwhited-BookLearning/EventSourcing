@@ -35,10 +35,13 @@ standing format for any future entry, not just a one-time pass.
 - **`OccurredAt`** *(synonym: valid time, in the formal bitemporal sense — see Bitemporal playback below)* — the client-declared logical occurrence time (valid time), not server receipt time. Load-bearing for fold order. (`ADR-029`)
 - **`PayloadHash`** *(synonym: content hash)* — hash of `{EventType, Payload, sorted parentEventIds}`, used for idempotency matching and as `ChainHash`'s input. (`ADR-011`)
 - **`SchemaStatus`** — `unknown` | `invalid` | `conformant`. Advisory only, never gates `Status` — a structurally-invalid event is still persisted, per `ADR-023`'s persist-everything posture. (`ADR-023`)
+- **`OriginId`** — which site/peer this event originated at, in a multi-site mesh; `null`/local-site-implied for a single-site deployment. **Not related to `TelemetryChannel.Origin`** (raw-source-vs-derived, `ADR-031`) — both use the word "Origin" for unrelated concepts, disambiguated explicitly rather than renamed, since each name is already well-established at its own call site. Also distinct from `ImportedFrom` (`ADR-068`), which answers "where did this event actually originate outside this deployment entirely," a different question from "which peer/site inside *this* deployment's own mesh." (`ADR-033`, propagated to `docs/data/event-log.md` by `ADR-090`)
+- **`LogicalClock`** *(synonym: hybrid logical clock, HLC)* — a hybrid logical clock value assigned at the origin site, carried alongside `OriginId` for cross-site ordering independent of any single site's wall clock. (`ADR-033`, propagated to `docs/data/event-log.md` by `ADR-090`)
 - **`SequenceNumber`** *(synonym: log offset, arrival order; transaction time, in the formal bitemporal sense)* — global monotonic order, an identity column. **Arrival** order at this store, not logical order — see `OccurredAt`. (`ADR-011`)
 - **`Signature`** — `{SignerId, SignedAt, Meaning, Acr}`, set only when `EventTypeDefinition.RequiredSignature` is configured. Satisfies 21 CFR Part 11 §11.50's linked signature-meaning elements. (`ADR-066`)
 - **`Status`** — `received` | `processing` | `applied` | `rejected`. Transport-level only — describes whether the publish request itself succeeded, never a business-rule judgment. (`ADR-023`)
-- **`TelemetryPointer`** *(synonym: stream pointer, media fragment reference)* — `{ChannelId, FromTimestamp, ToTimestamp?}`, linking an ordinary domain event to a position/window in a streaming channel it was derived from or annotates. Distinct from `parentEventIds` (causal derivation between *events*) and `MaterializationOfEventId` (a re-shaped copy). (`ADR-031`)
+- **`TelemetryPointer`** *(synonym: stream pointer, media fragment reference)* — a `List<TelemetryPointerEntry>`, each entry `{ChannelId, ThreadId?, FromTimestamp, ToTimestamp?}`, linking an ordinary domain event to a position/window in one or more streaming channels it was derived from or annotates. Generalized from a single object to a list (`ADR-081`, revising `ADR-031`) so a detection triggered by a correlated pattern across multiple channels at once (e.g. a seizure signature visible across several simultaneous EEG channels) can name every contributing channel's window in one event — an ordinary single-channel detection is simply a one-entry list, not a different shape. Distinct from `parentEventIds` (causal derivation between *events*) and `MaterializationOfEventId` (a re-shaped copy). (`ADR-031`/`ADR-081`)
+- **`ThreadId`** — an optional string on `TelemetryChannel` (and denormalized onto each `TelemetryPointerEntry`) grouping multiple simultaneous channels registered together as one logical session/recording (e.g. a 32-electrode EEG montage's 32 simultaneous `ChannelId`s). Has no meaning of its own beyond grouping — not itself an `EntityId`, a channel, or a stream. Named `ThreadId` specifically, not `StreamId` — `ADR-021` already retired `StreamId` when entities became first-class, and reusing it here would silently resurrect the exact ambiguity that retirement was meant to prevent. (`ADR-081`)
 
 ## Entity / read path
 
@@ -56,7 +59,11 @@ standing format for any future entry, not just a one-time pass.
 - **Upcasting / `upcastFromPrevious`** *(synonym: schema migration, event migration)* — a per-version expression list that reshapes an old-shaped payload forward so every consumer sees the current shape. Materialized to the log once computed (`UpcastMaterialization`), not recomputed on every read. (`ADR-018`/`ADR-027`)
 - **Downcasting / `downcastToPrevious`** *(synonym: schema downgrade, backward transformation)* — the reverse direction, applied read-time only, for a consumer explicitly requesting an older shape. Never persisted — unbounded, so not worth materializing. (`ADR-028`)
 - **`IUpcastExpressionEvaluator`** — the pluggable seam behind the upcast engine; CEL is the default. (`ADR-053`)
-- **`EventUpcastFailed`** — a reserved, platform-owned event type (never registered by an operator) recorded in place of an event that failed publish-time upcast validation. (`ADR-020`)
+- **`EventUpcastFailed`** — a reserved, platform-owned event type (never registered by an operator) originally recorded in place of an event that failed publish-time upcast validation. **Now retired** — "Entity-Centric Core Rebuild" removed the publish-time *blocking* upcast validation pass this event type existed to dead-letter; nothing constructs one anymore (confirmed by e.g. `EventStore.Webhooks`' own `WebhookDeliveryFailedEventType` code comment, which calls it "now-retired"). Kept here, marked retired rather than deleted, since it's still cited by name in several ADRs' own history. (`ADR-020`)
+- **Tolerant Reader** *(synonym: Postel's Law — "be conservative in what you send, liberal in what you accept," the general network-protocol design principle this pattern specializes)* — ignore unrecognized wire-format fields rather than rejecting them; reconcile an old-shaped payload on read via the upcast chain, never by rewriting history. This design practiced it from the start (`ADR-022`'s `Extensions` bag, `ADR-023`'s persist-everything posture) before `ADR-038` named the deployment-level discipline explicitly. (`ADR-038`)
+- **Expand/Contract** *(synonym: Parallel Change — Martin Fowler's name for the same technique)* — a database migration discipline: **Expand** (add new nullable columns/tables, never alter or drop existing ones), **Migrate** (new code writes to new structures; old code keeps working unaffected), **Contract** (remove old structures only once certain no rollback depends on them — optional, and per this design's "never lose data" principle, may simply never happen for some structures). Makes a rolled-back server binary just work, since the database never stops understanding the old code. (`ADR-038`)
+- **N-1/N+1 compatibility window** — the minimum guarantee that any server version correctly processes events tagged with the immediately-previous *and* immediately-next schema version — cutover is never atomic. Concretely: never delete an upcaster (`ADR-018`) or a schema version's definition the moment a new version ships; deprecate and keep it functioning for at least one full deployment/rollback cycle. (`ADR-038`)
+- **Capability negotiation** — a lightweight handshake where a client declares its supported schema version(s)/feature flags at connection start, paired with self-describing payloads (every event/entity already carries `SchemaVersion`) so a client can always introspect what it actually received without a forced renegotiation mid-capture. (`ADR-038`)
 
 ## Multi-tenancy & distribution
 
@@ -107,16 +114,9 @@ standing format for any future entry, not just a one-time pass.
 - **Outbox (client-local)** *(synonym: offline queue, write-behind queue)* — the durable, Background-Sync-flushed local queue an offline-capable MVVM client uses to hold not-yet-sent publishes; pluggable flush triggers (opportunistic, scheduled, manual/air-gapped). (`ADR-039`/`ADR-069`)
 - **SBOM / SOUP** — Software Bill of Materials (machine-readable dependency manifest, `microsoft/sbom-tool`) and Software of Unknown Provenance (IEC 62304's term for exactly the same catalog, once this design is used in a medical-device context). (`ADR-074`)
 
-## A note on terms still under discussion
-
-Not every term discussed while designing Duplex has been decided yet. As
-of this writing, a **recording-level grouping above `ChannelId`**
-(a multi-channel recording session, e.g. a 32-electrode EEG montage) —
-proposed name `ThreadId`, deliberately not `StreamId`, since `StreamId`
-was already used and retired by `ADR-021` ("this subsumes `StreamId`;
-it was already trying to be this") — and whether a detected event's
-`TelemetryPointer` should generalize to a list (for a detection
-triggered by a correlated pattern across multiple channels) are both
-real, active design questions — not yet an ADR, not yet in this glossary
-as settled terms. Check `docs/10-open-questions.md` and `ADR-031` before
-assuming either exists.
+This glossary previously carried a "terms still under discussion" note
+here for `ThreadId` and whether `TelemetryPointer` should generalize to a
+list — both resolved by `ADR-081` (Accepted, revises `ADR-031`) and now
+settled, defined terms above; removed rather than left as a stale
+"not yet decided" pointer. Check `docs/10-open-questions.md` for whatever
+is currently unresolved.

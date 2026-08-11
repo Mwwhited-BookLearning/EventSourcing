@@ -37,7 +37,7 @@ IMaskingStrategy <|.. Future
 
 class PayloadMasker {
   - strategies : keyed by name
-  + Mask(schema, payload, hasClaim): JsonNode
+  + MaskAsync(schema, payload, entityId, hasClaim, ct): Task<JsonNode?>
 }
 PayloadMasker --> IMaskingStrategy : resolves by\nleaf's "strategy" name,\nnever branches itself
 

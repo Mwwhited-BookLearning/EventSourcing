@@ -34,10 +34,26 @@ Decision:
   building a parallel one.
 - **The existing `EntityId` convention applies unchanged** —
   `{appId}:{entityType}:{uniqueId}` (`ADR-021`), e.g.
-  `{appId}:schema:{eventType}:{version}` or `{appId}:role:{roleId}` —
+  `{appId}:schema:{eventType}:{version}` or ~~`{appId}:role:{roleId}`~~ —
   control-plane data is already `AppId`-scoped (`EventTypeDefinition`,
   `AppTrustRoot`, RBAC roles all are), so no new identity scheme is
   needed to fit it into the existing model.
+  **Corrected, later pass**: `{appId}:role:{roleId}` turned out not to
+  fit `RoleGranted`/`PermissionGranted` once actually built (`docs/08-
+  build-plan.md` item 30, "Control-Plane Actions as Reserved Events") —
+  that shape assumes one mutable record per role, but a role/permission
+  can be granted to many actors independently, and the generic
+  `EntityStoreRow` patch-merge fold can only ever mean "replace field X,"
+  never "add/remove one item from a set," so multiple actors' grants of
+  the same role would silently overwrite each other under that key. The
+  real implementation ([`RoleGrantedEventType.cs`](../../src/EventStore.Rbac/RoleGrantedEventType.cs),
+  [`PermissionGrantedEventType.cs`](../../src/EventStore.Rbac/PermissionGrantedEventType.cs))
+  uses a synthetic composite key instead, computed by the publishing
+  endpoint (not resolved from a single JSON pointer): `actorId:roleName`
+  for `RoleGranted`/`RoleRevoked`, `actorId:permission` for
+  `PermissionGranted`. `AppTrustRootRegistered` is unaffected and fits
+  the literal `{appId}:...` example directly (one record per
+  `(AppId, IssuerDid)`).
 - **The CRUD-shaped tables this design already has (`EventTypeDefinition`,
   `AppTrustRoot`, RBAC's `Role`/`UserPermission`) become current-state
   read models, folded from these events — the same relationship

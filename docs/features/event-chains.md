@@ -63,7 +63,7 @@ autonumber
 actor "Consuming System" as client
 participant "GraphQL Gateway\n(Lineage query fields, ADR-037)" as endpoint
 participant "Auth\n(JWT Bearer + scope + RequiredClaims)" as auth
-participant "EventParentReader\n(LINQ join)" as directReader
+participant "LineageService\n(GetParentsAsync/GetChildrenAsync,\nLINQ join -- no separate reader class exists)" as directReader
 participant "IEventLineageQueryProvider\n(impl per provider)" as recursiveReader
 participant "CycleGuard" as guard
 database "Event & Schema Store" as db

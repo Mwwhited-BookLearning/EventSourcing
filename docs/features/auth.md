@@ -30,6 +30,11 @@ browser story below is `fetch()`, not `EventSource` — and why there's no
 `UserPermission` entities are defined in `../data/schema-registry.md`
 (`ADR-046`, folded from reserved control-plane events per `ADR-067`) —
 out of scope here beyond the columns the new diagram below touches.
+**`Role`/`UserPermission` are `EventStore.DevIdp`-owned tables, never a
+core-engine `EntityStoreRow` fold** — see that doc's own "Corrected here"
+note; the diagrams below reflect the real, cross-process shape
+(`EventStore.Rbac`'s Host-side write path + `EventStore.DevIdp`'s own
+`RbacProjectionWorker`), not an in-process `EntityStoreRow` fold.
 
 ## Sequence diagram — token acquisition and an authorized call
 
@@ -86,15 +91,15 @@ autonumber
 actor "External user\n(via federated corporate IdP)" as user
 participant "Federated IdP\n(any OIDC issuer registered as\na TrustedFederationIssuer)" as fedIdp
 participant "EventStore.DevIdp\n(Token Exchange endpoint, ADR-047)" as idp
-participant "Role / UserPermission\n(core-engine entities, folded from\nRoleGranted/RoleRevoked/PermissionGranted -- ADR-067)" as rbac
+participant "Role / UserPermission\n(EventStore.DevIdp-owned tables, folded from\nRoleGranted/RoleRevoked/PermissionGranted via\nRbacProjectionWorker's own cross-process Follow --\nNEVER a core-engine EntityStoreRow fold, ADR-067)" as rbac
 participant "API" as api
 
 user -> fedIdp: authenticate (out of band)
 fedIdp --> user: externally-issued access token\n(sub, email, ... -- authoritative for identity)
-user -> idp: POST /oauth/token\ngrant_type=urn:ietf:params:oauth:grant-type:token-exchange (RFC 8693)\nsubject_token=<externally-issued token>
+user -> idp: POST /connect/token\ngrant_type=urn:ietf:params:oauth:grant-type:token-exchange (RFC 8693)\nsubject_token=<externally-issued token>
 idp -> idp: verify subject_token against the registered\nTrustedFederationIssuer's JWKS (ADR-047)
 idp -> idp: resolve (Issuer, Sub) -> ActorId\n(FederatedIdentityMapping, JIT-provisioned on first sight)
-idp -> rbac: look up ActorId's assigned Role(s)\nand any direct UserPermission grants, for this AppId
+idp -> rbac: look up ActorId's assigned Role(s)\nand any direct UserPermission grants, for this AppId\n(RoleService's own already-idempotent read, in-process\nwithin DevIdp -- these tables are DevIdp-local, not a\nsecond network hop)
 rbac --> idp: flattened union of permissions\n(ADR-046 -- additive-only, no explicit-deny concept exists)
 idp --> user: 200 { access_token (JWT) }\n-- external identity claims (sub/email) pass through unchanged;\nlocal role/direct permissions are ADDED, never replacing them
 user -> api: request\nAuthorization: Bearer <access_token>
@@ -191,14 +196,26 @@ own restarts, let alone shared with the event store's database (`ADR-006`).
 SPIFFE/SPIRE (`ADR-048`) adds no persisted entity here either — SVIDs are
 short-lived and reissued by SPIRE, never stored in `EventStoreContext`.
 
-What *has* changed: `ADR-046`'s RBAC layer. `Role` and `UserPermission`
-are now core-engine entities, not identity-provider state — folded from
-reserved `RoleGranted`/`RoleRevoked`/`PermissionGranted` events in the
-same Event Log every business event uses (`ADR-067`, which superseded
-`ADR-046`'s original position that this was IdP-only state). Shown here
-only as far as the diagram above touches them; the full shape (including
-the reserved event payloads themselves) is `../data/schema-registry.md`'s
-to define.
+What *has* changed: `ADR-046`'s RBAC layer, but not in the direction an
+earlier version of this doc claimed. `Role` and `UserPermission` remain
+`EventStore.DevIdp`-owned tables (identity-provider state, `ADR-046`'s
+original position) — **never core-engine `EntityStoreRow`-folded
+entities**. What `ADR-067` actually added is that the role-*assignment*/
+direct-*grant* halves are now folded from reserved
+`RoleGranted`/`RoleRevoked`/`PermissionGranted` events published into the
+same core-engine Event Log every business event uses, via a genuinely
+cross-process path: a Host-side, scope-gated Minimal API
+(`EventStore.Rbac`'s `RbacEndpoints.cs`) publishes the reserved event, and
+`EventStore.DevIdp`'s own `RbacProjectionWorker` (a `BackgroundService`)
+follows it back via the core engine's Follow API, folding into these SAME
+DevIdp-local tables via `RoleService`'s own already-idempotent
+`AssignRoleAsync`/`RevokeRoleAsync`/`GrantDirectPermissionAsync`. There is
+no core-engine `EntityStoreRow` involved anywhere in this fold — see
+`../data/schema-registry.md`'s own "Corrected here" note on this exact
+point, and `src/EventStore.DevIdp/RbacProjectionWorker.cs` for the fold
+itself. Shown here only as far as the diagram above touches them; the
+full shape (including the reserved event payloads themselves) is
+`../data/schema-registry.md`'s to define.
 
 ```plantuml
 @startuml Auth_Rbac_ER
@@ -234,10 +251,11 @@ and `AppTrustRoot` registration instead.
 @startuml Auth_RbacTrustRootReservedEvents_Sequence
 autonumber
 actor "Platform/App operator" as operator
-participant "API\n(role/permission/trust-root admin endpoint)" as api
+participant "API\n(EventStore.Rbac's RbacEndpoints.cs,\nHost-side, role/permission/trust-root admin)" as api
 participant "Auth\n(JWT Bearer + scope policy)" as auth
-database "Event Log" as eventLog
-participant "Role / UserPermission / AppTrustRoot\n(folded read models, ADR-067)" as rbac
+database "Event Log\n(core engine)" as eventLog
+participant "EventStore.DevIdp's\nRbacProjectionWorker\n(BackgroundService, follows the\nEvent Log cross-process)" as worker
+participant "Role / UserPermission / AppTrustRoot\n(DevIdp-LOCAL tables, never a\ncore-engine EntityStoreRow, ADR-067)" as rbac
 
 operator -> api: grant/revoke a role, grant a direct permission,\nor register an AppTrustRoot
 api -> auth: validate token + registry:admin (RBAC grants) or\nregistry:trust-admin (AppTrustRoot, ADR-044 -- a\ndeliberately separate scope, not implied by registry:admin)
@@ -245,37 +263,62 @@ alt missing/invalid token or scope
   auth --> operator: 401 / 403
 else authorized
   api -> eventLog: append reserved "RoleGranted" / "RoleRevoked" /\n"PermissionGranted" (ADR-046) or\n"AppTrustRootRegistered" (ADR-044) event\n-- ActorId = operator's verified identity (ADR-064);\nsame StoredEvent shape, same hash chain (ADR-019/067)
-  eventLog -> rbac: fold applies the new event\n(same relationship EntityStoreRow already\nhas to business events, ADR-021)
   api --> operator: 201 (or 200 for a revoke)
+  eventLog ->> worker: TailAsync (core engine's own Follow API) --\nasynchronous, cross-process, not part of the\nrequest above at all
+  worker -> rbac: fold via RoleService/TrustRootService's own\nalready-idempotent methods, entirely inside\nEventStore.DevIdp -- no EntityStoreRow anywhere\nin this path
 end
-note over eventLog, rbac
+note over eventLog, worker, rbac
   None of these four event types is ever registered via
   PUT /registry/{event-type} -- reserved the same way
   ADR-020's EventUpcastFailed already is (ADR-067). Each
   is traceable through the ordinary Lineage API and
   linkable via parentEventIds (ADR-005) wherever a genuine
-  causal relationship to a business event exists.
+  causal relationship to a business event exists. The fold
+  into Role/UserPermission/AppTrustRoot happens one process
+  over, inside EventStore.DevIdp -- confirmed against
+  RbacProjectionWorker.cs -- not synchronously in this
+  request, and not via the core engine's generic
+  EntityStoreRow fold mechanism.
 end note
 @enduml
 ```
 
 A role/permission grant or an `AppTrustRoot` registration is therefore
 never a plain CRUD write against `Role`/`UserPermission`/`AppTrustRoot` —
-each first lands as its own reserved event in the same Event Log every
-business event uses, and the CRUD-shaped table is only ever the *folded
-result*, never written to directly (`ADR-067`).
+each first lands as its own reserved event in the same core-engine Event
+Log every business event uses, and the DevIdp-local table is only ever
+the *folded result*, applied one process over by `RbacProjectionWorker`,
+never written to directly and never a core-engine `EntityStoreRow`
+(`ADR-067`).
 
 ## Seeded clients (dev)
 
-Seeded in code by `EventStore.DevIdp`'s `DevIdpSeeder` at startup — no
-realm-export file, no admin console:
+Seeded in code by `EventStore.DevIdp`'s `DevIdpSeeder.SeedAsync` at
+startup — no realm-export file, no admin console. Now 11 clients (one
+per build-plan item that needed a new caller identity, each named in
+`DevIdpSeeder.cs`'s own comments), not the original 4 — every client also
+gets its own generated DPoP key pair (`ADR-017`), and two are additionally
+granted the Token Exchange grant type (`TokenExchangeClients`, `ADR-040`/
+`ADR-043`):
 
-| Client ID | Grant type | Scope(s) |
-|---|---|---|
-| `publisher-client` | `client_credentials` | `events:publish` |
-| `follower-client` | `client_credentials` | `events:follow events:lineage:read` |
-| `operator-client` | `client_credentials` | `registry:admin` |
-| `projections-client` | `client_credentials` | `events:follow` |
+| Client ID | Grant type(s) | Scope(s) | Extra claims |
+|---|---|---|---|
+| `publisher-client` | `client_credentials` | `events:publish` | — |
+| `follower-client` | `client_credentials` | `events:follow`, `events:lineage:read` | `pii:view` (`revealField`, "GraphQL-Only Query Layer") |
+| `operator-client` | `client_credentials` | `registry:admin`, `registry:trust-admin` | — |
+| `projections-client` | `client_credentials` | `events:follow` | — ("CQRS Read-Model Projections" — ProjectionHost is a Follow caller like any other) |
+| `tenant-a-operator-client` | `client_credentials` | `registry:admin:tenant-a` | — ("Multi-Tenancy" — scoped to exactly one `AppId`) |
+| `telemetry-client` | `client_credentials` | `telemetry:ingest`, `telemetry:read` | — ("Streaming Channels" — producer + detector in one caller) |
+| `attachments-client` | `client_credentials` | `attachments:ingest`, `attachments:read` | — ("Binary Attachments") |
+| `peer-sync-client` | `client_credentials` | `peer:sync`, `events:publish`, `registry:admin` | — ("Sharding & Replication" — shared by every site in this dev/POC environment) |
+| `clinician-spa-client` | `client_credentials` + Token Exchange | `telemetry:read`, `attachments:read` | `clearance:phi` ("Delegated Grants" — the granter role; also "Ticket Exchange"'s header-capable caller) |
+| `colleague-client` | `client_credentials` + Token Exchange | *(none)* | — ("Delegated Grants" — the grantee; holds nothing of its own, everything comes from what `clinician-spa-client` delegates) |
+| `devidp-rbac-follower-client` | `client_credentials` | `events:follow` | — (`RbacProjectionWorker`'s own identity when tailing `RoleGranted`/`RoleRevoked`/`PermissionGranted`/`AppTrustRootRegistered`) |
+
+That's 11 distinct scopes across the 11 clients (`colleague-client` holds
+none directly), each named for the build-plan item that introduced the
+need for a new caller identity — see `DevIdpSeeder.cs`'s own header
+comment and per-entry comments for the full reasoning behind each.
 
 ## Salt (UI mockup)
 
@@ -463,7 +506,7 @@ Feature: OAuth2/OIDC bearer-token authentication and scope-based authorization
     And that ActorId is directly granted permission "events:publish" for app "demo"
     When "sub-42" exchanges its externally-issued token via
       """
-      POST /oauth/token
+      POST /connect/token
       grant_type=urn:ietf:params:oauth:grant-type:token-exchange
       subject_token=<externally-issued token>
       """
