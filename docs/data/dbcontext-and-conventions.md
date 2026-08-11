@@ -220,12 +220,14 @@ throwaway dev-mode-IdP EF Core InMemory store, deliberately never part of
 the durable event log. See `schema-registry.md`'s own sections on these
 entities for that ownership split.
 
-`ADR-089`'s archival `ChainCheckpoint` (`{SequenceNumberRangeStart,
+`ADR-089`'s archival `ChainCheckpoint` (`{Id, SequenceNumberRangeStart,
 SequenceNumberRangeEnd, ChainHashAtRangeEnd, ContentProviderKey,
-ContentProviderRef}`, documented in `event-log.md`) is not yet a registered
-`DbSet`/migrated table on `EventStoreContext` — check `08-build-plan.md`'s
-Implementation status table before assuming the archival mechanism it
-describes is live.
+ContentProviderRef}`, documented in `event-log.md`) is registered TWICE
+on `EventStoreContext`, via EF Core's "shared-type entity" feature — one
+CLR type, two genuinely distinct tables/`DbSet`s
+(`EventLogChainCheckpoints`/`AccessLogChainCheckpoints`), so the Event
+Log's own checkpoints and `AccessLog`'s own checkpoints can never
+collide (build-plan item 48).
 
 ## Portability rules (apply to all providers)
 
