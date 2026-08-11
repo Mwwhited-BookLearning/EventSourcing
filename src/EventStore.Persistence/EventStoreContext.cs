@@ -40,6 +40,7 @@ public class EventStoreContext(DbContextOptions<EventStoreContext> options, IJso
     public DbSet<Attachment> Attachments => Set<Attachment>();
     public DbSet<AttachmentRef> AttachmentRefs => Set<AttachmentRef>();
     public DbSet<PeerSyncCursor> PeerSyncCursors => Set<PeerSyncCursor>();
+    public DbSet<AppResidencyPolicy> AppResidencyPolicies => Set<AppResidencyPolicy>(); // ADR-061
     public DbSet<ViewDefinition> ViewDefinitions => Set<ViewDefinition>();
     public DbSet<AccessLogEntry> AccessLogEntries => Set<AccessLogEntry>();
     public DbSet<EntityErasureKey> EntityErasureKeys => Set<EntityErasureKey>();
@@ -196,6 +197,15 @@ public class EventStoreContext(DbContextOptions<EventStoreContext> options, IJso
         modelBuilder.Entity<PeerSyncCursor>(e =>
         {
             e.HasKey(x => x.PeerId);
+        });
+
+        modelBuilder.Entity<AppResidencyPolicy>(e =>
+        {
+            e.HasKey(x => x.AppId); // ADR-061
+
+            e.Property(x => x.AllowedRegions)
+                .HasConversion(JsonValueConverter.For<List<string>>())
+                .Metadata.SetValueComparer(JsonValueConverter.ListComparer<List<string>>());
         });
 
         modelBuilder.Entity<ViewDefinition>(e =>

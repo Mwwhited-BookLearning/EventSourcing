@@ -16,30 +16,36 @@ public class PeerAddressBook
 {
     // Keyed by Address until a PeerId is learned for it (Address as its
     // own temporary key), then re-keyed by the real PeerId once known.
-    private readonly ConcurrentDictionary<string, string?> _peerIdByAddress = new();
+    // Region (ADR-061) travels alongside PeerId -- learned the same two
+    // ways: directly via this site's own /peer-sync/whoami call to that
+    // address, or transitively via another peer's own KnownPeers gossip.
+    private readonly ConcurrentDictionary<string, (string? PeerId, string? Region)> _peerByAddress = new();
 
     public PeerAddressBook(IOptions<PeerSyncOptions> options)
     {
         foreach (var address in options.Value.SeedPeers)
-            _peerIdByAddress.TryAdd(address, null);
+            _peerByAddress.TryAdd(address, (null, null));
     }
 
-    public IReadOnlyCollection<string> KnownAddresses => _peerIdByAddress.Keys.ToList();
+    public IReadOnlyCollection<string> KnownAddresses => _peerByAddress.Keys.ToList();
 
-    public string? PeerIdFor(string address) => _peerIdByAddress.GetValueOrDefault(address);
+    public string? PeerIdFor(string address) => _peerByAddress.GetValueOrDefault(address).PeerId;
 
-    public void SetPeerId(string address, string peerId) => _peerIdByAddress[address] = peerId;
+    public string? RegionFor(string address) => _peerByAddress.GetValueOrDefault(address).Region;
+
+    public void SetPeerIdAndRegion(string address, string peerId, string? region) => _peerByAddress[address] = (peerId, region);
 
     public IReadOnlyList<KnownPeer> KnownPeers() =>
-        _peerIdByAddress.Where(kv => kv.Value is not null).Select(kv => new KnownPeer(kv.Value!, kv.Key)).ToList();
+        _peerByAddress.Where(kv => kv.Value.PeerId is not null)
+            .Select(kv => new KnownPeer(kv.Value.PeerId!, kv.Key, kv.Value.Region)).ToList();
 
     // Merges another site's own KnownPeers response -- new addresses are
-    // added (PeerId unresolved until actually contacted); an address
-    // already known keeps whatever PeerId this site has already resolved
+    // added (PeerId/Region unresolved until actually contacted); an
+    // address already known keeps whatever this site has already resolved
     // for it, never overwritten by a peer's possibly-stale claim.
     public void Merge(IEnumerable<KnownPeer> knownPeers)
     {
         foreach (var peer in knownPeers)
-            _peerIdByAddress.TryAdd(peer.Address, peer.PeerId);
+            _peerByAddress.TryAdd(peer.Address, (peer.PeerId, peer.Region));
     }
 }

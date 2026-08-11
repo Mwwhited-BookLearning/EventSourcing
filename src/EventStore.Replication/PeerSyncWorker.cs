@@ -64,7 +64,8 @@ public class PeerSyncWorker(
                     var client = scope.ServiceProvider.GetRequiredService<PeerSyncClient>();
                     var originIdOptions = scope.ServiceProvider.GetRequiredService<IOptions<OriginIdOptions>>();
                     var syncOptions = scope.ServiceProvider.GetRequiredService<IOptions<PeerSyncOptions>>();
-                    await RunOnceAsync(db, client, addressBook, originIdOptions.Value.OriginId, syncOptions.Value.BatchSize, stoppingToken);
+                    var residencyPolicies = scope.ServiceProvider.GetRequiredService<AppResidencyPolicyService>();
+                    await RunOnceAsync(db, client, addressBook, originIdOptions.Value.OriginId, syncOptions.Value.BatchSize, residencyPolicies, logger, stoppingToken);
                 }
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
@@ -81,13 +82,20 @@ public class PeerSyncWorker(
     }
 
     public static async Task RunOnceAsync(
-        EventStoreContext db, PeerSyncClient client, PeerAddressBook addressBook, string selfOriginId, int batchSize, CancellationToken ct = default)
+        EventStoreContext db, PeerSyncClient client, PeerAddressBook addressBook, string selfOriginId, int batchSize,
+        AppResidencyPolicyService? residencyPolicies = null, ILogger? logger = null, CancellationToken ct = default)
     {
+        // ADR-061 -- loaded once per tick, not once per peer: a small,
+        // AppId-keyed table, no reason to re-query it once per address.
+        var policies = residencyPolicies is null
+            ? new Dictionary<string, List<string>>()
+            : await residencyPolicies.GetAllPoliciesAsync(ct);
+
         foreach (var address in addressBook.KnownAddresses)
         {
             try
             {
-                await SyncOnceWithAsync(db, client, addressBook, address, selfOriginId, batchSize, ct);
+                await SyncOnceWithAsync(db, client, addressBook, address, selfOriginId, batchSize, policies, ct);
             }
             catch (Exception)
             {
@@ -97,16 +105,44 @@ public class PeerSyncWorker(
                 // posture this ADR names.
             }
         }
+
+        if (logger is not null)
+            WarnIfResidencyUnderReplicated(addressBook, policies, logger);
+    }
+
+    // ADR-061's own honest, named tension with ADR-033's 2-replica
+    // minimum: a region configured with only one live site is surfaced as
+    // an operational signal (a log line here; a real deployment would wire
+    // this to a metric), never a hard failure or a blocked write --
+    // residency still wins, the deployment carries the responsibility to
+    // ensure enough live sites exist per region a tenant might restrict to.
+    private static void WarnIfResidencyUnderReplicated(
+        PeerAddressBook addressBook, IReadOnlyDictionary<string, List<string>> residencyPolicies, ILogger logger)
+    {
+        var knownRegions = addressBook.KnownAddresses.Select(addressBook.RegionFor).Where(r => r is not null).ToList();
+        foreach (var (appId, allowedRegions) in residencyPolicies)
+        {
+            if (allowedRegions.Count == 0)
+                continue;
+
+            var liveSitesInAllowedRegions = knownRegions.Count(r => allowedRegions.Contains(r!));
+            if (liveSitesInAllowedRegions < 2)
+                logger.LogWarning(
+                    "AppId {AppId}'s residency constraint {AllowedRegions} is satisfied by only {LiveSites} known live site(s) -- ADR-033's 2-replica minimum cannot be met without knowingly accepting single-site risk for this tenant",
+                    appId, allowedRegions, liveSitesInAllowedRegions);
+        }
     }
 
     private static async Task SyncOnceWithAsync(
-        EventStoreContext db, PeerSyncClient client, PeerAddressBook addressBook, string address, string selfOriginId, int batchSize, CancellationToken ct)
+        EventStoreContext db, PeerSyncClient client, PeerAddressBook addressBook, string address, string selfOriginId, int batchSize,
+        IReadOnlyDictionary<string, List<string>> residencyPolicies, CancellationToken ct)
     {
         var peerId = addressBook.PeerIdFor(address);
         if (peerId is null)
         {
-            peerId = await client.WhoAmIAsync(address, ct);
-            addressBook.SetPeerId(address, peerId);
+            var (whoAmIPeerId, region) = await client.WhoAmIAsync(address, ct);
+            peerId = whoAmIPeerId;
+            addressBook.SetPeerIdAndRegion(address, peerId, region);
         }
 
         if (peerId == selfOriginId)
@@ -116,12 +152,28 @@ public class PeerSyncWorker(
         var isNewCursor = cursor is null;
         cursor ??= new PeerSyncCursor { PeerId = peerId };
 
-        var pending = await db.Events
+        var candidates = await db.Events
             .AsNoTracking()
             .Where(e => e.SequenceNumber > cursor.LastAckedSequenceNumber)
             .OrderBy(e => e.SequenceNumber)
             .Take(batchSize)
             .ToListAsync(ct);
+
+        // ADR-061 -- enforced HERE, at the peer-sync outbox, per-EVENT, not
+        // wholesale per-peer: an unconstrained AppId's events (no row in
+        // residencyPolicies, or an empty AllowedRegions) are unaffected; a
+        // constrained AppId's event is included only if this peer's own
+        // tagged Region (learned via whoami/gossip) is in that list. A
+        // peer with NO known region can never receive a constrained AppId's
+        // events at all -- the conservative default this ADR's own
+        // "residency wins" priority implies for an unconfirmed destination.
+        // Skipped events still count toward the cursor advancing below --
+        // they are permanently excluded from THIS peer, never retried.
+        var peerRegion = addressBook.RegionFor(address);
+        var pending = candidates.Where(e =>
+            !residencyPolicies.TryGetValue(e.AppId, out var allowedRegions) || allowedRegions.Count == 0
+                || (peerRegion is not null && allowedRegions.Contains(peerRegion)))
+            .ToList();
 
         cursor.LastSyncAttemptAt = DateTimeOffset.UtcNow;
 
@@ -131,8 +183,12 @@ public class PeerSyncWorker(
 
         addressBook.Merge(response.KnownPeers);
 
-        if (pending.Count > 0)
-            cursor.LastAckedSequenceNumber = pending[^1].SequenceNumber;
+        // Advances past the full CANDIDATE window, not just what was
+        // actually sent -- a residency-skipped event is permanently
+        // excluded from this specific peer, never retried on a later tick
+        // (ADR-061).
+        if (candidates.Count > 0)
+            cursor.LastAckedSequenceNumber = candidates[^1].SequenceNumber;
         cursor.LastSyncSuccessAt = DateTimeOffset.UtcNow;
 
         if (isNewCursor)

@@ -137,8 +137,8 @@ public class ReplicationHttpSqliteTests
         var peerSyncClientOptions = Options.Create(new PeerSyncClientOptions { ClientId = "peer-sync-client", ClientSecret = "peer-sync-client-secret" });
         var peerSyncClient = new PeerSyncClient(httpClientFactory, peerSyncClientOptions);
 
-        var whoAmI = await peerSyncClient.WhoAmIAsync("", CancellationToken.None);
-        Assert.AreEqual("site-b", whoAmI);
+        var (whoAmIPeerId, _) = await peerSyncClient.WhoAmIAsync("", CancellationToken.None);
+        Assert.AreEqual("site-b", whoAmIPeerId);
 
         var optionsA = new DbContextOptionsBuilder<EventStoreContext>().UseSqlite($"Data Source={_dbPathA}", x => x.MigrationsAssembly("EventStore.Persistence.Migrations.Sqlite")).Options;
         await using var dbA = new EventStoreContext(optionsA, new SqliteJsonPathTranslator());

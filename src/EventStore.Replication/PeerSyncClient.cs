@@ -18,7 +18,7 @@ public class PeerSyncClient(IHttpClientFactory httpClientFactory, IOptions<PeerS
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
     private readonly DpopKeyPair _keyPair = DpopKeyPair.Generate();
 
-    public async Task<string> WhoAmIAsync(string address, CancellationToken ct)
+    public async Task<(string PeerId, string? Region)> WhoAmIAsync(string address, CancellationToken ct)
     {
         var client = httpClientFactory.CreateClient("PeerSync");
         var token = await GetAccessTokenAsync(ct);
@@ -29,7 +29,7 @@ public class PeerSyncClient(IHttpClientFactory httpClientFactory, IOptions<PeerS
         using var response = await client.SendAsync(request, ct);
         response.EnsureSuccessStatusCode();
         var body = JsonNode.Parse(await response.Content.ReadAsStringAsync(ct))!;
-        return body["originId"]!.GetValue<string>();
+        return (body["originId"]!.GetValue<string>(), body["region"]?.GetValue<string>());
     }
 
     public async Task<PeerSyncPushResponse> PushAsync(string address, PeerSyncPushRequest request, CancellationToken ct)

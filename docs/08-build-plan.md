@@ -93,7 +93,7 @@ provider they apply to — not "code written."
 | 32 | [Leader Election via Database-Backed Lease](#leader-election-via-database-backed-lease) | Entity-Centric Core Rebuild, Sharding & Replication | Done |
 | 33 | [Per-Tenant Rate Limiting](#per-tenant-rate-limiting) | Auth + Orchestration, SPIFFE/SPIRE Service Identity & API Gateway | Done |
 | 34 | [Outbound Webhooks](#outbound-webhooks) | Publish API, Auth + Orchestration, Property-Level Masking, Leader Election | Done |
-| 35 | [Data Residency (Region Pinning)](#data-residency-region-pinning) | Sharding & Replication, Multi-Tenancy | Not started |
+| 35 | [Data Residency (Region Pinning)](#data-residency-region-pinning) | Sharding & Replication, Multi-Tenancy | Done |
 | 36 | [Bulk Ingestion & External Interchange-Format Adapters](#bulk-ingestion--external-interchange-format-adapters) | Publish API, Non-Authoritative Capture, Outbound Webhooks | Not started |
 | 37 | [Tenant-to-Tenant Federation Mapping](#tenant-to-tenant-federation-mapping) | Multi-Tenancy, Auth + Orchestration, Bulk Ingestion & Interchange Adapters | Not started |
 | 38 | [Sanctions/Watchlist Screening Extensibility Seam](#sanctionswatchlist-screening-extensibility-seam) | Scaffolding & Persistence, Non-Authoritative Capture | Not started |
@@ -198,7 +198,7 @@ state "External Services" as tierExternal {
 }
 state "Persistence" as tierPersistence {
   state "Scaffolding & Persistence" as p0 #palegreen
-  state "Data Residency\n(Region Pinning)" as a11
+  state "Data Residency\n(Region Pinning)" as a11 #palegreen
   state "Event Log/AccessLog\nArchival" as a24
   state "Data Lifecycle &\nBackup Classification" as a25 #palegreen
 }
@@ -2991,6 +2991,84 @@ existed; a region configured with only one live site is surfaced (log or
 metric, an operational signal — not a hard failure or a blocked write) as
 unable to simultaneously satisfy `ADR-033`'s 2-replica requirement and an
 `AppId` restricted to that region's residency constraint.
+
+**Status: Done.** New `EventStore.Domain.Replication.AppResidencyPolicy`
+(`{AppId, AllowedRegions, LastAppliedSequenceNumber}`, migrated across all
+3 providers) folded from a new reserved `AllowedRegionsSet` event
+(`ADR-067`'s pattern, synchronous fold in the same call —
+`AppResidencyPolicyService`, `FeatureFlagService`'s own exact precedent,
+since `AppResidencyPolicy` is read by the SAME process that publishes the
+event). `PUT /replication/residency/{appId}`, gated by `registry:admin`
+(reused, the same "admin tier" scope `FeatureFlagEndpoints` already gates
+its own narrow per-AppId configuration write with).
+
+**Region propagation reuses two EXISTING mechanisms, added no new
+discovery of its own, exactly as this section's own text requires**: this
+site's own tagged `Region` (a new `RegionOptions`) rides along on the
+already-existing `/peer-sync/whoami` handshake response (`{originId,
+region}`) the moment a peer is first contacted; a peer's own `Region`
+then propagates further, transitively, through the SAME `KnownPeer`
+gossip exchange `PeerId` already uses (`KnownPeer` gained an optional
+third field). `PeerAddressBook` tracks `(PeerId, Region)` together per
+address now, not `PeerId` alone.
+
+**Enforcement, exactly where this section's own text places it**:
+`PeerSyncWorker.SyncOnceWithAsync` loads every `AppResidencyPolicy` once
+per tick (a small, `AppId`-keyed table — no reason to re-query it once
+per address) and filters the CANDIDATE event window per-event, not
+per-peer wholesale: an unconstrained `AppId` (no row, or an empty
+`AllowedRegions`) is included unconditionally; a constrained `AppId`'s
+event is included only if the destination peer's own known `Region` is
+in that list. **A peer with no yet-known region can never receive a
+constrained `AppId`'s events at all** — the conservative default this
+section's own "residency wins" priority implies for a destination whose
+compliance can't yet be confirmed; not stated explicitly in this
+section's own text, but a direct consequence of it.
+
+**A narrowing beyond "never sent," found necessary to keep the mechanism
+correct, not just permissive**: a residency-excluded event still
+advances `PeerSyncCursor.LastAckedSequenceNumber` for that specific peer,
+exactly as if it had been sent — it is permanently excluded from that
+one peer, never retried on a later tick. Without this, a constrained
+`AppId` publishing alongside unconstrained ones would re-evaluate (and
+re-skip) the same excluded event on every single tick forever, forever
+re-querying it for no reason; advancing past it costs nothing since it
+was never going to become eligible later (an `AppId`'s `AllowedRegions`
+doesn't change per-event, only per `SetAllowedRegionsAsync` call, which
+reloads the whole policy table fresh next tick regardless).
+
+**The "surfaced as an operational signal" exit criterion** is a
+`LogWarning` inside `PeerSyncWorker.RunOnceAsync` (an optional `ILogger`
+parameter — real deployments wire this to a metric instead, this build
+stage's own honestly-scoped choice) naming any constrained `AppId` whose
+`AllowedRegions` are satisfied by fewer than 2 currently-known live
+sites — checked once per tick, after the per-peer sync loop, never
+blocking the write or the sync itself.
+
+Verified with `DataResidencyHttpSqliteTests.cs` (SQLite-only, real
+HTTP — three real Host TestServers: a sender and two differently-tagged
+destinations, `eu-west`/`us-east`, the same real-wire pattern
+`ReplicationHttpSqliteTests.cs` already established, since region is
+learned over the real `/peer-sync/whoami` handshake, not something a
+direct-service-call test could exercise): an `eu-west`-restricted
+`AppId`'s event reaches the `eu-west`-tagged peer but never the
+`us-east`-tagged one, even though both are ordinary, reachable, gossip-
+configured peers; an unconstrained `AppId` reaches both, unaffected; and
+the under-replication warning fires, naming the `AppId`/region, without
+ever rejecting the underlying write. Plus a pure `PeerAddressBook`
+region-gossip-merge unit test (`ReplicationScenarioAssertions.cs`,
+SQLite-only — no provider-specific behavior to re-prove). Found and
+fixed one real test-isolation bug along the way, the same class this
+session already hit for `WebhookOutboxPump` (item 34):
+`StoredEvent.SequenceNumber` is a single global counter across every
+`AppId` in one file and `PeerSyncCursor` is keyed by `PeerId` alone —
+three test methods sharing one sender database under MSTest's 32-way
+parallelism raced on both, inflating one test's own expected sequence-
+number/cursor assertions with another concurrently-running test's own
+events; fixed by giving the sender side its own per-test database file
+(the two destination Hosts stayed class-level/shared, since every
+assertion against them checks presence by globally-unique `EventId`,
+never a sequence number). Full SQLite regression suite re-run clean.
 
 ## Bulk Ingestion & External Interchange-Format Adapters
 

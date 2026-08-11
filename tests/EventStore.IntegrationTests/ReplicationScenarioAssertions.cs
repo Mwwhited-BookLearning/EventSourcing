@@ -141,6 +141,20 @@ internal static class ReplicationScenarioAssertions
         Assert.AreEqual("site-b", addressBook.PeerIdFor("https://site-b.example"));
     }
 
+    // ADR-061 -- Region travels on the SAME gossip merge as PeerId, so a
+    // transitively-learned peer's own residency tag propagates without this
+    // site ever contacting it directly via /peer-sync/whoami first.
+    public static void APeersRegionLearnedFromAnotherPeersGossipResponseIsMergedAlongsideItsPeerId()
+    {
+        var addressBook = new PeerAddressBook(Options.Create(new PeerSyncOptions()));
+        Assert.IsNull(addressBook.RegionFor("https://site-d.example"), "an address this site has never heard of has no known region");
+
+        addressBook.Merge([new KnownPeer("site-d", "https://site-d.example", "eu-west")]);
+
+        Assert.AreEqual("site-d", addressBook.PeerIdFor("https://site-d.example"));
+        Assert.AreEqual("eu-west", addressBook.RegionFor("https://site-d.example"));
+    }
+
     public static async Task AnEntityOfAGivenEntityTypeAlwaysResolvesToTheSameShardKey(
         SchemaRegistryService registry, PublishService publish, EventStoreContext db)
     {
