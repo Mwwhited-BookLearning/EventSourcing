@@ -22,8 +22,13 @@ const config: ClientConfig = {
   entityType: params.get('entityType') ?? 'orderplaced',
   eventType: params.get('eventType') ?? 'OrderPlaced',
   entityIdField: params.get('entityIdField') ?? 'orderId',
-  hostBaseUrl: params.get('hostBaseUrl') ?? 'https://localhost:5001',
-  authBaseUrl: params.get('authBaseUrl') ?? 'https://localhost:5011',
+  // Query string wins if present (a specific launch always overrides);
+  // otherwise the Vite build-time env vars EventStore.AppHost injects via
+  // WithEnvironment (the actual, dynamically-assigned Aspire endpoint for
+  // this run) win over the hardcoded fallback, which only applies when
+  // running client-web standalone (`npm run dev`, no AppHost at all).
+  hostBaseUrl: params.get('hostBaseUrl') ?? import.meta.env.VITE_HOST_BASE_URL ?? 'https://localhost:5001',
+  authBaseUrl: params.get('authBaseUrl') ?? import.meta.env.VITE_AUTH_BASE_URL ?? 'https://localhost:5011',
   clientId: params.get('clientId') ?? 'follower-client',
   clientSecret: params.get('clientSecret') ?? 'follower-client-secret',
   scope: params.get('scope') ?? 'events:follow',

@@ -303,21 +303,22 @@ here instead of inlining.
   isolated pass, run the full client-web test suite before/after to
   isolate any breakage from the version bump itself.
 - **`ADR-076`'s deploy-time migration-bundle-apply step is NOT wired
-  into `EventStore.AppHost`/`docker-compose.yml`** (found/deliberately
-  scoped while building item 39) — `Database.MigrateAsync()` was removed
-  from all 3 `EventStore.Host.<Provider>` composition roots (no replica
-  calls it at startup anymore, per that ADR), and a real, verified local
-  replacement exists (`scripts/generate-migration-bundle.sh`/
-  `apply-migration-bundle.sh` — actually run against a fresh Sqlite file
-  this pass, all 17 migrations applied in one bundle execution), but
-  nothing automatically runs that bundle before `aspire run`/`docker
-  compose up` starts a Host. Per direct request this pass ("local
-  scripts for POC/PoV are perfect"), wiring an actual init step into
-  either orchestration path was deliberately not attempted — `ADR-076`'s
-  own Consequences already named this as separate, not-yet-built
-  pipeline work, not a gap this pass introduced. A human running `aspire
-  run`/`docker compose up` against a brand-new database today must run
-  the generate/apply scripts by hand first.
+  into `docker-compose.yml`** — narrowed, 2026-08-11: `EventStore.AppHost`
+  now DOES apply migrations automatically (a new `EventStore.Migrator`
+  project — a one-shot `Database.MigrateAsync()` runner, added as a real
+  Aspire resource; `eventstore`'s own `.WaitForCompletion(migrator)`
+  guarantees exactly one execution before it starts accepting traffic,
+  verified by actually running `dotnet run` against `EventStore.AppHost`
+  end to end against a real Docker Postgres container, not assumed —
+  `/health` returned 200 only after the migrator resource had already
+  exited). `docker-compose.yml` (the OTHER orchestration path `ADR-076`
+  names) still has no equivalent init step — a human running `docker
+  compose up` against a brand-new database must still run
+  `scripts/generate-migration-bundle.sh`/`apply-migration-bundle.sh` by
+  hand first. Investigate: an init container (or a `depends_on` +
+  healthcheck-gated one-shot service, Compose's own closest equivalent to
+  Aspire's `WaitForCompletion`) running the same bundle-apply script
+  ahead of the `Host` services.
 - **`.github/workflows/ci.yml`/`.github/dependabot.yml` have never
   actually been run by GitHub Actions** (item 39) — this environment has
   no push access to trigger a real run, an explicit, deliberate scope
