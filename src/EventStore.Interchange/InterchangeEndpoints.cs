@@ -20,18 +20,34 @@ public static class InterchangeEndpoints
         // shape as every other config-gated background worker in this repo.
         .AddHostedService<Hl7V2MllpListener>();
 
-    // ADR-072 -- FHIR is RESTful/HTTP-native, needs no MLLP-style bridge:
-    // an ordinary Minimal API resource consumer, unlike HL7v2's own
-    // dedicated Hl7V2MllpListener (a background TCP listener, not an HTTP
-    // endpoint at all).
+    // ADR-072/082 -- one generic inbound-adapter endpoint, keyed by
+    // adapterKey, not one endpoint per adapter: FHIR's own real-HTTP
+    // ingestion ("FHIR is RESTful/HTTP-native, needs no MLLP-style
+    // bridge") and "Tenant-to-Tenant Federation Mapping"'s own bespoke,
+    // per-tenant-pair `IInterchangeFormatAdapter` both go through this
+    // SAME route -- ADR-082's own text is explicit that federation "needs
+    // no new mechanism," and a second, federation-specific endpoint would
+    // have been exactly that. A deployment registers whatever adapter it
+    // needs under whatever key it chooses (in ITS OWN composition root,
+    // for a bespoke tenant-pair mapping -- never a core Duplex project);
+    // this endpoint only ever resolves by that key, generically.
     public static WebApplication MapInterchangeEndpoints(this WebApplication app)
     {
-        app.MapPost("/interchange/fhir/{appId}", async (string appId, HttpRequest request, ClaimsPrincipal user, IServiceProvider services, PublishService publish, CancellationToken ct) =>
+        app.MapPost("/interchange/{adapterKey}/{appId}", async (string adapterKey, string appId, HttpRequest request, ClaimsPrincipal user, IServiceProvider services, PublishService publish, CancellationToken ct) =>
         {
             using var reader = new StreamReader(request.Body);
             var raw = await reader.ReadToEndAsync(ct);
 
-            var adapter = services.GetRequiredKeyedService<IInterchangeFormatAdapter>("Fhir");
+            IInterchangeFormatAdapter adapter;
+            try
+            {
+                adapter = services.GetRequiredKeyedService<IInterchangeFormatAdapter>(adapterKey);
+            }
+            catch (InvalidOperationException)
+            {
+                return Results.NotFound(new { error = $"no interchange adapter is registered under key '{adapterKey}'" });
+            }
+
             InterchangeInboundResult parsed;
             try
             {

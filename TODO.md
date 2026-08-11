@@ -242,3 +242,20 @@ here instead of inlining.
   whether the failures cluster around a specific resource (DB file
   handles, TCP ports, thread-pool starvation) the same way the leader-
   election cadence fix's own root cause did.
+  **A second, more specific manifestation, found immediately afterward
+  while building item 37** (Tenant-to-Tenant Federation Mapping, which
+  added 2 more real `WebApplicationFactory` Hosts of its own):
+  `DataResidencyHttpSqliteTests.AnAppIdRestrictedToOneRegionReplicatesOnlyToPeersTaggedWithThatRegion...`
+  failed once with `PeerSyncCursors.SingleAsync(...) ->
+  InvalidOperationException: Sequence contains no elements` — passed
+  cleanly in isolation immediately after. Root cause understood, not yet
+  fixed: `PeerSyncWorker.SyncOnceWithAsync` is deliberately wrapped in a
+  per-peer `catch (Exception) { }` in production (`ADR-033`'s own "one
+  unreachable peer never blocks sync with any other" requirement) — a
+  genuinely transient HTTP hiccup talking to a shared `TestServer` under
+  heavier overall suite load looks IDENTICAL, from this test's own
+  perspective, to "that peer was truly unreachable," silently skipping
+  cursor creation. If this recurs, either add a bounded retry inside the
+  test's own `SyncOnceToAsync` helper, or thread a way to observe/assert
+  on the swallowed exception directly instead of only its downstream
+  absence-of-a-cursor-row symptom.
