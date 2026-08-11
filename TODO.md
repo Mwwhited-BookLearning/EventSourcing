@@ -345,13 +345,6 @@ here instead of inlining.
   A handful of the findings were CODE-side gaps the docs now correctly
   describe as open, rather than doc bugs to fix; listed here since they
   represent real remaining work, not narrative to restate elsewhere:
-  - **`ChainCheckpoint` (`ADR-089`'s archival mechanism) doesn't exist
-    anywhere in `src/`** — not even as a plain class, let alone a
-    registered `DbSet`. `docs/data/dbcontext-and-conventions.md`
-    previously presented it as a live table; now correctly marked "not
-    yet a registered DbSet." Build it when "Event Log/AccessLog Archival
-    Segment Detachment" (item 48) is reached, or drop it from the doc
-    entirely if archival ends up not needing it.
   - **`IUpcastExpressionEvaluator`'s CEL/JSONata choice is not actually
     swappable via configuration**, contradicting `ADR-053`'s "no core-
     engine change" claim — `src/EventStore.Upcasting/
