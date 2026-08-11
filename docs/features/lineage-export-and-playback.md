@@ -304,11 +304,8 @@ event ..> playbackResult : "folded, in arrival order, up to a\nchosen SequenceNu
 
 note right of event
   OriginalSequenceNumber/OriginalChainHash/ImportedFrom
-  are ADR-068's own decided shape but are NOT YET
-  reflected in ../data/event-log.md's StoredEvent
-  listing -- existing propagation drift, not introduced
-  by this doc, flagged rather than silently repeated
-  as if already landed there.
+  are ADR-068's own decided shape, reflected in
+  ../data/event-log.md's StoredEvent listing.
 end note
 @enduml
 ```

@@ -91,6 +91,7 @@ answers "why, and what's the risk."
 | [Vitest](web/vitest.md) | web | Unit-test runner (frontend), Vite-native | Test-time-only dependency — never ships in a production artifact | Frontend unit-test execution | `ADR-055` |
 | [Vue Test Utils](web/vue-test-utils.md) | web | Vue's own component-mounting/testing library | Test-time-only dependency — never ships in a production artifact | Vue component-level test mounting/interaction | `ADR-055` |
 | [vite-plugin-singlefile](web/vite-plugin-singlefile.md) | web | Inlines a build into one static HTML file — the offline litigation-review player | None known affecting this design's narrow, single-artifact-bundling usage | Single-file, dependency-free offline player artifact (`ADR-068`) | `ADR-068` |
+| [axe-core](web/axe-core.md) | web | Automated WCAG conformance testing against the actually-rendered DOM | jsdom has no working `HTMLCanvasElement.getContext`, so axe's `color-contrast` rule always lands in `results.incomplete` under jsdom — verified separately via a real headless-Chromium harness, not silently ignored | Automated WCAG 2.1/2.2 AA violation detection (`ADR-073`) | `ADR-073` |
 
 ## Compared, not adopted
 

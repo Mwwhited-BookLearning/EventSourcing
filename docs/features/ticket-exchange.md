@@ -112,15 +112,27 @@ there's nothing here that needs the durability guarantees
 `EventStoreContext` exists to provide.
 
 **The shared secret used for HMAC signing is likewise not a new entity**
-— checked against `ADR-093` (which briefly assumed otherwise before being
-corrected) — it's either the caller's already-registered OAuth2
-`client_secret` (`ADR-006`, DevIdp-side state) or a caller-generated
-`one_time_secret` that's used for exactly one ticket and never persisted
-at all. `ADR-093`'s current+previous rotation support applies to the
-`client_secret` path as an instance of ordinary OAuth2 client-credential
-rotation (OpenIddict already supports a client holding more than one
-valid credential) — not a field this design's own data model needs to
-add anywhere.
+— it's either the caller's already-registered OAuth2 `client_secret`
+(`ADR-006`, DevIdp-side state) or a caller-generated `one_time_secret`
+that's used for exactly one ticket and never persisted at all.
+
+**Corrected, 2026-08-11**: the paragraph above previously claimed
+`ADR-093`'s current+previous rotation support extends to this
+`client_secret` path too, "as an instance of ordinary OAuth2 client-
+credential rotation (OpenIddict already supports a client holding more
+than one valid credential)." That claim was never actually verified
+before being written down, and turned out to be false — checked against
+OpenIddict's own docs/source/issue tracker while building `ADR-093`:
+`OpenIddictApplicationDescriptor.ClientSecret` is a single string per
+application, with no built-in multi-secret mechanism. `ADR-093` itself
+now says so explicitly (struck through, with the real finding), and
+only its webhook half (`ADR-060`'s `WebhookSubscription.SigningSecret`)
+was actually built. Zero-downtime rotation for THIS path's own
+`client_secret` still needs one of: (a) a custom OpenIddict event
+handler accepting a locally-stored previous secret alongside the
+current one, or (b) registering a second client application as a
+temporary stopgap during rotation. Neither is built — tracked in
+`TODO.md`, not silently claimed done.
 
 ## Salt (UI mockup) — the SPA's own flow constructing a header-incapable URL
 
