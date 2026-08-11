@@ -117,6 +117,22 @@ public class SchemaRegistryService(
                 requiredSignature = new RequiredSignature { AcrValues = requiredSignatureRequest.AcrValues, MaxAge = requiredSignatureRequest.MaxAge, EnableRfc3161Timestamp = requiredSignatureRequest.EnableRfc3161Timestamp };
         }
 
+        // ADR-094 -- an empty ResponseEventType or a non-positive Within is
+        // always a genuine request mistake (a configuration that could
+        // never actually satisfy or ever expire), the same "reject rather
+        // than silently accept a no-op" posture RequiredSignature above
+        // already established.
+        ExpectedResponse? expectedResponse = null;
+        if (request.ExpectedResponse is { } expectedResponseRequest)
+        {
+            if (string.IsNullOrWhiteSpace(expectedResponseRequest.ResponseEventType))
+                errors.Add("expectedResponse.responseEventType must be set");
+            else if (expectedResponseRequest.Within <= TimeSpan.Zero)
+                errors.Add("expectedResponse.within must be a positive duration");
+            else
+                expectedResponse = new ExpectedResponse { ResponseEventType = expectedResponseRequest.ResponseEventType.ToLowerInvariant(), Within = expectedResponseRequest.Within };
+        }
+
         // ADR-018 -- an alias that doesn't name an actual property of the
         // destination (this registration's own) schema, or an expression that
         // fails to parse, is rejected 400 at registration time. This narrows,
@@ -177,6 +193,7 @@ public class SchemaRegistryService(
             RejectionBehavior = rejectionBehavior,
             FilterableFields = filterableFields,
             RequiredSignature = requiredSignature,
+            ExpectedResponse = expectedResponse,
         };
         db.EventTypeDefinitions.Add(definition);
 

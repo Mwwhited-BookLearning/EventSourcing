@@ -211,3 +211,22 @@ Consequences:
 - **`docs/references.md` gains a row** for Correlation Identifier/
   Request-Reply (Hohpe & Woolf), landed in the same pass this citation is
   first used, per `.claude/protocols/verify-before-citing.md`.
+
+**Corrected, 2026-08-11, once built**: this Decision text frames
+`ExpectedResponseWatcher` as "architecturally an internal follower... the
+identical shape `ADR-015`'s `ProjectionHost`... already use," implying a
+Follow-over-HTTP consumer with its own seeded OAuth2 client credential.
+The actual build instead placed it directly inside the same `EventStore.
+Host.<Provider>` process as `Router`/`Derivation`/`Webhooks` — reading
+`EventStoreContext` directly, the same "concept accurate, exact wiring
+differs" divergence those three workers' own header comments already
+document relative to `docs/06-solution-structure.md`'s sketch. There is
+no real process/database boundary between this mechanism and the events
+it tails, so there is nothing for a Follow client to cross and no OAuth2
+client credential is needed — `docs/features/auth.md`'s seeded-clients
+table was corrected to remove the `expected-response-watcher-client` row
+this ADR's own text had implied, matching `Router`/`Derivation`/
+`Webhooks`, none of which have one either. `RegisterEventTypeRequest`
+also gained a real `ExpectedResponseRequest` field (`ResponseEventType`,
+`Within`), so `EventTypeDefinition.ExpectedResponse` is set through the
+ordinary registration API, not only by direct persistence access.

@@ -354,6 +354,9 @@ namespace EventStore.Persistence.Migrations.Sqlite.Migrations
                         .IsRequired()
                         .HasColumnType("TEXT");
 
+                    b.Property<Guid?>("RespondsToEventId")
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("SchemaStatus")
                         .HasColumnType("TEXT");
 
@@ -549,6 +552,9 @@ namespace EventStore.Persistence.Migrations.Sqlite.Migrations
                         .IsRequired()
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("ExpectedResponse")
+                        .HasColumnType("TEXT");
+
                     b.Property<bool>("IsActive")
                         .HasColumnType("INTEGER");
 
@@ -578,6 +584,39 @@ namespace EventStore.Persistence.Migrations.Sqlite.Migrations
                     b.HasKey("AppId", "Name", "Version");
 
                     b.ToTable("EventTypeDefinitions");
+                });
+
+            modelBuilder.Entity("EventStore.Domain.SchemaRegistry.ExpectedResponseTracker", b =>
+                {
+                    b.Property<Guid>("RequestEventId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTimeOffset>("DeadlineAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTimeOffset?>("EscalatedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ExpectedResponseEventType")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("RequestEventType")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTimeOffset?>("SatisfiedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid?>("SatisfiedByEventId")
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("RequestEventId");
+
+                    b.HasIndex("DeadlineAt");
+
+                    b.ToTable("ExpectedResponseTrackers");
                 });
 
             modelBuilder.Entity("EventStore.Domain.SchemaRegistry.FilterableField", b =>

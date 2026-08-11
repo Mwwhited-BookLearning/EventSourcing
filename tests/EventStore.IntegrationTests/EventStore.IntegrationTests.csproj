@@ -38,6 +38,7 @@
     <ProjectReference Include="..\..\src\EventStore.Attachments\EventStore.Attachments.csproj" />
     <ProjectReference Include="..\..\src\EventStore.Erasure\EventStore.Erasure.csproj" />
     <ProjectReference Include="..\..\src\EventStore.Derivation\EventStore.Derivation.csproj" />
+    <ProjectReference Include="..\..\src\EventStore.ExpectedResponse\EventStore.ExpectedResponse.csproj" />
     <ProjectReference Include="..\..\src\EventStore.Spiffe\EventStore.Spiffe.csproj" />
     <ProjectReference Include="..\..\src\EventStore.Masking\EventStore.Masking.csproj" />
     <ProjectReference Include="..\..\src\EventStore.Projections.Abstractions\EventStore.Projections.Abstractions.csproj" />

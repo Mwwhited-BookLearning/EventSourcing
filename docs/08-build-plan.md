@@ -107,7 +107,7 @@ provider they apply to — not "code written."
 | 46 | [i18n/l10n Architectural Scope](#i18nl10n-architectural-scope) | MVVM Client | Done |
 | 47 | [Mechanism-Level OpenTelemetry Instrumentation](#mechanism-level-opentelemetry-instrumentation) | Hardening & Evolution, Sharding & Replication, Entity-Centric Core Rebuild, Outbound Webhooks | Done |
 | 48 | [Event Log/AccessLog Archival Segment Detachment](#event-logaccesslog-archival-segment-detachment) | Binary Attachments, Delegated Grants/RBAC/Read Audit Logging, Hardening & Evolution, Lineage Export & Bitemporal Playback | Done |
-| 49 | [Expected-Response Tracking](#expected-response-tracking) | CQRS Read-Model Projections (worked example), Streaming Channels, Outbound Webhooks, Leader Election via Database-Backed Lease | Not started |
+| 49 | [Expected-Response Tracking](#expected-response-tracking) | CQRS Read-Model Projections (worked example), Streaming Channels, Outbound Webhooks, Leader Election via Database-Backed Lease | Done |
 
 Two groups worth naming up front, since they explain most of the
 ordering below:
@@ -236,7 +236,7 @@ state "Local Services" as tierLocal {
   state "Release Engineering,\nPackaging & Supply Chain" as a15 #palegreen
   state "Lineage Export +\nBitemporal Playback" as a17 #palegreen
   state "Mechanism-Level\nOTel Instrumentation" as a23 #palegreen
-  state "Expected-Response\nTracking" as a26
+  state "Expected-Response\nTracking" as a26 #palegreen
 }
 state "UI" as tierUi {
   state "MVVM Client" as p20 #palegreen
@@ -4532,9 +4532,36 @@ back at the original request; killing and restarting
 `ExpectedResponseWatcher` mid-sweep loses no tracker state and never
 double-publishes `ExpectedResponseMissing` for a row already escalated.
 
-**Status: Not started** — merged in from the `design/service-level-agreement`
-branch on 2026-08-11, after all 48 items above were already Done. This
-is now the 49th item; not yet implemented.
+**Status: Done** — merged in from the `design/service-level-agreement`
+branch on 2026-08-11, after all 48 items above were already Done, then
+implemented the same session. New `EventStore.ExpectedResponse` project:
+`ExpectedResponseWatcher` (leader-lease-gated `BackgroundService` +
+testable static `RunOnceAsync`, the same shape `RouterWorker`/
+`DerivationWorker`/`WebhookOutboxPump` already use) opens a tracker row
+per new request event, stamps `SatisfiedByEventId`/`SatisfiedAt` once a
+matching `RespondsToEventId` response arrives (on time or late), and
+sweeps past-deadline/unsatisfied/unescalated rows to publish the reserved
+`ExpectedResponseMissing` event exactly once (`ExpectedResponseMissingEventType`,
+the same lazy-per-AppId registration `ChannelLagDetectedEventType`
+already established). Built as a same-process worker reading
+`EventStoreContext` directly, not a separate Follow-over-HTTP client —
+see `ADR-094`'s own "Corrected, 2026-08-11" note for why. `RegisterEventTypeRequest`
+gained a real `ExpectedResponseRequest` field so `EventTypeDefinition.
+ExpectedResponse` is set through the ordinary registration API. Migrated
+across all 3 providers (`AddExpectedResponseTracking`); wired into all 3
+`EventStore.Host.<Provider>/Program.cs` via `AddExpectedResponseTracking()`.
+
+Tests: `ExpectedResponseScenarioAssertions.cs` (6 scenarios covering every
+exit criterion below) + `ExpectedResponseSqliteTests`/`Postgres`/
+`SqlServer` — all three providers run and pass. Full non-container
+regression suite re-run clean except the two already-tracked,
+pre-existing load-induced flakes (`TODO.md`): `GraphQlHttpSqliteTests.
+SubscribingOverRealHttpStreamsAMatchingEventAsSse` and
+`TimestampingHttpSqliteTests.APublishNotOptingIntoRfc3161TimestampLeavesItNull`
+(a DPoP-proof-validation failure under full-suite parallel load) — both
+confirmed pre-existing, not caused by this item: `TimestampingHttpSqliteTests`
+passed cleanly 3/3 when run in isolation, and neither failing test touches
+Expected-Response Tracking code.
 
 ## Cross-cutting, every item
 

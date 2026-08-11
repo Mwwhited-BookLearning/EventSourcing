@@ -44,6 +44,13 @@ public class StoredEvent
     public string? OriginalChainHash { get; set; }
     public string? ImportedFrom { get; set; }
     public int DerivationHopCount { get; set; }
+    // ADR-094 -- Correlation Identifier (Hohpe & Woolf): the EventId this
+    // event is a reply to. Optional on any publish, never existence-
+    // validated (unlike parentEventIds' own Strict/Permissive fork) -- a
+    // value naming an EventId that doesn't (yet, or ever) exist is simply a
+    // response that correlates to nothing findable, not a rejected publish.
+    // The eighth distinct relationship-shaped envelope field (CLAUDE.md).
+    public Guid? RespondsToEventId { get; set; }
 }
 
 public enum EventKind
