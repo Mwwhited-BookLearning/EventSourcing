@@ -45,6 +45,7 @@ per kind).
 | [Anti-Corruption Layer](anti-corruption-layer.md) | An isolating translation layer between two subsystems with different data models, so a foreign system's shape/quirks never leak into your own domain model | `ADR-072` (`IInterchangeFormatAdapter` — HL7v2/FHIR inbound, ICH E2B(R3)/GS1-EPCIS outbound) | Written |
 | [Idempotent Receiver & Inbox/Dead Letter](idempotent-receiver-and-inbox.md) | Safe retries; persist-before-understand; failures become inspectable records, not silent drops | `ADR-011`, `ADR-020`, `ADR-023` | Written |
 | [Tolerant Reader & Schema Evolution](tolerant-reader-and-schema-evolution.md) | Ignore what you don't recognize; reconcile old-shaped data on read, never by rewriting history | `ADR-018`, `ADR-020`, `ADR-022`; the enum unknown-value fallback contract and N-1/N+1 window are the same tolerance restated as a deployment-time guarantee (`ADR-038`) | Written |
+| [Request-Reply & Correlation Identifier](request-reply-correlation.md) | A reply carries a unique identifier naming which request it answers, so the pairing survives arbitrary delay between the two | `ADR-094` (`RespondsToEventId` envelope field, `ExpectedResponse` opt-in tracked deadline) | Written |
 
 ## Architecture patterns
 

@@ -21,6 +21,7 @@ public class EventTypeDefinition
     public RejectionBehavior RejectionBehavior { get; set; } = RejectionBehavior.Annotate; // Annotate | Compensate — how an authorityDecision:rejected is handled for this type (ADR-035, comparisons/authority-rejection-behavior.md)
     public RequiredSignature? RequiredSignature { get; set; } // null = no sign-off required; set = publish must satisfy an RFC 9470 step-up challenge first (ADR-066)
     public DateTimeOffset? DeprecatedAt { get; set; }   // set, not removed, when a field/version is marked deprecated-but-still-emitted for at least one full deprecation window (ADR-038); null = not deprecated
+    public ExpectedResponse? ExpectedResponse { get; set; } // null = no tracked response expected (default); set = a ResponseEventType event carrying a matching RespondsToEventId is expected within Within, watched by ExpectedResponseWatcher (ADR-094)
 
     public List<FilterableField> FilterableFields { get; set; } = new();
 }
@@ -56,6 +57,12 @@ public enum RejectionBehavior
 {
     Annotate,   // default — a rejected event stays as originally published, flagged via AuthorityStatus only (ADR-035)
     Compensate  // a rejected event triggers a compensating patch, per-type opt-in where the domain needs it
+}
+
+public class ExpectedResponse
+{
+    public string ResponseEventType { get; set; } = default!; // which event type's RespondsToEventId satisfies this expectation -- v1 allows exactly one, not a RequiredClaims-style OR-of-list (ADR-094)
+    public TimeSpan Within { get; set; }                        // how long after the request event's receipt a matching response is expected before ExpectedResponseMissing fires
 }
 
 public class FilterableField
@@ -310,6 +317,34 @@ delivery attempt (first attempt or retry alike) — `EventPayloadSnapshot`
 is then this row's own record of what was actually just sent, not a
 frozen, potentially-stale copy from enqueue time.
 
+## Expected-response tracker (`ADR-094`)
+
+```csharp
+public class ExpectedResponseTracker
+{
+    public Guid RequestEventId { get; set; }               // PK
+    public string RequestEventType { get; set; } = default!;
+    public string ExpectedResponseEventType { get; set; } = default!;
+    public DateTimeOffset DeadlineAt { get; set; }          // request event's receipt time + EventTypeDefinition.ExpectedResponse.Within
+    public Guid? SatisfiedByEventId { get; set; }           // set once a matching RespondsToEventId is observed, on time or late -- never treated as an error
+    public DateTimeOffset? SatisfiedAt { get; set; }
+    public DateTimeOffset? EscalatedAt { get; set; }        // set once ExpectedResponseMissing has been published for this row -- fires exactly once
+}
+```
+
+The durable, per-request checkpoint `ExpectedResponseWatcher` maintains —
+the same "durable tracker, not an in-memory timer" discipline
+`ProjectionCheckpoint`/`PeerSyncCursor`/`WebhookDeliveryCursor` above
+already establish for their own background workers. `ExpectedResponseWatcher`
+is architecturally an "internal follower" (`ADR-015`'s `ProjectionHost`
+shape): it tails every event type carrying a configured `ExpectedResponse`
+to insert rows here, tails every named `ResponseEventType` to stamp
+`SatisfiedByEventId`/`SatisfiedAt`, and sweeps past-deadline,
+unsatisfied, unescalated rows to publish the reserved
+`ExpectedResponseMissing` event (`ADR-094`). Leader-lease-gated like
+every other singleton worker (`ADR-078`'s `LeaderLease`, `WorkerRole =
+"ExpectedResponseWatcher"`).
+
 ## Feature flag state (`ADR-077`)
 
 ```csharp
@@ -335,7 +370,7 @@ model concern, so it isn't specified further here.
 ```csharp
 public class LeaderLease
 {
-    public string WorkerRole { get; set; } = default!;  // "Router" | "UpcastMaterializer" | "PeerSyncOutboxPump" | "WebhookOutboxPump" — primary key
+    public string WorkerRole { get; set; } = default!;  // "Router" | "UpcastMaterializer" | "PeerSyncOutboxPump" | "WebhookOutboxPump" | "ExpectedResponseWatcher" (ADR-094) — primary key
     public string LeaseHolderId { get; set; } = default!; // this instance's own identity (host name + process id, or similar)
     public DateTimeOffset LeaseExpiresAt { get; set; }
 }
