@@ -11,17 +11,29 @@ namespace EventStore.Inbox;
 // divergence, if any. A separate chain, never coupled to StoredEvent's own
 // (ADR-045's own explicit "different append source, different reader, no
 // reason to couple their tamper-evidence").
+//
+// ADR-089 -- seeds from AccessLog's own LATEST ChainCheckpoint the same way
+// ChainVerificationService now does for the Event Log's -- its own,
+// genuinely independent checkpoint (EventStoreContext.AccessLogChainCheckpoints,
+// a distinct table from EventLogChainCheckpoints even though both share the
+// same ChainCheckpoint CLR type), never coupled to the Event Log's.
 public class AccessLogChainVerificationService(EventStoreContext db)
 {
     public async Task<ChainVerificationResult> VerifyAsync(long throughSequenceNumber, CancellationToken ct = default)
     {
+        var checkpoint = await db.AccessLogChainCheckpoints
+            .AsNoTracking()
+            .OrderByDescending(c => c.SequenceNumberRangeEnd)
+            .FirstOrDefaultAsync(ct);
+        var sinceSequenceNumber = checkpoint?.SequenceNumberRangeEnd ?? 0;
+
         var entries = await db.AccessLogEntries
             .AsNoTracking()
-            .Where(e => e.SequenceNumber <= throughSequenceNumber)
+            .Where(e => e.SequenceNumber > sinceSequenceNumber && e.SequenceNumber <= throughSequenceNumber)
             .OrderBy(e => e.SequenceNumber)
             .ToListAsync(ct);
 
-        var expected = EventChainHash.Genesis;
+        var expected = checkpoint?.ChainHashAtRangeEnd ?? EventChainHash.Genesis;
         foreach (var entry in entries)
         {
             // Re-derived from this row's own fields, not read from the

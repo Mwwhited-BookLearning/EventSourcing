@@ -51,3 +51,27 @@ public enum EventKind
     Original,              // every event published today -- subject to normal fold
     UpcastMaterialization  // a persisted upcast result (ADR-027) -- never folded
 }
+
+// ADR-089 -- left behind in the primary table when a contiguous segment of
+// StoredEvent (or, independently, AccessLogEntry) rows is detached/archived
+// to an externalized IAttachmentContentStore backend. Ongoing live chain
+// verification for events appended AFTER the archived segment needs only
+// this row's own ChainHashAtRangeEnd -- it never touches archived data. The
+// SAME shape is reused for both hash-chained stores (docs/data/access-
+// log.md's own "one mechanism, applied to both" framing) -- as two
+// genuinely separate EF Core shared-type-entity tables
+// (EventStoreContext.EventLogChainCheckpoints/AccessLogChainCheckpoints),
+// never one shared table, so the two stores' own checkpoints can never
+// collide. Id is a surrogate key (no natural composite key exists once
+// more than one archival operation has happened -- SequenceNumberRangeStart
+// alone isn't guaranteed unique across the two shared-type tables), the
+// same convention AttachmentRef's own Id already established.
+public class ChainCheckpoint
+{
+    public int Id { get; set; }
+    public long SequenceNumberRangeStart { get; set; }
+    public long SequenceNumberRangeEnd { get; set; }
+    public string ChainHashAtRangeEnd { get; set; } = default!;
+    public string ContentProviderKey { get; set; } = default!; // which registered IAttachmentContentStore backend holds the archived segment (ADR-032)
+    public string ContentProviderRef { get; set; } = default!; // opaque, provider-specific locator for the segment's NDJSON blob
+}

@@ -16,6 +16,7 @@ using EventStore.Rbac;
 using EventStore.Router;
 using EventStore.SchemaRegistry;
 using EventStore.SpecGeneration;
+using EventStore.Archival;
 using EventStore.Attachments;
 using EventStore.Replication;
 using EventStore.Streaming;
@@ -66,6 +67,7 @@ builder.Services.AddMasking(
 builder.Services.AddFollowApi();
 builder.Services.AddStreaming();
 builder.Services.AddAttachments();
+builder.Services.AddArchival();
 builder.Services.AddReplication();
 builder.Services.AddWebhooks();
 builder.Services.Configure<WebhookOptions>(builder.Configuration.GetSection("Webhooks"));

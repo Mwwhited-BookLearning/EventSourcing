@@ -46,6 +46,24 @@ public static class EventAppender
                 .Select(e => new { e.ChainHash, e.LogicalClock })
                 .FirstOrDefaultAsync(ct);
 
+            // ADR-089 -- once the live tail has been archived away
+            // (EventStore.Archival), the query above finds nothing even
+            // though a real prior chain exists; falling straight to
+            // EventChainHash.Genesis here would silently restart the chain
+            // from zero, breaking every ChainHash computed from this point
+            // on. Falls back to the latest EventLogChainCheckpoint's own
+            // ChainHashAtRangeEnd instead -- found only by actually running
+            // a publish immediately after an archival, not by reading the
+            // code back; ChainVerificationService needed the identical fix
+            // for the same reason.
+            var priorChainHash = prior?.ChainHash;
+            if (priorChainHash is null)
+                priorChainHash = await db.EventLogChainCheckpoints
+                    .AsNoTracking()
+                    .OrderByDescending(c => c.SequenceNumberRangeEnd)
+                    .Select(c => c.ChainHashAtRangeEnd)
+                    .FirstOrDefaultAsync(ct);
+
             await db.SaveChangesAsync(ct);
 
             // ADR-088 -- stamped exactly here, the same moment SequenceNumber
@@ -56,7 +74,7 @@ public static class EventAppender
             // would exclude the ChainHash/LogicalClock computation this row
             // still needs before it's actually durable).
             storedEvent.AppendedAt = DateTimeOffset.UtcNow;
-            storedEvent.ChainHash = EventChainHash.Compute(prior?.ChainHash ?? EventChainHash.Genesis, storedEvent.PayloadHash, storedEvent.SequenceNumber, storedEvent.Signature);
+            storedEvent.ChainHash = EventChainHash.Compute(priorChainHash ?? EventChainHash.Genesis, storedEvent.PayloadHash, storedEvent.SequenceNumber, storedEvent.Signature);
             storedEvent.LogicalClock = HybridLogicalClock.Next(prior?.LogicalClock, observedRemoteClock);
             await db.SaveChangesAsync(ct);
             await transaction.CommitAsync(ct);

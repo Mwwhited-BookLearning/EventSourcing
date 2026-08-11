@@ -41,9 +41,17 @@ public class StoredEvent
 // Left behind in the primary table when a segment of StoredEvent rows is
 // detached/archived to an externalized IAttachmentContentStore backend
 // (ADR-089) -- lets ongoing chain verification for events appended after
-// the archived segment proceed without ever touching archived data.
+// the archived segment proceed without ever touching archived data. The
+// SAME class is reused, unchanged, for AccessLog's own independent
+// checkpoint (docs/data/access-log.md) -- implemented as two separate EF
+// Core "shared-type entity" tables on EventStoreContext
+// (EventLogChainCheckpoints/AccessLogChainCheckpoints), one CLR type
+// mapped to two genuinely distinct tables, never one shared table, so the
+// two stores' own checkpoints can never collide (ADR-089's own exit
+// criterion).
 public class ChainCheckpoint
 {
+    public int Id { get; set; } // surrogate key, added once actually built -- no natural composite key exists once more than one archival operation has happened (ADR-089)
     public long SequenceNumberRangeStart { get; set; }
     public long SequenceNumberRangeEnd { get; set; }
     public string ChainHashAtRangeEnd { get; set; } = default!;
