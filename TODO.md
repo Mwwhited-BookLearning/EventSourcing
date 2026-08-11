@@ -25,6 +25,349 @@ here instead of inlining.
 
 ## Active
 
-Nothing outstanding right now — see `docs/changes/2026-08-03.md` for the
-most recent batch of items worked (the nine feature-doc/build-plan gaps
-this session's `08-build-plan.md` rework surfaced).
+- **`ADR-073`/build-plan item 45's own exit criterion asks for a manual
+  screen-reader pass (a real NVDA/JAWS/VoiceOver session) confirming
+  `GenericFallbackView` is fully navigable — not performed.** No screen-
+  reader software is installable/operable in this environment. Automated
+  `axe-core` conformance (zero critical/serious violations, verified
+  both under jsdom and, for `color-contrast` specifically since jsdom
+  can't determine it, a real headless-Chromium cross-check) was done
+  instead, plus one real, concrete fix found by reasoning directly about
+  screen-reader behavior (`<th scope="row">` + a visually-hidden
+  `<caption>` on the property table, closing a gap no automated tool
+  flagged). Automated conformance and a literal manual pass are
+  genuinely different checks — industry-standard automated tools catch
+  roughly 30-50% of real accessibility issues, the rest need human
+  review — so this is a real, honestly-named gap, not equivalent
+  coverage under a different name. Investigate: a real NVDA (Windows,
+  free) or VoiceOver (macOS, built-in) session against the built
+  `client-web` app, specifically tabbing through `GenericFallbackView`
+  and confirming each announced label/value pairing and the "Retry
+  sync" button's own reachability/announcement.
+
+- **`FollowSubscriptionTypeModule`'s dynamic Subscription schema
+  (`EventStore.GraphQL`, "GraphQL-Only Query Layer") only reflects
+  whatever event types are active at Host warmup — registering a new
+  event type afterward never makes its `on_{appId}_{eventType}`
+  Subscription field appear without a process restart.** Confirmed, by
+  extensive direct debugging (Console-instrumented runs, a parallel
+  independent `EventStoreContext` proving the registration genuinely
+  commits and is immediately visible to any OTHER connection), that this
+  is not a registration bug: `ISchemaChangeNotifier.NotifyChanged()` does
+  fire and does reach a real subscriber inside HotChocolate's own
+  executor machinery, but no second `CreateTypesAsync` invocation ever
+  follows — not immediately, not after a 2-second periodic-timer fallback
+  retried for over a minute of real wall time. Most likely explanation,
+  not fully proven without reading HotChocolate's own source: whatever
+  internal scope builds the schema disposes the type modules it resolves
+  once building finishes, silently stopping a `Timer` field kept on this
+  same long-lived singleton. Worked around for this item's own exit
+  criteria by seeding the one test that needs a live Subscription
+  directly into the database before the Host starts, proving the dynamic
+  schema CONSTRUCTION mechanism itself is correct — the gap is narrowly
+  about hot-registering against an ALREADY-RUNNING Host. Investigate:
+  read HotChocolate's actual `RequestExecutorManager`/type-module-disposal
+  source, or try `IRequestExecutorManager.EvictExecutor(schemaName)`
+  explicitly alongside `TypesChanged` instead of relying on the event
+  alone.
+- **`dotnet test tests/EventStore.IntegrationTests` intermittently fails
+  one or two SQL Server test classes per full run, a different class (or
+  pair) failing each time** (seen: `DerivationSqlServerTests`, then
+  `AllUpcastMaterializationScenarios`/`UpcastMaterializationSqlServerTests`,
+  then `AllStreamingScenarios`/`StreamingSqlServerTests` +
+  `InsertAndReadBackStoredEvent`/`SqlServerRoundTripTests` together in one
+  run) — a Testcontainers `MsSqlContainer` readiness-check timeout, a Docker
+  exec-call error, or (the clearest evidence yet, this pass) the container
+  itself crashing on startup with exit code 134/1 and stderr `"Unable to
+  create a new asynchronous I/O context. Please increase sysctl
+  fs.aio-max-nr"` — a Linux/WSL2 kernel-wide AIO-context limit exhausted by
+  however many `MsSqlContainer`s this session has cumulatively started,
+  not any one test's fault. Every failing class passes cleanly when run
+  alone (confirmed four separate times now, across four different
+  classes), and which class(es) fail rotates run to run — conclusively a
+  host resource-exhaustion issue, not a code defect in any item. First
+  noticed during "Sharding & Replication" (item 17)'s own full-suite
+  regression run; the `fs.aio-max-nr` evidence surfaced during "Non-
+  Authoritative Capture" (item 18)'s. Investigate: raise the host/WSL2
+  `fs.aio-max-nr` sysctl, run SQL Server test classes with reduced
+  parallelism, or a longer/more tolerant wait strategy on `MsSqlBuilder`,
+  if this keeps costing re-run time in future sessions.
+  **Severity update, "Lineage Export & Bitemporal Playback" (item 41)**:
+  running the SqlServer-only subset three times in immediate succession
+  (`--filter FullyQualifiedName~SqlServer`, no other-provider tests
+  interleaved to give Docker breathing room) failed 10-12 of 21 classes
+  every single time, each visibly timing out its own container-readiness
+  `sqlcmd -Q "SELECT 1"` poll around 28-29s before the container was torn
+  down — worse than the "one or two classes" this entry originally
+  described, but the SAME root cause (every failing class passes alone;
+  zero failures ever named a class this item, or any recent item, added).
+  Confirms this is a real, worsening resource-contention ceiling in this
+  environment specifically when many `MsSqlContainer`s start back-to-back
+  with no other work between them, not a regression to chase per-item.
+
+- **`StoredEvent.AppId` now exists (added by "Entity-Centric Core Rebuild",
+  `ADR-021` — the dedicated fix `docs/10-open-questions.md`'s former row 1
+  named as one resolution path, now closed and deleted), but only
+  `EventStore.Router`'s own schema/entity resolution was rewired to use it
+  directly.** `SchemaRegistryService.GetActiveClaimsByNameAsync`/
+  `GetActiveClaimsByNamesAsync`/`GetActiveChangeKindByNameAsync` (used by
+  Follow's connect-time claim gate, Follow's per-parent visibility check,
+  and Lineage's own claim checks — all bare-`EventType`-name, tie-broken by
+  `AppId` ordering on a genuine collision) could now resolve unambiguously
+  by reading each `StoredEvent.AppId` directly instead, for every call
+  site that already has the `StoredEvent` in hand (Follow/Lineage both
+  do). Not done in the same pass as adding the column — a real, scoped
+  follow-up, not a fresh design question (the fix is already decided: use
+  `StoredEvent.AppId`; only the doing is left across those specific call
+  sites).
+- **`EventStore.AppHost`'s Postgres database resource doesn't reliably
+  finish auto-creating before `EventStore.Host.Postgres`'s first
+  connection attempt.** `Aspire.Hosting.PostgreSql` 13.4.6's `AddDatabase
+  ("Postgres")` documents that "the database being created on the
+  Postgres server ... happens automatically as part of the resource
+  lifecycle," but running `aspire run` against a clean checkout
+  (`src/EventStore.AppHost`) repeatedly showed Postgres itself become
+  ready, then a single `FATAL: database "Postgres" does not exist` with
+  no further retry/creation logged, and `EventStore.Host.Postgres` never
+  starts. `WaitFor(db)` on the database resource (already present in
+  `AppHost.cs`) didn't close this gap. Everything else about the Auth
+  item's live-orchestration verification checked out (real token issuance
+  from a live `EventStore.DevIdp`, `.WithDataVolume()` + a stable
+  persisted password surviving restarts, `RequireHttpsMetadata`/
+  `Authority` env-var injection all correct) — this is narrowly about the
+  database resource's own creation timing. Investigate: an explicit
+  `.WithCreationScript(...)`, a longer/explicit health-check retry
+  before the dependent resource's first connection, or filing/checking
+  an upstream Aspire issue. See `docs/08-build-plan.md`'s "Auth
+  (OIDC/OpenIddict) + Orchestration" section's own note for the full
+  list of *other* real orchestration bugs this same pass found and
+  fixed.
+- **`EventUpcastFailed`/`ChannelLagDetectedEventType`/`EntityErasureRequestedEventType`
+  (reserved, platform-owned event types) are NOT excluded from
+  `SchemaRegistryService.ListAsync`'s own per-AppId listing, unlike
+  `SchemaRegisteredEventType` (excluded while building "Control-Plane
+  Actions as Reserved Events," item 30, after `ListingSupportsTopAndSkip
+  Pagination`'s own count assertion broke the moment any AppId's first
+  registration also triggered `SchemaRegistered`'s bootstrap).** The three
+  older reserved types happen not to have surfaced this same bug only
+  because no existing test both (a) registers one of them and (b) asserts
+  an exact count via `ListAsync`/`QUERY /registry` against the SAME AppId
+  — the underlying gap (a caller's own type listing can be silently padded
+  by ANY reserved type that happened to bootstrap under their AppId) is
+  real and pre-existing, just not yet observed. Investigate: either widen
+  `ListAsync`'s exclusion to a real `IsReserved`/`IsPlatformOwned` column
+  on `EventTypeDefinition` (checked at registration time, not a hardcoded
+  name list) or accept the current per-name exclusion approach and add
+  each reserved type's own lowercased name to it explicitly.
+- **`RbacProjectionWorker`'s own live, cross-process Follow subscription
+  (item 30, "Control-Plane Actions as Reserved Events") is not exercised
+  end-to-end by any test.** `DelegatedGrantsRbacFederationHttpSqliteTests.cs`
+  verifies the Host's real write path (`RbacEndpoints`, scope-gated publish)
+  and DevIdp's own fold-target methods (`RoleService`/`TrustRootService`,
+  unchanged) directly, but simulates the fold itself rather than running the
+  live worker inside the test process — running it hit a genuine
+  `WebApplicationFactory` hazard: `BackgroundService.StartAsync` invokes
+  `ExecuteAsync` synchronously, inline, until its first real suspension
+  point, and `RbacProjectionWorker`'s self-referential "DevIdp" `HttpClient`
+  (`FollowClientOptions.ClientId` points back at the same process) recursed
+  into `_devIdpFactory.Server` while that same factory was still being
+  built one level up the call stack — silently, no exception, no log.
+  Worked around in production code with a real one-time startup delay
+  (`RbacProjectionWorker.ExecuteAsync`'s own comment), which resolves the
+  hazard for this specific case but was never proven against a live,
+  in-process `WebApplicationFactory` pair the way the fix was validated.
+  Investigate either a real multi-process test harness (two actual `dotnet
+  run` processes, no shared-process self-reference at all) or extracting
+  `RbacProjectionWorker`'s own tail-and-apply logic into a `CatchUpOnceAsync`-
+  style public method (mirroring `ProjectionHost<T>`'s own shape) that a test
+  can drive directly, post-ClassInit, without relying on `BackgroundService`'s
+  own eager startup timing.
+- **`client-web`'s `useEntityViewActions.subscribe()` opens every
+  Subscription (the main entity one, and "Local/Edge Active-Scope Caching
+  & Erasure Invalidation"'s new `EntityErasureRequested` one) hardcoded
+  `mode: TAIL`, with no persisted resume cursor and no `mode: Replay`/
+  `fromSequenceNumber` reconnect path at all.** Found while verifying
+  item 28's own "a client offline at the moment erasure fires still
+  purges correctly once it reconnects" exit criterion — a client that
+  reconnects AFTER missing an event while disconnected (not just one
+  already connected when it fires) has no guaranteed catch-up today and
+  may simply never see it, contradicting `ADR-039`'s own "offline is the
+  default assumption" framing for exactly the reconnect case that matters
+  most. Pre-existing since "MVVM Client" (item 21) built the subscription
+  mechanism, not introduced by item 28 — surfaced here because this is
+  the first item whose own exit criteria explicitly depend on reconnect
+  behavior being correct. Investigate: persist a per-instance last-seen
+  `SequenceNumber` cursor (IndexedDB, alongside the existing outbox/entity-
+  cache stores) and reconnect with `mode: Replay&fromSequenceNumber=
+  <cursor+1>` instead of blind `Tail` whenever a stopped subscription is
+  restarted, the same tail-then-replay-cursor shape `EventTailReader`
+  already uses server-side.
+- **The full SQLite regression suite's own known load-induced flakiness
+  (see `.claude/context.md`'s repeated notes on
+  `SubscribingOverRealHttpStreamsAMatchingEventAsSse` and the leader-
+  election renewal-cadence fix) got noticeably worse, once, while
+  building item 36** (Bulk Ingestion & Interchange Adapters): one run out
+  of four produced 21 failures (vs. the usual 0-2), though every failing
+  test passed cleanly on its own and three OTHER full-suite runs
+  immediately after came back clean or near-clean (only the
+  already-known SSE flake, plus once an unrelated Windows file-lock
+  error in `AuthSqliteTests.ClassCleanup` — "process cannot access the
+  file... being used by another process," a generic concurrent-SQLite-
+  file-deletion race, not caused by this item). No interchange-specific
+  test ever appeared in any failing run. Plausible cause, not yet
+  confirmed: this item added a 4th real background poller
+  (`Hl7V2MllpListener`, real TCP sockets) on top of the 3 already
+  running (Router/PeerSync/WebhookOutboxPump), and the tests in this file
+  spin up several MORE real `WebApplicationFactory` Hosts than most
+  other items' own test files — plausibly enough added load under
+  MSTest's 32-way parallelism to occasionally push several OTHER tests'
+  own fixed wait margins past the edge in one unlucky run. Investigate if
+  this recurs: capture a full, untruncated log (a `tail`-truncated
+  capture already lost the one reproduction this session had) and check
+  whether the failures cluster around a specific resource (DB file
+  handles, TCP ports, thread-pool starvation) the same way the leader-
+  election cadence fix's own root cause did.
+  **A second, more specific manifestation, found immediately afterward
+  while building item 37** (Tenant-to-Tenant Federation Mapping, which
+  added 2 more real `WebApplicationFactory` Hosts of its own):
+  `DataResidencyHttpSqliteTests.AnAppIdRestrictedToOneRegionReplicatesOnlyToPeersTaggedWithThatRegion...`
+  failed once with `PeerSyncCursors.SingleAsync(...) ->
+  InvalidOperationException: Sequence contains no elements` — passed
+  cleanly in isolation immediately after. Root cause: `PeerSyncWorker.
+  SyncOnceWithAsync` is deliberately wrapped in a per-peer
+  `catch (Exception) { }` in production (`ADR-033`'s own "one
+  unreachable peer never blocks sync with any other" requirement) — a
+  genuinely transient HTTP hiccup talking to a shared `TestServer` under
+  heavier overall suite load looks IDENTICAL, from this test's own
+  perspective, to "that peer was truly unreachable," silently skipping
+  cursor creation. **Fixed**: `SyncOnceToAsync` (the test's own helper)
+  now takes an `expectedPeerId` and retries `PeerSyncWorker.RunOnceAsync`
+  in a bounded loop (150ms between attempts, 10s deadline) until a
+  `PeerSyncCursor` row actually appears for that peer, rather than
+  assuming one call is enough — mirroring how a real deployment would
+  also just retry a transiently-failed peer on its own next tick.
+  Verified: `DataResidencyHttpSqliteTests` passed 3/3 in isolation across
+  3 separate runs, and the full SQLite regression suite was re-run 3
+  more times afterward (0-1 failures each, only the pre-existing SSE
+  flake, zero `DataResidencyHttpSqliteTests` failures) — no reproduction
+  of either this race or the original 21-failure anomaly above.
+
+- **`client-web`'s own devDependencies (vitest/vite/esbuild) carry a
+  known moderate/high/critical vulnerability chain** (`npm audit`, found
+  while building "Release Engineering, Packaging & Supply Chain," item
+  39) with no non-breaking fix available — `npm audit fix --force` would
+  bump vitest across a major version (2.x → 4.x), real risk to that
+  client's own test suite/config that wasn't attempted this pass. Every
+  affected package is dev-only (the Vite dev server / Vitest UI server),
+  never shipped in a production build; `npm audit --omit=dev` reports
+  clean, and `.github/workflows/ci.yml`'s own vulnerability-scan job is
+  scoped to that flag for exactly this reason, not to hide the finding.
+  If this needs closing later: attempt the vitest 4.x upgrade in its own
+  isolated pass, run the full client-web test suite before/after to
+  isolate any breakage from the version bump itself.
+- **`ADR-076`'s deploy-time migration-bundle-apply step is NOT wired
+  into `docker-compose.yml`** — narrowed, 2026-08-11: `EventStore.AppHost`
+  now DOES apply migrations automatically (a new `EventStore.Migrator`
+  project — a one-shot `Database.MigrateAsync()` runner, added as a real
+  Aspire resource; `eventstore`'s own `.WaitForCompletion(migrator)`
+  guarantees exactly one execution before it starts accepting traffic,
+  verified by actually running `dotnet run` against `EventStore.AppHost`
+  end to end against a real Docker Postgres container, not assumed —
+  `/health` returned 200 only after the migrator resource had already
+  exited). `docker-compose.yml` (the OTHER orchestration path `ADR-076`
+  names) still has no equivalent init step — a human running `docker
+  compose up` against a brand-new database must still run
+  `scripts/generate-migration-bundle.sh`/`apply-migration-bundle.sh` by
+  hand first. Investigate: an init container (or a `depends_on` +
+  healthcheck-gated one-shot service, Compose's own closest equivalent to
+  Aspire's `WaitForCompletion`) running the same bundle-apply script
+  ahead of the `Host` services.
+- **`.github/workflows/ci.yml`/`.github/dependabot.yml` have never
+  actually been run by GitHub Actions** (item 39) — this environment has
+  no push access to trigger a real run, an explicit, deliberate scope
+  limit agreed with the user rather than a gap discovered afterward.
+  Every command the workflow calls (`dotnet build`/`test`,
+  `dotnet list package --vulnerable`, `npm audit --omit=dev`) was
+  verified working against this exact repository first; only the YAML
+  orchestration itself (both files YAML-parse-checked, not execution-
+  checked) is unexecuted. If this repo ever gets a real `origin` with
+  Actions enabled: push a branch and confirm the workflow actually goes
+  green.
+  **Narrowed further, 2026-08-11, direct request**: SBOM generation/
+  build-provenance attestation (`sbom-tool generate`, `actions/attest-
+  build-provenance`) are no longer part of `ci.yml` at all — moved to a
+  local-only `scripts/generate-sbom.sh`, run for real this pass
+  (confirmed working standalone). If this ever needs to become a real CI
+  job again: the provenance-attestation half specifically has no local
+  equivalent at all (it needs a real CI provider's own signing
+  identity) — that's the one piece that would need writing fresh, not
+  just re-adding the already-proven `sbom-tool` step.
+
+- **A full docs-vs-implementation audit across all 39 completed
+  build-plan items (this pass) found and fixed ~65 stale-doc findings
+  across 44 files** — narrated in full in `docs/changes/2026-08-11.md`.
+  A handful of the findings were CODE-side gaps the docs now correctly
+  describe as open, rather than doc bugs to fix; listed here since they
+  represent real remaining work, not narrative to restate elsewhere:
+  - **`IUpcastExpressionEvaluator`'s CEL/JSONata choice is not actually
+    swappable via configuration**, contradicting `ADR-053`'s "no core-
+    engine change" claim — `src/EventStore.Upcasting/
+    UpcastingServiceCollectionExtensions.cs` hardcodes
+    `AddSingleton<IUpcastExpressionEvaluator, CelUpcastExpressionEvaluator>()`;
+    `JsonataUpcastExpressionEvaluator` exists but is registered nowhere
+    outside a test. Docs now say "a code-level DI edit today, not a
+    deployment-time switch" rather than overclaiming. Build a real
+    config-driven registration switch if this ever needs to be genuinely
+    swappable without a rebuild.
+  - **`src/EventStore.SchemaRegistry/RegisterEventTypeRequest.cs`'s own
+    code comment is stale**: it calls the required `AppId` body field
+    "temporary... removed once Auth + Orchestration lands," but both
+    Auth + Orchestration (item 6) and Multi-Tenancy (item 13) have long
+    since shipped and the field is still required, still never resolved
+    from the caller's scope. Update or remove that comment — a small,
+    low-risk fix, just not done this pass since it's source code, not a
+    doc.
+  - **`revealField`'s `ADR-066` step-up-authentication gap did not close
+    when "Digital Sign-Off for Regulated Actions" (item 29) landed** —
+    item 29 only wired RFC 9470 step-up into publish-time
+    `RequiredSignature` enforcement; `src/EventStore.GraphQL/
+    RevealFieldMutation.cs` never gained it, and `docs/data/
+    schema-registry.md`'s `revealOnDemand` shape has no step-up/Acr
+    field at all. Previously implied closed by cross-referencing item
+    29; docs now say explicitly it's still open. Build it if a masked
+    field with `RequiredSignature`-equivalent step-up protection is ever
+    actually needed.
+  - **GraphQL browsing of attachments (`entity(id) { attachments {...} } }`)
+    was documented and Gherkin-tested as if built; it isn't** — no
+    `entity(id)` field or `attachments` field exists anywhere in
+    `src/EventStore.GraphQL/`. This was already indirectly explained by
+    item 19's own text (no generic "get current entity" query field
+    exists), but the re-verification item 16's own note promised, once
+    "GraphQL-Only Query Layer" landed, never actually happened until this
+    pass. Docs now state the gap as confirmed, not deferred.
+
+- **The ticket-exchange half of "Signing Secret Rotation, Dual
+  Signature" (`ADR-093`, item 40) is descoped, not built** — found while
+  starting item 40: `ADR-093`'s own claim that "OpenIddict already
+  supports a client holding more than one valid credential — no
+  framework change needed" was never actually verified before being
+  written down, and turned out to be false (verified this pass against
+  OpenIddict's own docs/source/issue tracker —
+  `OpenIddictApplicationDescriptor.ClientSecret` is a single string per
+  application, no built-in multi-secret mechanism). Direct user decision
+  once this was found: correct the ADR (done, struck through with the
+  real finding) and build only the webhook half of item 40 (also done —
+  `WebhookSubscriptionService.RotateSigningSecretAsync`/
+  `DiscardPreviousSigningSecretAsync`, `WebhookSigner`'s dual-signature
+  emission), rather than improvise a ticket-exchange mechanism on the
+  spot. Real zero-downtime rotation for an OpenIddict-registered
+  client's `client_secret` still needs one of: (a) a custom OpenIddict
+  event handler overriding the default credential-validation pipeline
+  to also accept a locally-stored previous secret (DevIdp-side state,
+  outside `EventStoreContext`, matching where `client_secret` already
+  lives per `ADR-040`'s Consequences), or (b) registering a second
+  client application as a temporary stopgap during rotation, accepting
+  either `client_id` while both are valid. Neither is built. Pick up
+  when ticket-exchange credential rotation is actually needed —
+  `docs/features/ticket-exchange.md` and `ADR-040`/`ADR-093` all need a
+  follow-up pass once a real mechanism is designed and built.

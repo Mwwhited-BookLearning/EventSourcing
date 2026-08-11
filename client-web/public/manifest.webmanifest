@@ -1,0 +1,16 @@
+{
+  "name": "Duplex Client",
+  "short_name": "Duplex",
+  "description": "ADR-039 MVVM client -- offline-first entity views over the Duplex GraphQL Gateway.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#111111",
+  "icons": [
+    {
+      "src": "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='192' height='192'%3E%3Crect width='192' height='192' fill='%23111111'/%3E%3Ctext x='96' y='120' font-size='96' fill='white' text-anchor='middle'%3ED%3C/text%3E%3C/svg%3E",
+      "sizes": "192x192",
+      "type": "image/svg+xml"
+    }
+  ]
+}

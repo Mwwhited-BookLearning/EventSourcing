@@ -15,8 +15,22 @@ already had, introducing no new interface — which turned out to be
 exactly the right groundwork: `ADR-079`'s seam wraps an automated
 screening *signal* around the identical manual-decision flow this doc
 already demonstrates, rather than replacing it. Nothing here needs
-rewriting as a result; a future pass implementing `ISanctionsScreeningProvider`
-composes with this doc's flow, doesn't compete with it.
+rewriting as a result, and this composition is no longer only a future
+pass: "Sanctions/Watchlist Screening Extensibility Seam" (`08-build-plan.md`
+item 38) has already exercised it, in test code —
+`tests/EventStore.IntegrationTests/
+SanctionsScreeningExtensibilityHttpSqliteTests.cs` registers a keyed
+`ISanctionsScreeningProvider` entirely inside its own `ConfigureServices`
+block (standing in for this application's composition root, never a core
+`EventStore.*` project) and drives a screening pipeline helper that
+stands in for this doc's own `PeriodicScreeningWorker` — asserting a hit
+always lands `pending_review` regardless of match confidence, and that
+only a `ComplianceOfficer`-role holder's ordinary `authorityDecision`
+publish (unchanged RBAC/non-authoritative-capture mechanics) resolves it.
+`ISanctionsScreeningProvider` itself remains test-only scaffolding, not a
+production `EventStore.Abstractions`/core-project interface — that
+distinction is unaffected by this — but the composition point this doc
+describes is now demonstrated, not merely designed.
 
 The mechanisms this doc composes, all already Accepted: `ADR-035`/
 `ADR-042` (a sanctions-list hit is captured as an **automated detector's

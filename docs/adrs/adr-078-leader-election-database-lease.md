@@ -76,13 +76,31 @@ Decision:
 Consequences:
 - **`LeaderLease` is defined in `docs/data/schema-registry.md`, landed
   in this same pass** per this project's data-model-ownership
-  convention — only the actual `LeaderElectionService` implementation
+  convention — ~~only the actual `LeaderElectionService` implementation
   (a `BackgroundService`/hosted-service wrapper each singleton worker
   composes with) remains not built, consistent with this repo being a
   design package with no `src/` yet. A `DbSet<LeaderLease>` registration
   is still missing from `docs/data/dbcontext-and-conventions.md` —
   tracked in `TODO.md`'s existing data-model drift-table item, not a new
-  gap this ADR introduces.
+  gap this ADR introduces.~~ **Corrected, later pass**: both are built —
+  `docs/08-build-plan.md`'s item 32 ("Leader Election via Database-Backed
+  Lease") is marked Done. [`LeaderElectionService.cs`](../../src/EventStore.LeaderElection/LeaderElectionService.cs)
+  implements `TryAcquireOrRenewAsync` as a compare-and-swap over one
+  role's `LeaderLease` row, and `DbSet<LeaderLease>` is registered in
+  [`EventStoreContext.cs`](../../src/EventStore.Persistence/EventStoreContext.cs).
+  **One narrowing found only by building this, not anticipated by this
+  ADR's own Decision text**: `UpcastMaterializer` does not get its own
+  independent lease row despite being named as one of exactly 4
+  independent worker roles above. Reading [`RouterWorker.cs`](../../src/EventStore.Router/RouterWorker.cs)
+  showed `UpcastMaterializer.ReconcileBacklogAsync`/`TryMaterializeAsync`
+  are called inline, directly from `RouterWorker`'s own tick — there is
+  no separate, independently-schedulable `UpcastMaterializer` process to
+  protect with its own lease; it only ever runs as part of `RouterWorker`'s
+  execution, under `RouterWorker`'s own `"Router"` lease. A second lease
+  row would protect nothing. Only 3 independent `LeaderLease` rows
+  actually exist today: `"Router"`, `"PeerSyncOutboxPump"`, and (once
+  `docs/08-build-plan.md`'s Outbound Webhooks item wired it in)
+  `"WebhookOutboxPump"` — not the 4 the code sample above lists.
 - Clarifies `ADR-024`'s actual scope (write-time conflict flagging only)
   — worth a cross-reference wherever `ADR-024`/`ADR-029` could otherwise
   be misread as already covering concurrent-fold safety.

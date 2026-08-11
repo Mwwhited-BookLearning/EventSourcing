@@ -1,0 +1,21 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <ProjectReference Include="..\EventStore.Persistence\EventStore.Persistence.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="10.0.3" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <!-- ADR-062: provider-specific migration glue, not one of the
+         published packages, a consumer references EventStore.Host.Postgres
+         (which already pulls this in transitively), never this directly. -->
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+</Project>

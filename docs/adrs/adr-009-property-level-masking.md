@@ -2,8 +2,8 @@
 
 # ADR-009: Property-level masking via a value/masked wrapper, applied only to query and stream responses
 
-Status: Design Accepted; **implementation is lower priority — build after
-Phases 0–6 are working** (per the user's own sequencing call), not
+Status: Design Accepted; ~~implementation is lower priority — build after
+Phases 0–6 are working~~ (per the user's own sequencing call), not
 alongside them. This is a different reason for coming later than `ADR-007`:
 there are no unresolved technical questions here (unlike `ADR-007`'s
 open questions about join semantics), the design below is complete — it's
@@ -12,6 +12,13 @@ yet" one. Depends on `ADR-008` existing first regardless — masking only
 matters for callers who already cleared the event-type-level
 `RequiredReadClaim` (or the type has none) and are now looking at
 individual fields within an event they otherwise have base access to.
+**Corrected, later pass**: built — `docs/08-build-plan.md`'s item 9
+("Property-Level Masking") is marked Done. `src/EventStore.Masking/`
+implements the mechanism this ADR describes: `IPayloadMasker`/
+`PayloadMasker` (the transform) and the three `IMaskingStrategy`
+implementations (`FixedValueMaskingStrategy`, `PartialRevealMaskingStrategy`,
+`HashMaskingStrategy`), registered as keyed DI services per the Strategy-
+pattern seam this ADR calls for.
 
 Context: `RequiredReadClaim` (`ADR-008`) is all-or-nothing for an event
 type: a caller either sees the whole event or none of it. There's a

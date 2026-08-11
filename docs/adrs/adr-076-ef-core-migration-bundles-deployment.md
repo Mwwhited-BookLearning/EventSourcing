@@ -72,3 +72,21 @@ bundle applying only expand-style changes means a rolled-back binary
 still finds a database shape it fully understands, exactly the rollback
 drill `08-build-plan.md`'s "Compatibility & Deployment Discipline" exit
 criterion already names.
+
+**Corrected, 2026-08-11**: `EventStore.AppHost`'s own gap (Consequences
+above, "not yet built") is now closed for that ONE orchestration path.
+A new `EventStore.Migrator` project — a small console app calling
+`Database.MigrateAsync()` once, directly, against `EventStore.Persistence.
+Migrations.Postgres` — is added as a real Aspire resource in
+`AppHost.cs`; `eventstore`'s own `.WaitForCompletion(migrator)` gives
+the exact same "exactly one execution, ever, per run, before any
+replica starts serving traffic" guarantee this ADR's own bundle/DACPAC+
+SqlPackage/pgschema paths provide for a real deployment pipeline —
+Aspire's own orchestration IS that single-execution guarantee here, so
+no separate bundle-generation step was needed for this specific path.
+Verified by actually running `dotnet run` against `EventStore.AppHost`
+end to end (a real Docker Postgres container, not assumed): `eventstore`'s
+own `/health` endpoint only returned `200` once the migrator resource had
+already run to completion and exited. `docker-compose.yml` (the OTHER
+orchestration path named above) still has no equivalent step — tracked
+in `TODO.md`, not silently considered closed by this correction.

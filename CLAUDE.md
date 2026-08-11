@@ -1,11 +1,19 @@
 # CLAUDE.md
 
-This repo is a **design package**, not an implemented codebase — there is no
-`src/` yet. Every file under `docs/` is architecture/decision documentation
-for an event-sourcing store, meant to be built from later. Treat doc edits
-with the same care as code edits: internal consistency across files matters
-more here than almost anything else, because there's no compiler to catch
-drift.
+This repo started as a **design package** and, this session, began actual
+implementation (direct request: "start converting the build plan to your
+active TODO... let's do this"). `src/`/`tests/` now exist, built strictly in
+`docs/08-build-plan.md`'s dependency order — that file's "Implementation
+status" table (near its top) is the authoritative tracker of which item is
+done/in progress/not started; check it before assuming any capability
+exists in code. Every file under `docs/` is still the architecture/decision
+documentation the implementation is built *from* — when code and docs
+disagree, a doc is wrong and gets fixed (the data-model docs remain the
+shape authority per the standing rule below), not silently overridden by
+whatever the code happened to do. Treat doc edits with the same care as
+code edits: internal consistency across files matters more here than
+almost anywhere else, because a design decision left inconsistent
+propagates into real code, not just prose.
 
 Note: the folder/repo name itself is a typo (`EventSouring` → should be
 `EventSourcing`). Known, deliberately not yet fixed — renaming the directory
@@ -151,10 +159,16 @@ re-derive the process from scratch:
   template.md`, the same depth as `docs/features/*.md` for the core
   engine). **The 13 considered-not-chosen domains stay at one feature
   doc each; the two chosen proving-ground domains (clinical trials +
-  device telemetry, digital identity/KYC) were taken further, each to 4
-  feature docs sequenced into a `## Workflows` section on that domain's
-  own `README.md`** — see `docs/changes/2026-07-30.md`'s "two chosen
-  domains taken to full reference-application depth" section. Distinct
+  device telemetry, digital identity/KYC) were taken further, sequenced
+  into a `## Workflows` section on that domain's own `README.md`** — see
+  `docs/changes/2026-07-30.md`'s "two chosen domains taken to full
+  reference-application depth" section. Originally 4 feature docs/3
+  workflows each; clinical trials + device telemetry grew to 5 feature
+  docs/4 workflows on direct request once `ADR-094` gave its named IONM
+  use case a real mechanism to exercise end-to-end
+  (`docs/changes/2026-08-04.md`) — the two domains were never required to
+  stay at matching depth, that was just how it happened to work out
+  until this addition. Distinct
   from `docs/glossary.md`, which covers Duplex's own
   cross-cutting engine terms once, not per domain. Generated from — not
   a repeat of — `docs/comparisons/proving-ground-domain.md`'s coverage
@@ -209,37 +223,55 @@ re-derive the process from scratch:
   clear (examples: "query parameter" vs. the HTTP `QUERY` method,
   `ADR-010`; "projection" as a CQRS read model vs. design-docs' schema-
   mapping sense, `ADR-018`; `ChannelOrigin.Origin` vs. `OriginId`,
-  tracked in `TODO.md`).
+  disambiguated inline in `docs/data/streaming-and-attachments.md`).
 - **The ADR that adds or changes a persisted field/entity/table is that
   field's naming/shape authority — and must land the matching
   `docs/data/*.md` edit and `DbSet` registration in the *same pass*, not
-  defer it to a later sweep.** `TODO.md`'s data-model drift table
+  defer it to a later sweep.** A recurring drift table in `TODO.md`
   (`OriginId`/`LogicalClock` described in `ADR-033` but never added to
   `docs/data/event-log.md`; `RequiredClaims` singular vs. `ADR-050`'s
   list; missing `DeprecatedAt`/`ViewDefinition`/`PeerSyncCursor`/
   `WebhookOutbox`; seven entities with no `DbSet`) happened because this
   step got skipped repeatedly, not because anyone disagreed about the
   field — the ADR's prose was never actually wrong. This bullet is the
-  rule that stops it recurring; the drift table itself is still the
-  cleanup item in `TODO.md`.
+  rule that stops it recurring. A full docs-vs-implementation audit
+  (this session) closed every item that drift table named — see
+  `docs/changes/2026-08-11.md` — so the table itself is gone from
+  `TODO.md` now; if a new instance of this class of drift ever surfaces
+  again, it goes back in `TODO.md`, not here.
 - **A repeated relationship gets its own envelope-metadata field, never
   conflated with an existing one just because the shape looks similar.**
-  This design has seven now: `parentEventIds` (causal derivation,
+  This design has eight now: `parentEventIds` (causal derivation,
   `ADR-005`), `MaterializationOfEventId` (reshaped copy of, `ADR-027`),
   `TelemetryPointer` (position in a signal/media stream, `ADR-031`),
   `AttachmentRef` (supporting binary content, `ADR-032`), `erasureScope`
   (whose crypto-shredding key protects this field, `ADR-057`),
-  `Signature` (a captured sign-off attestation, `ADR-066`), and
+  `Signature` (a captured sign-off attestation, `ADR-066`),
   `OriginalSequenceNumber`/`OriginalChainHash`/`ImportedFrom` (provenance
   of an imported lineage-export event, `ADR-068` — added without the
   explicit "ask before a seventh" gut-check this convention calls for;
-  flagged, not undone, since the fit is genuine on inspection). If an
-  eighth comes up, ask what question it specifically answers first.
+  flagged, not undone, since the fit is genuine on inspection), and
+  `RespondsToEventId` (which prior event this one satisfies a declared
+  response expectation for — the Correlation Identifier pattern, Hohpe &
+  Woolf — distinct from `parentEventIds`' broader, untimed causal
+  derivation; `ADR-094`, gut-check done explicitly this time). If a
+  ninth comes up, ask what question it specifically answers first.
 - **A new capability gets a named item in `08-build-plan.md`.** That file
   moved off fixed `Phase N` numbering this session — each item names its
   own prerequisite items instead of a phase number, so adding one never
   requires renumbering anything else. Cite an item by name
   (`` `08-build-plan.md`, "Event-Type Security" ``), never by a number.
+- **`08-build-plan.md`'s single dependency-order PlantUML diagram
+  (`BuildPlan_All` — consolidated this session from two separate diagrams,
+  `BuildPlan_CorePhases`/`BuildPlan_Additions`, per direct request) tracks
+  build status by fill color, kept in lockstep with the "Implementation
+  status" table's own `Status` column, in the same pass, every item, not
+  just at the end of a session:** no fill = `Not started`,
+  `#palegoldenrod` = `In progress` (set the moment work starts on that
+  item), `#palegreen` = `Done`. This is now itself a standing implementation-tracking
+  requirement, not a one-time diagram edit — update both the table row
+  and that item's `state` line's fill together whenever its status
+  changes.
 
 ## Standing requirements, now attached to a written ADR
 

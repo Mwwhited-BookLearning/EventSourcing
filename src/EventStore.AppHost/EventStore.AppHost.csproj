@@ -1,0 +1,29 @@
+<Project Sdk="Aspire.AppHost.Sdk/13.4.6">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <UserSecretsId>7d6d19cf-e90e-4fb3-aecc-4fd8e063c1ce</UserSecretsId>
+    <!-- ADR-062: Aspire orchestration for local dev only (ADR-026), an
+         executable, never a package a downstream project references. -->
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Aspire.Hosting.PostgreSQL" Version="13.4.6" />
+    <!-- ADR-076 propagation: orchestrates client-web's own Vite dev
+         server as a real Aspire resource, per direct request, rather
+         than requiring `npm run dev` to be started by hand alongside
+         `aspire run`. -->
+    <PackageReference Include="Aspire.Hosting.JavaScript" Version="13.4.6" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\EventStore.Host.Postgres\EventStore.Host.Postgres.csproj" />
+    <ProjectReference Include="..\EventStore.DevIdp\EventStore.DevIdp.csproj" />
+    <ProjectReference Include="..\EventStore.Migrator\EventStore.Migrator.csproj" />
+  </ItemGroup>
+
+</Project>

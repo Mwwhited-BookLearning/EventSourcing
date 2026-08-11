@@ -1,0 +1,116 @@
+using System.Security.Cryptography;
+using Microsoft.IdentityModel.JsonWebTokens;
+using Microsoft.IdentityModel.Tokens;
+
+namespace EventStore.Dpop;
+
+// ADR-017 -- "each of the four OAuth2 clients generates its own asymmetric
+// key pair." EC P-256 only (no algorithm agility asked for). This type
+// plays the client's own role: hold the private key and mint a fresh,
+// signed DPoP proof JWT for every outbound request (RFC 9449 -- a new
+// proof per request, never reused).
+public sealed class DpopKeyPair
+{
+    private readonly ECDsa _key;
+    // ECDsa (specifically ECDsaCng on Windows) is not documented as safe for
+    // concurrent Sign operations against the same instance -- found while
+    // building RbacProjectionWorker (ADR-067), whose 8 concurrent Follow
+    // tail loops originally shared one FollowClient's one DpopKeyPair and
+    // hung indefinitely inside CreateToken, no exception, no timeout.
+    // FollowClient itself was fixed to stop sharing one instance across
+    // concurrent calls (see its own comment) -- this lock stays as cheap,
+    // correct insurance for any other caller that does share one instance
+    // across threads, not the primary fix.
+    private readonly object _signLock = new();
+
+    public EcJwk PublicJwk { get; }
+    public string Thumbprint { get; }
+
+    private DpopKeyPair(ECDsa key, EcJwk publicJwk)
+    {
+        _key = key;
+        PublicJwk = publicJwk;
+        Thumbprint = JwkThumbprint.Compute(publicJwk);
+    }
+
+    public static DpopKeyPair Generate()
+    {
+        var key = ECDsa.Create(ECCurve.NamedCurves.nistP256);
+        var parameters = key.ExportParameters(includePrivateParameters: false);
+        var jwk = new EcJwk(
+            EcJwk.KeyType, EcJwk.Curve,
+            Base64UrlEncoder.Encode(parameters.Q.X), Base64UrlEncoder.Encode(parameters.Q.Y));
+        return new DpopKeyPair(key, jwk);
+    }
+
+    // htm/htu per RFC 9449 §4.2: the exact HTTP method and URI (no query/
+    // fragment) of the request this proof accompanies. ath is present only
+    // on API-request proofs (the hash of the access token being presented);
+    // absent on the token-request proof, since no access token exists yet.
+    public string CreateProof(string htm, string htu, string? accessToken = null)
+    {
+        var claims = new Dictionary<string, object>
+        {
+            ["htm"] = htm,
+            ["htu"] = htu,
+            ["iat"] = DateTimeOffset.UtcNow.ToUnixTimeSeconds(),
+            ["jti"] = Guid.NewGuid().ToString("N"),
+        };
+        if (accessToken is not null)
+            claims["ath"] = Base64UrlEncoder.Encode(SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(accessToken)));
+
+        var descriptor = new SecurityTokenDescriptor
+        {
+            Claims = claims,
+            SigningCredentials = new SigningCredentials(new ECDsaSecurityKey(_key), SecurityAlgorithms.EcdsaSha256),
+            AdditionalHeaderClaims = new Dictionary<string, object>
+            {
+                ["typ"] = "dpop+jwt",
+                // The header-claim writer (Microsoft.IdentityModel.Tokens.Json.
+                // JsonSerializerPrimitives) only knows how to serialize a fixed
+                // set of primitive shapes -- an arbitrary POCO like EcJwk isn't
+                // one of them (IDX11025), so this is a plain dictionary instead.
+                ["jwk"] = new Dictionary<string, object>
+                {
+                    ["kty"] = PublicJwk.Kty,
+                    ["crv"] = PublicJwk.Crv,
+                    ["x"] = PublicJwk.X,
+                    ["y"] = PublicJwk.Y,
+                },
+            },
+        };
+
+        lock (_signLock)
+            return new JsonWebTokenHandler().CreateToken(descriptor);
+    }
+
+    // The general form CreateProof's own signing logic already needed --
+    // factored out for "Delegated Grants" (EventStore.Ucan), which reuses
+    // this exact same "embed the public JWK in the JOSE header, sign with
+    // the matching private key" self-verifying shape for a UCAN delegation
+    // instead of a DPoP proof. Every seeded client already plays the role
+    // of holding its own asymmetric keypair (ADR-017); a UCAN delegation's
+    // "issuer DID" is, in this implementation, that same keypair.
+    public string SignJwt(IDictionary<string, object> claims, string typ)
+    {
+        var descriptor = new SecurityTokenDescriptor
+        {
+            Claims = claims,
+            SigningCredentials = new SigningCredentials(new ECDsaSecurityKey(_key), SecurityAlgorithms.EcdsaSha256),
+            AdditionalHeaderClaims = new Dictionary<string, object>
+            {
+                ["typ"] = typ,
+                ["jwk"] = new Dictionary<string, object>
+                {
+                    ["kty"] = PublicJwk.Kty,
+                    ["crv"] = PublicJwk.Crv,
+                    ["x"] = PublicJwk.X,
+                    ["y"] = PublicJwk.Y,
+                },
+            },
+        };
+
+        lock (_signLock)
+            return new JsonWebTokenHandler().CreateToken(descriptor);
+    }
+}

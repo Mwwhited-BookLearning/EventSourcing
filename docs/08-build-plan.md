@@ -45,6 +45,70 @@ the scenario applies to.
 > `features/compatibility-and-versioning.md`) and five feature-doc gaps
 > closed in place, each noted at its own point below.
 
+## Implementation status
+
+**Converted to the active work tracker, this session** (direct request:
+"start converting the build plan to your active TODO"). This table is
+the authoritative status of *implementation* — updated in place as items
+move `Not started` → `In progress` → `Done`, the same "living tracker,
+not a log" convention `TODO.md` already follows. Do not restate item
+status anywhere else (`.claude/context.md` may summarize *which* item is
+currently active, but this table is where the full list lives). `Done`
+means the item's own exit criteria below are actually passing, on every
+provider they apply to — not "code written."
+
+| # | Item | Depends on | Status |
+|---|---|---|---|
+| 1 | [Scaffolding & Persistence](#scaffolding--persistence) | nothing | Done |
+| 2 | [Schema Registry](#schema-registry) | Scaffolding & Persistence | Done |
+| 3 | [Publish API](#publish-api) | Schema Registry | Done |
+| 4 | [Lineage API (read side)](#lineage-api-read-side) | Publish API | Done |
+| 5 | [Follow API + Filter Pushdown](#follow-api--filter-pushdown) | Publish API | Done |
+| 6 | [Auth (OIDC/OpenIddict) + Orchestration](#auth-oidcopeniddict--orchestration) | Lineage API, Follow API + Filter Pushdown | Done |
+| 7 | [Event-Type Security](#event-type-security) | Auth + Orchestration | Done |
+| 8 | [Derived/Materialized Event Types (deferred)](#derivedmaterialized-event-types-deferred) | Event-Type Security | Done |
+| 9 | [Property-Level Masking](#property-level-masking-data-enforcement) | Event-Type Security, Follow API + Filter Pushdown | Done |
+| 10 | [CQRS Read-Model Projections](#cqrs-read-model-projections-worked-example) | Follow API + Filter Pushdown, Auth + Orchestration | Done |
+| 11 | [Hardening & Evolution](#hardening--evolution-dpop-event-upcasting-hash-chained-tamper-evidence) | Auth + Orchestration, Publish API, Follow API + Filter Pushdown, CQRS Read-Model Projections | Done |
+| 12 | [Entity-Centric Core Rebuild](#entity-centric-core-rebuild) | Event-Type Security | Done |
+| 13 | [Multi-Tenancy](#multi-tenancy) | Schema Registry, Entity-Centric Core Rebuild | Done |
+| 14 | [Upcast Materialization + Downcast](#upcast-materialization--downcast) | Hardening & Evolution, Entity-Centric Core Rebuild | Done |
+| 15 | [Streaming Channels](#streaming-channels) | Auth + Orchestration, Entity-Centric Core Rebuild, Property-Level Masking | Done |
+| 16 | [Binary Attachments](#binary-attachments) | Auth + Orchestration, Entity-Centric Core Rebuild | Done |
+| 17 | [Sharding & Replication](#sharding--replication) | Entity-Centric Core Rebuild | Done |
+| 18 | [Non-Authoritative Capture](#non-authoritative-capture) | Entity-Centric Core Rebuild, Auth + Orchestration, Binary Attachments | Done |
+| 19 | [GraphQL-Only Query Layer](#graphql-only-query-layer) | Entity-Centric Core Rebuild, Multi-Tenancy, Hardening & Evolution | Done |
+| 20 | [Compatibility & Deployment Discipline](#compatibility--deployment-discipline) | GraphQL-Only Query Layer | Done |
+| 21 | [MVVM Client](#mvvm-client) | Multi-Tenancy, Sharding & Replication | Done |
+| 22 | [Ticket Exchange for Header-Incapable Clients](#ticket-exchange-for-header-incapable-clients) | Streaming Channels, Binary Attachments, Non-Authoritative Capture | Done |
+| 23 | [Delegated Grants, RBAC, Federated Claims & Read Audit Logging](#delegated-grants-rbac-federated-claims--read-audit-logging) | Non-Authoritative Capture, Event-Type Security, Multi-Tenancy, Hardening & Evolution | Done |
+| 24 | [SPIFFE/SPIRE Service Identity & API Gateway](#spiffespire-service-identity--api-gateway) | Auth + Orchestration, Sharding & Replication, Streaming Channels, Binary Attachments, GraphQL-Only Query Layer, Ticket Exchange | Done |
+| 25 | [Data Lifecycle & Backup/Restore Classification](#data-lifecycle--backuprestore-classification) | Scaffolding & Persistence | Done |
+| 26 | [GDPR/CCPA Erasure via Crypto-Shredding](#gdprccpa-erasure-via-crypto-shredding) | Property-Level Masking, Entity-Centric Core Rebuild | Done |
+| 27 | [PCI-DSS Sensitive Authentication Data Registration Boundary](#pci-dss-sensitive-authentication-data-registration-boundary) | Schema Registry, Property-Level Masking | Done |
+| 28 | [Local/Edge Active-Scope Caching & Erasure Invalidation](#localedge-active-scope-caching--erasure-invalidation) | MVVM Client, GDPR/CCPA Erasure | Done |
+| 29 | [Digital Sign-Off for Regulated Actions](#digital-sign-off-for-regulated-actions-step-up-authentication) | Auth + Orchestration, ActorId on Every Event | Done |
+| 30 | [Control-Plane Actions as Reserved Events](#control-plane-actions-as-reserved-events) | Schema Registry, Entity-Centric Core Rebuild | Done |
+| 31 | [Dynamic Feature-Flag Configuration Provider](#dynamic-feature-flag-configuration-provider) | Scaffolding & Persistence, Control-Plane Actions as Reserved Events | Done |
+| 32 | [Leader Election via Database-Backed Lease](#leader-election-via-database-backed-lease) | Entity-Centric Core Rebuild, Sharding & Replication | Done |
+| 33 | [Per-Tenant Rate Limiting](#per-tenant-rate-limiting) | Auth + Orchestration, SPIFFE/SPIRE Service Identity & API Gateway | Done |
+| 34 | [Outbound Webhooks](#outbound-webhooks) | Publish API, Auth + Orchestration, Property-Level Masking, Leader Election | Done |
+| 35 | [Data Residency (Region Pinning)](#data-residency-region-pinning) | Sharding & Replication, Multi-Tenancy | Done |
+| 36 | [Bulk Ingestion & External Interchange-Format Adapters](#bulk-ingestion--external-interchange-format-adapters) | Publish API, Non-Authoritative Capture, Outbound Webhooks | Done |
+| 37 | [Tenant-to-Tenant Federation Mapping](#tenant-to-tenant-federation-mapping) | Multi-Tenancy, Auth + Orchestration, Bulk Ingestion & Interchange Adapters | Done |
+| 38 | [Sanctions/Watchlist Screening Extensibility Seam](#sanctionswatchlist-screening-extensibility-seam) | Scaffolding & Persistence, Non-Authoritative Capture | Done |
+| 39 | [Release Engineering, Packaging & Supply Chain](#release-engineering-packaging--supply-chain) | Scaffolding & Persistence, Compatibility & Deployment Discipline | Done |
+| 40 | [Signing Secret Rotation, Dual Signature](#signing-secret-rotation-dual-signature) | Outbound Webhooks | Done (webhook half only — ticket-exchange half descoped, see `TODO.md`) |
+| 41 | [Lineage Export & Bitemporal Playback](#lineage-export--bitemporal-playback) | Lineage API, Entity-Centric Core Rebuild, MVVM Client, GraphQL-Only Query Layer, Property-Level Masking, GDPR/CCPA Erasure, Delegated Grants/RBAC/Read Audit Logging | Done |
+| 42 | [RFC 3161 Trusted Timestamping](#rfc-3161-trusted-timestamping) | Digital Sign-Off, Lineage Export & Bitemporal Playback | Done |
+| 43 | [Pluggable Outbox Flush Triggers](#pluggable-outbox-flush-triggers) | MVVM Client, Lineage Export & Bitemporal Playback | Done |
+| 44 | [Device Input Integration](#device-input-integration) | MVVM Client, Pluggable Outbox Flush Triggers, Non-Authoritative Capture | Done |
+| 45 | [Accessibility Standard](#accessibility-standard) | MVVM Client | Done |
+| 46 | [i18n/l10n Architectural Scope](#i18nl10n-architectural-scope) | MVVM Client | Done |
+| 47 | [Mechanism-Level OpenTelemetry Instrumentation](#mechanism-level-opentelemetry-instrumentation) | Hardening & Evolution, Sharding & Replication, Entity-Centric Core Rebuild, Outbound Webhooks | Done |
+| 48 | [Event Log/AccessLog Archival Segment Detachment](#event-logaccesslog-archival-segment-detachment) | Binary Attachments, Delegated Grants/RBAC/Read Audit Logging, Hardening & Evolution, Lineage Export & Bitemporal Playback | Done |
+| 49 | [Expected-Response Tracking](#expected-response-tracking) | CQRS Read-Model Projections (worked example), Streaming Channels, Outbound Webhooks, Leader Election via Database-Backed Lease | Done |
+
 Two groups worth naming up front, since they explain most of the
 ordering below:
 
@@ -70,46 +134,126 @@ ordering below:
   they don't gate any single item's own exit criteria the way a real
   build dependency does.
 
-## Dependency overview — original core build (`ADR-001`–`049`)
+## Dependency overview
 
-The graph and the items it describes are unchanged from before this
-session's rework in shape — the corrections this pass made are three
-added edges (Property-Level Masking → Streaming Channels; CQRS
-Projections → Hardening & Evolution; Multi-Tenancy → GraphQL-Only Query
-Layer), two added edges onto Binary Attachments/Non-Authoritative
-Capture, one added edge onto Ticket Exchange, four added edges onto
-SPIFFE/SPIRE, one added edge onto GraphQL-Only Query Layer from Hardening
-& Evolution, and a real revision to MVVM Client's own dependency set
-(Sharding & Replication added; CQRS Projections, Streaming Channels, and
-Binary Attachments removed as ungrounded) — each one traced to specific
-ADR text during the rework and explained at the point it's used below.
+Consolidated into one diagram, this pass, per direct request — previously
+split into two (a core-build graph and an additions-since-`ADR-050`
+graph), on the reasoning that "a single 48-node graph would be denser
+than useful." That reasoning is superseded now, not silently dropped:
+merging them means every cross-edge an addition has onto the core build
+(previously written out only as prose beneath the second diagram) is now
+a real, visible edge in the one graph below, not just a citation — the
+diagram itself is the complete dependency graph, and the prose after it
+explains the *why* behind each edge rather than being the only place a
+cross-edge was recorded at all.
+
+The core-build portion's own graph and the items it describes are
+unchanged in shape from before this session's original rework — that
+pass's own corrections (three added edges: Property-Level Masking →
+Streaming Channels; CQRS Projections → Hardening & Evolution;
+Multi-Tenancy → GraphQL-Only Query Layer; two added edges onto Binary
+Attachments/Non-Authoritative Capture; one added edge onto Ticket
+Exchange; four added edges onto SPIFFE/SPIRE; one added edge onto
+GraphQL-Only Query Layer from Hardening & Evolution; and a real revision
+to MVVM Client's own dependency set — Sharding & Replication added; CQRS
+Projections, Streaming Channels, and Binary Attachments removed as
+ungrounded) are preserved exactly, each still traced to specific ADR text
+at the point it's used below.
+
+**Diagram fill color tracks the same status as the "Implementation
+status" table above, updated in lockstep**: no fill = `Not started`,
+`#palegoldenrod` = `In progress` (set the moment work starts on that
+item), `#palegreen` = `Done`. Keep both in sync in the same pass — don't
+let the table move without the diagram, or vice versa.
+
+**Framed into four application tiers, this pass, per direct request** —
+purely a visual grouping (PlantUML composite states) laid over the exact
+same node set and edges as before; it changes nothing about what depends
+on what. Tier assignment is a rough architectural framing, not a rigid
+boundary, and follows the item's own primary *purpose* rather than
+strictly where its code happens to run: **External Services** is anything
+whose whole point is talking to a system outside this framework's own
+control (an OAuth2 IdP, SPIFFE/SPIRE + the Gateway boundary, a webhook
+receiver, a federation partner, an interchange/bulk-ingestion source, a
+sanctions-screening provider, an RFC 3161 TSA); **Persistence** is the
+data/storage layer itself (the DB schema, region pinning, archival,
+backup/restore classification); **UI** is what runs on the client device
+(the MVVM Client and everything that extends it — accessibility, i18n,
+device input, outbox flush triggers, local cache scoping); **Local
+Services** is everything else — the bulk of Duplex's own in-process
+engine (Publish/Follow/Lineage/Router/GraphQL/Masking/Erasure/Multi-
+Tenancy/RBAC/feature flags/etc.), the majority tier by node count, exactly
+as expected for a backend-first event-sourcing engine.
 
 ```plantuml
-@startuml BuildPlan_CorePhases
-state "Scaffolding & Persistence" as p0
-state "Schema Registry" as p1
-state "Publish API" as p2
-state "Lineage API" as p3
-state "Follow API + Filter Pushdown" as p4
-state "Auth + Orchestration" as p5
-state "Event-Type Security" as p6
-state "Derived Event Types (deferred)" as p7
-state "Property-Level Masking" as p8
-state "CQRS Projections" as p9
-state "Hardening & Evolution" as p10
-state "Entity-Centric Core Rebuild" as p11
-state "Multi-Tenancy" as p12
-state "Upcast Materialization + Downcast" as p13
-state "Streaming Channels" as p14
-state "Binary Attachments" as p15
-state "Sharding & Replication" as p16
-state "Non-Authoritative Capture" as p17
-state "GraphQL-Only Query Layer" as p18
-state "Compatibility & Deployment Discipline" as p19
-state "MVVM Client" as p20
-state "Ticket Exchange" as p21
-state "Delegated Grants, RBAC & Read Audit Logging" as p22
-state "SPIFFE/SPIRE Identity & API Gateway" as p23
+@startuml BuildPlan_All
+state "External Services" as tierExternal {
+  state "Auth + Orchestration" as p5 #palegreen
+  state "SPIFFE/SPIRE Identity & API Gateway" as p23 #palegreen
+  state "Outbound Webhooks" as a10 #palegreen
+  state "Tenant Federation Mapping" as a12 #palegreen
+  state "Bulk Ingestion +\nInterchange Adapters" as a13 #palegreen
+  state "Sanctions Screening Seam" as a14 #palegreen
+  state "Signing Secret Rotation" as a16 #palegreen
+  state "RFC 3161 Timestamping" as a18 #palegreen
+}
+state "Persistence" as tierPersistence {
+  state "Scaffolding & Persistence" as p0 #palegreen
+  state "Data Residency\n(Region Pinning)" as a11 #palegreen
+  state "Event Log/AccessLog\nArchival" as a24 #palegreen
+  state "Data Lifecycle &\nBackup Classification" as a25 #palegreen
+}
+state "Local Services" as tierLocal {
+  state "Schema Registry" as p1 #palegreen
+  state "Publish API" as p2 #palegreen
+  state "Lineage API" as p3 #palegreen
+  state "Follow API + Filter Pushdown" as p4 #palegreen
+  state "Event-Type Security" as p6 #palegreen
+  state "Derived Event Types (deferred)" as p7 #palegreen
+  state "Property-Level Masking" as p8 #palegreen
+  state "CQRS Projections" as p9 #palegreen
+  state "Hardening & Evolution" as p10 #palegreen
+  state "Entity-Centric Core Rebuild" as p11 #palegreen
+  state "Multi-Tenancy" as p12 #palegreen
+  state "Upcast Materialization + Downcast" as p13 #palegreen
+  state "Streaming Channels" as p14 #palegreen
+  state "Binary Attachments" as p15 #palegreen
+  state "Sharding & Replication" as p16 #palegreen
+  state "Non-Authoritative Capture" as p17 #palegreen
+  state "GraphQL-Only Query Layer" as p18 #palegreen
+  state "Compatibility & Deployment Discipline" as p19 #palegreen
+  state "Ticket Exchange" as p21 #palegreen
+  state "Delegated Grants, RBAC & Read Audit Logging" as p22 #palegreen
+  state "GDPR/CCPA Erasure" as a2 #palegreen
+  state "PCI-DSS SAD Boundary" as a3 #palegreen
+  state "Digital Sign-Off\n(Step-Up Auth)" as a5 #palegreen {
+    state "ActorId on Every Event\n(already satisfied by Auth + Orchestration)" as a1 #palegreen
+  }
+  state "Control-Plane Reserved Events" as a6 #palegreen
+  state "Dynamic Feature Flags" as a7 #palegreen
+  state "Leader Election" as a8 #palegreen
+  state "Per-Tenant Rate Limiting" as a9 #palegreen
+  state "Release Engineering,\nPackaging & Supply Chain" as a15 #palegreen
+  state "Lineage Export +\nBitemporal Playback" as a17 #palegreen
+  state "Mechanism-Level\nOTel Instrumentation" as a23 #palegreen
+  state "Expected-Response\nTracking" as a26 #palegreen
+}
+state "UI" as tierUi {
+  state "MVVM Client" as p20 #palegreen
+  state "Local/Edge Cache Scoping\n+ Erasure Invalidation" as a4 #palegreen
+  state "Pluggable Outbox\nFlush Triggers" as a19 #palegreen
+  state "Device Input Integration" as a20 #palegreen
+  state "Accessibility Standard" as a21 #palegreen
+  state "i18n/l10n Scope" as a22 #palegreen
+}
+
+' Hidden edges between the 4 tier containers themselves -- not a real
+' dependency, just a layout hint so Graphviz stacks the tiers top-to-bottom
+' instead of spreading them side-by-side (Local Services alone holds 30+
+' states and was pulling the whole diagram wide without this).
+tierExternal -[hidden]-> tierPersistence
+tierPersistence -[hidden]-> tierLocal
+tierLocal -[hidden]-> tierUi
 
 p0 --> p1
 p1 --> p2
@@ -159,6 +303,68 @@ p14 --> p23
 p15 --> p23
 p18 --> p23
 p21 --> p23
+p8 --> a2
+p11 --> a2
+p1 --> a3
+p8 --> a3
+a2 --> a4
+p20 --> a4
+p5 --> a5
+p1 --> a6
+p11 --> a6
+a6 --> a7
+p0 --> a7
+p11 --> a8
+p16 --> a8
+p5 --> a9
+p23 --> a9
+a8 --> a10
+p2 --> a10
+p5 --> a10
+p8 --> a10
+p16 --> a11
+p12 --> a11
+a13 --> a12
+p12 --> a12
+p5 --> a12
+a10 --> a13
+p2 --> a13
+p17 --> a13
+p0 --> a14
+p17 --> a14
+p0 --> a15
+p19 --> a15
+a10 --> a16
+p5 --> a16
+p3 --> a17
+p11 --> a17
+p20 --> a17
+p18 --> a17
+p8 --> a17
+a2 --> a17
+p22 --> a17
+a5 --> a18
+a17 --> a18
+a17 --> a19
+p20 --> a19
+a19 --> a20
+p20 --> a20
+p17 --> a20
+p20 --> a21
+p20 --> a22
+a10 --> a23
+p10 --> a23
+p16 --> a23
+p11 --> a23
+a17 --> a24
+p15 --> a24
+p22 --> a24
+p10 --> a24
+p0 --> a25
+p9 --> a26
+p14 --> a26
+a10 --> a26
+a8 --> a26
 @enduml
 ```
 
@@ -241,63 +447,27 @@ own text names every one of these as a surface the Gateway fronts, so
 each has to exist before the Gateway can be verified as actually routing
 to it.
 
-## Dependency overview — additions since `ADR-050`
+The remainder of this section (the "additions since `ADR-050`" half of
+the same one diagram above) explains the *why* behind each addition's own
+edges — including every edge it draws onto the core-build portion above,
+now drawn directly in the merged diagram rather than only written out
+here as prose:
 
-Split into its own diagram deliberately, not merged into the one above —
-a single 48-node graph would be denser than useful. Every edge crossing
-into the diagram above (e.g. an addition depending on "Auth +
-Orchestration") is written as plain text below the diagram rather than
-duplicating the whole core graph's nodes here.
-
-```plantuml
-@startuml BuildPlan_Additions
-state "ActorId on Every Event" as a1
-state "GDPR/CCPA Erasure" as a2
-state "PCI-DSS SAD Boundary" as a3
-state "Local/Edge Cache Scoping\n+ Erasure Invalidation" as a4
-state "Digital Sign-Off\n(Step-Up Auth)" as a5
-state "Control-Plane Reserved Events" as a6
-state "Dynamic Feature Flags" as a7
-state "Leader Election" as a8
-state "Per-Tenant Rate Limiting" as a9
-state "Outbound Webhooks" as a10
-state "Data Residency\n(Region Pinning)" as a11
-state "Tenant Federation Mapping" as a12
-state "Bulk Ingestion +\nInterchange Adapters" as a13
-state "Sanctions Screening Seam" as a14
-state "Release Engineering,\nPackaging & Supply Chain" as a15
-state "Signing Secret Rotation" as a16
-state "Lineage Export +\nBitemporal Playback" as a17
-state "RFC 3161 Timestamping" as a18
-state "Pluggable Outbox\nFlush Triggers" as a19
-state "Device Input Integration" as a20
-state "Accessibility Standard" as a21
-state "i18n/l10n Scope" as a22
-state "Mechanism-Level\nOTel Instrumentation" as a23
-state "Event Log/AccessLog\nArchival" as a24
-state "Data Lifecycle &\nBackup Classification" as a25
-
-a2 --> a4
-a1 --> a5
-a6 --> a7
-a8 --> a10
-a10 --> a13
-a10 --> a16
-a13 --> a12
-a5 --> a18
-a17 --> a18
-a17 --> a19
-a19 --> a20
-a17 --> a24
-a10 --> a23
-@enduml
-```
-
-Every edge into the core diagram, written out (the authoritative source —
-the diagram above only shows addition-to-addition edges):
-
-- **ActorId on Every Event** depends on **Publish API** and **Auth +
-  Orchestration**.
+- **ActorId on Every Event** is nested *inside* Digital Sign-Off's own
+  box above, not a sibling node — it's not a separately-numbered item in
+  the "Implementation status" table, only a named prerequisite *fact*
+  Digital Sign-Off's dependency text needs to point at, already satisfied
+  by "Auth + Orchestration" (item 6): `StoredEvent.ActorId` is documented
+  in `docs/data/event-log.md` as "ALWAYS populated, blocking, not
+  advisory (`ADR-064`)". Filled `#palegreen` (already Done, inherited
+  from item 6) so it reads as resolved, not as an open dependency edge
+  the way a same-level sibling node would.
+- **Expected-Response Tracking** (`ADR-094`, merged in from the
+  `design/service-level-agreement` branch — not yet implemented, queued
+  as this file's own next item) depends on **CQRS Read-Model Projections
+  (worked example)**, **Streaming Channels**, **Outbound Webhooks**, and
+  **Leader Election via Database-Backed Lease** — see that item's own
+  full section below for the reasoning behind each.
 - **GDPR/CCPA Erasure** depends on **Property-Level Masking** and
   **Entity-Centric Core Rebuild**.
 - **PCI-DSS SAD Boundary** depends on **Schema Registry** and
@@ -382,6 +552,14 @@ the diagram above only shows addition-to-addition edges):
   **Scaffolding & Persistence** (the classification exists from day one)
   but its exit criteria stay accurate only as later items land — see its
   own entry.
+- **Expected-Response Tracking** depends on **CQRS Read-Model Projections
+  (worked example)** — the Follow-based internal-follower shape and
+  seeded-OAuth2-client extension pattern `ExpectedResponseWatcher`
+  reuses unchanged — and **Streaming Channels** — the reserved-detector-
+  event shape (`ChannelLagDetected`) `ExpectedResponseMissing` directly
+  mirrors — plus, per the diagram above, **Outbound Webhooks** (the
+  durable-tracker/cursor-table shape) and **Leader Election** (the
+  singleton-worker gate every other background worker already uses).
 
 ## Scaffolding & Persistence
 
@@ -464,10 +642,24 @@ is still "Property-Level Masking".
 **Depends on**: Scaffolding & Persistence (needs the
 `EventTypeDefinition`/`FilterableField` tables to exist).
 
+**Correction, found while implementing**: `features/schema-registry.md`'s
+own Gherkin was rewritten to the GraphQL-only end state this session
+(`eventTypes(first, after)`, `ADR-037`) with no preserved historical
+scenario for the plain `QUERY /registry` `$top`/`$skip` listing this item
+still builds first — unlike an ADR's own struck-through-history
+convention, a feature doc's Gherkin section doesn't retain a superseded
+scenario once rewritten. This item's own listing endpoint is real, tested
+directly (`EventStore.IntegrationTests`, not a `features/*.md` scenario),
+and is explicitly temporary — "GraphQL-Only Query Layer" supersedes it
+with the GraphQL `eventTypes(...)` resolver `features/schema-registry.md`
+already documents as current.
+
 **Exit criteria**: every scenario in
-[`features/schema-registry.md`](features/schema-registry.md) passes, on
-all three providers, including the index/computed-column verification and
-`QUERY /registry`'s `$top`/`$skip` pagination; registering without
+[`features/schema-registry.md`](features/schema-registry.md) **except its
+GraphQL listing scenario** (superseded by "GraphQL-Only Query Layer," not
+yet built) passes, on all three providers, including the index/computed-
+column verification and this item's own `QUERY /registry` `$top`/`$skip`
+pagination test; registering without
 `changeKind`, or with a value other than `Full`/`Partial`, is rejected
 `400`; registering a filterable field whose `jsonPath` doesn't resolve in
 the schema is rejected `400`; plus the masking-registration scenarios in
@@ -693,15 +885,45 @@ trace view, and the OTLP export target is config-driven, not hardcoded.
 `ADR-006` is already Accepted — this item verifies it end-to-end, does
 not decide it.
 
+**Note — verified two different ways, with one real gap between them**:
+the 401/403/201/CORS/anonymous-spec-endpoint behavior is fully proven by
+`EventStore.IntegrationTests`' `AuthSqliteTests` — two real
+`WebApplicationFactory` TestServers (`EventStore.DevIdp` issuing a real
+signed token via its real `/connect/token`, `EventStore.Host.Sqlite`
+validating it via real JwtBearer middleware against a real fetched
+discovery document + JWKS) — not a shortcut around any of it. Actually
+running `aspire run` against `EventStore.Host.Postgres` surfaced and
+fixed five further, genuinely real bugs no test above could catch (wrong
+`AddDatabase` connection-string-key naming, a missing `WaitFor(db)`
+startup race, `RequireHttpsMetadata` needing an explicit override for
+Aspire's plain-HTTP `Authority` injection, a missing migrate-on-startup
+step, and a stale `EventStore.DevIdp/Properties/launchSettings.json`
+whose hardcoded port Aspire's own endpoint-reference resolution used in
+place of the real dynamically-assigned one) — each fixed and confirmed
+individually. **One further issue found this same pass is still open**:
+`AddDatabase("Postgres")`'s own documented "the database being created
+... automatically as part of the resource lifecycle" did not reliably
+complete before `EventStore.Host.Postgres`'s first connection attempt in
+this environment (`Aspire.Hosting.PostgreSql` 13.4.6), so the live,
+fully-orchestrated `aspire run` → real `/connect/token` → real protected
+endpoint round trip was not itself completed end-to-end, only DevIdp's
+own token issuance in isolation. Tracked in `TODO.md` rather than
+silently claimed fixed.
+
 ## Event-Type Security
 
-**Scope**: per `ADR-008` **as originally decided** — a single
-`RequiredPublishClaim`/`RequiredReadClaim` string per direction on
-`EventTypeDefinition` (`ADR-050`'s later generalization to an
-`OR`-matched list is a documented forward revision, not built here).
-`RequiredPublishClaim` gates `POST /publish/{event-type}`.
-`RequiredReadClaim` gates `QUERY /follow/{event-type}` (checked once, at
-connect time) **and** all four Lineage API endpoints, per "you can only
+**Scope**: per `ADR-008`, generalized by `ADR-050` — and that generalized
+shape is **already built**, not something this item introduces:
+`EventTypeDefinition.RequiredClaims: List<RequiredClaim>` (`Direction`-
+qualified, `OR`-matched within one direction) was accepted, format-
+validated, and persisted by "Schema Registry" already, per that item's
+own explicit scope text ("accepted, not yet enforced"). This item is
+purely that enforcement — no new field, no data-model change. A
+`Publish`-direction `RequiredClaims` entry gates `POST /publish/
+{event-type}` (satisfied if the caller holds *any* listed `Publish`
+claim). A `Read`-direction entry gates `QUERY /follow/{event-type}`
+(checked once, at connect time) **and** all four Lineage API endpoints,
+per "you can only
 see what you can see": the **root** `{eventId}` a Lineage call names
 directly must be visible to the caller or the whole request is rejected
 `403` (deliberately distinguishable from a genuinely unknown `eventId`'s
@@ -710,9 +932,10 @@ visibility-checked per node, independently of the root's own check and of
 each other, and traversal does not recurse past a node the caller can't
 see — this requires the recursive CTE to stop expanding *during*
 recursion at a restricted node, not merely redact fields in the final
-output. Publish never checks `RequiredReadClaim` on a referenced parent —
-`ParentLinkService` only ever checks existence; read visibility is
-entirely a per-viewer, read-time decision. Enforced in application code
+output. Publish never checks the `Read`-direction `RequiredClaims` on a
+referenced parent — `ParentLinkService` only ever checks existence;
+read visibility is entirely a per-viewer, read-time decision. Enforced
+in application code
 after the event type is resolved from the registry, not a static
 `AddPolicy` (needs a per-request data lookup a static policy can't
 express). Registering/changing these claims still only needs
@@ -738,164 +961,251 @@ without blocking the event itself from streaming.
 
 ## Derived/Materialized Event Types (deferred)
 
-**Scope**: per `ADR-007` — `ADR-007`'s own closing line states it "carries
-no unresolved technical questions of its own anymore," true on
-inspection: every open question it once had (unbounded pending-join
-state, cycle risk, n-ary joins) has a recorded, resolved answer in its own
-Consequences section. `POST /create/{event-type}?$from=A,B,...&$on=<...>
-&$select=...` — an arbitrary-length `$from` source list, `$on` a
-conjunction of pairwise equalities across all of them; two independent
-per-derivation config knobs (fire-once vs. continuous-enrichment join
-trigger; backfill-from-history vs. from-now-only, plus
-`backfillThroughDerivedSources` when a source is itself derived); a
-background derivation worker per derivation reusing `EventTailReader`,
-republishing through the ordinary publish path, recording sources via
-`parentEventIds` with no schema/data-model change needed; a durable,
-TTL-bounded `PendingJoinState` table, swept periodically; a plain
-depth-first cycle check over the small derivation-*definition* graph at
-registration time (distinct from `ADR-005`'s runtime `CycleGuard`); a
-`derivationHopCount` envelope field capping runaway propagation at a
-configured max depth, as a runtime safety net for the residual
-registration race. Derivation registration reuses `registry:admin` — no
-new scope.
+**Scope**: per `ADR-007`, now built. `POST /create/{event-type}` registers
+a `DerivationDefinition` (arbitrary-length `$from` source list, `$on` a
+conjunction of pairwise equalities across all of them, `$select` mapping
+output fields to source fields) — carried as request-body fields, not
+literal query-string operators, the same adaptation `FollowRequest`
+(`ADR-012`) already made for `$filter` and for the same reason (avoids
+PII/PHI in a query string). The derived type's `JsonSchema` is
+auto-composed from `$select` against the sources' own currently-active
+schemas (falls back to an untyped `{"type":"string"}` slot only if a
+referenced source field can't be resolved). Both per-derivation config
+knobs are built: `JoinTriggerMode` (`FireOnce` | `ContinuousEnrichment`)
+and `BackfillMode` (`FromHistory` | `FromNow`, plus
+`BackfillThroughDerivedSources` for a source that is itself derived). A
+`DerivationWorker` background service (`IHostedService`, one polling loop
+across every active derivation, `EventStore.Derivation`) is "an internal
+follower" per `ADR-007` — it reads `StoredEvent` directly with no claims
+filtering of its own (a server-side process producing new data, not
+exposing existing data to a caller) and republishes through the ordinary
+`PublishService.PublishAsync` path, which is what records
+`parentEventIds` via `EventParents` — no schema change needed, exactly as
+`ADR-007` anticipated. A durable, TTL-bounded `PendingJoinState` table
+(FireOnce only) is swept every tick; an expired or hop-capped row is kept
+with a recorded `ExpiredReason` (`"ttl_expired"` | `"hop_limit_exceeded"`)
+rather than deleted, a minimal dead-letter record per `ADR-007`'s own
+"not designed further here" note on the exact shape. Derivation-
+*definition* cycles are rejected `400` at registration via a plain
+depth-first walk with a visited-set over the small derivation-definition
+graph (distinct from `ADR-005`'s runtime `CycleGuard`); `StoredEvent.
+DerivationHopCount` is the belt-and-suspenders runtime cap for the
+residual race that check can't fully close. Derivation registration
+reuses `registry:admin` — no new scope, as `ADR-007` anticipated.
 
-**Depends on**: Event-Type Security, per the current sequencing — this is
-a **scheduling** dependency, not a technical one: `ADR-007`'s own Context
-names only publish/follow/registry/lineage/auth as the primary system,
-never `ADR-008`. This item stays deferred purely on scheduling, once the
-primary system (0 through the items before this one) is stable.
+Three concrete shapes `ADR-007` named as complexity without specifying —
+`DerivationCursor` (a per-derivation-per-source tailing checkpoint,
+following `EventTailReader`'s own `lastSeen` model but persisted),
+`ContinuousEnrichment`'s exact re-emission trigger (first emission still
+requires every source to have arrived once, matching `FireOnce`'s own
+completion condition; only then does any later single-source arrival
+re-emit against the others' current latest state, looked up directly
+against `StoredEvent` rather than a rebuilt cache — a worker restart
+needs no warm-up step), and the join-key extraction itself (a union-find
+over `$on`'s pairwise `(source, field)` equalities, grouping every field
+transitively tied to the same logical key into one class — supports an
+n-ary join generally, not just a special-cased two-source pair) — are
+this pass's own resolved answers, documented in `docs/data/schema-
+registry.md`'s "Derived/materialized event types" section per this
+repo's standing "the ADR that adds a persisted shape is that shape's
+authority" rule.
 
-**Exit criteria**: no feature doc exists for this item yet, consistent
-with its Deferred status — once scheduled, a future
-`features/derived-event-types.md` needs to cover: n-ary `$from`/`$on`
-registration with auto-composed schema; both join-trigger modes; both
-backfill modes plus `backfillThroughDerivedSources`; a derivation-
-definition cycle rejected `400` at registration; a pending join surviving
-a worker restart and expiring after its TTL with a recorded reason;
-`derivationHopCount` capping runaway propagation at the configured max
-depth.
+**Depends on**: Event-Type Security, per the sequencing this item was
+originally deferred under.
+
+**Exit criteria** (all verified, `DerivationScenarioAssertions` against
+SQLite/PostgreSQL/SQL Server): registering a valid n-ary derivation
+auto-composes a correctly-typed schema; an unregistered `$from` source or
+an `$on`/`$select` clause referencing an undeclared source is rejected;
+a derivation-definition cycle is rejected `400`; `FireOnce` emits exactly
+once all declared sources have arrived, with the derived event's
+`parentEventIds` covering every source event and `DerivationHopCount ==
+1`, and the completed join's `PendingJoinState` row removed; a partial
+`FireOnce` join persists a `PendingJoinState` row surviving until the
+remaining source arrives; an expired pending join is swept with
+`ExpiredReason = "ttl_expired"` and never retroactively completes — a
+straggler arriving after expiry starts a fresh row instead;
+`ContinuousEnrichment` re-emits on every new arrival once both sources
+have arrived at least once, with no `PendingJoinState` involved;
+`BackfillMode.FromNow` ignores events published before registration; a
+hop count exceeding `MaxHopCount` skips emission and records a
+`"hop_limit_exceeded"` dead-letter row instead of publishing.
 
 ## Property-Level Masking (data enforcement)
 
-**Scope**: per `ADR-009` — the **data** half only (`x-masking` structural
-validation → "Schema Registry"; the schema-shape half,
-`MaskingSchemaTransformer` → "Follow API + Filter Pushdown," since
-neither needs claims). `IPayloadMasker`: a pure `(schema, data, hasClaim)
--> data` transform wired into `FollowEndpoint`'s per-event pipeline; the
-per-connection masked-node set computed once at connect time, alongside
-`RequiredReadClaim`; recursive wrapping through arrays (scalar `items`:
-wrap each element; complex-object `items`: wrap only the masked
-properties per element). The wrapper is `oneOf: {value}/{masked}` here —
-`ADR-057`'s third `{erased}` branch is a later revision, not built in
-this item. **Three `IMaskingStrategy` implementations, an explicit
-Strategy-pattern seam**, each a keyed DI registration
-(`AddKeyedSingleton<IMaskingStrategy, ...>("FixedValue"/"PartialReveal"/
-"Hash")`) — `IPayloadMasker` never branches on the strategy name, only
-resolves the matching keyed service per masked leaf: `FixedValue` (a
-configured literal, default `"***"`); `PartialReveal`
-(`{showFirst, showLast, maskChar, preserveSeparators}`, modeled on
-PCI-DSS Requirement 3.3's own plain-language PAN masking); `Hash` (a
-**keyed** HMAC via `Microsoft.Extensions.Compliance.Redaction`'s
-`HmacRedactor` — correlatable across events without being brute-forceable
-the way an unsalted hash would be). Registering any other `strategy`
-value is rejected `400`. `x-masking`'s three optional descriptive fields
-(`regulatoryClassification`, `governanceBody`, `regulationReference`)
-carry no runtime behavior and never appear on the wire.
+**Scope**: per `ADR-009`, now built — the **data** half (`x-masking`
+structural validation was already built by "Schema Registry"; the
+schema-shape half, `MaskingSchemaTransformer`, by "Follow API + Filter
+Pushdown"). A new `EventStore.Masking` project: `IPayloadMasker`/
+`PayloadMasker` — a `(schema, data, hasClaim) -> data` transform, wired
+into `EventTailReader.TailAsync`'s per-event pipeline (masking the
+payload each `FollowedEvent` carries, alongside its already-existing
+`VisibleParentEventIds`), recursive over `properties`/`items` exactly per
+`ADR-009`'s rule (scalar `items`: wrap each element; complex-object
+`items`: wrap only the masked property per element). `hasClaim` reuses
+`ADR-008`'s own `"type:value"` claim-checking primitive
+(`RequiredClaimEvaluator.HasClaim`, promoted to `public` for this reuse)
+rather than a second parser, exactly as `ADR-009` calls for. The wrapper
+is `oneOf: {value}/{masked}` — `ADR-057`'s third `{erased}` branch is a
+later revision, not built here. **Three `IMaskingStrategy`
+implementations, an explicit Strategy-pattern seam**, each a keyed DI
+registration (`EventStore.Masking.AddMasking`, called from every Host's
+`Program.cs`): `FixedValueMaskingStrategy` (a configured literal, default
+`"***"`); `PartialRevealMaskingStrategy` (`{showFirst, showLast,
+maskChar, preserveSeparators}`, modeled on PCI-DSS Requirement 3.3);
+`HashMaskingStrategy` (a **keyed** HMAC via `Microsoft.Extensions.
+Compliance.Redaction`'s real `HmacRedactor`, keyed by `x-masking.keyId`
+against a `"MaskingHmacKey"` classification taxonomy — one registered key
+per `Masking:HmacKeys` configuration entry, supporting rotation by
+registering an old key alongside a new one). `x-masking`'s three
+optional descriptive fields carry no runtime behavior and never appear
+on the wire — verified, not merely asserted.
 
-**Extended by `ADR-050`** (same item, not new): `x-required-claims`/
-`x-masking` guaranteed in generated OpenAPI/AsyncAPI docs;
-`Microsoft.Extensions.Compliance.Redaction` wired into logging via two
-shapes (static `[LoggerMessage]` attributes for typed call sites;
-programmatic `IRedactorProvider.GetRedactor(classification)` for
-schema-driven `Payload`-derived dynamic logging) — exit criterion: a log
-call touching a `clearance:phi`-classified field is verified redacted,
-not just the response path.
+**Extended by `ADR-050`, this pass's own resolution of the log-redaction
+half**: `PayloadMasker` itself, at every masked leaf carrying a
+`regulatoryClassification`, redacts the real value through
+`IRedactorProvider.GetRedactor(...)` against a **second, distinct**
+`"MaskingLogRedaction"` classification taxonomy (deliberately separate
+from `HashMaskingStrategy`'s `"MaskingHmacKey"` taxonomy, so a `keyId`
+string can never collide with an unrelated classification name) before
+logging a diagnostic trace — verified via a capturing `ILoggerProvider`
+in tests, confirming the real value never reaches the captured message.
+**Only the dynamic (`IRedactorProvider.GetRedactor`) half of `ADR-050`'s
+two described shapes is built** — the static `[LoggerMessage]`-attribute
+half has no natural call site yet in this codebase (no existing log call
+site logs a compile-time-typed property that maps to an `x-masking`
+classification); it applies the moment one materializes, same primitive,
+no new mechanism needed. An unconfigured classification (including every
+`"MaskingLogRedaction"` one, since none are ever individually registered)
+falls back to `ErasingRedactor` by default — confirmed empirically, not
+assumed — so a real value can never leak through an unconfigured
+classification either.
 
 **Revised by `ADR-057`**: the `oneOf` wrapper's third `{erased}` branch
 lands in the later "GDPR/CCPA Erasure via Crypto-Shredding" item.
 
-**Note — the `revealField(...)` gap below is now resolved**:
-`ADR-009`'s `revealOnDemand` mechanism names its reveal action as "a
-small, dedicated GraphQL operation (`revealField(...)`, `ADR-037`'s
-transport)" — GraphQL doesn't exist until "GraphQL-Only Query Layer,"
-much later. This item builds `revealOnDemand`'s `displayMask` computation
-only (no GraphQL dependency); the actual `revealField` round-trip is
-homed in "GraphQL-Only Query Layer" below, the first item where GraphQL
-actually exists to carry it.
+**`revealField(...)` still deferred, as originally planned**: `ADR-009`'s
+`revealOnDemand`/`displayMask` mechanism needs GraphQL as its transport
+(`ADR-037`), which doesn't exist until "GraphQL-Only Query Layer" — not
+built in this item; no change from the original scope note.
 
-**Depends on**: Event-Type Security (reuses its claim-checking primitive
-and the connect-time check already happening for `RequiredReadClaim`) and
-Follow API + Filter Pushdown (the shared node-finding helper,
+**Depends on**: Event-Type Security (`RequiredClaimEvaluator.HasClaim`,
+reused directly) and Follow API + Filter Pushdown (`EventTailReader`,
 `MaskingSchemaTransformer`). Independent of Derived/Materialized Event
 Types.
 
-**Exit criteria**: `x-masking` rejected `400` when placed directly on an
-object-typed property; an unsupported strategy value (e.g.
-`"Bucketing"`) rejected `400` at registration, `PartialReveal` and `Hash`
-both succeed (decided, not proposed); a follower without the claim
-receives `{"masked": ...}`, one with the claim receives
-`{"value": <real value>}`, same connection, same type; `PartialReveal`
-reveals only the configured first/last characters, masking the rest, with
-separators preserved when configured; `Hash` masking is correlatable
-(two events sharing the same value produce identical masked HMACs)
-without revealing or being brute-forceable to the real value; a required,
-non-nullable field is still maskable with no null-workaround; a property
-without `x-masking` is never wrapped; a scalar array wraps each element, a
+**Exit criteria** (`MaskingScenarioAssertions` against SQLite/PostgreSQL/
+SQL Server; `x-masking` structural validation and the `oneOf` wrapper's
+own presence in generated docs were already verified by "Schema
+Registry"/"Follow API + Filter Pushdown"'s own tests, not repeated here):
+a follower without the claim receives `{"masked": ...}`, one with the
+claim receives `{"value": <real value>}`; `PartialReveal` reveals only
+the configured first/last characters with separators preserved;
+`HashMaskingStrategy` is correlatable (two events sharing the same real
+value produce identical masked HMACs) without ever containing or
+revealing the real value; a required, non-nullable field (a numeric `0`,
+not `null`) is still maskable with no null-workaround; a property without
+`x-masking` is never wrapped; a scalar array wraps each element, a
 complex-object array wraps only the masked property per element; a
 legitimately-absent field stays absent, not wrapped; masking still
-applies when the type has no `RequiredReadClaim` entry at all; regulatory
-metadata is retrievable from the registry but never appears on the wire;
-a log call touching a `clearance:phi`-classified field is verified
-redacted, not just the response path (`ADR-050`).
+applies when the type has no `RequiredReadClaim` entry at all;
+`regulatoryClassification` is never present in the runtime wrapper; a log
+call touching a `regulatoryClassification`-tagged field is verified
+redacted via a capturing logger, not just the response path (`ADR-050`).
 
 ## CQRS Read-Model Projections (worked example)
 
-**Scope**: per `ADR-015`, `ADR-016` — the **consumption** half
-(`ChangeKind` is already required at registration starting "Schema
-Registry"; this is where it's first consumed). Deliberately the
-**pre-`ADR-022`** whole-payload merge rule — `Optional<T>` per-property
-patches and explicit-`null`-clears-a-field are a later revision, not
-built here. `EventStore.Projections.Abstractions`: `IProjection<TReadModel>`
-(`Name`, `EventTypes`, `GetKey`, `Project`) — individual projections never
-see raw events, `ChangeKind`, or merge logic at all. `EventStore.
-Projections.Host`: `ProjectionHost`'s own poll loop, **always** `QUERY
-/follow/{event-type}` with `mode=replay&fromSequenceNumber=<checkpoint>`
-(never `mode=tail` — no reason to track two code paths for "starting
-fresh" vs. "resuming"); `ProjectionsDbContext` with `ProjectionCheckpoint`
-and `ProjectionSnapshot`, its own separate database, reachable only via
-HTTP from the write side; one EF Core provider (SQLite) is enough here.
-`SnapshotMerger`, applied once, centrally: `Full` **replaces** a key's
-whole snapshot; `Partial` **merges** the incoming payload onto the
-existing snapshot (RFC 7396's overwrite-if-present half only, not its
-delete-on-`null` half); a `Partial` event for a key with no existing
-snapshot simply starts one from that event's own fields. A masked/absent
-field arriving in a `Partial` payload is, from the merge's point of view,
-simply absent — the same overlay rule `ADR-009`'s masking consequences
-already state. A fourth seeded OAuth2 client (`projections-client`,
-`events:follow` scope). Runs as its own deployable, `EventStore.
-Projections.Host`, never in-process. Worked example: `Samples.Orders.
-Projections`' `OrderSummaryProjection` over `OrderPlaced` (`Full`) /
-`OrderAddressUpdated` / `OrderShipped` / `OrderCancelled` (`Partial`),
-keyed by `OrderId`.
+**Scope**: per `ADR-015`, `ADR-016`, now built — the **consumption** half
+(`ChangeKind` was already required at registration by "Schema Registry").
+Deliberately the **pre-`ADR-022`** whole-payload merge rule — `Optional<T>`
+per-property patches and explicit-`null`-clears-a-field are a later
+revision, not built here; a key present in a `Partial` payload (including
+present with value `null`) overwrites, a key absent from the payload is
+left untouched. `EventStore.Projections.Abstractions`: `IProjection
+<TReadModel>` (`Name`, `EventTypes`, `GetKey`, `Project`), verbatim per
+`docs/09-cqrs-read-models.md`'s own sketch. `EventStore.Projections.Host`:
+`ProjectionHost<TReadModel>` (`BackgroundService`, one instance per
+registered `IProjection<T>`), `SnapshotMerger`, an abstract
+`ProjectionsDbContext` (`ProjectionCheckpoint`/`ProjectionSnapshot` only —
+a worked example's own derived context, e.g. `OrdersProjectionsDbContext`,
+adds its own read-model `DbSet<T>`; `ProjectionHost<T>` itself only ever
+needs the generic `DbContext.Set<TReadModel>()`, never a concrete
+property). **References none of `EventStore.Persistence`,
+`EventStore.Host.Core`, or any `EventStore.Host.<Provider>` project** —
+its only dependency on the write side is `FollowClient`, a real HTTP
+client issuing the actual `QUERY /follow/{event-type}` verb and parsing
+its SSE response, plus a real Client Credentials token fetch against
+`EventStore.DevIdp` — enforced by the project reference graph itself, per
+`docs/06-solution-structure.md`. A fourth seeded OAuth2 client
+(`projections-client`, `events:follow` scope). Worked example:
+`Samples.Orders.Projections`' `OrderSummaryProjection` over `OrderPlaced`
+(`Full`) / `OrderAddressUpdated` / `OrderShipped` / `OrderCancelled`
+(`Partial`), keyed by `OrderId` — this is the actual runnable deployable
+(a Worker Service), referencing `EventStore.Projections.Host` as a
+library. One EF Core provider (SQLite) — no per-provider build split,
+per that doc's own note.
+
+**A real gap found while building this item, not anticipated by any prior
+doc**: `ChangeKind` isn't carried on the Follow SSE envelope itself (it's
+a property of the event *type*'s registration, not of each event), and
+`ProjectionHost` has no direct service/DB reference at all to look it up
+another way. Resolved with a small, additive `GET /registry/{eventType}/
+change-kind` endpoint — deliberately **not** on the `registry:admin`-gated
+group the rest of `SchemaRegistryEndpoints` uses (a projections client
+has no reason to hold that scope), gated by `events:follow` instead, the
+scope a projection already needs. Same bare-name, tie-break-by-`AppId`
+simplification as `GetActiveClaimsByNameAsync` (`docs/10-open-
+questions.md` row 1) — `SchemaRegistryService.
+GetActiveChangeKindByNameAsync`.
+
+**Runtime model, since Follow's own SSE stream is inherently unbounded**:
+`ProjectionHost<TReadModel>.CatchUpOnceAsync(eventType, maxEventsToConsume,
+idleTimeout, ct)` consumes a bounded pass — up to a count, or until no new
+event arrives within `idleTimeout`, whichever first — rather than
+requiring a truly infinite stream to test deterministically; `ExecuteAsync`
+(the real `BackgroundService` loop) calls it with `idleTimeout:
+Timeout.InfiniteTimeSpan` per event type, concurrently, with an automatic
+reconnect-after-delay on disconnect. A `ProjectionCheckpoint` row is one
+per `ProjectionName` (not per event type), so concurrently-tailed event
+types' applies are serialized through an in-process lock to avoid a lost
+checkpoint update — `docs/09-cqrs-read-models.md`'s own text names the
+possibility of concurrent per-type connections but doesn't address this
+coordination directly; this pass's own resolution.
+
+**Not built, a deliberate, narrower scope than the design doc's own
+text**: the configurable `batchSize` throughput trade-off (deferring the
+checkpoint write across several events' applies) — `batchSize` is always
+effectively `1` (checkpoint advances after every event), the doc's own
+"safest and slowest" default. Not wired into `EventStore.AppHost`/
+`docker-compose.yml` at this stage either, consistent with this item's
+"worked example" framing rather than the core write side's own
+orchestration.
 
 **Depends on**: Follow API + Filter Pushdown (Follow must exist — a
 projection is an ordinary Follow caller) and Auth + Orchestration (needs
 its own OAuth2 client). Independent of Event-Type Security, Derived/
 Materialized Event Types, and Property-Level Masking — a projection is
-"subject to `RequiredReadClaim`/masking exactly like any other Follow
+"subject to `RequiredClaims`/masking exactly like any other Follow
 caller," a constraint on what it can be built *over* if it needs
 claim-gated data, not a build-order dependency for the item itself.
 
-**Exit criteria**: a `Full` event establishes a read-model row from
-scratch; a `Partial` event merges onto existing state, leaving untouched
-fields alone; independent `Partial` events for the same key don't clobber
-each other's fields; a masked/absent field in a `Partial` payload is
+**Exit criteria** (`ProjectionsScenarioAssertions`, real end-to-end HTTP
+against a `WebApplicationFactory`-hosted `EventStore.Host.Sqlite` +
+`EventStore.DevIdp` pair — the same cross-TestServer pattern "Auth +
+Orchestration" established, since this item's only reachable dependency
+on the write side is genuinely HTTP, not a direct service call the way
+every prior item's own tests exercise their target): a `Full` event
+establishes a read-model row from scratch; a `Partial` event merges onto
+existing state, leaving untouched fields alone; independent `Partial`
+events for the same key don't clobber each other's fields; a masked/
+absent field in a `Partial` payload (gated by a Read-direction
+`RequiredClaims` entry the projections client's token doesn't hold) is
 ignored on merge, never overlaid as a placeholder; registering an event
 type without `ChangeKind` is rejected `400`; a full rebuild (truncate
 table + snapshots, reset checkpoint to `0`, replay) reproduces the exact
 same end state as the incrementally-built one; resuming after downtime
-delivers no gap and no duplicate, reusing `ADR-010`'s guarantee rather
-than reimplementing it.
+delivers exactly the one new event, no gap and no duplicate, reusing
+`ADR-010`'s guarantee rather than reimplementing it.
 
 ## Hardening & Evolution (DPoP, event upcasting, hash-chained tamper evidence)
 
@@ -905,19 +1215,31 @@ working system, per `ADR-017`, `ADR-018`, `ADR-019`:
   `DevIdpSeeder`; `cnf.jkt` embedding at token issuance; the DPoP-proof
   validation middleware in `EventStore.Host.Core`, alongside the existing
   JWT-bearer validation.
-- **Event upcasting** (`ADR-018`): `IEventUpcaster` + `UpcastChain`, wired
-  into `FollowEndpoint` (before masking's transform) and `ProjectionHost`
-  (before `SnapshotMerger`).
+- **Event upcasting** (`ADR-018`): `IUpcastExpressionEvaluator`
+  (`src/EventStore.Abstractions/IUpcastExpressionEvaluator.cs`, per
+  `ADR-053` — not `IEventUpcaster`, a distinct, separately-catalogued,
+  still-undelivered seam, `docs/extensibility-points.md` row 4) +
+  `UpcastChain`, wired into `FollowEndpoint` (before masking's transform)
+  and `ProjectionHost` (before `SnapshotMerger`).
 - **Hash-chained tamper evidence** (`ADR-019`): `ChainHash` computed in
   `EventAppender` alongside the existing `SequenceNumber`/`PayloadHash`
   assignment; the `GET /events/verify?throughSequenceNumber=<n>`
   verification endpoint (or equivalent offline tool).
-- **Publish-time upcast validation** (`ADR-020`): this is where
+- ~~**Publish-time upcast validation** (`ADR-020`): this is where
   `PublishEndpoint` starts actually calling `UpcastChain` when
   `schemaVersion` is behind active, and where the reserved
   `EventUpcastFailed` event type and its dead-letter path are built —
   "Publish API" already accepts the required `schemaVersion` field, this
-  item is what makes it do anything beyond validate-and-store.
+  item is what makes it do anything beyond validate-and-store.~~
+  **Superseded by "Entity-Centric Core Rebuild," below**: that item's own
+  `ADR-023` persist-everything posture retires the `EventUpcastFailed`
+  dead-letter mechanism entirely (a publish-time hop failure now just
+  leaves the original event persisted with `SchemaStatus: invalid`, like
+  any other schema problem) and moves all schema/upcast validation off
+  `PublishEndpoint` onto the async Router. This item still built and
+  tested the mechanism as originally decided — the correction landed once
+  the later item's own dependency actually required revisiting it, not a
+  mistake caught here.
 
 **Depends on**: Auth + Orchestration (DPoP), Publish API (hash chaining),
 Follow API + Filter Pushdown (event upcasting), and **CQRS Read-Model
@@ -1077,6 +1399,14 @@ and never a response indistinguishable from "no redaction happened here";
 a session with multiple `ThreadId`-grouped channels renders as one
 grouped view, not N unrelated ones.
 
+**Built-scope note**: of `ADR-031`'s four named `TransformKind` options,
+only `Resample` is actually implemented by `ChannelDerivationWorker` at
+this build stage (a simple decimation — keep the last sample per target-
+rate bucket, not a real anti-aliasing filter). `Filter`/`Aggregate`/
+`Transcode` are accepted as declared values but the worker takes no
+action for them — an honestly-flagged gap (none of this item's own exit
+criteria name them), not a silent no-op passed off as done.
+
 ## Binary Attachments
 
 **Scope**: `ADR-032` — content-addressed `Attachment`/`AttachmentRef`,
@@ -1106,8 +1436,29 @@ stored object, two `AttachmentRef` rows); a `GET` against a
 content-addressed attachment URL with a `Range` header returns `206
 Partial Content` for exactly the requested byte range. The GraphQL-
 browse scenario (`contentHash`/`filename`/`mimeType`/`sizeBytes` listing)
-is deferred to be re-verified once "GraphQL-Only Query Layer" lands, per
-the note above.
+**has now been re-verified, per the note above, and confirmed FAILED —
+not merely still deferred**: "GraphQL-Only Query Layer" (item 19) landed
+and is Done, but its own Built-scope note states there is "no generic
+'get current entity' query field... anywhere" in `EventStore.GraphQL` —
+none of Follow/Lineage/Registry listing, the only read surfaces that
+item actually built, ever queries current Entity Store state, and there
+is no GraphQL type an `attachments` field could attach to. A search of
+`src/EventStore.GraphQL/` confirms no attachment-related type or
+resolver exists at all. The GraphQL-browse half of this item's own exit
+criteria remains genuinely unbuilt, a confirmed gap, not an open
+deferral — it would need its own new item (a `entity(id) { ... }`-shaped
+query surface, or an `attachments` field hung off one) to close.
+
+**Built-scope note**: `ADR-032`'s Consequences additionally describe a
+hot/cool/cold tiering mover and content-defined chunking (`ChunkIndex`)
+for large attachments — real, decided mechanisms, but not part of this
+item's own Scope line above and not built at this stage. What *is* built:
+`IAttachmentContentStore` itself (the keyed-DI seam "Event Log/AccessLog
+Archival Segment Detachment" later depends on, reused unchanged) with one
+registered dev/POC backend, and the `Attachment.ChunkIndex`/`ChunkRef`
+fields exist in the data model but are never populated — no background
+mover, no rolling-hash chunking logic. Honestly flagged, not silently
+dropped; revisit if a later item's own scope actually needs either.
 
 ## Sharding & Replication
 
@@ -1136,6 +1487,18 @@ newly-deployed peer with no prior configuration beyond its own
 `SeedPeers` list successfully gossips with the mesh via its first
 reachable seed; the cross-shard fan-out scenario is re-verified once
 "GraphQL-Only Query Layer" lands, per the note above.
+
+**Built-scope note**: `ADR-033`'s Scope line names Merkle-tree catch-up as
+an efficiency optimization for a long-disconnected peer's resync — not
+built at this stage. What *is* built: a plain `PeerSyncCursor`-based full
+resync-since-last-ack (every event past `LastAckedSequenceNumber`,
+re-pushed and re-deduped by `EventId` on arrival), which is functionally
+correct — converges, flags genuine conflicts — just not bandwidth-
+efficient for a peer disconnected a long time. The exit criteria above
+only require convergence-with-conflicts-flagged, not hash-tree diffing,
+so this is a deliberate, honestly-flagged scope narrowing, not a gap
+against what was promised. Revisit if a later item's own scope actually
+needs the efficiency (none currently do).
 
 ## Non-Authoritative Capture
 
@@ -1172,6 +1535,33 @@ already accepted and folded, per `ADR-042`'s narrowing), and either way
 denormalizes `AuthorityDecisionRef` back onto the original event; two
 servers disagreeing about review status resolves via `ConflictFlag`
 (`ADR-024`, reused), not a new mechanism.
+
+**Built-scope note**: `ADR-036`'s real DID/UCAN offline-verifiable chain
+validation and the actual server-side RFC 8693 OAuth Token Exchange bridge
+endpoint (`POST /oauth/token` with a `subject_token_type=urn:your-org:
+token-type:ucan`) are NOT built at this stage — `AttestedClaims` accepts
+and stores an opaque, credential-agnostic JSON blob exactly as
+`docs/features/non-authoritative-capture.md`'s own text explicitly scopes
+itself ("this doc stays credential-agnostic and only exercises the
+trust-axis mechanics themselves"), never cryptographically verified. This
+item's own Scope line names `ADR-036` because that ADR is what
+`AttestedClaims`/`AuthorityStatus` exist to eventually populate with real
+credential claims — the trust-axis mechanics those fields drive
+(unattested → pending_review → accepted/rejected, the gated fold, the
+Live View, `authorityDecision`/`RejectionBehavior`) are fully built and
+tested; the credential-verification half is a real, separate, larger
+undertaking, honestly flagged rather than silently claimed. Similarly,
+`ADR-035`'s own "`AttestedClaims` gets its own lightweight schema-registry
+entry (an `attestation` entity type)" is not built — no test exercises it,
+and the feature doc's own Background never registers one either.
+`QUERY /entities/{entityId}` (or any other pre-GraphQL entity/Live-View
+read surface) also doesn't exist — this item's own tests query
+`db.EntityStore`/`db.LiveEntityStore` directly, the same "exercise the
+mechanics directly" posture Sharding & Replication's own tests already
+use, consistent with this item's own text that its GraphQL query shapes
+are "illustrative only." A real, found doc inconsistency surfaced while
+verifying which shape to build against: `docs/10-open-questions.md` row 1
+tracks it, not repeated here.
 
 ## GraphQL-Only Query Layer
 
@@ -1212,6 +1602,98 @@ the claim for receives the real value, and the same call without the
 claim is rejected — the `revealOnDemand` round-trip "Property-Level
 Masking" above could only build half of.
 
+**Built-scope note**: several real, deliberate scope narrowings, all
+honestly flagged rather than silently dropped:
+
+- **Per-`AppId` schema isolation is one shared schema with AppId-qualified
+  names (`on_{appId}_{eventType}`, `{appId}_{eventType}_Payload`), not a
+  literally separate SDL document per `AppId`.** Two different `AppId`s
+  can register the same event-type `Name` independently (`ADR-030`),
+  which one shared GraphQL schema cannot express as two identically-named
+  types — qualifying names avoids that real collision. HotChocolate's own
+  multiple-named-schema feature is configured for a fixed set of names at
+  startup, not for `AppId`s discovered dynamically at runtime, so a
+  genuinely separate document per `AppId` was not pursued.
+- **The `where` filter argument is one static, hand-written input type
+  (`[EventFilterInput!]`, `{field, eq, neq, gt, gte, lt, lte, contains}`),
+  not a dynamically-built per-event-type filter-input object.** `ADR-037`'s
+  literal "a client cannot construct a query referencing an undeclared
+  field" schema-level guarantee is narrowed, for filtering specifically,
+  to a runtime check — `GraphQlFilterPredicateBuilder` rejects an
+  undeclared field name with a GraphQL error before it ever reaches the
+  database, the same functional safety `ADR-003`'s original rule
+  required, just enforced one step later than schema validation. The
+  guarantee still holds at full schema-validation strength for the
+  SUBSCRIPTION FIELD NAME and PAYLOAD FIELDS themselves, which this
+  item's `FollowSubscriptionTypeModule` genuinely builds per registered
+  event type. No `and`/`or` boolean-combinator nesting either — multiple
+  `EventFilterInput` entries simply AND together.
+- **Lineage's `first`/`skip` are plain arguments applied inside
+  `LineageService`, not HotChocolate's `[UsePaging]` Relay-style
+  Connection wrapper (`edges { node { ... } } pageInfo`).** The doc's own
+  shown example (`ancestors(first: 50) { eventId ... }`, a flat list) never
+  uses `after` or a Connection shape, so building the fuller cursor
+  machinery would have produced a response shape the doc itself never
+  shows. Narrower than a full Relay cursor implementation.
+- **No generic "get current entity" query field, and no `extensions: JSON`
+  field anywhere.** `ADR-037`'s Consequences describe `extensions: JSON`
+  as "a generic field on every GraphQL type, exposing the Entity Store's
+  `Extensions` bag," but none of Follow/Lineage/Registry listing — the
+  only read surfaces this item's own exit criteria actually name — ever
+  queries current Entity Store state directly; there is currently no
+  GraphQL type it would attach to.
+- **DataLoader batching and cross-shard/cross-replica fan-out are not
+  exercised, honestly, because there's no concrete case to exercise.**
+  Every resolver this item builds already reads its data in one batched
+  query (`LineageService`'s own `ResolveNodesAsync`/
+  `ResolveVisibleClosureAsync`, unchanged since "Lineage API"); nothing
+  here has a per-node fetch pattern that would cause N+1. "Sharding &
+  Replication"'s own deferred cross-`EntityType` fan-out scenario remains
+  genuinely untestable, not just deferred: `ShardKey` is a logical column
+  in this codebase, never a physically separate database/replica to fan
+  out across.
+- **A real, found limitation, not a silent gap: registering a new event
+  type while a Host is already running does not make its Subscription
+  field appear without a process restart.** `FollowSubscriptionTypeModule`
+  (`ITypeModule`) is genuinely dynamic and correctly reflects whatever is
+  active *at schema warmup* — proven by seeding a registration directly
+  into the database before the Host starts, then subscribing successfully
+  over real HTTP. But `ISchemaChangeNotifier.NotifyChanged()` firing
+  afterward, confirmed by direct debugging to reach a real subscriber,
+  never actually triggers a second `CreateTypesAsync` invocation against
+  an already-running Host, and a periodic-timer fallback was tried and
+  hit the same wall (most likely explanation, not fully proven: whatever
+  HotChocolate-internal scope builds the schema disposes the type modules
+  it resolves once building finishes, which would silently stop a
+  `Timer` field on this same long-lived singleton). Tracked in `TODO.md`
+  as a real follow-up, not swept under the exit criteria — none of which
+  actually requires hot-registration against a live Host.
+- **Updated once "Ticket Exchange" and "Delegated Grants, RBAC,
+  Federated Claims & Read Audit Logging" landed**: the RFC 8693 OAuth
+  Token Exchange bridge endpoint this note originally flagged as not
+  built now exists — built for ticket issuance first, reused a second
+  and third time for UCAN-delegation and federated-claims exchange.
+  **`ADR-036`'s own specific self-attestation issuance flow through that
+  bridge (an actor self-attesting its own claims, no granter/grantee
+  relationship at all — distinct from `ADR-043`'s delegation, even
+  though both share the identical self-signed-JWT primitive) remains not
+  built**, along with its own real DID/UCAN offline chain verification —
+  neither is named in any later item's own exit criteria yet, so neither
+  has an obvious next home. **`revealField`'s own step-up-authentication
+  refinement (`ADR-066`) remains open even now that "Digital Sign-Off for
+  Regulated Actions" (item 29) has landed and is Done** — that item only
+  wired RFC 9470 step-up enforcement into `POST /publish/{event-type}`
+  (`PublishService.PublishAsync`'s `StepUpSatisfied` check); `x-masking`
+  itself has no step-up configuration surface, and `RevealFieldMutation.
+  RevealFieldAsync` (`src/EventStore.GraphQL/RevealFieldMutation.cs`)
+  checks only `requiredClaim`, exactly as this note originally described
+  before item 29 landed. This is a confirmed still-open gap, not
+  something item 29 already closed — see `03-api-contracts.md`,
+  "`revealField`," for the caller-facing statement of the same gap. Its
+  `ADR-045` `AccessLogEntry` audit write is no longer deferred — built in
+  "Delegated Grants, RBAC, Federated Claims & Read Audit Logging," the
+  item that actually built that table.
+
 ## Compatibility & Deployment Discipline
 
 **Scope**: `ADR-038` — enum unknown-value fallback contracts, version-
@@ -1237,6 +1719,43 @@ event tagged with it, roll back to a deployment that doesn't know that
 version, confirm the event sits `received` (not lost), confirm re-
 forward-deploying makes it routable again with no data loss and no
 database restore.
+
+**Built-scope note**: the rollback drill needed one real, narrow addition
+to `EventStore.Router`'s `ProcessEventAsync`: an event tagged with a
+schema version genuinely AHEAD of anything the deployment's own registry
+has ever seen (`declaredDefinition is null` **and** newer than the active
+version) is now left at `Status: received` rather than advanced to
+`applied` — this is deliberately narrower than "declaredDefinition is
+null" alone, so the ordinary, already-covered backward-compatible case (an
+old/never-registered version, `SchemaVersion <= active`) is untouched:
+`SchemaStatus` still reaches `unknown` and `Status` still reaches
+`applied`, per `ADR-023`'s own "advisory, never gates Status" rule. No
+separate backlog-reconciliation mechanism was needed for the "becomes
+routable again" half — the existing `RunOnceAsync` polling loop already
+re-queries `Status == "received"` every tick, so the same event is simply
+picked up again, this time successfully, the moment a later registration
+raises the active version to cover it. Enum fallback and capability
+negotiation, by contrast, needed no change to that shared fold path at
+all: `x-enum-fallback` (paired with JSON Schema's own standard `"enum"`
+keyword, validated at registration time by the new
+`EnumFallbackSchemaValidator`, mutually exclusive with `x-masking` on the
+same property) adds a sibling `{name}Known` Boolean field to
+`FollowSubscriptionTypeModule`'s dynamically-built Subscription payload
+type; a new, self-contained `capabilities(appId, name,
+supportedSchemaVersions)` GraphQL query field (`CapabilitiesQueries`,
+gated by the same `events:follow` scope Follow's own connect-time check
+uses) reports `activeVersion`/`supportedWindow` for the N-1/N+1 window,
+computed as a fixed numeric `[active-1, active, active+1]` band rather
+than filtered against which versions actually have a registered row —
+this design's own registration model has no "registered but not yet
+active" state for a future version to occupy (registering a version
+always immediately activates it), an honest narrowing of
+`compatibility-and-versioning.md`'s own "version 4 not yet active"
+diagram framing, which this repo's actual mechanics can't literally
+produce. Expand/Contract migration discipline needed no new code at
+all — every migration in this repo has already been purely additive
+(`ADR-038`'s own Consequences: "no new mechanism is introduced here that
+this design didn't already have a piece of").
 
 ## MVVM Client
 
@@ -1265,6 +1784,66 @@ property-list fallback); `ConflictFlag`/`LateArrivalFlag`/`AuthorityStatus`
 all render via one shared generic "flag" convention, not three bespoke
 ones.
 
+**Built-scope note**: the first item in this build whose actual ADR
+decision is a real JS/TS web client, not server-side .NET — built as a
+genuine Vue 3 + Pinia + Vite app (`client-web/`, a new npm workspace,
+matching `06-solution-structure.md`'s own naming), not a C# simulation of
+the mechanics. Server-side, three small, real additions this item needed
+that nothing before it required: (1) `ViewDefinition` (`EventStore.Domain.
+Views`) + a new `EventStore.ViewRegistry` project (`ViewDefinitionService`,
+mirroring `SchemaRegistryService`'s own content-addressed/versioned
+registration pattern, migrated across all 3 providers) plus a
+`viewDefinition` GraphQL query and `registerViewDefinition` mutation
+(`EventStore.GraphQL`); (2) `ConflictFlag`/`LateArrivalFlag`/
+`AuthorityStatus`/`SchemaVersion` added as four FIXED envelope fields on
+every dynamically-built Subscription payload type
+(`FollowSubscriptionTypeModule.BuildEnvelopeFlagFields`) — nothing before
+this item ever needed these exposed over GraphQL, since no client
+previously needed to render the shared flag convention. Client-side: a
+hand-rolled `IndexedDB` wrapper (no `idb`/Dexie dependency, the object-
+store shape is small enough not to earn one), a Pinia outbox
+store + entity-cache store (the Model layer, per `docs/patterns/mvvm-
+client-architecture.md`'s own Vue mapping), `useEntityViewActions` (the
+Actions/ViewModel-commands layer — dispatches through the outbox, never
+mutates the cache directly, and discovers a per-event-type Subscription's
+own field set via GraphQL introspection rather than hardcoding one demo
+entity type's fields), `EntityView`/`TemplateRenderer` (the ADR's own
+"small injected binding runtime" — a minimal `{{ field }}` interpolator
+plus a `data-command-field`/`data-command-value-from` attribute
+convention, deliberately not a full templating engine)/
+`GenericFallbackView`/`FlagRow` (the one shared flag-rendering convention,
+used by both the fallback and the template renderer), and a minimal,
+dependency-free Service Worker + Web App Manifest for the PWA
+installability/offline-app-shell half of the ADR. 26 Vitest specs prove
+the three exit criteria directly (offline queue durability + restart
+survival, apply-once-online with no duplicate delivery via `ADR-011`'s
+existing dedup, the generic fallback never failing to render, the shared
+flag convention, the binding runtime's interpolation/command dispatch) —
+`npm run build`/a brief dev-server smoke check confirm the app is
+genuinely buildable and servable. Real, honestly-flagged narrowings: no
+native shell (`EventStore.Client.WebViewBridge`/`DeviceInput`, both later
+items' own scope — `ADR-070`/item 44) was built, only the web target;
+`entityIdField`/`entityType`/`eventType` are supplied as explicit
+per-instance launch configuration (matching the ADR's own "launch
+configuration, not auto-discovered" framing) rather than resolved from a
+registry:admin-gated lookup an ordinary follower credential doesn't hold;
+an unknown property that lands in the server's own `Extensions` bag
+(`ADR-022`) never reaches this client at all, because
+`FollowSubscriptionTypeModule`'s dynamic payload type only ever exposes a
+schema's OWN declared properties — `GenericFallbackView` renders
+`Extensions` generically wherever populated, but nothing populates it
+today, a data-availability gap, not a rendering one; no live browser/
+Playwright round trip against a real running Host + DevIdp was driven
+(this repo has no browser E2E harness yet, `TODO.md`'s own "no
+`EventStore.Bdd`/E2E built" entry) — the Vitest suite proves the
+mechanics, `npm run build`/the dev-server check prove the app is real and
+servable, but an actual live GraphQL round trip through a browser is not
+exercised in this pass. `ADR-065`'s erasure-driven local purge, `ADR-069`'s
+scheduled/manual/air-gapped-export flush triggers beyond the opportunistic
+one, `ADR-073`/`ADR-087`'s accessibility/i18n requirements, and the
+`ADR-068`-format outbox export/import are all later build-plan items' own
+scope (28, 43, 45, 46), not re-derived here.
+
 ## Ticket Exchange for Header-Incapable Clients
 
 **Scope**: `ADR-040` — ticket issuance via OAuth Token Exchange (RFC
@@ -1289,6 +1868,53 @@ signature (never a raw bearer token) successfully streams content; the
 same ticket presented a second time is rejected; a ticket presented with
 a signature computed from the wrong shared secret is rejected before any
 content is served.
+
+**Built-scope note**: this item's own "Depends on" text assumed "Non-
+Authoritative Capture" already built RFC 8693 Token Exchange
+infrastructure to reuse — checked and found not true: that item's own
+Built-scope note explicitly named "the actual RFC 8693 OAuth Token
+Exchange bridge endpoint" as NOT built. This item builds it from scratch:
+`EventStore.DevIdp`'s `/connect/token` gains `options.
+AllowTokenExchangeFlow()` (found only by reflecting the real installed
+OpenIddict 7.6.0 assembly -- `AllowCustomFlow` throws for this specific
+grant type, "already assigned to a standard grant type," and its own
+built-in validation handler also rejects an unregistered
+`requested_token_type` until explicitly added via `options.Configure(o
+=> o.RequestedTokenTypes.Add(...))`) plus a `TicketStore` (in-process,
+non-persistent, per `auth.md`'s existing "client/token state lives in
+DevIdp" statement). A second real constraint found only by actually
+running this: OpenIddict's own `/connect/token` pipeline unconditionally
+requires a registered `client_id` for ANY grant type reaching it --
+incompatible with this ADR's own `one_time_secret` path ("never requires
+a registered client_id"). Resolved with a genuinely separate, non-
+OpenIddict-pipeline endpoint (`POST /oauth/ticket-exchange`, reading form
+fields directly, never calling `GetOpenIddictServerRequest()`) sharing
+the same `IssueTicketAsync` core the `client_id` path uses -- an honest,
+found-by-testing split, not a design preference. A third real gap:
+`IOpenIddictApplicationManager` deliberately never exposes a stored
+`client_secret` in plaintext (only `ValidateClientSecretAsync`, correct
+for security but incompatible with recomputing an HMAC server-side at
+introspection time) -- resolved by adding `DevIdpSeeder.GetClientSecret`,
+reading back from the SAME dev-only plaintext source that file's own
+header comment already names, not a second secrets store. The resolution
+hop (step 3) is a new `TicketAuthenticationHandler` (`EventStore.
+TicketExchange`, a second ASP.NET Core authentication scheme, additive to
+JwtBearer/never the default) wired onto exactly the two named header-
+incapable routes (Streaming's byte-range playback mode, Attachment
+retrieval) via `AuthorizeAttribute.AuthenticationSchemes` listing both
+schemes -- every other endpoint's Bearer-only authentication is
+completely unaffected, verified directly. `DpopValidationMiddleware`
+gained one new early-return (skip entirely when
+`AuthenticationType == "Ticket"`) since a ticket-resolved principal is
+never DPoP-bound by design (the ADR's own "consumed one hop earlier"
+framing) and has no `Authorization` header at all to check. Verified with
+Attachment retrieval as the concrete header-incapable target (an `<img
+src>`/`<a href>`, named equally alongside `<video src>` by the ADR
+itself) -- Streaming's byte-range playback mode shares the identical
+wiring and isn't re-proven a second time. `ADR-045`'s `AccessLogEntry`
+audit-write half of the Gherkin's "same pipeline as any other read"
+scenario is deferred to "Delegated Grants, RBAC, Federated Claims & Read
+Audit Logging," the item that actually builds that table.
 
 ## Delegated Grants, RBAC, Federated Claims & Read Audit Logging
 
@@ -1347,33 +1973,118 @@ a claim sourced from a federated/external IdP via Token Exchange passes a
 `RequiredReadClaim` check exactly as if the claim had come from the
 primary IdP (`ADR-047`).
 
+**Built-scope note**: a UCAN delegation/AppTrustRoot self-verification
+(`EventStore.Ucan`) reuses DPoP's own embedded-JWK self-signed-JWT
+pattern (`EventStore.Dpop/SelfSignedJwtVerifier`, factored out of
+`DpopProofValidator`'s own signing/verification logic) rather than real
+W3C DID resolution -- an honest, explicitly-scoped simplification
+("DID" = an EC P-256 public key's RFC 7638 thumbprint). A genuinely
+unexpected finding, only surfaced by actually running the token-exchange
+flow against the real OpenIddict 7.6.0 assembly (decompiled to confirm,
+this project's own "verify before citing" discipline applied to a
+third-party library): `AllowTokenExchangeFlow()`'s own built-in
+`subject_token` validation is not configurable off and unconditionally
+re-validates `subject_token`'s signature against THIS server's own
+signing keys during `Results.SignIn` itself -- fatal for every
+subject_token this item's own exchange paths ever receive (a self-signed
+UCAN delegation, a genuinely externally-issued federated token, never a
+token this IdP itself issued). No `SubjectTokenTypes` value sidesteps
+it, including RFC 8693's own generic `"jwt"` type and a wholly custom,
+unregistered URN alike. Resolved with a targeted `ValidateTokenContext`
+inline event handler (ordered via `int.MinValue` to run before
+OpenIddict's own `ValidateIdentityModelToken`), registered only for this
+item's own custom `subject_token_type`, which sets a placeholder
+principal carrying the two internal claims (`oi_tkn_typ`, `oi_prst`)
+OpenIddict's own downstream `ValidatePrincipal` handler separately,
+unconditionally requires -- this item's own `ExchangeUcanDelegationAsync`/
+`ExchangeFederatedTokenAsync` already perform this subject_token's REAL
+validation upstream of that; the handler exists solely to stop
+OpenIddict's redundant built-in check from blocking an already-approved
+exchange. `RoleService.GetFlattenedPermissionsAsync`'s
+`.SelectMany(r => r.Permissions)` over a `HasConversion`-mapped
+`List<string>` property could not be translated by EF Core (materialized
+via `ToListAsync()` first, flattened client-side instead) -- and a
+`MapDelete` handler bound an inferred JSON body parameter (`RoleAssignmentRequest
+request`), which ASP.NET Core Minimal APIs only support for POST/PUT/PATCH;
+both found only by running this, the second one manifesting as an
+opaque "the discovery document fetch failed" for every test using
+DevIdp (any endpoint-metadata-inference failure poisons the whole
+TestServer's first request). `AccessLogReaderContext`'s `ReaderActorId`
+lookup needed both `ClaimTypes.NameIdentifier` (JwtBearer's own
+`MapInboundClaims=true` default remaps a token's literal `"sub"` claim
+before a resolver ever sees it) and the literal `"sub"` claim type
+(`TicketAuthenticationHandler`'s replayed claims, validated directly via
+`JsonWebTokenHandler`, never remapped) -- checking only one silently
+produced `"unauthenticated"` for the other authentication path.
+
 ## SPIFFE/SPIRE Service Identity & API Gateway
 
-**Scope**: `ADR-048` — SPIFFE IDs and X.509-SVIDs for this framework's
-own internal services, and `ADR-033` peer-sync mutual authentication
-moved onto SPIFFE trust-bundle federation instead of a shared central
-IdP; `ADR-049` — a YARP-based API Gateway as the single external entry
-point, terminating external TLS/auth and routing to the right internal
-service via SPIFFE-authenticated internal calls.
+**Scope**: per `ADR-048`/`ADR-049`, now built — scoped down from both
+ADRs' own literal "internal services" (plural) framing to what the
+actual architecture has: `ADR-048`'s Decision names `EventStore.Router`/
+`.Fold`/`.GraphQL`/`.Sharding`/`.PeerSync`/`.Streaming`/`.Attachments` as
+separate services each getting their own SPIFFE ID, but the real build
+(see `06-solution-structure.md`'s own propagation note on this item)
+consolidated all of those into library namespaces inside one
+`EventStore.Host.<Provider>` process per `ADR-001`'s one-deployable-per-
+provider decision — there is no genuine intra-process network hop to put
+mTLS on. The two hops that **do** genuinely cross a process boundary,
+and are where this item's real work landed: peer-to-peer sync between
+independent site deployments (`EventStore.Replication`, previously
+OAuth2/DPoP-only per `ADR-033`), and a new Gateway-to-Host hop this item
+itself introduces. A new `EventStore.Spiffe` project holds the SPIFFE
+primitives: `SpiffeId` (parse/validate `spiffe://<trust-domain>/<path>`),
+`SpiffeTrustBundle` (trust-domain -> trusted root CAs; federation is
+exactly "add the other side's root"), `SpiffeCertificateValidator`
+(SAN-URI extraction via direct ASN.1 read -- `X509SubjectAlternativeNameExtension`
+has no `EnumerateUris`, only DNS/IP -- plus chain-to-trusted-root), and
+`SpiffeSvidFactory` (issues a self-signed trust-domain CA and short-lived
+leaf SVIDs — stands in for a real SPIRE Server/Agent, which is Go
+infrastructure with no NuGet package, per `docs/libraries/dotnet/
+spiffe-spire.md`, the same role `EventStore.DevIdp` already plays for
+OAuth2). `EventStore.Host.Core.SpiffePeerIdentity`/`SpiffePeerOptions`
+wire this into each Host: a dedicated internal HTTPS Kestrel listener
+(`SpiffeKestrelExtensions.ListenInternalMtls`, its own port, `Client
+CertificateMode.RequireCertificate`) accepts both peer-sync connections
+and gateway-forwarded traffic (`AllowedInternalCallerPaths`), while
+`PeerSyncClient`'s own outbound calls present the Host's SVID as a
+client certificate — additive to, never replacing, `ADR-033`'s existing
+`peer:sync`-scoped OAuth2/DPoP bearer auth. `EventStore.Gateway` is a
+real new deployable: YARP (`AddReverseProxy().LoadFromConfig(...)`)
+terminating external TLS and forwarding to the Host, the original
+`Authorization` header riding through unchanged (the Host still performs
+its own actual JWT/DPoP validation — this item doesn't duplicate that at
+the gateway), authenticating itself to the Host's own internal mTLS
+listener via its own SPIFFE identity under a distinct `/eventstore/
+gateway` path.
 
 **Depends on**: Auth + Orchestration (this composes with, not replaces,
-`ADR-006`'s external-facing OAuth2), Sharding & Replication (this is
-specifically `ADR-033`'s peer-sync auth mechanism), and, added this pass,
-**GraphQL-Only Query Layer, Streaming Channels, Binary Attachments, and
-Ticket Exchange** — `ADR-049`'s own text names every one of these as a
-surface the Gateway fronts, so each has to exist before this item's own
-"every surface reaches through one gateway address" exit criterion can
-actually be exercised against it.
+`ADR-006`'s external-facing OAuth2) and Sharding & Replication (this is
+specifically `ADR-033`'s peer-sync auth mechanism). GraphQL-Only Query
+Layer/Streaming Channels/Binary Attachments/Ticket Exchange, previously
+listed here as dependencies for a per-surface routing table, turned out
+not to gate anything once built: the consolidated single-Host
+architecture means the Gateway always routes to one backend address,
+never a distinct destination per surface.
 
-**Exit criteria**: an internal service call between two of this
-framework's own components is mTLS-authenticated via SPIFFE workload
-identity; two independent peer servers under different trust domains
-mutually authenticate by exchanging trust bundles, with no shared
-central IdP; a request bearing no valid SVID is rejected at the mTLS
-handshake, before it reaches application code; an external caller
-reaches every surface (GraphQL, attachments, streaming, ticket/OAuth
-endpoints) through one gateway address, never a direct connection to an
-internal service.
+**Exit criteria** (all verified: `SpiffeMtlsTests`/`GatewayTests`,
+against a real Kestrel HTTPS listener and a real TLS handshake, not
+mocked — this item doesn't touch a database provider at all, so it's
+exercised once, not x3, unlike every provider-specific item): a
+federated peer's own SVID is accepted at the internal mTLS listener; a
+cert from an untrusted CA is rejected at the handshake itself, before
+reaching application code; a cert from a trusted CA but a disallowed
+SPIFFE ID is still rejected; no client certificate at all is rejected
+(`RequireCertificate`); two independent trust domains, each with its own
+root CA and no shared central IdP, mutually accept each other's SVIDs
+once (and only once) their roots are added to each other's bundle,
+proving real federation, not a shared-secret substitute; a Host's
+internal listener accepts both a peer identity and the gateway's own
+distinct identity once both are named in `AllowedInternalCallerPaths`,
+and still rejects a third, unlisted identity; a request through the real
+`EventStore.Gateway` process reaches a real backend and the original
+`Authorization` header arrives unchanged, proving the single-entry-point
+routing claim.
 
 ---
 
@@ -1383,11 +2094,21 @@ are not repeated here.
 
 ## Data Lifecycle & Backup/Restore Classification
 
-**Scope**: `ADR-056` — classify every store as authoritative (must be
-backed up: Event Log/`EventParent`, Schema Registry, Streaming Channel
-Store, Attachment Store, and once "Delegated Grants, RBAC & Read Audit
-Logging" lands, `AccessLog`) or rebuildable (backup optional, pure RTO
-optimization: Entity Store, every CQRS snapshot, materialized upcasts).
+**Scope**: per `ADR-056`, now built. Re-checked `06-solution-structure.md`'s
+existing "Data lifecycle" classification table against the actual current
+set of `EventStoreContext` `DbSet`s and found it five tables behind —
+`DerivationDefinition`/`DerivationCursor`/`PendingJoinState` (`ADR-007`,
+deferred) and `PeerSyncCursor` (`ADR-033`) had landed with their own
+items but never been folded into this table; `ViewDefinition` (`ADR-039`)
+likewise. Classified each on the actual rebuild behavior that exists in
+code today, not by category-name resemblance alone:
+`DerivationDefinition`/`PendingJoinState`/`DerivationCursor` and
+`ViewDefinition` are **authoritative** — admin-configured metadata or
+in-flight state nothing currently regenerates (`DerivationWorker.
+ProcessDerivationAsync` silently stops consuming a source forever if its
+cursor row goes missing, rather than restarting it from zero);
+`PeerSyncCursor` is **rebuildable** — losing it only costs a slower
+resync, `ADR-033`'s own idempotency already absorbing the resend safely.
 No schema/storage change — confirms nothing in this design's existing
 choice of portable text columns (`ADR-004`) blocks each provider's own
 native backup/PITR tooling, and states the restore-then-replay path
@@ -1397,45 +2118,100 @@ rebuildable stores explicitly, rather than leaving it implicit.
 
 **Depends on**: Scaffolding & Persistence (the classification exists in
 principle from day one; its coverage of specific stores grows accurate as
-Streaming Channels, Binary Attachments, Delegated Grants/RBAC/Read Audit
-Logging, and **GDPR/CCPA Erasure via Crypto-Shredding** — added this
-pass to the re-check-triggers list, since a `IErasureKeyStore` backend
-itself becomes a store this classification needs to account for — each
-land; this item's exit criteria should be re-checked against the
-classification table each time one of those lands, not just once).
+more items land — GDPR/CCPA Erasure via Crypto-Shredding, not yet built,
+is still the next re-check trigger, since a real `IErasureKeyStore`
+backend will itself become a store this classification needs to
+account for).
 
-**Exit criteria**: the authoritative/rebuildable classification table in
-`06-solution-structure.md`'s "Data lifecycle" section matches the actual
-set of stores that exist at the time it's checked; a real restore drill —
-take a native backup of an authoritative store, restore it to a fresh
-instance, re-run fold/projection-rebuild against it, confirm the
-rebuildable stores reconstruct identically to the pre-backup state.
+**Exit criteria** (verified): the authoritative/rebuildable classification
+table in `06-solution-structure.md`'s "Data lifecycle" section matches the
+actual current set of stores; a real restore drill
+(`DataLifecycleScenarioAssertions`, all 3 providers) — wipe the
+rebuildable `EntityStoreRow`/`LiveEntityStoreRow` tables, reset every
+authoritative `StoredEvent` back to `"received"`, re-run `RouterWorker.
+RunOnceAsync` (the same public entry point the live worker already uses,
+no separate rebuild-only code path), confirm the reconstructed rows match
+the pre-wipe state field for field. **A real, pre-existing `RouterWorker`
+bug found and fixed while writing this drill, not by reading the code
+back**: `FoldAsync`/`FoldLiveAsync` queried the database directly for an
+entity's current row with no check of already-tracked-but-not-yet-saved
+local rows first — two events for the *same* entity landing in one
+`RunOnceAsync` tick (an ordinary case, not a contrived one: a burst of
+activity, or catching up after any delay) made the second event's fold
+`Add()` a duplicate row with the same key, crashing with an EF Core
+identity-conflict exception at `SaveChangesAsync`. Fixed by checking
+`DbSet.Local` first in both methods — no test before this item's own
+multi-event-per-tick restore-drill scenario had ever exercised two events
+for one entity in a single tick.
 
 ## GDPR/CCPA Erasure via Crypto-Shredding
+
+**Status: Done.** Implemented as `EventStore.Erasure`
+(`IErasureKeyStore`/`LocalErasureKeyStore`/`HashiCorpVaultErasureKeyStore`/
+`ErasureKeyService`/`PayloadEncryptor`/`ErasureScopeResolver`/
+`EntityErasureRequestedEventType`/`EntityErasureResolver`), wired into
+`EventStore.Inbox` (publish-time encryption), `EventStore.Masking`
+(read-time decrypt/erasure reveal), and `EventStore.Router` (the
+`EntityErasureRequested` reactor). Verified end-to-end (`Erasure*Tests.cs`
+in `EventStore.IntegrationTests`, one shared `ErasureScenarioAssertions`
+run against SQLite/PostgreSQL/SQL Server, plus a dedicated
+`ErasureVaultTests` against a real `hashicorp/vault` dev-mode container,
+not a mock) covering: ciphertext at rest, claim-holder decrypt, non-claim-
+holder masking unaffected by encryption, erasure producing
+`{"erased": true}` unconditionally, hash-chain integrity surviving
+erasure, a cross-entity `erasureScope`, and two `AppId`s on two different
+live backends (Local, HashiCorp Vault) in the same deployment.
 
 **Scope**: `ADR-057` (revises `ADR-009`'s original no-erasure stance) —
 per-`(AppId, EntityId)` Data-Encryption Keys (DEKs) wrapping every
 `x-masking`-classified field, generated the first time a classified field
-is published for that entity; encryption happens after
-`SchemaValidationService` validates the plaintext and before the payload
-is written to `StoredEvent.Payload` and hashed, so `ADR-019`'s hash chain
-is completely unaffected. The pluggable `IErasureKeyStore` seam (same
-Strategy/keyed-DI shape as `IMaskingStrategy`/`ADR-052`'s
-`IStreamRedactionStrategy`) supports **multiple backends registered and
-active simultaneously in one deployment**, selected per `AppId` (or
-finer): cloud (Azure Key Vault, AWS KMS, Google Cloud KMS), on-prem/
-self-hosted (HashiCorp Vault), local (an encrypted file/DB-backed store
-for dev). A new optional `x-masking` field, `erasureScope` (JSON Pointer
-to another payload property naming the owning `EntityId`, defaulting to
-the event's own `EntityId`), covers the case where classified data
-belongs to a different entity than the event's own. The `oneOf` wrapper
-gains a third branch, `{"erased": true}`, deliberately distinct from
-`{"masked": ...}` — shown even to a caller who holds the claim, since
-erasure is a permanent, unconditional fact, not a permission gap.
-Erasure itself is an event, not a side effect: requesting erasure for an
-`EntityId` publishes a reserved `EntityErasureRequested` `StoredEvent`
-(hash-chained like everything else), then destroys that entity's DEK via
-the configured `IErasureKeyStore`'s own irreversible primitive.
+is published for that entity. **One deviation from this ADR's original
+text, made during implementation**: the architecture this item actually
+builds on (the entity-centric rebuild's always-202 Inbox + async Router
+split, `ADR-023`) postdates `ADR-057`'s own assumption of a synchronous
+validate-then-persist pipeline — encryption still happens synchronously
+at publish time (this ADR's own explicit ordering requirement, before
+`Payload` is persisted and hashed), but `PublishService` independently
+resolves `EntityId` for encryption-scoping purposes only, via the same
+`EntityIdResolver` pure function the Router uses, without changing
+`StoredEvent.EntityId`'s own "starts empty, Router fills it in" contract.
+The pluggable `IErasureKeyStore` seam (same Strategy/keyed-DI shape as
+`IMaskingStrategy`/`ADR-052`'s `IStreamRedactionStrategy`) supports
+**multiple backends registered and active simultaneously in one
+deployment**, selected per `AppId` (or finer): on-prem/self-hosted
+(HashiCorp Vault, built and verified against a real server) and local (an
+encrypted, `EventStoreContext`-table-backed store for dev, built).
+**Cloud KMS backends (Azure Key Vault, AWS KMS, Google Cloud KMS) are
+documented in this ADR as future backends behind the same seam, not
+implemented this pass** — the seam itself (keyed DI, one interface) is
+already proven to support an arbitrary Nth backend without touching any
+caller, by the fact that Local and HashiCorp Vault already coexist; adding
+a cloud KMS backend later is exactly the same shape of change Vault's own
+addition was, no design changes required. A new optional `x-masking`
+field, `erasureScope` (JSON Pointer to another payload property naming
+the owning `EntityId`, defaulting to the event's own `EntityId`), covers
+the case where classified data belongs to a different entity than the
+event's own — its format is validated at schema-registration time by
+`MaskingSchemaValidator`, the same safe-subset grammar `EntityIdField`
+already uses. The `oneOf` wrapper gains a third branch, `{"erased": true}`,
+deliberately distinct from `{"masked": ...}` — shown even to a caller who
+holds the claim, since erasure is a permanent, unconditional fact, not a
+permission gap. Erasure itself is an event, not a side effect: requesting
+erasure for an `EntityId` publishes a reserved `EntityErasureRequested`
+`StoredEvent` (hash-chained like everything else, published through the
+same ordinary Publish API as any other registered event type — no bespoke
+DELETE-shaped endpoint), gated by an ordinary `requiredClaim`
+(`erasure:request`, `ADR-050`'s existing mechanism, nothing new).
+`RouterWorker`'s existing "special-purpose reactor" shape
+(`AuthorityDecisionResolver`'s own precedent) folds this event into its
+own entity like any other type, then performs the additional side
+effect — destroying that entity's DEK via the configured
+`IErasureKeyStore`'s own irreversible primitive. The reserved type is
+registered lazily, the first time a given `AppId` ever creates its first
+DEK (`ErasureKeyService.GetOrCreateAsync`) — the same "not seeded up
+front" treatment `ADR-031`'s `ChannelLagDetectedEventType` already
+established — guaranteeing the type exists for an `AppId` before an
+erasure request against it could ever be meaningful.
 
 **Depends on**: Property-Level Masking (`ADR-009`/`ADR-050`) — this item
 reuses its `x-masking.regulatoryClassification`-carrying fields wholesale
@@ -1461,6 +2237,17 @@ different `IErasureKeyStore` backends (e.g. one on HashiCorp Vault, one
 on the local store) both work correctly in the same running deployment.
 
 ## PCI-DSS Sensitive Authentication Data Registration Boundary
+
+**Status: Done.** Implemented as one added check in the existing
+`MaskingSchemaValidator.ValidateMaskingConfig` (`EventStore.SchemaRegistry`)
+— no new project, no publish-path change, no Host wiring — since
+registration-time rejection already flows through `SchemaRegistryService.
+RegisterAsync`'s existing `errors` list exactly the same way every other
+`x-masking` structural check does. Verified via
+`SchemaRegistryScenarioAssertions` (2 new scenarios: a `PCI-SAD`-declaring
+field is rejected `400`; the ordinary `"PCI"` classification for a full
+card number still registers successfully, unaffected) across SQLite/
+PostgreSQL/SQL Server.
 
 **Scope**: `ADR-071` — a reserved `x-masking.regulatoryClassification`
 value, `"PCI-SAD"`, that makes schema **registration** (not publish) hard-
@@ -1493,6 +2280,48 @@ field, unaffected by this boundary.
 
 ## Local/Edge Active-Scope Caching & Erasure Invalidation
 
+**Status: Done, with one deliberately, explicitly accepted narrowing —
+checked with the user before building rather than assumed.** The scope-
+eviction half of this ADR has a real gap its own Decision text doesn't
+fully resolve: the subscription filter is enforced server-side, per
+event, so an entity's own later update that stops matching the filter is
+never delivered at all through that connection — there is no push-based
+"you fell out of scope, evict now" signal for the client to react to.
+Asked explicitly rather than guessed: accept this as a named limitation
+(server-side filter is the entire mechanism) rather than build a client-
+side re-evaluation layer (subscribe broad, evaluate the full scope
+predicate locally on every update) that would have required a second,
+independent filter representation and evaluator. Both halves' worth of
+Gherkin in `docs/features/mvvm-client.md` were updated to describe this
+honestly, not silently narrowed with no marker.
+
+Implemented as: `subscriptionBuilder.ts` gained `ScopeFilterClause`/
+`serializeWhereClauses`, threading an optional `where` argument (the same
+`[EventFilterInput!]` shape the server already exposes) through
+`buildSubscriptionQuery`; `ClientConfig.scopeFilter` (optional) carries it
+from `useEntityViewActions.subscribe()`. Erasure invalidation is a
+SECOND, independent subscription (`subscribeToErasure`, same introspect-
+then-subscribe shape as the entity subscription) to the reserved
+`EntityErasureRequested` type for the client's own `AppId` — on receipt,
+`targetEntityId` is resolved and `entityCacheStore.purge()` (already
+built by "MVVM Client," stubbed exactly for this item) is called
+immediately, never deferred.
+
+**A real, pre-existing bug found and fixed while building this item's own
+mechanism, not by reading the code back**: `payloadTypeName`/
+`subscriptionFieldName` never lowercased the event type before
+sanitizing it, but `SchemaRegistryService.RegisterAsync` always stores
+`EventTypeDefinition.Name` lowercased (`normalizedName =
+eventTypeName.ToLowerInvariant()`) before `FollowSubscriptionTypeModule`
+ever builds a field name from it server-side. Every existing client call
+site (including this item's own new `EntityErasureRequested` subscription,
+which would have failed identically) passed the type's natural casing
+(e.g. `"OrderPlaced"`), silently subscribing to a GraphQL field name that
+never matched anything the server actually exposes — a `data[fieldName]`
+lookup that's simply always `undefined`, no error, no crash, just no
+data ever arriving. Fixed by lowercasing the event type (never the
+`AppId`, which the server never lowercases) inside those two functions.
+
 **Scope**: `ADR-065` — a local/edge client (MVVM Client) subscribes with
 an explicit scope filter (the same `FilterableFields`-backed GraphQL
 Subscription argument shape every other consumer already uses) instead
@@ -1521,16 +2350,100 @@ adds no new sync protocol or replication tier of its own.
 
 **Exit criteria**: a client's local cache contains only entities matching
 its subscription's active-scope filter, verified by inspecting local
-storage directly; an entity falling out of scope is purged from local
-storage without waiting for any unrelated TTL; a client subscribed to an
-entity that then receives `EntityErasureRequested` for it purges the
-local copy immediately upon receiving that event, verified distinctly
-from the scope-eviction path; a client that is offline at the moment
-erasure fires still purges correctly once it reconnects and receives the
-event, with no special-cased "already offline" exemption asserted
-anywhere.
+storage directly — **built, verified by the filter argument reaching the
+Subscription query itself**; ~~an entity falling out of scope is purged
+from local storage without waiting for any unrelated TTL~~ — **narrowed,
+per direct request: the filter prevents future over-caching, but an
+already-cached entity is not proactively purged the instant it stops
+matching (named limitation above), since the server-side filter is the
+entire accepted mechanism**; a client subscribed to an entity that then
+receives `EntityErasureRequested` for it purges the local copy
+immediately upon receiving that event, verified distinctly from the
+scope-eviction path — **built and tested**; a client that is offline at
+the moment erasure fires still purges correctly once it reconnects and
+receives the event — **narrowed, found while verifying this exact
+criterion, not assumed satisfied**: every Subscription this client opens
+(the erasure one built here included) is hardcoded `mode: TAIL` with no
+persisted resume cursor and no `mode: Replay`/`fromSequenceNumber`
+reconnect path — a PRE-EXISTING gap in "MVVM Client" itself (item 21),
+not introduced by this item, but one this item's own exit criterion
+inherits rather than closes. A client already connected when erasure
+fires purges correctly (proven by this item's own tests); a client that
+reconnects AFTER having been offline while it fired has no guaranteed
+catch-up mechanism today and may simply miss it — narrower than this
+criterion's literal wording, tracked as a real follow-up in `TODO.md`
+rather than silently claimed done.
 
 ## Digital Sign-Off for Regulated Actions (Step-Up Authentication)
+
+**Status: Done.** Found, and fixed in the same pass, a real drift between
+this diagram's own `#palegreen` claim and the actual code: **`ActorId on
+Every Event`, this item's own named dependency, was never actually
+populated** — `PublishService` hardcoded the literal string
+`"unauthenticated"` for every publish regardless of the caller's real,
+already-verified identity, contradicting both `docs/data/event-log.md`'s
+own "ALWAYS populated... not advisory" text and this diagram's own fill
+color. Fixed by reusing `AccessLogReaderContext.Resolve`'s existing claim
+resolution verbatim (the same JWT, the same claims, no reason for a
+second implementation) — `ActorId`/`Signature.SignerId` are both now the
+real verified token subject.
+
+**A second, more consequential gap found while verifying this item's own
+exit criteria, not assumed satisfied**: `ADR-066`'s own claim
+("non-repudiation reuses the existing hash chain... exactly as
+tamper-evident as everything else in the log") didn't hold — `ChainHash`/
+`PayloadHash` only ever cover `{EventType, Payload, parentEventIds}`;
+`Signature` (like every other envelope field) sat completely outside
+what either hash actually protects, so altering a stored `Signature`
+directly in the database would have gone undetected. Fixed by extending
+`EventChainHash.Compute` (not `PayloadHash` — that one is also `ADR-011`'s
+idempotency-comparison basis, and `Signature.SignedAt` is genuinely
+wall-clock-real per publish attempt, not deterministic the way `ADR-057`'s
+classified-field ciphertext had to be made; `ChainHash` is never compared
+for idempotency, so extending it costs nothing there) to fold in
+`Signature` when present, omitted entirely (not hashed as a literal
+`null`) for every event type that never uses `RequiredSignature` — every
+existing event type's `ChainHash` is computed byte-identically to before
+this item.
+
+**A third bug found by that same verification, in the persistence layer,
+not this item's own new code**: `RequiredSignature`/`Signature` were the
+only two JSON-`ValueConverter`-mapped envelope fields (of several) with no
+`ValueComparer` configured — every list-typed one already has one. EF's
+default reference-equality change detection for a converted class-typed
+property never notices an in-place mutation of the SAME instance, only
+assignment of a new one — meaning a direct in-place edit to an
+already-tracked `Signature`/`RequiredSignature` would silently never
+reach the database. Fixed by adding `JsonValueConverter.NullableComparer<T>`
+(the single-object counterpart to the existing `ListComparer<T>`) and
+wiring it onto both properties.
+
+**Two real OpenIddict/JWT quirks found only by running the actual step-up
+round trip over real HTTP, not by reading the claim-setting code back**:
+(1) OpenIddict's `ValidateSignInDemand` handler requires `auth_time` to
+carry a genuinely numeric `ClaimValueType` — the plain `SetClaim(string,
+string)` overload this dev IdP's own dev-only step-up simulation
+(`EventStore.DevIdp`, a new opt-in `acr` form parameter, the same
+"opt-in, every existing caller unaffected" shape `app_id`/`ADR-046`
+already established) first used threw `"the auth_time claim... is
+malformed or isn't of the expected type"`; fixed via the dedicated
+`SetClaim(string, long?)` overload. (2) `JwtBearer`'s own default
+`MapInboundClaims=true` remaps the token's `acr` claim to
+`http://schemas.microsoft.com/claims/authnclassreference` before
+`PublishService` ever sees it — the exact same remapping class
+`AccessLogReaderContext.Resolve`'s own comment already documents for
+`"sub"`/`ClaimTypes.NameIdentifier`; fixed by checking both names, same
+as that resolver already does.
+
+Verified via `DigitalSignOffScenarioAssertions` (10 scenarios: `Required
+Signature` registration validation ×3, step-up rejection for a missing/
+wrong `acr` and a stale `auth_time` ×3, missing-`Meaning` rejection, full
+`Signature` population on success, the `ChainHash` tamper-detection fix
+above, and the erasure-exemption assertion composed with "GDPR/CCPA
+Erasure"'s own test infrastructure) across SQLite/PostgreSQL/SQL Server,
+plus `DigitalSignOffHttpSqliteTests` (3 real-HTTP scenarios proving RFC
+9470's actual `WWW-Authenticate` header, a real step-up token round trip
+against DevIdp, and the `Meaning`-omitted `400`).
 
 **Scope**: `ADR-066` — resolves the framework-vs-domain-level fork
 `docs/10-open-questions.md` tracked for electronic signatures, decided in
@@ -1615,6 +2528,52 @@ are served from folded read models that reconstruct identically via a
 full replay from `SequenceNumber 0` (also now backed by an explicit
 replay-rebuild scenario in `features/auth.md`).
 
+**Status: Done, with three deliberate narrowings against this section's own
+literal text, each reasoned through and recorded in code comments at the
+point of the decision, not silently dropped:**
+- **`EventTypeDefinition`'s own write path was NOT rearchitected onto
+  `SchemaRegistered`** — it stays a direct, synchronous write
+  (`SchemaRegistryService.RegisterAsync`); `SchemaRegistered` is appended
+  alongside it as a genuine, hash-chained, lineage-traceable audit record,
+  not a replacement mechanism. Every prior build-plan item's own tests
+  assume synchronous read-your-own-write registration, which an async
+  fold would break.
+- **`Role`/`UserPermission`/`AppTrustRoot` are folded by `EventStore.DevIdp`'s
+  own new `RbacProjectionWorker`, not by the core engine's `EntityStoreRow`
+  mechanism this section's own Scope text points to** — those three tables
+  are DevIdp-owned (an identity provider, not part of the core engine), so
+  there is no `EntityStoreRow` to fold into; the new Host-side
+  `EventStore.Rbac` project (`RbacEndpoints.cs`) publishes the 4 RBAC
+  reserved events (`RoleGranted`/`RoleRevoked`/`PermissionGranted`/
+  `AppTrustRootRegistered`, gated by `registry:admin`/`registry:trust-admin`
+  + `AppIdScopeEvaluator`), and `RbacProjectionWorker` follows them
+  cross-process, folding into DevIdp's existing tables via
+  `RoleService`/`TrustRootService`'s own already-idempotent methods,
+  reused verbatim. `RoleGranted`/`RoleRevoked` and `PermissionGranted` use
+  a synthetic composite `AssignmentKey`/`GrantKey` `EntityIdField`
+  (`actorId:roleName`/`actorId:permission`), not this section's own
+  `{appId}:role:{roleId}`-shaped example, since a role/permission can be
+  granted to many actors independently and a single per-role/per-permission
+  key would let one actor's grant silently overwrite another's.
+  `AppTrustRootRegistered` fits the literal example shape directly
+  (`$.IssuerDid`, one record per `(AppId, IssuerDid)`, no composite needed).
+  `PUT /oauth/roles` (what a role NAME bundles) and `PUT /oauth/federation-
+  issuers` stay genuine DevIdp-internal configuration, unaffected — neither
+  is one of `ADR-067`'s own 5 named reserved event types.
+- **The lineage-parent-linking and replay-rebuild exit criteria above are
+  NOT yet backed by a dedicated test** — `tests/EventStore.IntegrationTests/
+  DelegatedGrantsRbacFederationHttpSqliteTests.cs`'s two RBAC-mutation
+  scenarios verify the Host's real write path (scope-gated publish through
+  `/rbac/*`) and DevIdp's own fold-target methods directly, but simulate
+  the fold rather than running the live `RbacProjectionWorker` inside the
+  test process — a `WebApplicationFactory` self-reference-during-startup
+  hazard made that impractical this pass (worked around in production code
+  with a real startup delay, but never proven against a live, in-process
+  factory pair). Tracked in `TODO.md`, including the lineage-parent-linking
+  and replay-rebuild coverage gap. Verified against SQLite only, matching
+  the SPIFFE/Gateway items' own provider-agnostic precedent (this item's
+  Host-side and DevIdp-side mechanisms are equally provider-agnostic).
+
 ## Dynamic Feature-Flag Configuration Provider
 
 **Scope**: `ADR-077` — a chained, `GetReloadToken()`-based
@@ -1651,6 +2610,40 @@ toggling a flag never changes which adapters/plugins are loaded
 (`ADR-041`'s explicit-composition rule is unaffected) and static
 configuration (e.g. a connection string) stays sourced from its static
 provider throughout.
+
+**Status: Done.** `FeatureFlagState`/`DbSet<FeatureFlagState>` (the two
+pieces `ADR-077`'s own Consequences flagged as "not yet done") now exist —
+`EventStore.Domain.FeatureFlags.FeatureFlagState` plus a migration against
+all 3 providers. A new `EventStore.FeatureFlags` project holds
+`FeatureFlagSetEventType` (the reserved event, registered lazily per
+`AppId` like every other reserved type in this design),
+`FeatureFlagService` (publishes the event via the ordinary `PublishService`
+— real `ActorId`, real hash chain, real Lineage visibility — then folds
+`FeatureFlagState`), `FeatureFlagEndpoints` (`PUT /feature-flags/{key}`,
+gated by `registry:admin` + `AppIdScopeEvaluator`, wired into all 3 Hosts),
+and `EventLogFeatureFlagConfigurationProvider`/`...Source` (the actual
+`IConfigurationProvider`, addable to `IConfigurationBuilder` before
+`WebApplicationBuilder.Build()` — deliberately raw ADO.NET behind a
+`Func<DbConnection>`, not `EventStoreContext`, both because no DI container
+exists yet at that point and because this provider only ever reads one
+flat table with no JSON columns). Opt-in per Host via a `FeatureFlags:AppId`
+config key — unset by default, so no existing deployment/test is affected.
+
+One deliberate departure from this section's own Scope text: **the
+event-to-`FeatureFlagState` fold is synchronous, in the same
+`FeatureFlagService.SetFlagAsync` call, not an async Router/`EntityStoreRow`
+fold.** `FeatureFlagState` is read by the SAME Host process that publishes
+`FeatureFlagSet` (unlike `ADR-067`'s RBAC events, which fold cross-process
+into a separate identity-provider process) — the same posture
+`SchemaRegistered`/`EventTypeDefinition` already established for exactly
+this reason. The only propagation delay in the whole mechanism is
+`EventLogFeatureFlagConfigurationProvider`'s own poll of `FeatureFlagState`,
+matching this section's own "observable within one poll interval" exit
+criterion precisely. Verified across SQLite, PostgreSQL, and SQL Server
+(`FeatureFlagScenarioAssertions.cs`, run from all 3 providers' own test
+files) plus a dedicated, provider-agnostic-by-construction poll/reload-token
+test (`EventLogFeatureFlagConfigurationProviderSqliteTests.cs`, SQLite
+only — the provider's own ADO.NET code path never varies by provider).
 
 ## Leader Election via Database-Backed Lease
 
@@ -1696,6 +2689,50 @@ election running) does *not* prevent two concurrent fold-worker instances
 from double-applying the same event, demonstrating why this ADR's
 mechanism is doing independent work, not duplicating `ADR-024`.
 
+**Status: Done, with one deliberate narrowing against this section's own
+literal "tested across all three roles that exist at this point" text.**
+`LeaderLease` (`EventStore.Domain.LeaderElection`) plus its migration
+across all 3 providers landed first (the piece `ADR-078`'s own
+Consequences flagged as the only remaining gap). A new
+`EventStore.LeaderElection` project holds `LeaderElectionService` — one
+method, `TryAcquireOrRenewAsync`, a compare-and-swap over a role's own
+`LeaderLease` row via EF Core's `ExecuteUpdateAsync` (portable across all
+3 providers once split into two equality-only statements — renew, then
+steal — rather than one combined OR/inequality predicate, which EF Core's
+SQLite provider failed to translate at all; found only by running this) —
+and `LeaseHolderId` (a per-process identity, host name + process id).
+Wired into `RouterWorker` (`WorkerRole: "Router"`) and `PeerSyncWorker`
+(`WorkerRole: "PeerSyncOutboxPump"`): each renews at roughly half its own
+lease duration rather than on every poll tick (renewing every tick was
+tried first and measurably slowed the real fold work under heavy parallel
+test load sharing one SQLite file — found only by running this), and each
+skips its real work entirely for any tick where it doesn't currently hold
+the lease.
+
+**`UpcastMaterializer` does NOT get its own separate `LeaderLease` row,
+unlike this section's own literal 4-independent-roles framing.** Building
+the actual mechanism surfaced a real, pre-existing architectural fact this
+section's own exit-criteria text was written without: `UpcastMaterializer`
+was built (`Upcast Materialization + Downcast`, item 14) as inline logic
+called directly from `RouterWorker`'s own tick — `ReconcileBacklogAsync`/
+`TryMaterializeAsync` run only as part of `RouterWorker`'s own execution,
+never independently schedulable. A second lease row for it would protect
+nothing "Router"'s own lease doesn't already cover, since it can never run
+outside that same lease. The webhook outbox pump (the 4th named role)
+remains deferred to "Outbound Webhooks," as this section's own Depends-on
+paragraph already anticipated — that item will call
+`EventStore.LeaderElection` the same way Router/peer-sync do, once its own
+worker exists.
+
+Verified with `LeaderElectionScenarioAssertions.cs` across SQLite,
+PostgreSQL, and SQL Server: an acquire/renew/steal-on-expiry cycle for a
+single role, two roles held completely independently, and a direct,
+deterministic reproduction of the "lost update" hazard leader election
+prevents (two uncoordinated `EventStoreContext` instances, each holding a
+stale read of the same `EntityStoreRow`, both saving — one update silently
+overwrites the other) standing in for a genuine multi-threaded race, which
+would be flaky to assert on directly.
+
 ## Per-Tenant Rate Limiting
 
 **Scope**: `ADR-058` — `AppId`-partitioned rate limiting via ASP.NET
@@ -1722,20 +2759,107 @@ YARP Gateway this ADR enforces at gets built).
 Token Bucket limit receives `429` with `Retry-After`, while a burst
 within the bucket's own capacity is never throttled; a tenant opening
 more concurrent GraphQL-Subscription/Follow connections than its
-Concurrency Limiter permits is rejected `429` with `Retry-After` while
-its existing open connections stay open, unaffected, and closing one
-frees a slot for a new one; a tenant exceeding its Sliding-Window query
-limit is rejected `429` with `Retry-After`; a rejected request at any of
-the three limiters never reaches the backend service behind the Gateway
-at all; one tenant exhausting any one of its three limiters never affects
-a different tenant sharing the same deployment; passing the Gateway's
-rate limiter does not exempt a GraphQL query from `ADR-037`'s separate
-depth/cost limiter — a query within its Sliding-Window budget but
-exceeding configured nesting depth is still rejected one hop later,
-demonstrating the two mechanisms are complementary, not overlapping; a
-tenant's limit is changeable via configuration alone, with no code
-deploy, confirmed by reconfiguring it mid-test and observing the new
-limit take effect immediately.
+Concurrency Limiter permits is rejected `429` while its existing open
+connections stay open, unaffected, and closing one frees a slot for a
+new one; a tenant exceeding its Sliding-Window query limit is rejected
+`429`; a rejected request at any of the three limiters never reaches the
+backend service behind the Gateway at all; one tenant exhausting any one
+of its three limiters never affects a different tenant sharing the same
+deployment; passing the Gateway's rate limiter does not exempt a GraphQL
+query from `ADR-037`'s separate depth/cost limiter — the Gateway forwards
+a `/graphql` request byte-for-byte, so the Host's own, already-proven
+depth limiter is what actually evaluates query shape, one hop later,
+regardless of what the Gateway's own limiter decided; a tenant's limit is
+changeable via configuration alone, with no code deploy, confirmed by
+reconfiguring it mid-test and observing the new limit take effect
+immediately.
+**Correction, this item's own build pass**: `Retry-After` is dropped from
+the Concurrency- and Sliding-Window-limiter criteria above — verified
+directly against `System.Threading.RateLimiting` (a throwaway probe
+calling `ConcurrencyLimiter`/`SlidingWindowRateLimiter` outside ASP.NET
+Core entirely) that only `TokenBucketRateLimiter` ever attaches
+`MetadataName.RetryAfter` to a rejected lease in this library version;
+the other two never do, for any configuration. The original ADR-058 text
+this was derived from assumed `Retry-After` uniformly; that assumption
+didn't hold once checked against the library's actual behavior.
+
+**Status: Done, with two findings this section's own text was written
+without.** Built entirely inside `EventStore.Gateway` (the process this
+item's own Depends-on already names as the enforcement point):
+`RateLimitingOptions` (the five tunables — token/concurrency/window
+limits, replenishment period, window segmentation — as ordinary
+`Microsoft.Extensions.Configuration` values, per this section's own
+"no code deploy" requirement), `RateLimiterPolicies.AddPerTenantRateLimiting`
+(three named `Microsoft.AspNetCore.RateLimiting` policies —
+`publish-token-bucket`, `follow-concurrency`, `general-sliding-window` —
+each attached to its own YARP route via `RouteConfig.RateLimiterPolicy`
+in `appsettings.json`, `Order: 0` for `/publish`/`/follow` ahead of the
+general `Order: 10` catch-all), `TenantPartitionKey.Resolve`, and
+`AppIdBufferingMiddleware`. `app.UseMiddleware<AppIdBufferingMiddleware>()`
+then `app.UseRateLimiter()` both run before `app.MapReverseProxy()` in
+`Program.cs`, so a rejected request never reaches YARP's forwarding, let
+alone the backend Host.
+
+**Finding 1 — the Gateway has no `HttpContext.User`.** `ADR-049`'s own
+design forwards the `Authorization` header to the Host unchanged and
+performs no JWT/DPoP validation itself, so a partition key can't come
+from claims the way `ADR-058`'s text implicitly assumed. Resolved with a
+tiered fallback in `TenantPartitionKey.Resolve`: the `appId` field
+`AppIdBufferingMiddleware` already buffered out of a `/publish`/`/follow`
+JSON body, else an *unvalidated* peek at the JWT payload's `client_id`/
+`sub` claim (explicitly commented, in code, as a traffic-bucketing
+heuristic only — never a security decision; real validation still
+happens exclusively at the Host), else `"anonymous"`. `EnableBuffering()`
++ rewinding `Request.Body.Position` to 0 afterward keeps YARP's own
+downstream proxying byte-for-byte unaffected by the peek.
+
+**Finding 2 — `Retry-After` is not universal, corrected above.** Verified
+directly against `System.Threading.RateLimiting` outside ASP.NET Core
+entirely (a throwaway console probe acquiring/rejecting leases from bare
+`TokenBucketRateLimiter`/`ConcurrencyLimiter`/`SlidingWindowRateLimiter`
+instances): only the Token Bucket limiter ever attaches
+`MetadataName.RetryAfter` to a rejected lease in this library version —
+Concurrency and Sliding Window never do, for any configuration.
+`RateLimiterPolicies`'s own `OnRejected` already guarded with
+`TryGetMetadata` before this was discovered, so no code changed; only
+this section's own exit-criteria text needed correcting.
+
+**Config-hot-reload caveat, stated rather than hidden**: reading
+`IConfiguration` fresh inside each policy's own partition factory (not a
+bound snapshot at startup) means a *newly-seen* `AppId` partition, or one
+recycled after this library's own idle eviction, picks up a changed
+limit immediately — an *already-provisioned, still-active* partition's
+limiter keeps its original settings until next recreated. This is a
+standard characteristic of any partitioned rate limiter, not a gap
+specific to this implementation, and is what `ATenantsLimitIsChangeable
+ViaConfigurationAloneNoCodeDeploy` actually verifies (two separate
+`WebApplicationFactory` instances with different `RateLimiting:*`
+settings — the same binary, no rebuild, behaving differently purely from
+configuration).
+
+Verified with `RateLimitingGatewayTests.cs` (the same
+`WebApplicationFactory<GatewayAssembly::Program>` + real stand-in
+backend pattern `GatewayTests.cs` already established, extended with
+`UseSetting` overrides for tight, test-only limits): a burst within the
+Token Bucket's capacity unthrottled; sustained volume past it rejected
+`429` with `Retry-After`; a Concurrency-Limited connection beyond its
+permit rejected while the existing connection stays open and closing it
+frees a slot (a `TaskCompletionSource`-gated backend handler proves the
+first connection is still genuinely held open, not just fast); a
+Sliding-Window query limit rejected `429` once exceeded; a rejected
+request at any of the three never reaching the backend (a hit-counter on
+the stand-in backend); one tenant's exhaustion never affecting a
+different `AppId`'s own bucket; the Gateway forwarding a `/graphql` body
+byte-for-byte so `ADR-037`'s own depth limiter (already proven
+end-to-end against a real Host in `GraphQlHttpSqliteTests.
+ADeeplyNestedIntrospectionQueryIsRejectedByTheDepthLimiter`) is what
+actually governs query shape, not anything this Gateway does; and the
+config-hot-reload property above. The pre-existing `GatewayTests.cs`
+test (`ARequestThroughTheGatewayReachesTheBackendWithTheOriginalAuthorizationHeaderIntact`)
+still passes unchanged against the new 3-route config, and the full
+SQLite regression suite (57/58 — only the already-documented, unrelated
+`SubscribingOverRealHttpStreamsAMatchingEventAsSse` flake under 32-way
+parallelism) shows no regression from this item's changes.
 
 ## Outbound Webhooks
 
@@ -1793,6 +2917,90 @@ erasure remains exactly as originally sent, while a retry attempted
 "GDPR/CCPA Erasure via Crypto-Shredding" already existing to produce the
 `{erased}` branch it exercises.
 
+**Status: Done, with two design decisions this section's own text was
+written without.** New `EventStore.Domain.Webhooks` shapes
+(`WebhookSubscription`/`WebhookOutbox`/`WebhookDeliveryCursor`, migrated
+across all 3 providers) and a new `EventStore.Webhooks` project:
+`WebhookSubscriptionService.RegisterAsync` freezes `FixedClaimsSnapshot`
+as a JSON array of the registering caller's own "type:value" claims
+(`ADR-008`'s existing primitive, reused, not a second parser);
+`WebhookEnqueueResolver` is a "special-purpose reactor" `RouterWorker.
+ProcessEventAsync` invokes for every event, the same shape
+`AuthorityDecisionResolver`/`EntityErasureResolver` already established —
+matches Active subscriptions by `EventTypes`, masks via `IPayloadMasker`
+against the subscription's frozen snapshot, and inserts a durable
+`WebhookOutbox` row (never in-memory); `WebhookOutboxPump` is the 4th of
+`ADR-078`'s 4 named worker roles, its own genuinely independent
+leader-elected lease (unlike `UpcastMaterializer`, which "Leader Election"
+found was never independently schedulable) — drains one subscription's
+oldest pending row per tick, signs it (`WebhookSigner`, Standard
+Webhooks' HMAC-SHA256 construction, used as specified), and retries with
+exponential backoff + jitter (`WebhookRetryTracker`, deliberately
+in-memory/per-process — a restart just resets the attempt count, never
+the durable cursor, so no delivery is ever lost or duplicated).
+
+**Decision 1 — `WebhookOutbox` gained a `SourceSequenceNumber` column
+this section's own schema text never named.** `ADR-060`'s Consequences
+require a retry after erasure to "correctly re-mask... against the
+now-erased key," but `IPayloadMasker`'s reveal path decrypts the
+ORIGINAL ciphertext live, checking the erasure key's CURRENT state each
+call — a value already baked into `EventPayloadSnapshot` at enqueue time
+can't be re-derived from itself. `SourceSequenceNumber` (added to
+`docs/data/schema-registry.md` in the same pass, per this repo's own
+"the ADR that adds a field is that field's shape authority" rule) lets
+`WebhookOutboxPump` re-fetch the originating `StoredEvent` and re-run
+`IPayloadMasker.MaskAsync` fresh on every delivery attempt, first try or
+retry alike — found necessary before writing any code, not patched in
+after a test failure.
+
+**Decision 2 — `WebhookOutboxPump` appends `WebhookDeliveryFailed` via
+`EventAppender` directly, with `Status: "received"`, never
+`PublishService.PublishAsync`.** `EventStore.Webhooks` needs `EventStore.
+Router` to reference it (for `WebhookEnqueueResolver`); `PublishService`
+lives in `EventStore.Inbox`, which itself references `EventStore.Router`
+(`EntityIdResolver`) — routing the dead-letter publish through
+`PublishService` would have made `EventStore.Webhooks` depend on
+`EventStore.Inbox`, a genuine circular project reference, caught by the
+build failing (`MSB4006`) before any code even ran. Appending directly
+with `Status: "received"` means Router's own next tick folds/validates
+it exactly like any ordinary publish (resolving `EntityId` per
+`WebhookDeliveryFailedEventType`'s own `EntityIdField`) — the same lower-
+level primitive `UpcastMaterializer`/`PeerSyncReceiver` already bypass
+`PublishService` for, for their own, different reasons.
+
+**A real, deliberate scoping decision found while building the
+enqueue reactor**: an event whose own declared schema version isn't
+registered (`SchemaStatus: "unknown"`) is never enqueued for webhook
+delivery at all — there is no schema to safely mask an unknown shape's
+sensitive fields against. Narrower than `ADR-060`'s own text, which
+never actually considers this case; stated here rather than left
+implicit.
+
+**One narrowing beyond a single dead-lettered row**: a permanently-
+broken target's cursor still advances past the poison row after
+`MaxAttempts` — otherwise one broken subscriber would head-of-line-block
+every later event behind it forever. Not stated in this section's own
+exit criteria, but necessarily implied by it having a `MaxAttempts` at
+all; the failure itself is never silently dropped (the `WebhookDeliveryFailed`
+event is the permanent, queryable record), only the blocking is relieved.
+
+Verified with `WebhookScenarioAssertions.cs`/`WebhookSqliteTests.cs`/
+`WebhookPostgresTests.cs`/`WebhookSqlServerTests.cs` (claim-snapshot
+freeze, masked-and-enqueued, non-matching-never-enqueued, across all 3
+providers) and `WebhookDeliveryHttpSqliteTests.cs` (SQLite-only — nothing
+about HTTP delivery is provider-specific): Standard Webhooks header/
+signature verification, a failed delivery eventually succeeding with the
+cursor advancing only on actual success, exhausted retries dead-lettering
+as a `WebhookDeliveryFailed` event confirmed queryable through the
+ordinary Lineage API and unblocking the subscription for its next event,
+a simulated pump restart (a fresh `WebhookRetryTracker`, same durable
+cursor) proving no lost or duplicated delivery, and the crypto-shredding
+erasure/retry interaction in both directions (an already-delivered
+payload staying exactly as sent; a not-yet-delivered retry correctly
+carrying `{"erased": true}`). Full SQLite regression suite re-run clean
+(65/66 — only the pre-existing, unrelated
+`SubscribingOverRealHttpStreamsAMatchingEventAsSse` flake).
+
 ## Data Residency (Region Pinning)
 
 **Scope**: `ADR-061` — every configured peer gains a `Region` tag —
@@ -1825,6 +3033,84 @@ existed; a region configured with only one live site is surfaced (log or
 metric, an operational signal — not a hard failure or a blocked write) as
 unable to simultaneously satisfy `ADR-033`'s 2-replica requirement and an
 `AppId` restricted to that region's residency constraint.
+
+**Status: Done.** New `EventStore.Domain.Replication.AppResidencyPolicy`
+(`{AppId, AllowedRegions, LastAppliedSequenceNumber}`, migrated across all
+3 providers) folded from a new reserved `AllowedRegionsSet` event
+(`ADR-067`'s pattern, synchronous fold in the same call —
+`AppResidencyPolicyService`, `FeatureFlagService`'s own exact precedent,
+since `AppResidencyPolicy` is read by the SAME process that publishes the
+event). `PUT /replication/residency/{appId}`, gated by `registry:admin`
+(reused, the same "admin tier" scope `FeatureFlagEndpoints` already gates
+its own narrow per-AppId configuration write with).
+
+**Region propagation reuses two EXISTING mechanisms, added no new
+discovery of its own, exactly as this section's own text requires**: this
+site's own tagged `Region` (a new `RegionOptions`) rides along on the
+already-existing `/peer-sync/whoami` handshake response (`{originId,
+region}`) the moment a peer is first contacted; a peer's own `Region`
+then propagates further, transitively, through the SAME `KnownPeer`
+gossip exchange `PeerId` already uses (`KnownPeer` gained an optional
+third field). `PeerAddressBook` tracks `(PeerId, Region)` together per
+address now, not `PeerId` alone.
+
+**Enforcement, exactly where this section's own text places it**:
+`PeerSyncWorker.SyncOnceWithAsync` loads every `AppResidencyPolicy` once
+per tick (a small, `AppId`-keyed table — no reason to re-query it once
+per address) and filters the CANDIDATE event window per-event, not
+per-peer wholesale: an unconstrained `AppId` (no row, or an empty
+`AllowedRegions`) is included unconditionally; a constrained `AppId`'s
+event is included only if the destination peer's own known `Region` is
+in that list. **A peer with no yet-known region can never receive a
+constrained `AppId`'s events at all** — the conservative default this
+section's own "residency wins" priority implies for a destination whose
+compliance can't yet be confirmed; not stated explicitly in this
+section's own text, but a direct consequence of it.
+
+**A narrowing beyond "never sent," found necessary to keep the mechanism
+correct, not just permissive**: a residency-excluded event still
+advances `PeerSyncCursor.LastAckedSequenceNumber` for that specific peer,
+exactly as if it had been sent — it is permanently excluded from that
+one peer, never retried on a later tick. Without this, a constrained
+`AppId` publishing alongside unconstrained ones would re-evaluate (and
+re-skip) the same excluded event on every single tick forever, forever
+re-querying it for no reason; advancing past it costs nothing since it
+was never going to become eligible later (an `AppId`'s `AllowedRegions`
+doesn't change per-event, only per `SetAllowedRegionsAsync` call, which
+reloads the whole policy table fresh next tick regardless).
+
+**The "surfaced as an operational signal" exit criterion** is a
+`LogWarning` inside `PeerSyncWorker.RunOnceAsync` (an optional `ILogger`
+parameter — real deployments wire this to a metric instead, this build
+stage's own honestly-scoped choice) naming any constrained `AppId` whose
+`AllowedRegions` are satisfied by fewer than 2 currently-known live
+sites — checked once per tick, after the per-peer sync loop, never
+blocking the write or the sync itself.
+
+Verified with `DataResidencyHttpSqliteTests.cs` (SQLite-only, real
+HTTP — three real Host TestServers: a sender and two differently-tagged
+destinations, `eu-west`/`us-east`, the same real-wire pattern
+`ReplicationHttpSqliteTests.cs` already established, since region is
+learned over the real `/peer-sync/whoami` handshake, not something a
+direct-service-call test could exercise): an `eu-west`-restricted
+`AppId`'s event reaches the `eu-west`-tagged peer but never the
+`us-east`-tagged one, even though both are ordinary, reachable, gossip-
+configured peers; an unconstrained `AppId` reaches both, unaffected; and
+the under-replication warning fires, naming the `AppId`/region, without
+ever rejecting the underlying write. Plus a pure `PeerAddressBook`
+region-gossip-merge unit test (`ReplicationScenarioAssertions.cs`,
+SQLite-only — no provider-specific behavior to re-prove). Found and
+fixed one real test-isolation bug along the way, the same class this
+session already hit for `WebhookOutboxPump` (item 34):
+`StoredEvent.SequenceNumber` is a single global counter across every
+`AppId` in one file and `PeerSyncCursor` is keyed by `PeerId` alone —
+three test methods sharing one sender database under MSTest's 32-way
+parallelism raced on both, inflating one test's own expected sequence-
+number/cursor assertions with another concurrently-running test's own
+events; fixed by giving the sender side its own per-test database file
+(the two destination Hosts stayed class-level/shared, since every
+assertion against them checks presence by globally-unique `EventId`,
+never a sequence number). Full SQLite regression suite re-run clean.
 
 ## Bulk Ingestion & External Interchange-Format Adapters
 
@@ -1873,6 +3159,92 @@ itself using the subscription's unmodified signing/retry mechanics; an
 MLLP listener deployed with no TLS/network isolation is confirmed to be a
 named, un-mitigated deployment risk, not a framework-level gap.
 
+**Status: Done.** `POST /publish/batch` (`EventStore.Inbox/PublishEndpoints.cs`)
+parses the body as a raw `JsonArray` rather than binding a strongly-typed
+list, specifically so ONE malformed item can be caught and reported
+per-item without deserialization failure aborting the whole batch; each
+well-formed item still goes through `PublishService.PublishAsync`'s own
+per-event transaction/idempotency/hash-chain path, one call per item, not
+one shared transaction. Since a batch response can only ever carry ONE
+real HTTP status, every item's own would-be status (202/409/404/403/400/
+401) rides inside the response body as an explicit `httpStatus` field —
+the outer response is always `202`.
+
+New `EventStore.Interchange.Abstractions` (just the `IInterchangeFormatAdapter`
+interface + `InterchangeInboundResult`, deliberately zero project
+references of its own) and `EventStore.Interchange` (the concrete
+adapters + `Hl7V2MllpListener` + the FHIR HTTP endpoint). **A real
+circular-project-reference risk, avoided by design rather than found
+after the fact this time** (item 34's own `EventStore.Webhooks`/
+`EventStore.Router` cycle was the precedent that made this obvious up
+front): `EventStore.Webhooks` needs `IInterchangeFormatAdapter` for its
+own outbound composition step, and `EventStore.Router` already depends
+on `EventStore.Webhooks` — so the interface itself carries no dependency
+on `EventStore.Inbox`'s `PublishEventRequest` at all; `InterchangeInboundResult`
+is a plain `(EventType, Payload, ReviewPending)` tuple the CONCRETE
+inbound adapters/endpoints (which CAN depend on `EventStore.Inbox`)
+convert into a real `PublishEventRequest` themselves.
+
+- `Hl7V2Adapter`/`FhirAdapter` — real parsing, verified against the
+  actual formats before writing this (`ADT^A01`'s pipe-delimited
+  MSH/PID segment structure including MSH's own field-numbering offset-
+  by-one quirk; FHIR R4's `Patient.name[].family`/`given[]` shape), each
+  scoped to one message/resource type this build stage names explicitly
+  — an unsupported type throws `NotSupportedException`, never silently
+  ignored. Both default `ReviewPending: true` (non-authoritative capture,
+  `ADR-035`, "a reasonable default for EMR-sourced data").
+- `Hl7V2MllpListener` — a real `BackgroundService` TCP listener speaking
+  actual MLLP framing (`0x0B` start block, `0x1C 0x0D` end block,
+  verified against the real MLLP spec, not approximated) and returning a
+  real HL7v2 `ACK`/`MSA|AA|`/`MSA|AE|` response; opt-in
+  (`Hl7V2MllpOptions.Enabled`), matching every other config-gated
+  background worker's own posture. Resolves its adapter by the SAME
+  `"Hl7V2"` keyed-DI key `AddInterchange` registers, not a hardcoded
+  concrete type, so a deployment could substitute a customized adapter
+  under that key unchanged.
+- `IchE2bR3Adapter`/`Gs1EpcisAdapter` — outbound-only, real element
+  names/namespaces verified against the actual ICH/GS1 specifications
+  before writing this (`MCCI_IN200100UV01` in `urn:hl7-org:v3` for
+  E2B(R3)'s own batch envelope; `EPCISDocument`/`EPCISBody`/`EventList`/
+  `ObjectEvent` in `urn:epcglobal:epcis:xsd:2` for EPCIS 2.0), each an
+  honestly-scoped small subset of its real standard's own much larger
+  schema (the same "representative subset, not full-spec conformance"
+  posture `Hl7V2Adapter`'s own `ADT^A01`-only scope already established) —
+  stated explicitly in code comments, never implied as complete.
+- Outbound composition lands in `WebhookOutboxPump` (`EventStore.Webhooks`,
+  extended, not a new mechanism): `WebhookSubscription` gained an
+  `OutboundAdapterKey` column (migrated across all 3 providers, added to
+  `docs/data/schema-registry.md` in the same pass); when set, the
+  resolved adapter's `FormatOutboundAsync` transforms the masked JSON
+  into the external wire format IMMEDIATELY BEFORE signing/delivery — the
+  masked JSON itself (`WebhookOutbox.EventPayloadSnapshot`, the
+  delivery-history record and what re-masking/erasure-retry logic always
+  operates on) is never replaced, only the bytes actually POSTed and
+  signed are. An adapter failure (a misconfigured key, or one that
+  throws `NotSupportedException` for this direction) fails that ONE
+  delivery attempt exactly like an unreachable target would — retried
+  with backoff, eventually dead-lettered — never a silent fallback to
+  untransformed JSON the target isn't expecting, and never an unhandled
+  exception that would abort every OTHER subscription's own tick.
+
+Verified with `BatchPublishHttpSqliteTests.cs` (real HTTP — the "outer
+202 always" and "malformed item's own 400-shaped body" properties are
+both real HTTP-response-shape facts, not provable via a direct
+`PublishService` call), `InterchangeAdapterTests.cs` (pure adapter-
+transform unit tests, no db/HTTP: HL7v2/FHIR parsing, both outbound XML
+transforms against their real element names, and inbound/outbound
+direction mismatches correctly rejected), `Hl7V2MllpListenerTests.cs`
+(a real `TcpClient` speaking actual MLLP framing against a real
+`Hl7V2MllpListener` bound to an OS-assigned port), `FhirIngestionHttpSqliteTests.cs`
+(real HTTP, confirming no MLLP/TCP involvement for FHIR), and a new
+scenario in `WebhookDeliveryHttpSqliteTests.cs` proving the outbound
+composition sends real E2B(R3) XML with a signature computed over those
+exact XML bytes, while every other delivery/retry/cursor mechanic stays
+unaffected. Full SQLite regression suite re-run 4 times clean-or-near-
+clean (only this repo's own already-tracked, load-induced flakes; see
+`TODO.md`'s new note on one anomalously noisy run found while building
+this item, not reproduced on 3 immediate re-runs).
+
 ## Tenant-to-Tenant Federation Mapping
 
 **Scope**: `ADR-082` — federation between two tenants' own independently-
@@ -1903,6 +3275,46 @@ confirmed no new authentication mechanism or credential type was
 involved beyond ordinary `client_credentials`; confirmed the mapping is
 bespoke, per-pair application code, not a shared framework-level
 canonical schema.
+
+**Status: Done — confirms no new mechanism was needed, exactly as this
+section's own Scope predicted.** The one real code change:
+`InterchangeEndpoints.MapInterchangeEndpoints` (item 36) was generalized
+from a FHIR-specific `POST /interchange/fhir/{appId}` route into
+`POST /interchange/{adapterKey}/{appId}`, resolving whatever
+`IInterchangeFormatAdapter` is registered under `{adapterKey}` — FHIR
+now flows through this SAME generic route (`/interchange/Fhir/{appId}`)
+rather than a second, federation-specific endpoint being added beside
+it. A caller naming a key nothing is registered under gets a `404`, not
+a silent fallback to whatever adapter happens to be registered.
+
+No core Duplex project gained a bespoke tenant-pair mapping class —
+`ADR-082`'s own "bespoke, per-tenant-pair integration code... not a
+shared framework-level canonical schema" text is literal: the mapping
+adapter used to prove this item lives entirely inside the TEST project
+(`TenantFederationHttpSqliteTests.TenantAOrderMappingAdapter`),
+registered via `WebApplicationFactory.ConfigureServices` standing in for
+"tenant B's own composition root, a deployment team's own `Program.cs`,"
+never a change to any `EventStore.*` project.
+
+Verified with `TenantFederationHttpSqliteTests.cs` (real HTTP): tenant A
+authenticates with the SAME ordinary `publisher-client`
+`client_credentials` token every other caller in this repo already uses
+(confirming no new authentication mechanism); its own deliberately
+tenant-A-shaped payload (`LegacyOrderRef`/`TotalCents`, fields that don't
+exist anywhere in tenant B's own registered schema) is mapped by the
+test-registered adapter and lands in tenant B's Event Log as the
+registered `OrderPlaced` shape (`OrderId`/`Amount`) — the raw
+`LegacyOrderRef`/`TotalCents` fields are asserted absent from the stored
+payload, not just the mapped fields asserted present, closing the "never
+the raw cross-tenant shape" exit criterion both ways. A second scenario
+confirms an unregistered adapter key is rejected `404`, not silently
+routed to any other registered adapter. Full SQLite regression suite
+re-run clean except this repo's own already-tracked load-induced flakes
+(the SSE-subscription race, and — new this pass, an occasional
+`PeerSyncCursor` race in `DataResidencyHttpSqliteTests` under this
+suite's now-heavier `WebApplicationFactory` Host count, since fixed with
+a bounded retry in the test's own sync helper, see `TODO.md`'s
+addendum).
 
 ## Sanctions/Watchlist Screening Extensibility Seam
 
@@ -1936,6 +3348,34 @@ with `AuthorityStatus: pending_review` regardless of match confidence
 `authorityDecision` event (gated by ordinary RBAC, unchanged) is what
 actually resolves the event to `accepted` or `rejected` — the provider
 supplies a signal, never the decision itself.
+
+**Status: Done.** `ISanctionsScreeningProvider`/`ScreeningResult` and one
+fake OFAC-SDN-style backend (`TestOfacScreeningProvider`) are declared and
+keyed-DI-registered entirely inside
+`SanctionsScreeningExtensibilityHttpSqliteTests.cs`'s own
+`WebApplicationFactory.ConfigureServices` block — the same "stands in for
+a hosting team's own `Program.cs`" simulation "Tenant-to-Tenant Federation
+Mapping" (item 37) already established — never in any core
+`EventStore.*` project, closing ADR-079's central claim literally. A
+screening pipeline helper standing in for the domain doc's own
+`PeriodicScreeningWorker` resolves the provider from this composition
+root and publishes `SanctionsScreeningPerformed` exactly like any other
+automated detector (`reviewPending: true` whenever `MatchFound`,
+regardless of `MatchConfidence` — verified at both 0.87 and 0.52).
+Resolution reuses "Non-Authoritative Capture" (item 18)'s
+`authorityDecision`/`AuthorityDecisionResolver` mechanism and "Delegated
+Grants, RBAC..." (item 23)'s role-to-permission flattening completely
+unchanged: a `ComplianceOfficer` role bundling `identity:aml-review` is
+registered and granted to `publisher-client` (which already holds the
+`events:publish` scope the `/publish` endpoint separately requires) for
+one demo `AppId`; a caller without that claim gets `403` at the ordinary
+`RequiredClaims` gate, never touching the target's `AuthorityStatus`. Six
+tests, one SQLite-only (auth/RBAC is provider-agnostic, the same posture
+"Delegated Grants..."/"Tenant Federation..." already established for
+their own HTTP test classes). No new framework mechanism was introduced
+anywhere in `EventStore.*` — matching this item's own Scope note that
+`ADR-079`'s central point is establishing a precedent for domain-scoped
+(non-core) extension points, not adding core capability.
 
 ## Release Engineering, Packaging & Supply Chain
 
@@ -1984,37 +3424,151 @@ graphs in one pass; a GitHub Actions workflow runs the existing test
 suite and produces build provenance attestations for at least one
 published package.
 
+**Status: Done, split honestly between what runs locally (verified this
+pass) and what only GitHub Actions itself can verify (written, not yet
+executed).**
+
+- **`ADR-062` (NuGet packaging)**: a new root `Directory.Build.props` sets
+  `PackageId` to `$(MSBuildProjectName)` once for every project (no
+  per-project line to keep in sync across ~35 projects), plus shared
+  Authors/Company/Product/`PackageLicenseFile` (this repo's actual custom
+  "MIT NON-AI License", not a bare SPDX `MIT` expression, which would have
+  misdescribed it)/`RepositoryUrl` metadata. `EventStore.Abstractions` is
+  new, carrying the 5 catalogued interfaces that are genuinely
+  implementer-facing with no back-reference into the engine's own
+  internals (`IMaskingStrategy`, `IStreamRedactionStrategy`,
+  `IUpcastExpressionEvaluator`, `IErasureKeyStore`,
+  `IAttachmentContentStore`) — moved out of their original projects,
+  keeping each interface's ORIGINAL namespace to avoid a consumer-side
+  `using` churn (assembly identity and C# namespace are orthogonal).
+  `IEventLineageQueryProvider`/`IJsonPathTranslator` deliberately stay in
+  `EventStore.Persistence` (parameterized directly over
+  `EventStoreContext`/EF Core's own `SqlExpression` — moving them
+  wouldn't shrink an implementer's footprint at all); `IProjection<T>`/
+  `IInterchangeFormatAdapter` deliberately stay in their own pre-existing
+  `EventStore.Projections.Abstractions`/`EventStore.Interchange.
+  Abstractions` packages (items 10/36) rather than being folded in
+  (already interfaces-only, merging would be pure churn).
+  `IEventUpcaster`/`IDeviceInputSource`/`ITimestampAuthorityClient` are
+  NOT yet in `EventStore.Abstractions` since they don't exist as built
+  interfaces yet (items 8/44/42's own scope) — this repo's own "never
+  build ahead of dependencies" discipline, not an oversight.
+  `IsPackable=false` on the 6 genuinely non-shipping projects (3
+  provider-specific migration assemblies, `EventStore.DevIdp`,
+  `EventStore.AppHost`, `EventStore.ServiceDefaults`) plus
+  `Samples.Orders.Projections`; `IsPackable=true` overrides on the 4
+  `Microsoft.NET.Sdk.Web` deployables (`EventStore.Gateway`,
+  `EventStore.Host.Sqlite`/`.Postgres`/`.SqlServer`) whose SDK defaults
+  IsPackable to false. **Found and fixed a real, pre-existing gap while
+  wiring this up**: `EventStore.Erasure`/`.FeatureFlags`/`.LeaderElection`/
+  `.Rbac` (built by earlier items) were never added to `EventStore.slnx`
+  at all — silently skipped by any solution-level `build`/`pack`, though
+  never by the individual `dotnet test tests/EventStore.IntegrationTests`
+  command this session's own regression runs always use, which is why it
+  went unnoticed. Fixed by adding all 4 plus the new
+  `EventStore.Abstractions` to the solution file. Verified: `dotnet pack
+  EventStore.slnx -c Release` now produces exactly 35 `.nupkg` files,
+  matching every eligible project; a new automated build-time check
+  (`PackagingScenarioAssertions.cs`) reflects over the actual
+  `EventStore.Abstractions.dll` and asserts every exported type is an
+  interface, closing the exit criterion's own "confirmed by a build-time
+  check" text literally, not just a one-time manual eyeball.
+- **`ADR-076` (EF Core Migration Bundles)**: `Database.MigrateAsync()` is
+  removed from all 3 `EventStore.Host.<Provider>` composition roots — no
+  replica calls it at startup anymore. Per direct request ("local scripts
+  for POC/PoV are perfect"), the deploy-time apply step is two local shell
+  scripts (`scripts/generate-migration-bundle.sh`,
+  `scripts/apply-migration-bundle.sh`) rather than a full `EventStore.
+  AppHost`/`docker-compose.yml` orchestration resource — wiring an actual
+  init step into either of those remains flagged, not done this pass,
+  exactly as `ADR-076`'s own Consequences already named as separate,
+  not-yet-built pipeline work. Verified for real: generated an actual
+  self-contained Sqlite bundle (`dotnet ef migrations bundle`), ran it
+  against a brand-new, zero-migration Sqlite file, and confirmed all 17
+  migrations on disk applied in that one execution (`__EFMigrationsHistory`
+  populated, no errors) — the exact exit criterion text. Removing the
+  runtime call is safe for every existing test: every `*HttpSqliteTests`
+  class already migrates its own database explicitly in `ClassInit`
+  before ever constructing a `WebApplicationFactory`, so the app's own
+  (now-removed) startup call was already redundant there.
+- **`ADR-074`/`ADR-080` (SBOM + vulnerability scanning)**: actually ran
+  `sbom-tool` (Microsoft's own `Microsoft.Sbom.DotNetTool`) against this
+  repo's real packed output — produced a genuine, valid SPDX 2.2 manifest
+  covering 592 packages across BOTH the NuGet graph (this solution) and
+  the npm graph (`client-web`) in one pass, the exit criterion's own text,
+  proven working locally rather than only asserted in a workflow file.
+  `dotnet list package --vulnerable` surfaced two real, fixable findings
+  before this pass ever wrote a CI file: a critical `System.Drawing.
+  Common` 4.7.0 CVE (transitively via `Cel.NET`'s own dependency graph,
+  pulled into `EventStore.Upcasting`) and a high `SQLitePCLRaw.
+  lib.e_sqlite3` 2.1.11 CVE (via `Microsoft.EntityFrameworkCore.Sqlite`,
+  pulled into 3 projects) — both fixed with a direct `PackageReference`
+  override bumping NuGet's higher-version-wins resolution to a patched
+  release; the whole solution now reports zero vulnerable packages.
+  `npm audit` found `client-web`'s own devDependencies (vitest/vite/
+  esbuild) carrying a moderate/high/critical chain with no non-breaking
+  fix available (`npm audit fix --force` would bump vitest across a major
+  version, real risk to that client's own test suite, not attempted this
+  pass) — scoped to `npm audit --omit=dev` instead, the more meaningful
+  check anyway (a dev-only tool vulnerability never ships), which reports
+  clean; the finding itself is tracked in `TODO.md`, not silently dropped.
+- **`ADR-091` (GitHub Actions CI)**: `.github/workflows/ci.yml` and
+  `.github/dependabot.yml` are real, structurally-valid files (both
+  YAML-parse-checked) wiring together every command actually verified
+  locally above (`dotnet build`/`test`, the vulnerability scans).
+  **Never actually executed by GitHub Actions itself** — this
+  environment has no push access to trigger a real run, an explicit,
+  deliberate scope limit agreed with the user rather than a gap
+  discovered afterward. Every step's underlying command was proven to
+  work against this exact repository first; only the YAML orchestration
+  around them is unexecuted.
+  **Corrected, 2026-08-11 (direct request): SBOM generation/build
+  provenance moved OUT of `ci.yml` into a local-only script**
+  (`scripts/generate-sbom.sh`), the same "local scripts for POC/PoV are
+  perfect" posture already applied to the migration-bundle-apply step
+  (`ADR-076`). The `pack-and-sbom`/`provenance` jobs this bullet
+  originally described (`sbom-tool generate`, `actions/attest-build-
+  provenance`) no longer exist in `ci.yml` — `build-and-test`/
+  `vulnerability-scan` are the only two jobs there now. The local
+  script was run for real this pass (not just written): produced a
+  genuine SPDX 2.2 manifest (807 components detected across the NuGet
+  and npm graphs together) from a real `dotnet pack` output, confirming
+  the underlying mechanism still works standalone, outside any workflow
+  file.
+
 ## Signing Secret Rotation, Dual Signature
 
 **Scope**: `ADR-093` (revises `ADR-040`/`ADR-060`'s single-secret
 assumption — **only where a persisted secret actually exists to
-revise**). Two genuinely different mechanisms, not one applied twice:
+revise**). Originally scoped as two mechanisms; **narrowed this pass
+after the ticket-exchange half's own premise failed verification** (see
+`ADR-093`'s own struck-through Decision/Consequences bullets for the
+full correction) — this item now builds only the webhook half:
 - **`WebhookSubscription.SigningSecret` (`ADR-060`) becomes a real,
   schema-level current+previous *pair*** — `PreviousSigningSecret` is
   added. The webhook dispatcher emits **dual signatures** during an
   ops-configured overlap window, using Standard Webhooks' own already-
   adopted multi-signature mechanism — no new signing mechanism invented.
-- **The ticket-exchange shared secret (`ADR-040`) does *not* gain any new
-  persisted field.** The shared secret used for the HMAC step is either
-  (a) the caller's already-registered OAuth2 `client_secret`, DevIdp-side
-  state entirely outside `EventStoreContext`, where "current vs.
-  previous" rotation is just ordinary OAuth2 client-credential rotation
+- ~~The ticket-exchange shared secret (`ADR-040`) does *not* gain any new
+  persisted field... ordinary OAuth2 client-credential rotation
   (OpenIddict already supports a client holding more than one valid
-  credential — no framework change needed), or (b) a caller-generated
-  `one_time_secret`, used for exactly one ticket and never persisted at
-  all. `docs/features/ticket-exchange.md`'s own Data model section states
-  this explicitly. Rotation cadence/overlap-window length stays
-  ops-configurable in both cases.
+  credential — no framework change needed)...~~ **Corrected, later
+  pass**: verified against OpenIddict's own documentation, source, and
+  issue tracker before building anything on top of this claim (this
+  repo's own "verify before citing" standing instruction) —
+  `OpenIddictApplicationDescriptor.ClientSecret` is a single string per
+  application; no built-in multi-secret mechanism exists. The "no
+  framework change needed" premise was never actually verified when
+  `ADR-093` was originally written. **Descoped, not built this pass**,
+  per direct user decision once this was found — see `TODO.md` for the
+  real mechanism this still needs (a custom credential-validation
+  handler, or a second registered application as a stopgap).
 
 **Depends on**: Outbound Webhooks (the real schema change,
 `WebhookSubscription.PreviousSigningSecret`, and the dual-signature
-emission logic) and, corrected this pass, **Auth (OIDC/OpenIddict) +
-Orchestration** — not Ticket Exchange for Header-Incapable Clients: the
-ticket-exchange path's rotation is entirely OpenIddict's existing
-multi-credential-per-client support, and Ticket Exchange's own
-mechanism/entity is untouched by this ADR — there was never a
-single-secret schema field there to revise, so no dependency on that item
-belongs here.
+emission logic). The ticket-exchange half's own dependency note (Auth +
+Orchestration) no longer applies to this item's actual built scope,
+since that half isn't built here.
 
 **Exit criteria**: rotating a webhook subscription's secret (`POST
 /webhooks/subscriptions/{id}/rotate-secret`) while a delivery is in
@@ -2022,14 +3576,29 @@ flight results in `PreviousSigningSecret` being set to the old secret and
 `SigningSecret` to the new one; a delivery sent during the overlap window
 carries two `webhook-signature` entries, one verifiable against each
 secret; a receiver caching only the old secret still verifies
-successfully during the window; discarding the previous secret ends the
-window, after which only the new secret verifies; separately and
-independently, a client with two valid OAuth2 credentials registered
-(ordinary OpenIddict multi-credential support, no framework change) can
-obtain a ticket-exchange-signing-capable token using either credential,
-and a ticket signed using the not-yet-revoked older credential still
-passes introspection — demonstrated as an instance of ordinary
-`client_credentials` rotation, not as a new Ticket-entity field.
+successfully during the window; discarding the previous secret (`POST
+/webhooks/subscriptions/{id}/discard-previous-secret`) ends the window,
+after which only the new secret verifies.
+
+**Status: Done, webhook half only** — the ticket-exchange half is
+deliberately descoped, tracked in `TODO.md`, not silently dropped.
+`WebhookSubscriptionService.RotateSigningSecretAsync`/
+`DiscardPreviousSigningSecretAsync` implement the two new endpoints;
+`WebhookSigner.Sign` gained an optional `previousSigningSecret`
+parameter emitting the real Standard Webhooks space-delimited dual-
+signature format (verified directly against the spec:
+`"{sig1} {sig2}"`, not assumed) — `WebhookSigner.Verify` already
+tolerated multiple space-separated candidates from item 34's own build,
+so no change was needed on the receiving side. One comprehensive test
+(`RotatingTheSigningSecretEmitsDualSignaturesDuringTheOverlapWindow
+ThenASingleSignatureOnceDiscarded`,
+`WebhookDeliveryHttpSqliteTests.cs`) proves the full lifecycle: one
+signature before rotation, two (independently verifiable against either
+secret) during the window, one (new secret only, old secret no longer
+verifies) after discarding — SQLite-only, since signing/HTTP delivery
+mechanics are provider-agnostic, the same posture this file already
+established for `WebhookDeliveryHttpSqliteTests.cs`'s other scenarios.
+Full webhook regression suite (12 tests) re-run clean.
 
 ## Lineage Export & Bitemporal Playback
 
@@ -2102,6 +3671,54 @@ bundle whose manifest records a newer major `FrameworkVersion` than the
 player was built against is **not** guaranteed correctly readable by
 that player.
 
+**Status: Done.** Server-side (`EventStore.LineageExport/`):
+`LineageExportService.ExportAsync`/`ImportAsync`/`CheckRootAsync`,
+`BitemporalPlaybackService.ReconstructAsync`, `ExportManifest`/
+`ExportedEventLine`/`LineageExportBundle` (NDJSON), `ManifestHash`,
+`LineageExportBundleStore` (15-minute `IMemoryCache` TTL). Two new
+GraphQL Query fields (`exportLineage`/`playbackAsOf`,
+`LineageExportQueries.cs`) and two new REST endpoints
+(`/lineage-exports/{id}`, `/lineage-imports`,
+`LineageExportEndpoints.cs`), wired into all three Hosts.
+`LineageExportHttpSqliteTests.cs` (7 tests, real HTTP through the actual
+Gateway) covers root-visibility rejection, manifest-hash correctness,
+import provenance (`OriginalSequenceNumber`/`OriginalChainHash`/
+`ImportedFrom`) against a genuinely separate receiving database, tampered-
+manifest rejection before any write, and the late-arrival playback
+correction landing/not-landing at the correct `SequenceNumber`. `Rfc3161Timestamp`
+stays null, per this repo's "never build ahead of dependencies" rule —
+populated once RFC 3161 Trusted Timestamping (next item) lands.
+
+Client-side (`client-web/`): `BitemporalPlaybackControl.vue` (the live
+VCR-style control, calling `playbackAsOf`) and `OfflineBundleViewer.vue`
+(the verification-result + event-list screen, reading either a
+downloaded bundle or the offline build's embedded one) — one shared
+component pair mounted from two entry points, per `ADR-068 §3`.
+`client-web/src/playback/verifyBundle.ts` recomputes the manifest hash
+(cross-checked this session against a real C# `ManifestHash.Compute`
+run, including the `DateTimeOffset`-fractional-second-trimming edge case
+`System.Text.Json` applies) and counts masked/erased fields — see
+`ADR-068`'s own "Corrected, 2026-08-11" Consequences note for the one
+honest scope narrowing found while building (no per-event `PayloadHash`
+re-derivation, since `ExportedEventLine` carries no `ParentEventIds`).
+`client-web/offline-player/` + `vite.offline-player.config.ts`
+(`vite-plugin-singlefile`) build the self-contained HTML player;
+`client-web/scripts/embed-bundle.mjs` does the per-export "embed and
+rebuild" step. Verified genuinely end-to-end, not just unit-tested: built
+the offline player, embedded a real exported bundle via the script, and
+rendered the resulting double-clickable HTML file headlessly in a real
+browser, confirming it independently reports "Fully independently
+verified" with no server, network, or test-runner involved — this also
+caught a real bug (the placeholder-substitution comment in `offline-
+player/index.html` accidentally containing its own literal marker text,
+so the embed script patched the wrong occurrence) that unit tests alone
+had not surfaced. Client test suite: 49/49 (10 files, `npm test`).
+Full SQLite/Postgres/SqlServer regression suite re-run clean except
+pre-existing SqlServer-testcontainers Docker-contention flakiness under
+parallel load (confirmed unrelated to this item — none of the failing
+test names touch `LineageExport`, and a dedicated SqlServer-only rerun
+passed clean).
+
 ## RFC 3161 Trusted Timestamping
 
 **Scope**: `ADR-086` — adopts RFC 3161 rather than inventing a bespoke
@@ -2140,6 +3757,59 @@ required; a lineage export bundle's manifest similarly carries and can be
 independently verified via its own RFC 3161 timestamp token, once the
 propagation gap above is closed.
 
+**Status: Done.** `ITimestampAuthorityClient` (`EventStore.Abstractions`)
++ `HttpTimestampAuthorityClient`/`TimestampingOptions`/`AddTimestamping`
+(new `EventStore.Timestamping` project, wired into all three Hosts,
+registered only when `Timestamping:TsaUrl` is configured — the same
+"no silent fallback" posture `AddErasure`'s Vault registration already
+established). Built entirely on `System.Security.Cryptography.Pkcs`
+(BCL, since .NET 5) — no third-party RFC 3161 library needed; verified
+directly against the real installed API by running a full request/
+issue/verify round trip before any production code depended on it,
+including the `SigningCertificateV2`/`ESSCertIDv2` signed attribute RFC
+3161/5035 mandates and a real cross-check of `System.Text.Json`'s
+`DateTimeOffset` fractional-second trimming (needed for item 41's
+client-side manifest-hash reconstruction too, both found the same
+session).
+
+`RequiredSignature.EnableRfc3161Timestamp` (opt-in per event type, the
+same `requiredSignature` request shape `RequiredSignature.AcrValues`/
+`MaxAge` already use) gates `PublishService`'s call: after
+`EventAppender.AppendAsync` assigns `ChainHash` (necessarily after —
+`EventChainHash.Compute` already folds `Signature` into `ChainHash`, so
+`RFC3161Timestamp` is added afterward as a pure additive update,
+timestamping the chain value computed *without* it, never circular),
+`SHA-256(ChainHash)` is submitted to the TSA and the token stored.
+`LineageExportService.ExportAsync` always timestamps when a TSA is
+configured (no separate opt-in for exports, per `ADR-086`'s own text) —
+`ManifestHash`'s own raw bytes are submitted directly (it's already a
+SHA-256 digest), not re-hashed a second time, the literal opposite of
+`Signature`'s "a hash *of* ChainHash" wording.
+
+**One real bug found only by running the real HTTP round trip, not by
+reading the code back**: the first attempt mutated the already-tracked
+`Signature` object's `RFC3161Timestamp` property in place — invisible to
+EF's change tracker, since `JsonValueConverter.NullableComparer<T>()`'s
+snapshot function returns the same reference rather than a deep clone (a
+gap that file's own comment already documented once before, for the
+exact same class of property). Fixed by assigning a **new** `Signature`
+instance instead, the same workaround already established elsewhere.
+
+Tests: `TimestampingHttpSqliteTests.cs` (4 methods) proves both consumers
+against `TimestampingTestSupport.cs`'s fake TSA — a *real* RFC 3161
+issuer built entirely from BCL crypto (real RSA signature, real CMS
+SignedData, no shortcuts), reused as a real HTTP endpoint (`TestServer`,
+wired via `ConfigurePrimaryHttpMessageHandler` into the Host's own typed
+`HttpClient`) for the Signature half and constructed directly for the
+Lineage Export half. Every resulting token is decoded and independently
+re-verified against the fake TSA's own certificate — proving actual RFC
+3161 compliance, not merely "some bytes got stored." Sqlite-only, same
+provider-agnostic reasoning `DigitalSignOffHttpSqliteTests.cs` already
+established. Full regression suite re-run clean except the two already-
+tracked, pre-existing flakes (`TODO.md`): SqlServer-testcontainers
+resource contention, and the SSE-subscription timing flake — neither
+failure touches Timestamping, Lineage Export, or Digital Sign-Off.
+
 ## Pluggable Outbox Flush Triggers
 
 **Scope**: `ADR-069` — the durable client outbox exposes one idempotent
@@ -2174,6 +3844,69 @@ receiving system verifies the bundle is complete and unaltered before
 importing it, with each command applied exactly once; Background Sync
 unavailability still falls back to flush-on-focus, never dropping a
 queued command.
+
+**Status: Done.** Found and closed a real, pre-existing gap while
+building this item: `public/sw.js`'s own `sync` event listener (from
+item 21) has existed since that item, but nothing anywhere in `src/`
+ever called `registration.sync.register('flush-outbox')` to actually
+arm it — `docs/patterns/pwa-offline-outbox.md`'s own sequence diagram
+already specified this exact call, it was simply never wired. Fixed in
+`stores/outbox.ts`'s `enqueue` action (feature-detected, silently
+skipped where `SyncManager` doesn't exist — Firefox/Safari — never
+thrown), so the "opportunistic" category (this item's own point 1,
+"existing, unchanged") is now actually armed end to end, not just
+listened for.
+
+**Scheduled ("phone home")**: `main.ts` registers Web Periodic
+Background Sync (feature- and permission-detected —
+`'periodicSync' in registration` plus a `navigator.permissions.query`
+check, silently skipped everywhere unsupported) with a 12-hour
+`minInterval` floor; `public/sw.js` gained a matching `periodicsync`
+listener reusing the exact same `flushOutbox()` the opportunistic
+listener already calls — neither the client nor the Service Worker
+needs to know which trigger category fired, per this ADR's own stated
+principle.
+
+**Explicit/manual**: the "sync now" action already existed
+(`useEntityViewActions.flush()`, called by `GenericFallbackView`'s
+"Retry sync" button since item 21) — genuinely nothing new needed for
+the ordinary case. The **air-gapped sneakernet** half is new:
+`client-web/src/outbox/{bundle,exportImport}.ts` reuse `ADR-068`'s
+NDJSON-plus-manifest SHAPE directly (via `playback/verifyBundle.ts`'s
+own `computeManifestHash`, exported and shared rather than
+duplicated), adapted for a queued *command* rather than a stored
+*event*: `ClientOutboxEntry` has no `ChainHash` (it hasn't been
+published yet), so a per-entry `contentHash` — a `SHA-256` over the same
+fields `ADR-011`'s Idempotent Receiver treats as this command's
+identity — plays `ChainHash`'s role for the manifest hash. `Outbox
+Store.exportBundle`/`importBundle` wrap it; import verifies the
+manifest hash AND re-derives every entry's own `contentHash` against
+its current content before returning anything, rejecting (not silently
+accepting) either kind of tamper.
+
+**One real gap found by writing an adversarial test against my own
+first draft, fixed before it shipped**: the first `importOutboxBundle`
+only checked the manifest hash over the *list* of `contentHash` values
+— tampering an entry's `patch` field while leaving its own carried
+`contentHash` untouched would have passed verification, since nothing
+re-derived that hash from the entry's own current content.
+Closed by adding exactly that re-derivation, the same "recompute,
+never trust the stored value" discipline
+`EventStore.Domain.EventLog.ChainVerificationService` already applies
+server-side for `PayloadHash`.
+
+Tests: `outbox/bundle.spec.ts` (NDJSON round-trip), `outbox/
+exportImport.spec.ts` (3 scenarios: only-Pending export, tamper-the-
+manifest rejection, tamper-an-entry-post-export rejection), plus 2 new
+scenarios in `stores/outbox.spec.ts` (export→import into a fresh
+instance; re-importing the same bundle never duplicates an already-
+present command). Client suite: 56/56 (12 files). One test-infra
+lesson from this pass, applied retroactively: `OfflineBundleViewer.
+spec.ts`'s own `flushAll()` helper (item 41) needed a more robust wait
+than a single `setTimeout(0)` tick once run under this session's fuller
+suite concurrency — caught by a real, if intermittent, failure, not
+hypothesized; widened to several short ticks. `npm run build` and
+`npm run build:offline-player` both still succeed.
 
 ## Device Input Integration
 
@@ -2225,12 +3958,117 @@ unavailable and prompts the user to launch it; a continuous device output
 appends `TelemetrySample`s, publishing **no** `StoredEvent` per sample; a
 discrete reading publishes an ordinary `StoredEvent`, appending **no**
 `TelemetrySample`; a device with no self-attested identity defaults to
-`AuthorityStatus: non_authoritative`; a device presenting a self-attested
-DID/UCAN identity carries that attestation through instead; a recording
+`ReviewPending` (the honest resolution of this bullet's own originally-
+imprecise "non-authoritative" framing — see the "Status" text below); a
+device presenting a self-attested DID/UCAN identity carries that
+attestation through instead (`AttestedActorId`/`AttestedClaims`); a recording
 agent capturing both `Timestamp` and `MonotonicElapsedMicros` side by
 side lets a downstream analysis flag a sample whose claimed wall-clock
 delta diverges sharply from its actual monotonic delta as a suspiciously
 inconsistent wall clock.
+
+**Status: Done.** Built inside `client-web/src/deviceInput/`, not a
+separate `EventStore.Client.DeviceInput` project — the four browser
+Hardware APIs only make sense inside an actual browser context, which
+`client-web` already is (loaded in a real tab or, if `EventStore.Client.
+WebViewBridge` is ever built, inside its WebView unchanged, since the
+whole point of Web APIs is that hosting context is transparent to them);
+consistent with item 21's own explicit deferral of the native shell, not
+a further narrowing. `IDeviceInputSource` (`types.ts`) plus five real
+adapters: `WebUsbInputSource`/`WebHidInputSource`/`WebSerialInputSource`/
+`WebBluetoothInputSource` (each takes an injected `parse: (DataView) =>
+unknown`, since byte-level parsing is the registering integration's own
+business, never generic) and `NativeBridgeInputSource` (a real
+`WebSocket` client, `DeviceCaptureUnavailableError` when nothing answers
+the connection). `RecordingAgent` (`performance.now()`-based) is
+`ADR-083`'s "recording agent" concept, realized — `TelemetrySample.
+MonotonicElapsedMicros` and `IngestSamplesRequest`'s support for it
+already existed server-side (an earlier pass), so this item's own job
+was populating it from real client-side capture, not adding the field.
+
+**A genuine design ambiguity, resolved and documented, not glossed
+over**: this item's own exit criteria describe a device-sourced discrete
+reading as defaulting to `AuthorityStatus: non_authoritative` unless
+attested — but `non_authoritative` is not a real `AuthorityStatus`
+value (`PublishService.cs`'s own three real values are `"accepted"`,
+`"unattested"`, and `"pending_review"`, `ADR-042`), and the *literal*
+default (no `AttestedActorId`/`AttestedClaims` at all) actually produces
+`"accepted"` — the opposite of non-authoritative. Resolved by using
+`ADR-042`'s OTHER trigger instead: `ReviewPending` (`"a content/
+confidence case, not an identity one"`, per that file's own comment) —
+an honest fit for "a raw, un-reviewed reading with no identity claim
+attached," which `attestedActorId`/`unattested` (an IDENTITY-claim
+case) does not describe as precisely. A device carrying a **real**
+self-attested identity uses the identity path instead
+(`attestedActorId`/`attestedClaims`, `deviceReadingOutbox.ts`'s
+`DiscreteMapping.deviceAttestation`), giving the two Gherkin scenarios
+("defaults to non-authoritative" vs. "carries its own attestation
+through instead, not forced to the default") two genuinely different
+starting states, not the same one reached twice. Threading `reviewPending`/
+`attestedActorId`/`attestedClaims` through `ClientOutboxEntry`/
+`publishCommand` at all was itself new — nothing in `client-web` used
+either `PublishEventRequest` field before this item, another real,
+pre-existing gap closed in passing.
+
+**Continuous vs. discrete mapping** realized as a `ClientOutboxEntry`
+discriminator (`deliveryKind?: 'streamingSample'`, `channelId?`) — the
+SAME durable outbox for both, per this ADR's own "no new local-storage
+mechanism" rule, routed at flush time to either `/publish/{eventType}`
+or `/telemetry/{channelId}/samples` (`api/streamingClient.ts`, new).
+`useOutboxStore.flush` gained an optional, trailing `ingestSample`
+parameter (every pre-item-44 call site passing only `publish` is
+unaffected); a `streamingSample` entry flushed with no `ingestSample`
+supplied is left `Pending`, never misrouted.
+
+**Verified genuinely end-to-end for the one adapter that has a real,
+runnable non-browser counterpart**: `NativeBridgeInputSource.spec.ts`
+spins up a REAL `ws` `WebSocketServer` (not a mock) and connects the
+real client class over real TCP sockets on localhost, proving the wire
+protocol (connect message, base64-framed readings, connection-refused →
+`DeviceCaptureUnavailableError`) actually round-trips. `client-web/
+native-bridge-reference/server.mjs` is a genuinely-runnable reference
+implementation of the companion-app side of that same protocol (a
+simulated fixed-interval sensor, since there's no real hardware to
+read from here) — run directly (`node native-bridge-reference/
+server.mjs`) and driven by a plain WebSocket client this pass, confirmed
+producing real, correctly-framed readings. It is explicitly **not** the
+shipped, production companion app a real deployer would run (real
+OS-level USB/serial/BLE access is genuinely separate software this
+framework does not build, per `ADR-070`'s own Decision text) — the
+same "provide the reference, not the product" scope this repo already
+applied to `EventStore.LineageExport`'s offline player and other
+seams. The four browser-API adapters (`WebUsb`/`WebHid`/`WebSerial`/
+`WebBluetooth`) have no headless/Node equivalent to run against for
+real at all — each is tested against a hand-built mock of its own
+documented API surface instead, proving this adapter's own logic
+(feature detection, the connect/read/parse/disconnect lifecycle)
+against the real API shape, the most this framework's own test
+environment can verify without an actual browser and physical device.
+
+**Built-scope note, honestly flagged**: the feature doc's own 4-screen
+UI mockup (Connect a Device, the browser's native picker, a Connected
+Devices dashboard, a reading's diagnostic detail view) is not built as
+real Vue components this pass — the underlying mechanism
+(`captureDeviceReading`, the five adapters, the outbox routing) is the
+load-bearing deliverable and is fully real; the dashboard/detail screens
+are presentation atop it, buildable later using the same `EntityView`/
+`GenericFallbackView` patterns item 21 already established, with no
+new mechanism needed to do so.
+
+Tests: `RecordingAgent.spec.ts`, one spec per adapter (2-3 scenarios
+each), `deviceReadingOutbox.spec.ts` (4 scenarios covering both mapping
+branches and the reviewPending/attestation fork), 2 new scenarios in
+`stores/outbox.spec.ts` (streamingSample routing, and the no-
+ingestSample-supplied fail-safe), 2 new scenarios in
+`useEntityViewActions.spec.ts` (`captureDeviceReading`'s own two
+branches). Client suite: 80/80 (19 files). `npm run build`/`npm run
+build:offline-player` both still succeed. No server-side code changed
+at all — every mechanism this item needed (`TelemetrySample.
+MonotonicElapsedMicros`, `IngestSamplesRequest`, `PublishEventRequest`'s
+`ReviewPending`/`AttestedActorId`/`AttestedClaims`, non-authoritative
+capture's lifecycle) already existed from earlier items, the second
+consecutive client-only item this session (43, then 44) confirming
+those foundations were built solidly enough to not need touching.
 
 ## Accessibility Standard
 
@@ -2251,6 +4089,64 @@ serious violations on at least the core entity-view screens; both a
 fallback view conform to WCAG 2.1 AA — a manual screen-reader pass
 specifically confirms the fallback is fully navigable, not merely
 visually present.
+
+**Status: Done.** `client-web/src/a11y.spec.ts` runs the real,
+published `axe-core` ruleset (`wcag2a`/`wcag2aa`/`wcag21a`/`wcag21aa`
+tags specifically, matching this ADR's own cited legal baseline, not
+the newer 2.2 tags) against the ACTUALLY rendered DOM of
+`GenericFallbackView` (both plain and an Extensions-sourced property),
+a `TemplateRenderer`-backed screen, and the shared `FlagRow` convention
+including its active/warning state — zero critical/serious violations
+across all four.
+
+**A real, verified gap in the automated check itself, not glossed
+over**: jsdom has no working `HTMLCanvasElement.getContext`, which
+axe's `color-contrast` rule needs — confirmed directly (not assumed) by
+inspecting `results.incomplete` rather than only `results.violations`,
+which is where jsdom silently strands this rule (impact `"serious"`)
+instead of ever passing or failing it outright. Closed with a REAL
+browser rendering engine instead of trying to install the native
+`canvas` npm package (attempted first; failed — no Visual Studio build
+tools in this environment): built a standalone HTML harness embedding
+these exact components' real rendered HTML/CSS plus `axe-core`'s own
+browser bundle, rendered it headlessly in a real installed browser
+(Edge, `--headless=new`), and confirmed zero violations AND zero
+incomplete findings there too — a genuine, complete color-contrast
+determination, not a jsdom approximation. `a11y.spec.ts`'s own
+automated assertion now requires `results.incomplete` to contain
+nothing OTHER than `color-contrast` (never silently ignoring
+`incomplete` altogether, which would also hide a regression in some
+other rule axe can't auto-determine) — the real-browser cross-check
+itself isn't wired into the automated suite (no headless-browser
+dependency exists in this project), so it should be re-run by hand if
+these components' own colors ever change.
+
+**The exit criterion's own "manual screen-reader pass," addressed
+honestly**: no actual screen-reader software (NVDA/JAWS/VoiceOver) is
+installable/operable in this environment, so a literal manual pass
+wasn't performed — automated tooling and a literal screen-reader
+session are genuinely different checks (industry-standard automated
+WCAG tools, `axe-core` included, are well-documented to catch roughly
+30-50% of real accessibility issues; the rest need human/manual
+review, which is exactly why this exit criterion asks for one
+specifically, on top of the automated check). What WAS done instead:
+reasoned directly about real screen-reader behavior against
+`GenericFallbackView`'s actual markup, found a genuine, concrete gap
+no automated tool flagged (a headerless 2-column `<table>` — nothing
+automated can tell whether a table's first column is semantically a
+label), and fixed it — `<th scope="row">` for each property name
+instead of a plain `<td>` (a screen reader now announces "carrier:
+UPS," not two anonymous cells) plus a visually-hidden `<caption>`. This
+is a real, verifiable improvement to actual navigability, not a
+substitute for the literal manual pass this criterion still names as
+outstanding — recorded in `TODO.md`, not silently claimed as done.
+
+Tests: 4 new scenarios in `a11y.spec.ts`; `GenericFallbackView.spec.ts`'s
+existing 4 scenarios re-verified passing after the `<th>`/`<caption>`
+change (they assert on text content, not tag names). Client suite:
+84/84 (20 files). `npm run build`/`npm run build:offline-player` both
+still succeed — `axe-core` is a devDependency only, confirmed not
+bundled into either production build (bundle size unchanged).
 
 ## i18n/l10n Architectural Scope
 
@@ -2296,6 +4192,60 @@ rather than a translation key is confirmed to be rejected/flagged by
 whatever structural check enforces the requirement (lint rule, build
 check, or equivalent).
 
+**Status: Done.** Server-side: `EventStore.Host.Core/
+HostCoreExtensions.cs` configures ASP.NET Core's first-party
+`RequestLocalizationMiddleware` (en-US default; en-US/fr-FR/ar-SA
+supported; `ApplyCurrentCultureToResponseHeaders = true`), verified via a
+real `TestServer` round trip (`LocalizationHttpSqliteTests.cs`, 4 tests)
+against an unweighted culture, a weighted `Accept-Language` list, and an
+unsupported culture's fallback, each confirmed by the real
+`Content-Language` response header this item's negotiation exit
+criterion names. `EventStore.ViewRegistry/TranslationKeyValidator.cs`
+enforces the structural check the last exit criterion names — strips
+every `{{ }}` interpolation and HTML tag/comment via regex (this
+format's own "small injected binding runtime" style, matching
+`TemplateRenderer.vue`'s own client-side regex rather than adding an
+HTML-parser dependency) and rejects any hardcoded literal text left
+over, wired into `ViewDefinitionService.RegisterAsync` — a real
+pre-existing test fixture (`ViewDefinitionScenarioAssertions.cs`) was
+found still hardcoding literal `<div>v1</div>`-style text once this
+check went live, fixed to reference translation keys instead.
+
+Client-side: `client-web/src/i18n/locale.ts` (`resolveLocale`,
+`isRtlLocale`), `client-web/src/i18n/translations.ts`
+(`resolveTranslations` + `placeholderTranslations` — en-US/fr-FR/ar-SA,
+domain-owned real content explicitly out of scope per this item's own
+Scope text), `client-web/src/api/localeClient.ts` (`negotiateLocale`,
+reading the server's own negotiated `Content-Language` back rather than
+trusting `navigator.language` directly). `TemplateRenderer.vue` extends
+its existing `{{ field }}` interpolation regex with `{{ t:key }}`
+(translation-key resolution; an unresolved key renders as `[key]`,
+visible rather than silently blank) and `{{ field:date }}`/
+`{{ field:number }}` (`Intl.DateTimeFormat`/`Intl.NumberFormat`,
+satisfying the number/date exit criterion), and sets a real `dir`
+attribute (`rtl`/`ltr`) on its rendered container from the resolved
+locale — the mechanism that actually drives the browser's own bidi
+algorithm and this codebase's CSS Logical Properties
+(`GenericFallbackView.vue`'s and `OfflineBundleViewer.vue`'s own
+`text-align: left` were, found during this item, the only two remaining
+physical-property rules in the client; both corrected to `text-align:
+start`). `EntityView.vue` calls `resolveLocale()` alongside
+`loadViewDefinition` and passes the resolved `locale`/`translations`
+through to `TemplateRenderer`. All new modules covered by real,
+non-mocked-DOM tests (`locale.spec.ts`, `translations.spec.ts`,
+`localeClient.spec.ts` — the last stubs `fetch` directly, a new
+convention for this test suite — and extended `TemplateRenderer.spec.ts`/
+`useEntityViewActions.spec.ts`); the RTL exit criterion's "actual
+rendered layout direction" is verified by asserting the real `dir`
+attribute switches between `ar-SA` and `en-US`, since that attribute is
+what the exit criterion's own CSS-Logical-Properties mechanism keys off.
+
+**Named limitation, honestly not extended by this item**: the generic
+native-fallback view's raw property-name labels remain outside the
+translation-key requirement, per the open point `features/mvvm-client.md`
+already flags — this item did not resolve that ambiguity on its own
+authority.
+
 ## Mechanism-Level OpenTelemetry Instrumentation
 
 **Scope**: `ADR-088` (extends `ADR-026`) — custom **metrics**, via
@@ -2335,6 +4285,69 @@ step, an outbox pump, and the hash-chain verifier each produce a named
 operation** — the trace half of the decision, not automatically covered
 just because the metrics pass; no alert-threshold or paging configuration
 is asserted anywhere in this item's tests.
+
+**Status: Done.** `EventStore.Domain/Observability/
+DuplexInstrumentation.cs` — the one shared `Meter`/`ActivitySource`
+(`"Duplex.Core"`), living in `EventStore.Domain` since that's the one
+project already a common dependency of all four mechanism projects
+(`Router`/`Replication`/`Webhooks`/`Inbox`), confirmed by checking each
+one's own project references before adding it there. `EventStore.
+ServiceDefaults/Extensions.cs`'s `ConfigureOpenTelemetry` gained
+`.AddMeter("Duplex.Core")` and `.AddSource("Duplex.Core")` (the latter a
+correction to this ADR's own original claim — see its "Corrected,
+2026-08-11" note).
+
+A genuine, honestly-resolved gap found while instrumenting the fold-lag
+histogram: nothing anywhere persisted the "SequenceNumber assignment"
+timestamp this metric's own text names — `StoredEvent.OccurredAt` is
+explicitly the CLIENT-DECLARED logical time (`ADR-029`), never server
+receipt time. Added `StoredEvent.AppendedAt` (server-assigned, stamped
+once by `EventAppender.AppendAsync` the same moment `SequenceNumber`
+itself becomes known), migrated across all 3 providers, documented in
+`docs/data/event-log.md` per this repo's own "the item that adds a field
+is that field's shape authority" rule — not a scope-creep addition, the
+metric's own text is unbuildable without it.
+
+`RouterWorker.ProcessEventAsync` records `RouterFoldLagMs` (tagged
+`app.id`) and a `duplex.router.fold` `Activity`, strictly inside the
+`AuthorityStatus == "accepted"` branch, never around the ungated
+`FoldLiveAsync` call — proven by a dedicated negative-case test
+(`AReviewPendingPublishRecordsNoRouterFoldLagAtAll`) alongside the
+positive one, not just asserted from the code. `PeerSyncWorker.
+SyncOnceWithAsync` computes each peer's own POST-tick remaining
+backlog/oldest-pending-age and reports it into
+`DuplexInstrumentation.ReportPeerSyncOutbox` — the `ObservableGauge<T>`
+callbacks themselves only ever read a snapshot cache back, never query
+the database directly (the OTel SDK's own callback contract requires a
+synchronous, side-effect-free read). `WebhookOutboxPump.
+DeliverNextAsync` records `WebhookDeliveryLagMs` only in the CONFIRMED-
+delivery branch, diffed against `WebhookOutbox.EnqueuedAt` (already
+existed, no new field needed there). `ChainVerificationService.
+VerifyAsync` increments `HashChainVerificationOutcomes` tagged
+`outcome=verified`/`tampered` at each of its own two existing return
+points.
+
+Tests: `OpenTelemetryTestSupport.cs` (new — this repo's first
+`MeterListener`/`ActivityListener` test infrastructure, no prior
+precedent to follow); `OpenTelemetryInstrumentationScenarioAssertions.cs`
++ `OpenTelemetryInstrumentationSqliteTests.cs` (Router fold-lag positive/
+negative, hash-chain verified/tampered, webhook delivery-lag, each
+asserting both the metric AND a named `Activity` — the exit criterion's
+own "not automatically covered just because the metrics pass" text,
+taken literally). The peer-sync outbox gauge scenario needed a real
+`PeerSyncWorker.RunOnceAsync` tick (every existing replication test
+drives `PeerSyncReceiver` directly on the receiving side instead, never
+touching `SyncOnceWithAsync`'s own gauge-reporting code) — given its own
+isolated test class/fixture (`PeerSyncOutboxTelemetryHttpSqliteTests.cs`)
+rather than a second `[TestMethod]` added to the already-passing
+`ReplicationHttpSqliteTests.cs`: found, by actually running it, that a
+second method there drives the SAME shared two-Host/SQLite-file
+ClassInit fixture concurrently (`MSTestSettings.cs`'s own
+`ExecutionScope.MethodLevel`), and one push intermittently 500s under
+that contention — the identical class of bug `WebhookDeliveryHttpSqliteTests.cs`'s
+own header comment already documents for its own file, for the
+identical reason. Full non-container suite: 125/125 (up from 123),
+re-run 3× for the new peer-sync fixture specifically with zero flakes.
 
 ## Event Log/AccessLog Archival Segment Detachment
 
@@ -2384,6 +4397,171 @@ mechanism, with its own distinct `ChainCheckpoint` row, confirmed not to
 share or collide with the Event Log's checkpoint; the archival backend is
 confirmed to be an ordinary registered `IAttachmentContentStore`
 implementation with no new extensibility interface introduced anywhere.
+
+**Status: Done — the last item in this build plan as of when this item
+was written; "Expected-Response Tracking" below was merged in
+afterward, from a separate design branch, and is not yet built.** New
+`EventStore.
+Archival` project: `ArchivalService` (`ArchiveEventLogSegmentAsync`/
+`ArchiveAccessLogSegmentAsync`, `ReVerifyEventLogSegmentAsync`/
+`ReVerifyAccessLogSegmentAsync`, `ArchiveResult` union). `ChainCheckpoint`
+(`EventStore.Domain/EventLog`) gained a surrogate `Id` (no natural key
+survives more than one archival) and is registered TWICE via EF Core's
+"shared-type entity" feature — one CLR type, two genuinely distinct
+tables (`EventStoreContext.EventLogChainCheckpoints`/
+`AccessLogChainCheckpoints`) — verified against a real scratch program
+before wiring it into the real DbContext, not assumed to work. Archive
+order is verify → serialize → write the blob → save the checkpoint →
+THEN detach (`ExecuteDeleteAsync`, no change-tracker round trip needed)
+— a crash at any point always leaves the archived bytes/checkpoint
+durable before the only local copy is ever removed, this design's own
+"never lose or corrupt data" principle applied to the archival operation
+itself.
+
+`ADR-089`'s own text says to reuse `ADR-068`'s litigation-export NDJSON
+format; that type (`ExportedEventLine`) turned out EntityId-scoped and
+missing `ParentEventIds`/`Signature` — both genuinely needed to
+recompute `PayloadHash`/`ChainHash` for re-verification — so this reuses
+the FORMAT CONVENTION (one JSON record per line) with a new,
+sequence-range-scoped `ArchivedEventLine` shape instead, an honest
+partial reuse per this repo's own "say when something is only partially
+borrowed" convention, not the ADR's literal types. `ChainVerificationService`/
+`AccessLogChainVerificationService` (`EventStore.Inbox`) now seed live
+verification from the latest `ChainCheckpoint`'s own `ChainHashAtRangeEnd`
+and query only `SequenceNumber` strictly past it — ordinary verification
+after an archival never reads the archived segment at all, per this
+item's own exit criterion.
+
+**A real, critical bug found only by actually running a publish
+immediately after an archival, not caught by any code review**:
+`EventAppender.AppendAsync`/`AccessLogAppender.AppendAsync` compute their
+own next `ChainHash` by reading the CURRENT highest-`SequenceNumber`
+live row's own `ChainHash` — once that row has been archived (physically
+deleted), that query finds nothing, and both appenders silently fell back
+to `EventChainHash.Genesis`, restarting the chain from zero and breaking
+every `ChainHash` computed from that point on. Fixed in both appenders:
+fall back to the latest `ChainCheckpoint`'s own `ChainHashAtRangeEnd`
+when no live row exists, mirroring the identical fix the two verifiers
+above already needed for the same underlying reason. `LogicalClock`
+needed no equivalent fix — it's wall-clock-anchored (`HybridLogicalClock.Next`),
+not a pure counter chain, so it stays monotonic across an archival on
+its own.
+
+A still-live child's own `EventParents` reference to an archived parent
+is deliberately left as a tolerated dangling reference (`EventParent`
+already carries no FK constraint at all, per `ADR-005`'s own Permissive-
+mode design) — only the archived events' OWN parent-link rows (as the
+child side) are removed, since that information is preserved inside the
+archived bundle itself.
+
+Tests: `ArchivalScenarioAssertions.cs` (9 scenarios: correct checkpoint
+boundaries, live verification after archival, re-verification of a
+clean archived segment, a tampered archived blob detected, a second
+segment chaining from the first checkpoint rather than Genesis, a
+tampered LIVE segment refused with nothing detached/checkpointed, a
+no-op re-archival attempt, `AccessLog`'s own independent archival/
+re-verification with a distinct checkpoint row, and a live child's
+dangling reference surviving its parent's archival) +
+`ArchivalSqliteTests`/`Postgres`/`SqlServer`. **A real test-design bug
+found while writing these, the same class this repo's tests have hit
+before**: an early scenario's own direct-DB payload tamper (proving a
+refused archival) was never reverted, permanently poisoning every LATER
+scenario sharing the same `EventStoreContext` — every archival attempt
+after it failed with `SegmentNotVerified` for a completely unrelated
+reason, until traced back and fixed by restoring the tampered row in a
+`finally` block once that scenario's own assertion was done with it.
+Several scenario assertions also initially hardcoded an assumed
+`SequenceNumber`/count as if starting fresh from 1 — wrong in a shared-
+context test suite where `SchemaRegisteredEventType`'s own bootstrap
+event(s) and earlier scenarios' own archival history both shift the true
+numbers; fixed to derive expected values from the checkpoint's own
+recorded range or from a captured before/after delta instead of a
+literal. Full non-container suite passing (count captured in `.claude/
+context.md`); Postgres and SqlServer archival-specific runs both passing
+too, confirming the `ChainCheckpoint` migration on every provider, not
+just SQLite.
+
+**Built-scope note**: `ADR-056`'s own retention-window/cadence policy
+(WHEN archival should run) is explicitly out of this item's scope, per
+that ADR's own deferral — `ArchivalService`'s methods are directly-
+callable, on-demand operations here, not wired to a background worker
+or a scheduled trigger of any kind. No HTTP endpoint was built either,
+for the same reason: nothing in this build has a policy decision to
+call it from yet.
+
+## Expected-Response Tracking
+
+**Scope**: `ADR-094` — a generic `StoredEvent.RespondsToEventId`
+envelope field (Correlation Identifier, Hohpe & Woolf) any publish may
+set, plus an opt-in, nullable `EventTypeDefinition.ExpectedResponse
+{ ResponseEventType, Within }` a *request* event type declares. A new
+singleton `ExpectedResponseWatcher` — architecturally an internal
+follower, the same shape `ProjectionHost` already uses — maintains a
+durable `ExpectedResponseTracker` row per tracked request event and, on
+a periodic sweep, publishes the reserved `ExpectedResponseMissing` event
+(never registered via `PUT /registry/{event-type}`, the same treatment
+`EventUpcastFailed` gets) exactly once for any row past its deadline with
+no matching response yet. Escalation policy (what happens on a miss) is
+explicitly out of scope — an application concern, the same boundary
+`ADR-031` already draws for telemetry detection.
+
+**Depends on**: CQRS Read-Model Projections (worked example) — the
+Follow-based internal-follower shape and the seeded-OAuth2-client
+extension pattern `ExpectedResponseWatcher` reuses unchanged; Streaming
+Channels — the reserved-detector-event shape (`ChannelLagDetected`) this
+item's `ExpectedResponseMissing` directly mirrors; Outbound Webhooks —
+the durable-tracker/cursor-table shape (`WebhookOutbox`/
+`WebhookDeliveryCursor`) `ExpectedResponseTracker` follows; Leader
+Election via Database-Backed Lease — `ExpectedResponseWatcher` is a
+singleton worker gated by it, like `Router`/`UpcastMaterializer`/the
+outbox pumps.
+
+**Exit criteria**: an event type with no `ExpectedResponse` configured
+behaves exactly as before (no tracker row, no watcher activity) —
+confirms this is purely additive. An event type with `ExpectedResponse`
+configured gets a tracker row on publish, with `DeadlineAt` set
+correctly from `Within`; a matching `ResponseEventType` event carrying
+the correct `RespondsToEventId`, published before the deadline, stamps
+`SatisfiedByEventId`/`SatisfiedAt` and no `ExpectedResponseMissing` is
+ever published for that row; the same response published *after* the
+deadline still stamps `SatisfiedAt` (recorded, not treated as an error)
+even if `ExpectedResponseMissing` already fired; no matching response at
+all results in exactly one `ExpectedResponseMissing` publish per tracker
+row, `Follow`-able like any ordinary event, carrying `RespondsToEventId`
+back at the original request; killing and restarting
+`ExpectedResponseWatcher` mid-sweep loses no tracker state and never
+double-publishes `ExpectedResponseMissing` for a row already escalated.
+
+**Status: Done** — merged in from the `design/service-level-agreement`
+branch on 2026-08-11, after all 48 items above were already Done, then
+implemented the same session. New `EventStore.ExpectedResponse` project:
+`ExpectedResponseWatcher` (leader-lease-gated `BackgroundService` +
+testable static `RunOnceAsync`, the same shape `RouterWorker`/
+`DerivationWorker`/`WebhookOutboxPump` already use) opens a tracker row
+per new request event, stamps `SatisfiedByEventId`/`SatisfiedAt` once a
+matching `RespondsToEventId` response arrives (on time or late), and
+sweeps past-deadline/unsatisfied/unescalated rows to publish the reserved
+`ExpectedResponseMissing` event exactly once (`ExpectedResponseMissingEventType`,
+the same lazy-per-AppId registration `ChannelLagDetectedEventType`
+already established). Built as a same-process worker reading
+`EventStoreContext` directly, not a separate Follow-over-HTTP client —
+see `ADR-094`'s own "Corrected, 2026-08-11" note for why. `RegisterEventTypeRequest`
+gained a real `ExpectedResponseRequest` field so `EventTypeDefinition.
+ExpectedResponse` is set through the ordinary registration API. Migrated
+across all 3 providers (`AddExpectedResponseTracking`); wired into all 3
+`EventStore.Host.<Provider>/Program.cs` via `AddExpectedResponseTracking()`.
+
+Tests: `ExpectedResponseScenarioAssertions.cs` (6 scenarios covering every
+exit criterion below) + `ExpectedResponseSqliteTests`/`Postgres`/
+`SqlServer` — all three providers run and pass. Full non-container
+regression suite re-run clean except the two already-tracked,
+pre-existing load-induced flakes (`TODO.md`): `GraphQlHttpSqliteTests.
+SubscribingOverRealHttpStreamsAMatchingEventAsSse` and
+`TimestampingHttpSqliteTests.APublishNotOptingIntoRfc3161TimestampLeavesItNull`
+(a DPoP-proof-validation failure under full-suite parallel load) — both
+confirmed pre-existing, not caused by this item: `TimestampingHttpSqliteTests`
+passed cleanly 3/3 when run in isolation, and neither failing test touches
+Expected-Response Tracking code.
 
 ## Cross-cutting, every item
 

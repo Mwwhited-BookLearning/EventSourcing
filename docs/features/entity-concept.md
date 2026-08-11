@@ -75,19 +75,30 @@ else payload conforms
 end
 router -> resolver: resolve EntityId via EntityIdField "$.OrderId"
 resolver --> router: EntityId = "demo:Order:o-1"
-router -> eventLog: UPDATE StoredEvent SET EntityId, SchemaStatus, Status = "processing"
+router -> router: set (in-memory, not yet saved) StoredEvent.EntityId, .SchemaStatus
+note right of router
+  No persisted "processing" row ever exists (RouterWorker.ProcessEventAsync,
+  "Entity-Centric Core Rebuild"). Every mutation below -- EntityId,
+  SchemaStatus, the fold itself, and Status = "applied" -- happens against
+  the SAME tracked StoredEvent/EntityStoreRow entities in one worker tick
+  and commits in a single SaveChangesAsync() call after the whole received
+  batch is processed. The row is only ever observed as "received" (before
+  this tick) or "applied" (after it) -- never as an intermediate persisted
+  state in between.
+end note
 router -> fold: fold(StoredEvent)
 fold -> entityStore: SELECT EntityStoreRow WHERE EntityId = "demo:Order:o-1"
 alt no existing row (origin event for this entity)
-  fold -> entityStore: INSERT EntityStoreRow\n(Version: 1, Data: { OrderId: "o-1", Carrier: "UPS" })
+  fold -> entityStore: track new EntityStoreRow\n(Version: 1, Data: { OrderId: "o-1", Carrier: "UPS" })
 else existing row found
   alt ExpectedVersion supplied and stale\n(does not match EntityStoreRow.Version)
-    fold -> eventLog: UPDATE StoredEvent SET ConflictFlag = true
+    fold -> fold: set (in-memory) StoredEvent.ConflictFlag = true
     note right: the patch still applies -- ExpectedVersion\nnever blocks a fold, only flags it (ADR-024)
   end
-  fold -> entityStore: UPDATE EntityStoreRow\nSET Data = <folded per ChangeKind/Optional<T>>, Version = Version + 1
+  fold -> entityStore: track EntityStoreRow update\nData = <folded per ChangeKind/Optional<T>>, Version = Version + 1
 end
-fold -> eventLog: UPDATE StoredEvent SET Status = "applied"
+router -> router: set (in-memory) StoredEvent.Status = "applied"
+router -> eventLog: SaveChangesAsync() -- one commit for this whole tick's\nbatch of received events AND their EntityStoreRow folds together
 @enduml
 ```
 

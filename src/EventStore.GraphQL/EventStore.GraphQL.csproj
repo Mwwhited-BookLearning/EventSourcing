@@ -1,0 +1,29 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <ProjectReference Include="..\EventStore.Persistence\EventStore.Persistence.csproj" />
+    <ProjectReference Include="..\EventStore.SchemaRegistry\EventStore.SchemaRegistry.csproj" />
+    <ProjectReference Include="..\EventStore.Follow.Api\EventStore.Follow.Api.csproj" />
+    <ProjectReference Include="..\EventStore.Lineage.Api\EventStore.Lineage.Api.csproj" />
+    <ProjectReference Include="..\EventStore.LineageExport\EventStore.LineageExport.csproj" />
+    <ProjectReference Include="..\EventStore.Masking\EventStore.Masking.csproj" />
+    <ProjectReference Include="..\EventStore.Upcasting\EventStore.Upcasting.csproj" />
+    <ProjectReference Include="..\EventStore.ViewRegistry\EventStore.ViewRegistry.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="HotChocolate.AspNetCore" Version="16.5.1" />
+    <PackageReference Include="HotChocolate.CostAnalysis" Version="16.5.1" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+</Project>
