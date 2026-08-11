@@ -6,6 +6,7 @@
     <ProjectReference Include="..\EventStore.SchemaRegistry\EventStore.SchemaRegistry.csproj" />
     <ProjectReference Include="..\EventStore.Masking\EventStore.Masking.csproj" />
     <ProjectReference Include="..\EventStore.LeaderElection\EventStore.LeaderElection.csproj" />
+    <ProjectReference Include="..\EventStore.Interchange.Abstractions\EventStore.Interchange.Abstractions.csproj" />
   </ItemGroup>
 
   <ItemGroup>

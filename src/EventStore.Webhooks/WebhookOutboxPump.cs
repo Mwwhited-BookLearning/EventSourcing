@@ -3,6 +3,7 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using EventStore.Domain.EventLog;
 using EventStore.Domain.Webhooks;
+using EventStore.Interchange.Abstractions;
 using EventStore.LeaderElection;
 using EventStore.Masking;
 using EventStore.Persistence;
@@ -61,7 +62,7 @@ public class WebhookOutboxPump(
                     var schemaRegistry = scope.ServiceProvider.GetRequiredService<SchemaRegistryService>();
                     var payloadMasker = scope.ServiceProvider.GetRequiredService<IPayloadMasker>();
                     var options = scope.ServiceProvider.GetRequiredService<IOptions<WebhookOptions>>();
-                    await RunOnceAsync(db, httpClient, schemaRegistry, payloadMasker, options.Value, retryTracker, stoppingToken);
+                    await RunOnceAsync(db, httpClient, schemaRegistry, payloadMasker, options.Value, retryTracker, scope.ServiceProvider, stoppingToken);
                 }
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
@@ -85,16 +86,16 @@ public class WebhookOutboxPump(
     // per subscription already guarantees that).
     public static async Task RunOnceAsync(
         EventStoreContext db, HttpClient httpClient, SchemaRegistryService schemaRegistry, IPayloadMasker payloadMasker,
-        WebhookOptions options, WebhookRetryTracker retryTracker, CancellationToken ct = default)
+        WebhookOptions options, WebhookRetryTracker retryTracker, IServiceProvider? serviceProvider = null, CancellationToken ct = default)
     {
         var subscriptions = await db.WebhookSubscriptions.Where(s => s.Active).ToListAsync(ct);
         foreach (var subscription in subscriptions)
-            await DeliverNextAsync(db, httpClient, schemaRegistry, payloadMasker, options, retryTracker, subscription, ct);
+            await DeliverNextAsync(db, httpClient, schemaRegistry, payloadMasker, options, retryTracker, subscription, serviceProvider, ct);
     }
 
     private static async Task DeliverNextAsync(
         EventStoreContext db, HttpClient httpClient, SchemaRegistryService schemaRegistry, IPayloadMasker payloadMasker,
-        WebhookOptions options, WebhookRetryTracker retryTracker, WebhookSubscription subscription, CancellationToken ct)
+        WebhookOptions options, WebhookRetryTracker retryTracker, WebhookSubscription subscription, IServiceProvider? serviceProvider, CancellationToken ct)
     {
         var cursor = await db.WebhookDeliveryCursors.SingleOrDefaultAsync(c => c.SubscriptionId == subscription.SubscriptionId, ct);
         var isNewCursor = cursor is null;
@@ -123,9 +124,36 @@ public class WebhookOutboxPump(
             ? next.EventPayloadSnapshot
             : await RemaskAsync(schemaRegistry, payloadMasker, subscription, sourceEvent, ct);
 
+        // ADR-072 -- an outbound adapter transforms the event into an
+        // external wire format as an extra step IMMEDIATELY BEFORE
+        // delivery, composing with delivery/signing/retry unchanged: the
+        // masked JSON above (EventPayloadSnapshot, the delivery-history
+        // record and what re-masking/erasure-retry logic always operates
+        // on) is never replaced by this -- only the bytes actually POSTed
+        // and signed are. A target expecting XML must see a signature
+        // computed over the SAME XML bytes it received, never the JSON.
+        // A misconfigured/failing adapter (an unregistered key, or one
+        // that throws NotSupportedException for this direction) fails
+        // THIS delivery attempt only -- retried with backoff, eventually
+        // dead-lettered -- never a silent fallback to untransformed JSON
+        // the target isn't expecting, and never an unhandled exception
+        // that would abort every OTHER subscription's own tick too.
         cursor.LastAttemptAt = now;
+        bool success;
+        string? lastError;
+        try
+        {
+            var (wireBody, contentType) = subscription.OutboundAdapterKey is { } adapterKey && serviceProvider is not null && sourceEvent is not null
+                ? await ApplyOutboundAdapterAsync(serviceProvider, adapterKey, subscription.AppId, sourceEvent.EventType, next.EventPayloadSnapshot, ct)
+                : (next.EventPayloadSnapshot, "application/json");
 
-        var (success, lastError) = await AttemptDeliveryAsync(httpClient, subscription, next, now, ct);
+            (success, lastError) = await AttemptDeliveryAsync(httpClient, subscription, wireBody, contentType, now, ct);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            success = false;
+            lastError = $"outbound adapter '{subscription.OutboundAdapterKey}' failed: {ex.Message}";
+        }
 
         if (success)
         {
@@ -154,14 +182,14 @@ public class WebhookOutboxPump(
     }
 
     private static async Task<(bool Success, string? LastError)> AttemptDeliveryAsync(
-        HttpClient httpClient, WebhookSubscription subscription, WebhookOutbox row, DateTimeOffset now, CancellationToken ct)
+        HttpClient httpClient, WebhookSubscription subscription, string wireBody, string contentType, DateTimeOffset now, CancellationToken ct)
     {
-        var (webhookId, timestamp, signature) = WebhookSigner.Sign(row.EventPayloadSnapshot, subscription.SigningSecret, Guid.NewGuid(), now);
+        var (webhookId, timestamp, signature) = WebhookSigner.Sign(wireBody, subscription.SigningSecret, Guid.NewGuid(), now);
         try
         {
             using var request = new HttpRequestMessage(HttpMethod.Post, subscription.TargetUrl)
             {
-                Content = new StringContent(row.EventPayloadSnapshot, Encoding.UTF8, "application/json"),
+                Content = new StringContent(wireBody, Encoding.UTF8, contentType),
             };
             request.Headers.Add("webhook-id", webhookId);
             request.Headers.Add("webhook-timestamp", timestamp);
@@ -174,6 +202,22 @@ public class WebhookOutboxPump(
         {
             return (false, ex.Message);
         }
+    }
+
+    // ADR-072 -- resolves the configured IInterchangeFormatAdapter by its
+    // registered keyed-DI key and applies its own FormatOutboundAsync
+    // transform. A missing/misconfigured key, or an adapter that doesn't
+    // actually support outbound (throws NotSupportedException), fails this
+    // delivery ATTEMPT the same way an unreachable target would -- retried
+    // with backoff, eventually dead-lettered -- never a silent fallback to
+    // the untransformed JSON, which the target would not be expecting.
+    private static async Task<(string Body, string ContentType)> ApplyOutboundAdapterAsync(
+        IServiceProvider serviceProvider, string adapterKey, string appId, string eventType, string maskedPayloadJson, CancellationToken ct)
+    {
+        var adapter = serviceProvider.GetRequiredKeyedService<IInterchangeFormatAdapter>(adapterKey);
+        var payloadNode = JsonNode.Parse(maskedPayloadJson);
+        var transformed = await adapter.FormatOutboundAsync(appId, eventType, payloadNode, ct);
+        return (transformed, "application/xml");
     }
 
     private static async Task<string> RemaskAsync(

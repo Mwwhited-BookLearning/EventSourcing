@@ -94,7 +94,7 @@ provider they apply to — not "code written."
 | 33 | [Per-Tenant Rate Limiting](#per-tenant-rate-limiting) | Auth + Orchestration, SPIFFE/SPIRE Service Identity & API Gateway | Done |
 | 34 | [Outbound Webhooks](#outbound-webhooks) | Publish API, Auth + Orchestration, Property-Level Masking, Leader Election | Done |
 | 35 | [Data Residency (Region Pinning)](#data-residency-region-pinning) | Sharding & Replication, Multi-Tenancy | Done |
-| 36 | [Bulk Ingestion & External Interchange-Format Adapters](#bulk-ingestion--external-interchange-format-adapters) | Publish API, Non-Authoritative Capture, Outbound Webhooks | Not started |
+| 36 | [Bulk Ingestion & External Interchange-Format Adapters](#bulk-ingestion--external-interchange-format-adapters) | Publish API, Non-Authoritative Capture, Outbound Webhooks | Done |
 | 37 | [Tenant-to-Tenant Federation Mapping](#tenant-to-tenant-federation-mapping) | Multi-Tenancy, Auth + Orchestration, Bulk Ingestion & Interchange Adapters | Not started |
 | 38 | [Sanctions/Watchlist Screening Extensibility Seam](#sanctionswatchlist-screening-extensibility-seam) | Scaffolding & Persistence, Non-Authoritative Capture | Not started |
 | 39 | [Release Engineering, Packaging & Supply Chain](#release-engineering-packaging--supply-chain) | Scaffolding & Persistence, Compatibility & Deployment Discipline | Not started |
@@ -191,7 +191,7 @@ state "External Services" as tierExternal {
   state "SPIFFE/SPIRE Identity & API Gateway" as p23 #palegreen
   state "Outbound Webhooks" as a10 #palegreen
   state "Tenant Federation Mapping" as a12
-  state "Bulk Ingestion +\nInterchange Adapters" as a13
+  state "Bulk Ingestion +\nInterchange Adapters" as a13 #palegreen
   state "Sanctions Screening Seam" as a14
   state "Signing Secret Rotation" as a16
   state "RFC 3161 Timestamping" as a18
@@ -3116,6 +3116,92 @@ into its external format immediately before delivery, with the delivery
 itself using the subscription's unmodified signing/retry mechanics; an
 MLLP listener deployed with no TLS/network isolation is confirmed to be a
 named, un-mitigated deployment risk, not a framework-level gap.
+
+**Status: Done.** `POST /publish/batch` (`EventStore.Inbox/PublishEndpoints.cs`)
+parses the body as a raw `JsonArray` rather than binding a strongly-typed
+list, specifically so ONE malformed item can be caught and reported
+per-item without deserialization failure aborting the whole batch; each
+well-formed item still goes through `PublishService.PublishAsync`'s own
+per-event transaction/idempotency/hash-chain path, one call per item, not
+one shared transaction. Since a batch response can only ever carry ONE
+real HTTP status, every item's own would-be status (202/409/404/403/400/
+401) rides inside the response body as an explicit `httpStatus` field —
+the outer response is always `202`.
+
+New `EventStore.Interchange.Abstractions` (just the `IInterchangeFormatAdapter`
+interface + `InterchangeInboundResult`, deliberately zero project
+references of its own) and `EventStore.Interchange` (the concrete
+adapters + `Hl7V2MllpListener` + the FHIR HTTP endpoint). **A real
+circular-project-reference risk, avoided by design rather than found
+after the fact this time** (item 34's own `EventStore.Webhooks`/
+`EventStore.Router` cycle was the precedent that made this obvious up
+front): `EventStore.Webhooks` needs `IInterchangeFormatAdapter` for its
+own outbound composition step, and `EventStore.Router` already depends
+on `EventStore.Webhooks` — so the interface itself carries no dependency
+on `EventStore.Inbox`'s `PublishEventRequest` at all; `InterchangeInboundResult`
+is a plain `(EventType, Payload, ReviewPending)` tuple the CONCRETE
+inbound adapters/endpoints (which CAN depend on `EventStore.Inbox`)
+convert into a real `PublishEventRequest` themselves.
+
+- `Hl7V2Adapter`/`FhirAdapter` — real parsing, verified against the
+  actual formats before writing this (`ADT^A01`'s pipe-delimited
+  MSH/PID segment structure including MSH's own field-numbering offset-
+  by-one quirk; FHIR R4's `Patient.name[].family`/`given[]` shape), each
+  scoped to one message/resource type this build stage names explicitly
+  — an unsupported type throws `NotSupportedException`, never silently
+  ignored. Both default `ReviewPending: true` (non-authoritative capture,
+  `ADR-035`, "a reasonable default for EMR-sourced data").
+- `Hl7V2MllpListener` — a real `BackgroundService` TCP listener speaking
+  actual MLLP framing (`0x0B` start block, `0x1C 0x0D` end block,
+  verified against the real MLLP spec, not approximated) and returning a
+  real HL7v2 `ACK`/`MSA|AA|`/`MSA|AE|` response; opt-in
+  (`Hl7V2MllpOptions.Enabled`), matching every other config-gated
+  background worker's own posture. Resolves its adapter by the SAME
+  `"Hl7V2"` keyed-DI key `AddInterchange` registers, not a hardcoded
+  concrete type, so a deployment could substitute a customized adapter
+  under that key unchanged.
+- `IchE2bR3Adapter`/`Gs1EpcisAdapter` — outbound-only, real element
+  names/namespaces verified against the actual ICH/GS1 specifications
+  before writing this (`MCCI_IN200100UV01` in `urn:hl7-org:v3` for
+  E2B(R3)'s own batch envelope; `EPCISDocument`/`EPCISBody`/`EventList`/
+  `ObjectEvent` in `urn:epcglobal:epcis:xsd:2` for EPCIS 2.0), each an
+  honestly-scoped small subset of its real standard's own much larger
+  schema (the same "representative subset, not full-spec conformance"
+  posture `Hl7V2Adapter`'s own `ADT^A01`-only scope already established) —
+  stated explicitly in code comments, never implied as complete.
+- Outbound composition lands in `WebhookOutboxPump` (`EventStore.Webhooks`,
+  extended, not a new mechanism): `WebhookSubscription` gained an
+  `OutboundAdapterKey` column (migrated across all 3 providers, added to
+  `docs/data/schema-registry.md` in the same pass); when set, the
+  resolved adapter's `FormatOutboundAsync` transforms the masked JSON
+  into the external wire format IMMEDIATELY BEFORE signing/delivery — the
+  masked JSON itself (`WebhookOutbox.EventPayloadSnapshot`, the
+  delivery-history record and what re-masking/erasure-retry logic always
+  operates on) is never replaced, only the bytes actually POSTed and
+  signed are. An adapter failure (a misconfigured key, or one that
+  throws `NotSupportedException` for this direction) fails that ONE
+  delivery attempt exactly like an unreachable target would — retried
+  with backoff, eventually dead-lettered — never a silent fallback to
+  untransformed JSON the target isn't expecting, and never an unhandled
+  exception that would abort every OTHER subscription's own tick.
+
+Verified with `BatchPublishHttpSqliteTests.cs` (real HTTP — the "outer
+202 always" and "malformed item's own 400-shaped body" properties are
+both real HTTP-response-shape facts, not provable via a direct
+`PublishService` call), `InterchangeAdapterTests.cs` (pure adapter-
+transform unit tests, no db/HTTP: HL7v2/FHIR parsing, both outbound XML
+transforms against their real element names, and inbound/outbound
+direction mismatches correctly rejected), `Hl7V2MllpListenerTests.cs`
+(a real `TcpClient` speaking actual MLLP framing against a real
+`Hl7V2MllpListener` bound to an OS-assigned port), `FhirIngestionHttpSqliteTests.cs`
+(real HTTP, confirming no MLLP/TCP involvement for FHIR), and a new
+scenario in `WebhookDeliveryHttpSqliteTests.cs` proving the outbound
+composition sends real E2B(R3) XML with a signature computed over those
+exact XML bytes, while every other delivery/retry/cursor mechanic stays
+unaffected. Full SQLite regression suite re-run 4 times clean-or-near-
+clean (only this repo's own already-tracked, load-induced flakes; see
+`TODO.md`'s new note on one anomalously noisy run found while building
+this item, not reproduced on 3 immediate re-runs).
 
 ## Tenant-to-Tenant Federation Mapping
 

@@ -1447,9 +1447,52 @@ stale numbers here are worse than none)*
   test that failed on a noisier run in isolation, where it passed
   cleanly — the same load-induced fixed-wait-margin flake class already
   tracked in `TODO.md`, not a new regression).
-- **Next up**: item 36, "Bulk Ingestion & External Interchange-Format
-  Adapters" — depends on Publish API (Done) and Non-Authoritative Capture
-  (Done).
+- **Item 36, "Bulk Ingestion & External Interchange-Format Adapters"
+  (`ADR-072`), is Done.** `POST /publish/batch` parses the body as a raw
+  `JsonArray` (not a strongly-typed list) specifically so one malformed
+  item never aborts the whole batch; each item still goes through
+  `PublishService.PublishAsync`'s own per-event transaction, one call
+  per item; the outer response is always `202`, with each item's own
+  would-be status riding inside the body as an explicit `httpStatus`
+  field. New `EventStore.Interchange.Abstractions` (just
+  `IInterchangeFormatAdapter`, zero project references) and
+  `EventStore.Interchange` (`Hl7V2Adapter`/`FhirAdapter` inbound,
+  `IchE2bR3Adapter`/`Gs1EpcisAdapter` outbound, `Hl7V2MllpListener` — a
+  real TCP/MLLP background listener). **A circular-project-reference risk
+  avoided by design, not found after the fact this time**: since
+  `EventStore.Router` already depends on `EventStore.Webhooks`
+  (item 34's own `WebhookEnqueueResolver`), and `EventStore.Webhooks`
+  needs `IInterchangeFormatAdapter` for its own outbound-composition
+  step, the interface lives in a project with NO dependency on
+  `EventStore.Inbox` at all — the concrete inbound adapters (which CAN
+  depend on `EventStore.Inbox`) convert the interface's plain
+  `InterchangeInboundResult` tuple into a real `PublishEventRequest`
+  themselves. Both HL7v2/FHIR parsing and both outbound XML transforms
+  are verified against their real, actual element names/namespaces
+  (`MCCI_IN200100UV01`/`urn:hl7-org:v3` for E2B(R3);
+  `EPCISDocument`/`ObjectEvent`/`urn:epcglobal:epcis:xsd:2` for EPCIS
+  2.0) via web search before writing them, each an honestly-scoped small
+  subset of its real standard, not full-spec conformance.
+  `WebhookSubscription` gained an `OutboundAdapterKey` column — when set,
+  `WebhookOutboxPump` transforms the masked JSON into the external
+  format immediately before signing/delivery, never replacing the
+  canonical masked-JSON record re-masking/erasure-retry logic operates
+  on. Verified with `BatchPublishHttpSqliteTests.cs` (real HTTP),
+  `InterchangeAdapterTests.cs` (pure adapter-transform units),
+  `Hl7V2MllpListenerTests.cs` (a real `TcpClient` speaking actual MLLP
+  framing against a real listener on an OS-assigned port),
+  `FhirIngestionHttpSqliteTests.cs`, and a new outbound-composition
+  scenario in `WebhookDeliveryHttpSqliteTests.cs`. Full SQLite regression
+  suite re-run 4 times — one anomalously noisy run (21 failures, detail
+  lost to an over-aggressive `tail` truncation) never reproduced across 3
+  immediate re-runs (0-2 failures each, all already-known flake classes,
+  no interchange-specific test ever failing) — tracked as a `TODO.md`
+  addendum, not treated as a real regression.
+- **Next up**: item 37, "Tenant-to-Tenant Federation Mapping" — depends
+  on Multi-Tenancy (Done), Auth + Orchestration (Done), and Bulk
+  Ingestion & External Interchange-Format Adapters (Done, item 36) — the
+  bespoke tenant-pair mapping is written as an `IInterchangeFormatAdapter`
+  implementation.
 
 ## How to resume cold
 
@@ -1464,10 +1507,13 @@ stale numbers here are worse than none)*
    narrative.
 5. `dotnet build EventStore.slnx` and `dotnet test tests/EventStore.IntegrationTests` —
    confirm the build/test baseline the last session left still holds
-   before adding to it (118 tests should pass — 115 (105, itself 98 plus
-   item 33's `RateLimitingGatewayTests.cs`, plus item 34's 10 new webhook
-   methods) plus item 35's 3 new `DataResidencyHttpSqliteTests.cs`
-   methods). Requires Docker running
+   before adding to it (130 tests should pass — 118 (115, itself 105 —
+   98 plus item 33's `RateLimitingGatewayTests.cs` — plus item 34's 10
+   webhook methods, plus item 35's 3 residency methods)) plus item 36's
+   12 new methods across `BatchPublishHttpSqliteTests`/
+   `InterchangeAdapterTests`/`Hl7V2MllpListenerTests`/
+   `FhirIngestionHttpSqliteTests`/one new `WebhookDeliveryHttpSqliteTests`
+   scenario). Requires Docker running
    (Testcontainers for Postgres/SQL Server) and the SDK pinned in
    `global.json`. A full multi-provider run has a known, pre-existing,
    unrelated flake — see `TODO.md`'s entry — where one or two SQL Server

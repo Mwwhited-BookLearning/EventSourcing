@@ -3,6 +3,7 @@ using EventStore.Erasure;
 using EventStore.FeatureFlags;
 using EventStore.Follow.Api;
 using EventStore.GraphQL;
+using EventStore.Interchange;
 using EventStore.Host.Core;
 using EventStore.Inbox;
 using EventStore.Lineage.Api;
@@ -69,6 +70,8 @@ builder.Services.Configure<OriginIdOptions>(builder.Configuration.GetSection("Or
 builder.Services.Configure<PeerSyncOptions>(builder.Configuration.GetSection("PeerSync"));
 builder.Services.Configure<PeerSyncClientOptions>(builder.Configuration.GetSection("PeerSyncClient"));
 builder.Services.Configure<RegionOptions>(builder.Configuration.GetSection("Region"));
+builder.Services.AddInterchange();
+builder.Services.Configure<Hl7V2MllpOptions>(builder.Configuration.GetSection("Hl7V2Mllp"));
 builder.Services.AddHttpClient("DevIdp", c => c.BaseAddress = new Uri(builder.Configuration["Authentication:Authority"]!));
 builder.AddSpiffePeerIdentity(); // ADR-048 -- wires the "PeerSync" named HttpClient with this Host's own SVID; no fixed BaseAddress here either, same reason as before
 
@@ -97,6 +100,7 @@ app.MapAttachmentEndpoints();
 app.MapPeerSyncEndpoints();
 app.MapWebhookEndpoints();
 app.MapGraphQlEndpoints();
+app.MapInterchangeEndpoints();
 app.Run();
 
 public partial class Program;
