@@ -26,9 +26,9 @@ Consequences: <trade-offs accepted>
 | [004](adrs/adr-004-portable-json-columns.md) | JSON payload/schema columns stored as portable text, not native JSON column types | Accepted |
 | [005](adrs/adr-005-event-parenting-dag.md) | Event parenting as an envelope-level DAG, validation mode per event type | Accepted |
 | [006](adrs/adr-006-dev-oauth-oidc-auth.md) | Dev-mode OAuth2/OIDC bearer-token auth via an in-process OpenIddict host, orchestrated with .NET Aspire | Accepted |
-| [007](adrs/adr-007-derived-event-types.md) | Derived/materialized event types via cross-stream join+projection | Deferred (fully designed, pure scheduling call) |
+| [007](adrs/adr-007-derived-event-types.md) | Derived/materialized event types via cross-stream join+projection | Accepted; built (`08-build-plan.md` item 8, Done) |
 | [008](adrs/adr-008-event-type-security.md) | Event-type security via per-event-type required claims | Accepted |
-| [009](adrs/adr-009-property-level-masking.md) | Property-level masking via a value/masked wrapper | Design Accepted; build deprioritized to Phase 8 |
+| [009](adrs/adr-009-property-level-masking.md) | Property-level masking via a value/masked wrapper | Accepted; built (`08-build-plan.md` item 9, Done) |
 | [010](adrs/adr-010-tail-vs-replay-mode.md) | Explicit tail-vs-replay mode on Follow, via a `mode` parameter | Accepted |
 | [011](adrs/adr-011-publish-idempotency.md) | Publish idempotency via an optional client-supplied `eventId` + a stored payload hash | Accepted |
 | [012](adrs/adr-012-http-query-method.md) | HTTP `QUERY` method (RFC 10008) for OData data-queries, replacing `GET` | Accepted |

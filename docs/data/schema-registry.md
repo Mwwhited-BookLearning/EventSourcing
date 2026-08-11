@@ -178,19 +178,24 @@ than a reused shape.
 ## Data residency (`ADR-061`)
 
 ```csharp
-public class AppDataResidencyPolicy
+public class AppResidencyPolicy
 {
-    public string AppId { get; set; } = default!;         // part of the composite key (ADR-030)
+    public string AppId { get; set; } = default!;         // the whole key -- one row per AppId (ADR-030)
     public List<string> AllowedRegions { get; set; } = new(); // e.g. ["eu-west", "eu-central"] -- matches a peer's Region tag (ADR-051's SeedPeers config)
+    public long LastAppliedSequenceNumber { get; set; }     // the reserved AllowedRegionsSet event's own SequenceNumber this row was last folded from -- guards a replayed/idempotent-retry publish from regressing an already-newer row
 }
 ```
 
 Absent for a given `AppId`, that tenant is unconstrained (today's
-behavior, unchanged) — this table is purely additive. Enforced at
-`ADR-033`'s peer-sync outbox, which filters candidate destination peers
-to those tagged with one of the listed regions before including an
-`AppId`'s events in an outbound sync batch — not enforced here at the
-registry layer, which only holds the *declared* constraint.
+behavior, unchanged) — this table is purely additive. Populated by a
+synchronous fold (the same posture `FeatureFlagState` already
+established, not a cross-process Follow fold): `AppResidencyPolicyService`
+publishes the reserved `AllowedRegionsSet` event and upserts this row in
+the same call (`src/EventStore.Replication/AppResidencyPolicyService.cs`).
+Enforced at `ADR-033`'s peer-sync outbox, which filters candidate
+destination peers to those tagged with one of the listed regions before
+including an `AppId`'s events in an outbound sync batch — not enforced
+here at the registry layer, which only holds the *declared* constraint.
 
 ## Webhook subscriptions (`ADR-060`)
 

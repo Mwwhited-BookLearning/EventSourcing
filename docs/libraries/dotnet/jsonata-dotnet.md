@@ -13,7 +13,18 @@ but a real, supported alternative implementation of
 specifically for array-aggregation upcast mappings (`$sum()`,
 sequence-flattening) CEL has no native equivalent for, or simply because
 this package is currently the more consolidated, actively-maintained
-.NET implementation of the two languages.
+.NET implementation of the two languages. **As actually built, this is a
+code-level DI registration edit today, not yet a deployment-time
+configuration switch**: `EventStore.Upcasting`'s
+`UpcastingServiceCollectionExtensions.AddUpcasting()` hardcodes
+`AddSingleton<IUpcastExpressionEvaluator, CelUpcastExpressionEvaluator>()`
+with no config-driven branch to select this class instead —
+`JsonataUpcastExpressionEvaluator` exists and is exercised directly in
+`UpcastExpressionEvaluatorTests.cs`, but is registered nowhere in
+production code. Swapping to it means changing that one `AddSingleton`
+line in a deployment's own composition root, per `ADR-053`'s "selected
+per deployment via the composition root" framing below — real, but a
+smaller claim than "via configuration, no core-engine change."
 
 ## General usage
 

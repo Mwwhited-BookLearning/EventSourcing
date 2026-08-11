@@ -42,7 +42,12 @@ actor "SPA / backend service\n(header-capable)" as caller
 participant "EventStore.DevIdp\n(OpenIddict, ADR-006)" as idp
 participant "<video src> / <img src>\n(header-incapable)" as element
 
-caller -> idp: POST /oauth/token\nAuthorization: Bearer <JWT>, DPoP: <proof> (ADR-017, unchanged)\ngrant_type=urn:ietf:params:oauth:grant-type:token-exchange\nsubject_token=<the JWT above>\nsubject_token_type=urn:ietf:params:oauth:token-type:access_token\nrequested_token_type=urn:eventstore:token-type:ticket\nclient_id=<registered client> OR one_time_secret=<caller-generated random value>
+alt caller uses a registered client_id (routed through OpenIddict)
+  caller -> idp: POST /connect/token\nAuthorization: Bearer <JWT>, DPoP: <proof> (ADR-017, unchanged)\ngrant_type=urn:ietf:params:oauth:grant-type:token-exchange\nsubject_token=<the JWT above>\nsubject_token_type=urn:ietf:params:oauth:token-type:access_token\nrequested_token_type=urn:eventstore:token-type:ticket\nclient_id=<registered client>\nclient_secret=<its registered secret>
+  note right: OpenIddict's own /connect/token pipeline unconditionally\nrequires client_id + client_secret for ANY grant type reaching it --\ngenuinely incompatible with the one_time_secret path below, which is\nhandled by a separate, non-OpenIddict endpoint instead (ADR-040)
+else caller uses a fresh one_time_secret (never a registered client_id)
+  caller -> idp: POST /oauth/ticket-exchange\nDPoP: <proof> (ADR-017 still applies in full; a plain,\nnon-OpenIddict minimal-API endpoint, no Authorization header required)\nsubject_token=<the JWT above>\none_time_secret=<caller-generated random value, never persisted\nanywhere except this Ticket's own secretRef, ADR-040>
+end
 idp -> idp: validate subject_token (ordinary bearer+DPoP check, ADR-006/017)
 idp -> idp: generate ticket -- opaque, single-use,\ncryptographically random, NOT a JWT,\nnot self-describing (deliberately)
 idp -> idp: store Ticket record, in-process/non-persistent\n{ ticket, clientIdOrOneTimeSecretRef, expiresAt,\n  consumed: false, originalTokenClaims }\n-- same InMemory OpenIddict-adjacent store\nauth.md already documents client/token state living in,\nNOT EventStoreContext (ADR-040's own consequence)

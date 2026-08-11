@@ -61,8 +61,10 @@ Registration payload:
     { "jsonPath": "$.Status", "dataType": "String", "isIndexed": false }
   ],
   "parentValidationMode": "Strict",
-  "requiredPublishClaim": "clearance:secret",
-  "requiredReadClaim": "clearance:secret",
+  "requiredClaims": [
+    { "direction": "Publish", "claim": "clearance:secret" },
+    { "direction": "Read", "claim": "clearance:secret" }
+  ],
   "changeKind": "Full",
   "upcastFromPrevious": "Amount as Amount, Status as Status"
 }
@@ -86,19 +88,27 @@ its key or merges only the fields it carries — guessing wrong here would
 silently corrupt every projection over the type, not merely omit an
 optional restriction.
 
-`requiredPublishClaim` and `requiredReadClaim` are both optional and default
-to unset (no extra restriction). Each is a single `"type:value"` string —
-see `02-data-model.md`, "Event-type security", and `ADR-008`. Registering
-these still only requires `registry:admin` — defining who may touch an
-event type's data is treated as part of the same administrative capability
-as defining the type itself, not a separate scope.
+`requiredClaims` is optional and defaults to an empty list (no extra
+restriction) — a **list** of `{direction, claim}` pairs, not a pair of
+singular fields (`ADR-050` generalized `ADR-008`'s original "exactly one
+claim per direction" to `OR` semantics within a direction: holding *any
+one* of the `Publish`-direction, or `Read`-direction, entries satisfies
+that direction's gate). Each `direction` is `"Publish"` or `"Read"`;
+each `claim` is a `"type:value"` string — see `02-data-model.md`,
+"Event-type security", `ADR-008`, and `ADR-050`. Registering these still
+only requires `registry:admin` — defining who may touch an event type's
+data is treated as part of the same administrative capability as
+defining the type itself, not a separate scope.
 
-**Masking** (`ADR-009`, design accepted, build deprioritized to after
-Phases 0–6) is declared differently from the three fields above: it's
+**Masking** (`ADR-009`, built — see `08-build-plan.md`, "Property-Level
+Masking") is declared differently from `requiredClaims` above: it's
 *inside* `jsonSchema` itself, as an `x-masking` extension, not a sibling
 field in this registration envelope — there's no `"masking": [...]` array
-alongside `filterableFields`. `strategy` must be `"FixedValue"` in v1 (any
-other value is rejected). Unlike an earlier `null`-out design, there is
+alongside `filterableFields`. `strategy` must be one of `"FixedValue"`,
+`"PartialReveal"`, or `"Hash"` (any other value is rejected) —
+`MaskingSchemaValidator` (`src/EventStore.SchemaRegistry/
+MaskingSchemaValidator.cs`) validates all three. Unlike an earlier
+`null`-out design, there is
 **no constraint on the property's own type or its `required` status** —
 `CustomerTaxId` above is masked *and* required, which is exactly the case
 the wrapper approach was chosen to support. `x-masking` may be placed on a
@@ -111,7 +121,8 @@ not directly on a property whose own type is `object` or `array`.
 all optional, schema-only descriptive strings on `x-masking` — free text in
 v1, no controlled vocabulary enforced (see `ADR-009`'s consequences for
 why). They carry no runtime behavior at all: nothing about masking
-enforcement, the wrapper shape, or the `FixedValue` strategy reads them.
+enforcement, the wrapper shape, or any of the three masking strategies
+reads them.
 
 ## Registration steps
 
@@ -121,18 +132,26 @@ enforcement, the wrapper shape, or the `FixedValue` strategy reads them.
    against the schema's declared properties.
 3. Validate `parentValidationMode`, if present, is one of `Strict` /
    `Permissive`.
-4. Validate `requiredPublishClaim`/`requiredReadClaim`, if present, are each
-   a non-empty `"type:value"` string (reject `400` on a malformed claim
-   string, e.g. missing the `:` separator, before persisting anything).
+4. Validate each `requiredClaims[]` entry's `direction` is `"Publish"` or
+   `"Read"` and its `claim` is a non-empty `"type:value"` string (reject
+   `400` on a malformed entry, e.g. an unrecognized direction or a claim
+   missing the `:` separator, before persisting anything).
    Validate `changeKind` is present and is exactly `"Full"` or `"Partial"`
    — reject `400` if missing or any other value (`ADR-016`; unlike the two
    claim fields, this one has no default to fall back to). If
    `upcastFromPrevious` is present (only meaningful for version `>= 2`),
-   parse it as an OData `compute()` expression list and validate every
-   alias names a real property of *this* version's schema — reject `400`
-   on a parse failure or an unmapped alias (`ADR-018`).
+   parse it as an `"<expression> as <alias>"`, comma-separated clause
+   list (`UpcastExpressionListParser`) and validate every alias names a
+   real property of *this* version's schema, plus that every individual
+   expression itself compiles under `IUpcastExpressionEvaluator`
+   (`ADR-018`/`ADR-053` — CEL by default, `CelUpcastExpressionEvaluator`;
+   the earlier OData `compute()` expression grammar this field's clause
+   syntax was originally modeled on is not what a clause's own
+   `<expression>` half is evaluated as) — reject `400` on a parse
+   failure, a compile failure, or an unmapped alias.
 5. Scan `jsonSchema` recursively for any node carrying `x-masking`: reject
-   `400` if `strategy` is anything other than `"FixedValue"`, if
+   `400` if `strategy` is anything other than `"FixedValue"`,
+   `"PartialReveal"`, or `"Hash"`, if
    `requiredClaim` is malformed, if `regulatoryClassification`/
    `governanceBody`/`regulationReference` are present but not non-empty
    strings, or if the annotation is placed directly on a property whose own
@@ -166,13 +185,19 @@ append-only, no-mutation treatment of schema versioning generally.
 
 **Registering a new version does not, by itself, do anything about
 reading the old version's events back in the new shape** — that needs an
-optional `upcastFromPrevious` field on the registration payload: an OData
-`compute()` expression list (`ADR-018`), e.g.
-`"upcastFromPrevious": "Amount as Amount, 'USD' as Currency"`. Unlike the
-earlier code-registered sketch of this same ADR, this *is* an ordinary
+optional `upcastFromPrevious` field on the registration payload: a
+comma-separated `"<expression> as <alias>"` clause list (`ADR-018`), e.g.
+`"upcastFromPrevious": "Amount as Amount, 'USD' as Currency"`, where each
+`<expression>` is evaluated by `IUpcastExpressionEvaluator` — CEL by
+default (`CelUpcastExpressionEvaluator`), `ADR-053`'s keyed registration
+also allows JSONata as a second, configuration-selected option; **not**
+OData `compute()` syntax, which this field's clause grammar was
+originally modeled on but no longer evaluates as. Unlike the earlier
+code-registered sketch of this same ADR, this *is* an ordinary
 registration field, validated the same way `x-masking` already is: each
-`compute()` alias must name a real property of this version's schema, and
-the expression itself must parse — both rejected `400` if not. Evaluating
+alias must name a real property of this version's schema, and the
+expression itself must compile under the active `IUpcastExpressionEvaluator`
+— both rejected `400` if not. Evaluating
 the expression against real historical data to confirm the output
 actually satisfies the schema is **not** checked at registration — see
 `ADR-018`'s consequences for why this only narrows, not closes, the
@@ -194,70 +219,71 @@ version is currently active — same "no retroactive effect on an already-open
 Follow connection" caveat as above, since masking is computed once at
 connect time alongside the Read-direction `RequiredClaims` check.
 
-## Validation at publish time
+## Validation at publish time — rewritten for `ADR-023`'s persist-everything posture
 
-```csharp
-public class SchemaValidationService
-{
-    public async Task<ValidationResult> ValidateAsync(string eventType, string payloadJson)
-    {
-        var definition = await _registry.GetActiveAsync(eventType)
-            ?? throw new UnknownEventTypeException(eventType);
+> **Superseded by `ADR-023`, rewritten this session.** The
+> `SchemaValidationService`/`ParentLinkService` pair this section used to
+> describe — synchronous, both returning a blocking `400`/`404` before any
+> write — never actually exists as real code, and describes the
+> pre-`ADR-023` design this project moved off of. The real split is
+> `EventStore.Inbox.PublishService` (synchronous, still genuinely
+> blocking for the few checks below) handing off to
+> `EventStore.Router.RouterWorker` (asynchronous, advisory-only for
+> schema conformance) — see `03-api-contracts.md`'s own `202`/`400`
+> response table for the caller-facing contract this produces.
 
-        var schema = JsonSchema.FromText(definition.JsonSchema); // JsonSchema.Net
-        var results = schema.Evaluate(JsonNode.Parse(payloadJson));
+**`PublishService.PublishAsync`** (`src/EventStore.Inbox/
+PublishService.cs`) is the only synchronous gate, checked in this order,
+after confirming `eventType` is registered under *some* version at all
+(`404` if not — the one case with no schema/`AppId` context to persist
+against):
 
-        return results.IsValid
-            ? ValidationResult.Success(definition.Version)
-            : ValidationResult.Failure(results.Errors);
-    }
-}
-```
+1. **Idempotency** (`ADR-011`) — if the request supplied `eventId`, look
+   up `StoredEvent` by `EventId` immediately, before any of the checks
+   below. Found + matching `PayloadHash` → replay the original response,
+   no new write. Found + different `PayloadHash` → `409`. Not found →
+   fall through to the checks below, using the caller's `EventId` for
+   the new row instead of a generated one.
+2. **`RequiredClaims` (`Publish` direction)** (`ADR-008`/`ADR-050`) —
+   checked against the *active* version's claims (never the caller's
+   declared `schemaVersion`, which under `ADR-023` might not even name a
+   registered version). `403` if configured and the caller's token holds
+   none of them.
+3. **Step-up authentication** (`ADR-066`, RFC 9470) — if the active
+   definition configures `RequiredSignature`, a `401` step-up challenge
+   short-circuits an insufficiently-authenticated caller; see
+   `03-api-contracts.md`.
+4. **Parent-link validation** (`ADR-005`) — inlined here, not a separate
+   service: if the active definition's `ParentValidationMode` is
+   `Strict` and `parentEventIds` is non-empty, every referenced
+   `EventId` must already exist; `400` naming the missing ones if not.
+   `Permissive` mode allows dangling references through unchanged. This
+   is the one content-shaped check `ADR-023` left blocking — everything
+   below it is advisory.
 
-- `404` if `eventType` has no registered schema at all.
-- `400` with the JSON Schema validation error list if the payload fails
-  validation — no partial writes.
-- On success, `StoredEvent.SchemaVersion` is set to the version that
-  validated it, so historical events remain interpretable even after the
-  schema evolves.
+**Nothing above validates `payload` against its JSON Schema, and nothing
+here produces a `400` for an unknown `schemaVersion`, a schema-invalid
+payload, or a failed upcast.** Once these checks pass, the event is
+appended unconditionally with `Status: "received"`.
 
-`SchemaValidationService` only validates `payload`. A separate,
-independently testable `ParentLinkService` validates `parentEventIds`
-against the active version's `ParentValidationMode`:
+**`RouterWorker`** (`src/EventStore.Router/RouterWorker.cs`) then picks
+up every `"received"` row asynchronously and resolves an advisory
+`SchemaStatus`, resolving the *declared* `SchemaVersion` (`AppId` +
+`EventType` + `SchemaVersion`) rather than the active one:
 
-```csharp
-public class ParentLinkService
-{
-    public async Task<ParentLinkResult> ValidateAsync(
-        EventTypeDefinition definition, IReadOnlyList<Guid> parentEventIds)
-    {
-        if (definition.ParentValidationMode == ParentValidationMode.Permissive)
-            return ParentLinkResult.Success(parentEventIds); // dangling refs allowed as-is
+- Declared version registered, payload validates against it →
+  `SchemaStatus: "conformant"`.
+- Declared version registered, payload does not validate →
+  `SchemaStatus: "invalid"`.
+- Declared version never registered at all (and not newer than the
+  active version — see below) → `SchemaStatus: "unknown"`.
 
-        var missing = await _events.FindMissingEventIdsAsync(parentEventIds);
-        return missing.Count == 0
-            ? ParentLinkResult.Success(parentEventIds)
-            : ParentLinkResult.Failure(missing); // 400 — Strict mode
-    }
-}
-```
-
-Both `SchemaValidationService` and `ParentLinkService` must pass before the
-`EventAppender` writes the `StoredEvent` + `EventParents` rows — a payload
-failure and a Strict-mode missing-parent failure both produce `400` with no
-partial write, same as today's payload-only validation.
-
-If the request supplied `eventId` (`ADR-011`), an idempotency check runs
-**before** either of the above, right after the Publish-direction
-`RequiredClaims` check (`ADR-008`/`ADR-050`): look up `StoredEvent` by `EventId`. Found + matching
-`PayloadHash` → replay the original response, skip
-`SchemaValidationService`/`ParentLinkService`/`EventAppender` entirely, no
-write. Found + different `PayloadHash` → `409`, likewise skipping further
-validation — the conflict is a definitive answer regardless of whether the
-new content would itself have been valid. Not found → proceed through
-`SchemaValidationService`/`ParentLinkService`/`EventAppender` exactly as
-below, using the caller's `EventId` for the new row instead of a generated
-one.
+**None of the three above ever block `Status` from reaching `"applied"`**
+— `SchemaStatus` is purely advisory, exactly `ADR-023`'s point. The one
+case `RouterWorker` genuinely defers on (leaves at `Status: "received"`,
+retried every subsequent tick) is a declared `SchemaVersion` *ahead* of
+anything this deployment's registry has ever seen — `ADR-038`'s
+rolled-back-deployment signal, not a validation failure.
 
 ## Versioning policy
 
@@ -270,11 +296,15 @@ one.
 - Compatibility-mode enforcement (e.g. rejecting breaking changes outright,
   in the style of Confluent Schema Registry's BACKWARD/FORWARD/FULL modes
   — see `references.md`) is not in v1 — flag as a v2 candidate if needed.
-  `ADR-018`'s `IEventUpcaster` builds the *transform* half of schema
-  evolution (reshaping an old payload forward); this bullet is about the
-  *enforcement* half (stopping an incompatible version from being
-  registered at all) — the two are independent, and only the first is
-  built.
+  `ADR-018`/`ADR-053`'s `IUpcastExpressionEvaluator` (`src/
+  EventStore.Abstractions/IUpcastExpressionEvaluator.cs`, CEL/JSONata-
+  driven) builds the *transform* half of schema evolution (reshaping an
+  old payload forward); this bullet is about the *enforcement* half
+  (stopping an incompatible version from being registered at all) — the
+  two are independent, and only the first is built. **`IEventUpcaster` is
+  a different, separately-catalogued seam** (`docs/extensibility-
+  points.md`) — not yet built, and not what `upcastFromPrevious`'s
+  transform mechanism actually is; don't conflate the two.
 
 ## Relationship to spec generation
 

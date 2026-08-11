@@ -217,19 +217,22 @@ re-derive the process from scratch:
   clear (examples: "query parameter" vs. the HTTP `QUERY` method,
   `ADR-010`; "projection" as a CQRS read model vs. design-docs' schema-
   mapping sense, `ADR-018`; `ChannelOrigin.Origin` vs. `OriginId`,
-  tracked in `TODO.md`).
+  disambiguated inline in `docs/data/streaming-and-attachments.md`).
 - **The ADR that adds or changes a persisted field/entity/table is that
   field's naming/shape authority — and must land the matching
   `docs/data/*.md` edit and `DbSet` registration in the *same pass*, not
-  defer it to a later sweep.** `TODO.md`'s data-model drift table
+  defer it to a later sweep.** A recurring drift table in `TODO.md`
   (`OriginId`/`LogicalClock` described in `ADR-033` but never added to
   `docs/data/event-log.md`; `RequiredClaims` singular vs. `ADR-050`'s
   list; missing `DeprecatedAt`/`ViewDefinition`/`PeerSyncCursor`/
   `WebhookOutbox`; seven entities with no `DbSet`) happened because this
   step got skipped repeatedly, not because anyone disagreed about the
   field — the ADR's prose was never actually wrong. This bullet is the
-  rule that stops it recurring; the drift table itself is still the
-  cleanup item in `TODO.md`.
+  rule that stops it recurring. A full docs-vs-implementation audit
+  (this session) closed every item that drift table named — see
+  `docs/changes/2026-08-11.md` — so the table itself is gone from
+  `TODO.md` now; if a new instance of this class of drift ever surfaces
+  again, it goes back in `TODO.md`, not here.
 - **A repeated relationship gets its own envelope-metadata field, never
   conflated with an existing one just because the shape looks similar.**
   This design has seven now: `parentEventIds` (causal derivation,

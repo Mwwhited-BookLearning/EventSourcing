@@ -58,9 +58,18 @@ Decision:
 
 Consequences:
 - Resolves `docs/10-open-questions.md`'s distribution-model row.
-- `06-solution-structure.md`'s project list is now also a package list —
+- ~~`06-solution-structure.md`'s project list is now also a package list —
   needs a `<PackageId>`/versioning note added per project (flagged as
-  remaining propagation work, not done this pass).
+  remaining propagation work, not done this pass).~~ **Corrected, later
+  pass**: the mechanism that actually shipped (`docs/08-build-plan.md`
+  item 39, "Release Engineering, Packaging & Supply Chain") is a single
+  root [`Directory.Build.props`](../../Directory.Build.props) setting
+  `<PackageId>$(MSBuildProjectName)</PackageId>` and one shared
+  `<Version>` once for every project in the repo via MSBuild's own
+  import convention — not a per-project `<PackageId>`/versioning line to
+  keep in sync across ~35 projects. `06-solution-structure.md`'s project
+  list still needing entries added to reflect this remains a separate,
+  still-real gap — owned by another task, not resolved by this note.
 - A new, real obligation this design didn't previously have: **public
   API surface discipline**. Every `public` member of every published
   package is now something an external consumer can depend on;

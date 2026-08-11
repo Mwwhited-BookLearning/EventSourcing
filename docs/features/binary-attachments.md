@@ -24,12 +24,22 @@ Upload/link travels over the ordinary Publish API (`ADR-012`'s `QUERY`
 convention doesn't apply here — `POST /attachments` and `POST /publish/...`
 are genuine state-changing writes, not queries) and is unaffected by
 `ADR-037`'s GraphQL swap, which only replaced the OData-era read surface.
-Browsing an entity's attachments is an ordinary GraphQL query, resolved
-as a nested field off the owning entity (`entity(id) { attachments {
-contentHash, filename, mimeType, sizeBytes } } }`) — no separate browse
-API needed. Retrieval is a plain `GET` against a content-addressed URL,
-whose byte-range support reuses `ADR-031`'s Range-request reasoning
-(seekable retrieval), the same mechanism, not a second implementation.
+Retrieval is a plain `GET` against a content-addressed URL, whose
+byte-range support reuses `ADR-031`'s Range-request reasoning (seekable
+retrieval), the same mechanism, not a second implementation.
+
+**Browsing an entity's attachments via GraphQL is designed, not yet
+built.** `ADR-032`'s Decision names it as a nested field off the owning
+entity (`entity(id) { attachments { contentHash, filename, mimeType,
+sizeBytes } } }`), but `08-build-plan.md`'s "GraphQL-Only Query Layer"
+item is explicit that no such field exists in the real schema: there is
+"no generic 'get current entity' query field, and no `extensions: JSON`
+field anywhere" — none of the real GraphQL surfaces this design actually
+built (Follow, Lineage, Registry listing) ever query current Entity Store
+state directly, so there is currently no GraphQL type an `attachments`
+field could attach to. The sequence diagram and Gherkin scenario below
+still show the query this ADR specifies, marked as the confirmed gap it
+is rather than as something callable today.
 
 ## Sequence diagram — uploading and linking an attachment
 
@@ -75,13 +85,13 @@ independent flags — either, both, or (for a second entry) different
 combinations may be set in the same publish call, each producing one
 `AttachmentRef` row.
 
-## Sequence diagram — browsing via GraphQL and retrieving via a Range GET
+## Sequence diagram — browsing via GraphQL (designed, not yet built) and retrieving via a Range GET (built)
 
 ```plantuml
 @startuml BinaryAttachments_Browse_Sequence
 autonumber
 actor "Consuming System" as follower
-participant "GraphQL Gateway" as graphql
+participant "GraphQL Gateway\n(NOT YET BUILT for this query --\nno entity(id) field exists, see prose above)" as graphql #line.dashed
 participant "Attachment API" as attachApi
 database "Attachment & Entity Store" as db
 
@@ -89,6 +99,15 @@ follower -> graphql: QUERY { entity(id: "patient-1") {\n  attachments { contentH
 graphql -> db: SELECT AttachmentRef JOIN Attachment\nWHERE EntityId = "patient-1"
 db --> graphql: rows (ContentHash, FileName, MimeType, SizeBytes)
 graphql --> follower: 200 { entity: { attachments: [ {contentHash, filename, ...}, ... ] } }
+note right of graphql
+  This half is ADR-032's Decision, not the live schema --
+  08-build-plan.md's "GraphQL-Only Query Layer" item states
+  explicitly that no generic "get current entity" query field
+  (and so no attachments field) exists anywhere in the real
+  GraphQL surface. Confirmed against src/EventStore.GraphQL/
+  Query.cs (an empty root) -- a known, confirmed gap, not an
+  oversight in this doc.
+end note
 
 follower -> attachApi: GET /attachments/{contentHash}\nRange: bytes=0-999
 attachApi -> db: SELECT Bytes FROM Attachment WHERE ContentHash = :ContentHash
@@ -98,10 +117,11 @@ attachApi --> follower: 206 Partial Content\nContent-Range: bytes 0-999/SizeByte
 ```
 
 There is no virtual folder/file hierarchy of any kind — attachments are
-addressed directly by `ContentHash` (the Decision above), discovered by
-querying the entity they're linked to, exactly the access shape `ADR-032`
-specifies. `GET`'s byte-range support is the same `ADR-031` Range-request
-mechanism, not a second implementation.
+addressed directly by `ContentHash` (the Decision above), meant to be
+discovered by querying the entity they're linked to, exactly the access
+shape `ADR-032` specifies, once the GraphQL-browse half above actually
+exists. `GET`'s byte-range support is the same `ADR-031` Range-request
+mechanism, not a second implementation, and is fully built today.
 
 ## Data model (ER diagram)
 
@@ -235,6 +255,12 @@ Feature: Binary attachments (content-addressed, linked to an entity or event, br
     And an AttachmentRef should exist with contentHash "h-referral-1", eventId "visit-1", and no entityId
 
   Scenario: Browsing an entity's attachments via GraphQL lists them
+    # NOT YET BUILT -- ADR-032's Decision names this query shape, but
+    # 08-build-plan.md's "GraphQL-Only Query Layer" item confirms no
+    # generic entity(id) field (and so no attachments field) exists in
+    # the real GraphQL schema (src/EventStore.GraphQL/Query.cs is an
+    # empty root). Kept here as the designed scenario, marked as a known,
+    # confirmed gap rather than something callable today.
     Given attachment "h-history-1" (named "history.pdf") is linked to entity "patient-1"
     And attachment "h-referral-1" (named "referral.pdf") is linked to entity "patient-1"
     When I QUERY the GraphQL Gateway with:

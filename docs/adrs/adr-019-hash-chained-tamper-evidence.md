@@ -21,6 +21,24 @@ Decision:
   computed by `EventAppender` at insert time, chained off the immediately
   preceding `SequenceNumber`'s `ChainHash` (a fixed seed value for
   `SequenceNumber = 1`, the store's first-ever event).
+  **Extended, `ADR-066`**: for an event that carries a `Signature`
+  (RFC 9470 sign-off, `ADR-066`), the real formula folds it in as a fourth
+  term — `ChainHash[n] = SHA-256(ChainHash[n-1] || PayloadHash[n] ||
+  SequenceNumber[n] || JSON(Signature[n]))`, implemented in
+  [`src/EventStore.Domain/EventLog/EventChainHash.cs`](../../src/EventStore.Domain/EventLog/EventChainHash.cs).
+  This formula above is unchanged and still exactly correct for the
+  (still-common) no-`Signature` case — `Signature` is omitted entirely
+  (not hashed as a literal `null`) when absent, so every event type that
+  never uses `RequiredSignature` computes byte-identical `ChainHash`
+  values either way. The fold-in exists because `Signature` is envelope
+  metadata that neither `ChainHash` nor `PayloadHash` originally covered
+  at all — a direct-database edit to a stored `Signature` would otherwise
+  go completely undetected, contradicting `ADR-066`'s own claim that
+  non-repudiation "reuses the existing hash chain... exactly as
+  tamper-evident as everything else in the log." Found and fixed as a
+  real bug while verifying that claim, not designed in from the start —
+  see `docs/changes/2026-08-10.md`'s "Bug 2" for item 29 ("Digital
+  Sign-Off for Regulated Actions").
 - This is a **linear hash chain, not a full Merkle tree** — deliberately
   simpler than Certificate Transparency's binary tree, since this design
   has no need for CT's specific inclusion/consistency-proof-against-a-

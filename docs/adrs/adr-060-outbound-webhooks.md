@@ -81,11 +81,18 @@ Consequences:
   real for this framework's own outbound surface. A *retried* delivery
   attempted after erasure correctly carries `{"erased": true}` — only
   copies already sent before the erasure are the exposure.
-- `docs/data/schema-registry.md` gains `WebhookSubscription`; a new data
+- ~~`docs/data/schema-registry.md` gains `WebhookSubscription`; a new data
   group file (or `schema-registry.md`'s own group, since a subscription
   is tenant/registry-adjacent configuration, not event/entity data) holds
   `WebhookOutbox`/`WebhookDeliveryCursor` — not yet placed this pass,
-  flagged as remaining propagation work.
+  flagged as remaining propagation work.~~ **Corrected, later pass**:
+  done — `docs/data/schema-registry.md` now documents `WebhookSubscription`
+  ("Webhook subscriptions") and `WebhookOutbox`/`WebhookDeliveryCursor`
+  ("Webhook outbox and delivery cursor") in full, including the
+  `SourceSequenceNumber` field added while building `docs/08-build-plan.md`
+  item 34 ("Outbound Webhooks") to let a retry re-mask fresh from the
+  original `StoredEvent` after an `ADR-057` erasure, rather than from a
+  potentially-stale enqueue-time snapshot.
 - No new signing mechanism invented — Standard Webhooks' HMAC-SHA256
   construction and header names are used as specified, not reinvented
   loosely "in the spirit of."

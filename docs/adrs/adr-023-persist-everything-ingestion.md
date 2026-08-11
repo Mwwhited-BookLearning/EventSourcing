@@ -40,12 +40,20 @@ Decision:
     "entityId": null,
     "schemaStatus": null,
     "authorityStatus": "accepted",
+    "conflictFlag": false,
     "reason": null,
-    "timestamp": "2026-07-29T14:32:00Z",
     "sequenceNumber": 48213,
     "originId": null
   }
   ```
+
+  **Corrected, later pass**: the example above was updated to match the
+  real envelope built by [`PublishEndpoints.cs`](../../src/EventStore.Inbox/PublishEndpoints.cs)
+  from the Accepted `PublishResult` record
+  ([`PublishResult.cs`](../../src/EventStore.Inbox/PublishResult.cs)) — no
+  `timestamp` field exists on the real response (removed from the example
+  above), and `conflictFlag` (`ADR-024`) is a real field the original
+  example omitted.
 
   **`sequenceNumber`/`originId` added by `ADR-090`** — lets a caller
   explicitly filter a later read for "has this site applied everything
@@ -59,6 +67,20 @@ Decision:
   | `processing` | No | Picked up by the router, in flight (only surfaced if meaningfully slow) |
   | `applied` | Yes | Folded into the Entity Store (`ADR-021`), `entityId` populated |
   | `rejected` | Yes | Transport/structurally unusable — the one case above; never used for schema-invalid or unattested content |
+
+  **Corrected, later pass**: `processing` as a discretely *persisted* row
+  is not what the real router builds. [`RouterWorker.cs`](../../src/EventStore.Router/RouterWorker.cs)'s
+  `RunOnceAsync` selects every `Status == "received"` row, folds it fully
+  in-process (schema check, entity resolution, Entity Store fold), and
+  sets `Status = "applied"` directly on that same tracked entity before
+  the batch's one `SaveChangesAsync` call — an event moves received→
+  applied atomically within one router tick, with no `processing` row
+  ever actually written to the database in between. `processing` may
+  still be a reasonable value for a *future*, slower router
+  implementation to persist ("only surfaced if meaningfully slow," as
+  this row already says) — this correction is about what the current
+  implementation actually does, not a claim that `processing` should be
+  removed from the table.
 
 - **`SchemaStatus` (`unknown` \| `invalid` \| `conformant`) becomes
   non-gating, advisory metadata that rides alongside `status`, never

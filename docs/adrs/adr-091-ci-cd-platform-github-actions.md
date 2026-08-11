@@ -36,6 +36,17 @@ Consequences:
   (`.claude/protocols/additive-history-editing.md`'s strikethrough rule)
   naming the new host's native CI — not a silent assumption carried
   forward.
-- No pipeline, workflow file, or build-plan phase is created by this
-  ADR — it resolves the *question*, not the *build*.
+- ~~No pipeline, workflow file, or build-plan phase is created by this
+  ADR — it resolves the *question*, not the *build*.~~ **Corrected, later
+  pass**: a build-plan phase and the real files now both exist —
+  `docs/08-build-plan.md`'s item 39 ("Release Engineering, Packaging &
+  Supply Chain") is marked Done, and built
+  [`.github/workflows/ci.yml`](../../.github/workflows/ci.yml) and
+  [`.github/dependabot.yml`](../../.github/dependabot.yml) to realize
+  this ADR's own decision. This resolves the *question* (as this ADR
+  always intended) and now also has a real build to go with it — but not
+  full closure: no push access to GitHub exists in this environment, so
+  the workflow file has been written but never actually executed by
+  GitHub Actions itself. "The build now exists too, though unexecuted,"
+  not "verified running in CI."
 - Resolves `docs/10-open-questions.md` row 5.

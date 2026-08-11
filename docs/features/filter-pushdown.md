@@ -18,23 +18,34 @@ otherwise unaffected by either transport detail.
 @startuml FilterPushdown_Sequence
 autonumber
 participant "GraphQL Gateway\n(HotChocolate)" as gateway
-participant "[UseFiltering]\nmiddleware" as filtering
+participant "GraphQlFilterPredicateBuilder" as filtering
 participant "IJsonPathTranslator\n(impl per provider)" as jsonPath
 participant "EF Core" as ef
 database "SQLite / PostgreSQL / SQL Server" as db
 
 note over gateway
-  The per-AppId schema (ADR-037) composes a filter-input type per
-  event type containing only fields actually declared FilterableField
-  for it. A where argument referencing an undeclared field is a
-  GraphQL validation error, rejected before this resolver ever runs --
-  schema-shape enforcement, not a runtime check (ADR-003's original
-  rule survives, enforced earlier and more strongly).
+  Filtering is NOT built on HotChocolate's own [UseFiltering] middleware --
+  a fully dynamic, per-AppId ObjectType (ADR-037's own per-event-type
+  Subscription payload shape) has no bound CLR type for [UseFiltering]'s
+  reflection-based inference to work against. Instead the where argument
+  is a static, hand-written `[EventFilterInput!]` list type
+  (EventFilterInput.cs), and an undeclared Field name is caught here, at
+  RESOLVER RUNTIME, by GraphQlFilterPredicateBuilder throwing a
+  GraphQLException -- not rejected earlier as a schema-validation error
+  before the resolver runs. This is an honest, named narrowing from
+  ADR-037's literal "cannot even construct a query referencing an
+  undeclared field" schema-shape guarantee for FILTERING specifically
+  (that guarantee still holds in full for the subscription field NAME and
+  its PAYLOAD fields, which genuinely differ per registered event type --
+  see follow-subscribe.md); functionally equivalent safety (ADR-003's
+  original rule), just enforced one step later. Flagged in
+  08-build-plan.md, not silently narrowed.
 end note
 
-gateway -> filtering: resolve where: { amount: { gt: 100 } }\nagainst the generated filter-input type
-filtering -> filtering: translate into Expression<Func<StoredEvent,bool>>
-filtering -> jsonPath: JsonFunctions.JsonValue(Payload, "$.Amount") -> provider extraction
+gateway -> filtering: Build(fields, where: [{ field: "Amount", gt: "100" }])\n(a flat list of EventFilterInput clauses, AND-combined across list\nentries -- no and/or combinator nesting, see EventFilterInput's own note)
+filtering -> filtering: look up "Amount" against this event type's declared\nFilterableFields -- GraphQLException if not found
+filtering -> filtering: build Expression<Func<StoredEvent,bool>>\n(reuses FilterPredicateBuilder's own property-access/constant-\nexpression building blocks)
+filtering -> jsonPath: JsonFunctions.JsonValueAsNumber(Payload, "$.Amount")\n(one marker method per FilterableFieldType --String/Number/Boolean/\nDateTimeOffset -- dispatched via JsonFunctions.MethodNameFor,\nnot a single generic JsonValue method)
 note right of jsonPath
   SQLite:     json_extract(Payload, '$.Amount')
   PostgreSQL: (Payload::jsonb ->> 'Amount')
@@ -43,8 +54,8 @@ end note
 filtering -> filtering: CAST extracted text to FilterableField.DataType
 filtering -> ef: Expression<Func<StoredEvent,bool>>
 ef -> db: SELECT ... WHERE <native JSON extraction> > 100
-db --> ef: matching rows (index used if IsIndexed = true)
-ef --> gateway: matching StoredEvent(s), SELECT list narrowed by [UseProjection]
+db --> ef: matching StoredEvent rows, full row shape\n(index used if IsIndexed = true)
+ef --> gateway: matching StoredEvent(s) -- payload field selection happens\nlater, in the dynamically-built resolvers (see follow-subscribe.md),\nnot via a database-level SELECT-list narrowing
 @enduml
 ```
 
@@ -80,10 +91,18 @@ note right of ff
   IsIndexed = true triggers a provider-specific
   expression index / computed column over Payload
   for this JsonPath (see 02-data-model.md,
-  "Per-provider index strategy"). Also drives which
-  fields the per-AppId GraphQL filter-input type
-  exposes (ADR-037) -- a field not declared here
-  cannot even be referenced in a where argument.
+  "Per-provider index strategy"). The where
+  argument's static EventFilterInput type (a flat
+  { field, eq, neq, gt, gte, lt, lte, contains }
+  shape) can syntactically NAME any field string --
+  it is GraphQlFilterPredicateBuilder that looks the
+  name up against THIS event type's own declared
+  rows at resolver runtime and throws a
+  GraphQLException if it isn't one of them. An
+  honest, named narrowing from ADR-037's literal
+  schema-shape guarantee for filtering specifically
+  (still true for the subscription field name and
+  payload fields -- see follow-subscribe.md).
 end note
 @enduml
 ```
@@ -109,26 +128,22 @@ Feature: GraphQL filter pushdown to the database
 
   # Runs under the same events:follow-scoped requests as follow-subscribe.md;
   # see auth.md for authentication/authorization behavior itself. The
-  # examples below use a bounded (non-streaming) query against the same
-  # underlying IQueryable<StoredEvent> resolver Follow's Subscription
-  # field also filters -- the live-tail/replay streaming behavior itself
-  # is covered in follow-subscribe.md, not repeated here.
-  #
-  # "orderPlacedEvents" below is an illustrative bounded resolver name for
-  # exercising the pushdown mechanism directly and is not itself a real,
-  # separately-contracted field -- 03-api-contracts.md's actual read
-  # surfaces are Follow's onOrderPlaced Subscription, the Lineage query
-  # fields, and registry listing (04-*.md, "Explicitly out of scope").
-  # This doc stays scoped to pushdown mechanics, agnostic to which real
-  # surface drives it.
+  # examples below exercise the real subscription field
+  # on_demo_OrderPlaced (ADR-037's per-AppId, per-event-type field naming,
+  # FollowSubscriptionTypeModule) with its real `where: [EventFilterInput!]`
+  # argument shape -- a flat list of { field, eq, neq, gt, gte, lt, lte,
+  # contains } clauses, AND-combined across list entries, values passed as
+  # strings and cast server-side to the field's own declared
+  # FilterableFieldType (EventFilterInput.cs, GraphQlFilterPredicateBuilder).
+  # There is no and/or combinator and no nested per-field object shape.
 
   Scenario Outline: Filter predicate is pushed down identically on every provider
     Given the active database provider is "<provider>"
     And the event type "OrderPlaced" is registered with filterable field "$.Amount" of type "Number", indexed
     And 3 "OrderPlaced" events exist with Amount values 50, 100, 150
-    When I run a bounded GraphQL query with document:
+    When I open a GraphQL Subscription connection with document:
       """
-      query { orderPlacedEvents(where: { amount: { gt: 100 } }) { orderId amount } }
+      subscription { on_demo_OrderPlaced(where: [{ field: "Amount", gt: "100" }]) { orderId amount } }
       """
     Then I should receive only the event with Amount 150
     And the generated SQL should contain a native JSON extraction function for "<provider>"
@@ -139,33 +154,40 @@ Feature: GraphQL filter pushdown to the database
       | Postgres   |
       | SqlServer  |
 
-  Scenario: A where argument referencing an undeclared field cannot be constructed
+  Scenario: A where argument naming an undeclared field is rejected at resolver runtime
     Given the event type "OrderPlaced" is registered with filterable field "$.Amount" of type "Number", indexed
-    When I run a GraphQL query with document:
+    When I open a GraphQL Subscription connection with document:
       """
-      query { orderPlacedEvents(where: { secretField: { eq: "x" } }) { orderId } }
+      subscription { on_demo_OrderPlaced(where: [{ field: "secretField", eq: "x" }]) { orderId } }
       """
-    Then the query should be rejected as a GraphQL validation error, before any resolver runs
+    Then the subscription should be rejected with a GraphQLException
     And no SQL query should be executed
-    # secretField was never declared FilterableField, so it does not exist on the
-    # generated filter-input type at all -- this is a schema-shape guarantee
-    # (ADR-037), not the pre-ADR-037 parse-then-400 runtime check.
+    # "secretField" was never declared FilterableField for this event type.
+    # EventFilterInput's own Field is a plain string on a static,
+    # hand-written input type -- it CAN be spelled here syntactically -- so
+    # GraphQlFilterPredicateBuilder.Build is what looks the name up against
+    # this event type's declared FilterableFields and throws at resolver
+    # runtime, not a schema-composition-time validation error. An honest,
+    # narrower guarantee than ADR-037's literal "cannot even be
+    # constructed" for FILTERING specifically (still literally true for
+    # the subscription field NAME and its payload fields -- see
+    # follow-subscribe.md).
 
   Scenario: Numeric comparison casts extracted text correctly
     Given the event type "OrderPlaced" is registered with filterable field "$.Amount" of type "Number", indexed
     And an "OrderPlaced" event exists with Amount 99.5
-    When I run a bounded GraphQL query with document:
+    When I open a GraphQL Subscription connection with document:
       """
-      query { orderPlacedEvents(where: { amount: { gt: 99 } }) { orderId amount } }
+      subscription { on_demo_OrderPlaced(where: [{ field: "Amount", gt: "99" }]) { orderId amount } }
       """
     Then the event with Amount 99.5 should be included in the results
 
   Scenario: String comparison does not require casting
     Given the event type "OrderPlaced" is registered with filterable field "$.Status" of type "String", not indexed
     And an "OrderPlaced" event exists with Status "Paid"
-    When I run a bounded GraphQL query with document:
+    When I open a GraphQL Subscription connection with document:
       """
-      query { orderPlacedEvents(where: { status: { eq: "Paid" } }) { orderId status } }
+      subscription { on_demo_OrderPlaced(where: [{ field: "Status", eq: "Paid" }]) { orderId status } }
       """
     Then the event with Status "Paid" should be included in the results
 
@@ -174,19 +196,22 @@ Feature: GraphQL filter pushdown to the database
     And the event type "OrderPlaced" is registered with filterable field "$.Status" of type "String", not indexed
     And an "OrderPlaced" event exists with Amount 150 and Status "Pending"
     And an "OrderPlaced" event exists with Amount 150 and Status "Paid"
-    When I run a bounded GraphQL query with document:
+    When I open a GraphQL Subscription connection with document:
       """
-      query { orderPlacedEvents(where: { and: [{ amount: { gt: 100 } }, { status: { eq: "Paid" } }] }) { orderId } }
+      subscription { on_demo_OrderPlaced(where: [{ field: "Amount", gt: "100" }, { field: "Status", eq: "Paid" }]) { orderId } }
       """
     Then I should receive only the second event
-    # HotChocolate's `and` combinator on the filter-input type -- see
-    # 04-odata-filter-pushdown.md's operator -> SQL mapping table.
+    # Two entries in the SAME where list, AND-combined by
+    # GraphQlFilterPredicateBuilder.Build's own foreach loop -- there is no
+    # and/or combinator keyword to write (see EventFilterInput.cs's own
+    # note on why: a hand-written static input type, not a dynamically
+    # composed one).
 
   Scenario: Indexed field query uses the expression index / computed column
     Given the event type "OrderPlaced" is registered with filterable field "$.Amount" of type "Number", indexed
-    When I run a bounded GraphQL query with document:
+    When I open a GraphQL Subscription connection with document:
       """
-      query { orderPlacedEvents(where: { amount: { gt: 100 } }) { orderId } }
+      subscription { on_demo_OrderPlaced(where: [{ field: "Amount", gt: "100" }]) { orderId } }
       """
     Then the query execution plan should reference the index created for "$.Amount"
 ```

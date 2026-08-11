@@ -54,6 +54,38 @@ Decision:
   ADR needs to settle.
 
 Consequences:
+- **Corrected, later pass**: this ADR's Context section describes the
+  four built-in algorithms as offering "`429` rejection, and
+  `Retry-After` headers out of the box," reading as uniform across all
+  of them. Building and testing the actual Gateway wiring
+  (`docs/08-build-plan.md` item 33, "Per-Tenant Rate Limiting") found
+  this isn't so: verified directly against `System.Threading.
+  RateLimiting` outside ASP.NET Core (a throwaway console probe
+  acquiring past each limiter's own limit and checking
+  `lease.TryGetMetadata(MetadataName.RetryAfter, ...)`), only
+  `TokenBucketRateLimiter` ever attaches `Retry-After` metadata in this
+  library version — `ConcurrencyLimiter` and `SlidingWindowRateLimiter`
+  never do. [`RateLimiterPolicies.cs`](../../src/EventStore.Gateway/RateLimiterPolicies.cs)'s
+  `OnRejected` handler was already guarded with `TryGetMetadata` before
+  this was found, so no production code needed to change — only this
+  ADR's own framing and this item's test assertions needed correcting.
+  See `docs/changes/2026-08-10.md`'s "Finding 2" for item 33.
+- **Also found while building item 33**: `TenantPartitionKey.Resolve`
+  ([`src/EventStore.Gateway/TenantPartitionKey.cs`](../../src/EventStore.Gateway/TenantPartitionKey.cs))
+  cannot resolve the caller's `AppId` from `ClaimsPrincipal`/
+  `HttpContext.User` the way the rest of this design does — per
+  `ADR-049`'s own design, the Gateway forwards the `Authorization` header
+  unvalidated and never populates `HttpContext.User` itself (real JWT/
+  DPoP validation happens only at the Host). The real partition-key
+  resolution is a tiered fallback: `HttpContext.Items` (populated by
+  `AppIdBufferingMiddleware` peeking a buffered `/publish`/`/follow` JSON
+  body) → an **unvalidated peek at the raw JWT payload's base64url
+  segment** for a `client_id`/`sub` claim (explicitly commented in code
+  as a traffic-bucketing heuristic only, never a security/authorization
+  decision) → a fixed `"anonymous"` bucket. Cross-reference `ADR-049`,
+  whose own unvalidated-header-forwarding design is exactly why this
+  Gateway-side resolution has no authenticated claims to read in the
+  first place.
 - Resolves `docs/10-open-questions.md`'s tenant-fairness row.
 - `ADR-037`'s GraphQL depth/cost limiter is unaffected and still needed —
   it bounds one query's *shape*; this ADR bounds sustained *volume*

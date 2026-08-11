@@ -70,12 +70,22 @@ Decision:
 Consequences:
 - **`FeatureFlagState` is defined in `docs/data/schema-registry.md`,
   landed in this same pass** per this project's data-model-ownership
-  convention. The `FeatureFlagSet` reserved event type itself, and a
+  convention. ~~The `FeatureFlagSet` reserved event type itself, and a
   `DbSet<FeatureFlagState>` registration in `docs/data/dbcontext-and-
   conventions.md`, remain not yet done — tracked in `TODO.md`'s existing
-  data-model drift-table item.
-- A new, small `EventLogFeatureFlagConfigurationProvider` component —
-  not yet built.
+  data-model drift-table item.~~ **Corrected, later pass**: built —
+  `docs/08-build-plan.md`'s item 31 ("Dynamic Feature-Flag Configuration
+  Provider") is marked Done. [`FeatureFlagSetEventType.cs`](../../src/EventStore.FeatureFlags/FeatureFlagSetEventType.cs)
+  is the reserved event type (a 5th reserved type, after item 30's four),
+  and `DbSet<FeatureFlagState>` is registered in
+  [`EventStoreContext.cs`](../../src/EventStore.Persistence/EventStoreContext.cs).
+- ~~A new, small `EventLogFeatureFlagConfigurationProvider` component —
+  not yet built.~~ **Corrected, later pass**: built —
+  [`EventLogFeatureFlagConfigurationProvider.cs`](../../src/EventStore.FeatureFlags/EventLogFeatureFlagConfigurationProvider.cs)
+  and its companion `EventLogFeatureFlagConfigurationSource.cs` implement
+  the `IConfigurationProvider`/`IConfigurationSource` pair this ADR
+  describes, polling `FeatureFlagState` on a `PeriodicTimer` and firing a
+  reload token only when fetched data actually changed.
 - `ADR-058` is unaffected, not revised — this ADR only adds an available
   answer to a question `ADR-058` deliberately left open, it doesn't
   change `ADR-058`'s own decision.

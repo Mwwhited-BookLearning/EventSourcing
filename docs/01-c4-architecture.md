@@ -37,6 +37,19 @@ is a note rather than a full multi-site deployment diagram — see
 `docs/comparisons/peer-sync-topology.md`/`sharding-strategy.md` for the
 topology decisions themselves.
 
+**Gateway note, added this pass (`ADR-049`)**: `ADR-049` made
+`EventStore.Gateway` (YARP) the single external entry point in front of
+every other container below, reversing an earlier YARP rejection —
+verified against `src/EventStore.Gateway/Program.cs`, which really does
+sit in front of the reverse proxy config, per-`AppId` rate limiting
+(`ADR-058`), and the SPIFFE identity handoff (`ADR-048`) the ADR
+describes. The Container diagram below now shows it that way — Publisher/
+Consuming System/Platform Operator reach every other container only
+through it, matching `ADR-049`'s own flagged-outstanding propagation note
+("`01-c4-architecture.md` needs a Gateway container added in front of the
+existing containers it currently shows as directly external-facing — not
+done this pass"), now done.
+
 ## Context diagram
 
 ```plantuml
@@ -117,6 +130,8 @@ rectangle "**Platform Operator**\n<<Person>>" <<Person>> as operator
 rectangle "**EventStore.DevIdp**\n<<System_Ext>>\n--\nOIDC + Token Exchange -- ADR-006/036" <<System_Ext>> as idp
 rectangle "**Peer Site(s)**\n<<System_Ext>>\n--\nADR-033" <<System_Ext>> as peerSite
 
+rectangle "**API Gateway**\n<<Container>>\n//EventStore.Gateway, YARP//\n--\nThe single external entry point (ADR-049); external TLS termination + ADR-006/017/040 auth happen here; per-AppId rate limiting (ADR-058); hands off to every container below via ADR-048 SPIFFE/SPIRE workload identity, not a second copy of external auth" <<Container>> as apiGateway
+
 rectangle "Open Event-Sourced Entity Platform (one site)" <<Boundary>> as system {
     rectangle "**Inbox / Publish Endpoint**\n<<Container>>\n//.NET (ASP.NET Core)//\n--\nPOST /publish; persists first, always 202 unless the envelope itself is unparseable (ADR-023); Idempotent Receiver (ADR-011)" <<Container>> as inbox
     rectangle "**Router**\n<<Container>>\n//Background service//\n--\nSchema validation, entity resolution (ADR-021), live upcast validation + materialization (ADR-020/027), non-authoritative claim capture (ADR-035) -- all advisory, none block Inbox's 202" <<Container>> as router
@@ -138,11 +153,17 @@ rectangle "CQRS Read Side (example) -- separate deployable and database, ADR-015
     database "**Read Model Store**\n<<Container>>\n//EF Core, its own database//\n--\nProjectionCheckpoint, ProjectionSnapshot, OrderSummary (example)" <<Container>> as readDb
 }
 
-publisher --> inbox : Publishes patches/actions\n//HTTPS/JSON, Bearer + DPoP//
-follower --> graphql : Query / Subscription\n//HTTPS (QUERY method), Bearer + DPoP//
-operator --> registry : Registers schemas\n//HTTPS/JSON, Bearer//
-publisher --> streaming : Batch-ingests channel samples\n//HTTPS, Bearer//
-publisher --> attachments : Uploads binary content\n//HTTPS, Bearer//
+publisher --> apiGateway : Publishes patches/actions\n//HTTPS/JSON, Bearer + DPoP//
+follower --> apiGateway : Query / Subscription\n//HTTPS (QUERY method), Bearer + DPoP//
+operator --> apiGateway : Registers schemas\n//HTTPS/JSON, Bearer//
+publisher --> apiGateway : Batch-ingests channel samples / uploads binary content\n//HTTPS, Bearer//
+
+apiGateway --> inbox : Forwards (mTLS, ADR-048 SPIFFE identity)
+apiGateway --> graphql : Forwards (mTLS, ADR-048 SPIFFE identity)
+apiGateway --> registry : Forwards (mTLS, ADR-048 SPIFFE identity)
+apiGateway --> streaming : Forwards (mTLS, ADR-048 SPIFFE identity)
+apiGateway --> attachments : Forwards (mTLS, ADR-048 SPIFFE identity)
+apiGateway --> specGen : Forwards anonymous spec requests (mTLS, ADR-048 SPIFFE identity)
 
 inbox --> eventLog : Append "received" (Idempotent Receiver + Inbox pattern)
 inbox --> router : Notify new item
@@ -154,8 +175,9 @@ graphql --> entityStore : Read current state (sharded, ADR-034)
 graphql --> eventLog : Read change history (ADR-024 §8.4)
 registry --> eventLog : n/a -- registry has its own table, shown for scope only
 specGen --> registry : Read schema/event-type metadata
-publisher --> specGen : GET /openapi.json (anonymous)
-follower --> specGen : GraphQL SDL introspection (anonymous)
+' GET /openapi.json (publisher) and GraphQL SDL introspection (follower) are both
+' anonymous, but per ADR-049 travel through apiGateway like every other external
+' request now -- no direct publisher/follower arrow to specGen anymore.
 streaming --> streamStore : Batch append; tail/replay (ADR-010's shape, reused)
 attachments --> attachmentStore : Content-addressed put/get; GraphQL browse, GET with Range
 eventLog --> peerSync : Feeds outbound peer sync
