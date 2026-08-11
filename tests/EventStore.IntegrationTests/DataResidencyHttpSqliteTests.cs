@@ -146,14 +146,34 @@ public class DataResidencyHttpSqliteTests
     // TestServer-HttpClient trick ReplicationHttpSqliteTests already uses --
     // a real /peer-sync/whoami (learning that target's own tagged Region)
     // followed by a real, residency-filtered /peer-sync/push.
-    private static async Task SyncOnceToAsync(EventStoreContext dbA, HttpClient targetHostClient, AppResidencyPolicyService residencyPolicies)
+    //
+    // Retried a few times, deliberately: PeerSyncWorker.SyncOnceWithAsync
+    // is wrapped in a per-peer `catch (Exception) {}` in production
+    // (ADR-033's own "one unreachable peer never blocks sync with any
+    // other" requirement) -- a genuinely transient HTTP hiccup talking to
+    // a shared TestServer under heavier overall suite load looks
+    // IDENTICAL, from this test's own perspective, to "that peer was
+    // truly unreachable," silently skipping cursor creation. Found as a
+    // real, reproducing flake under a heavier full-suite run (TODO.md);
+    // retrying here mirrors what a real deployment already does on its
+    // own very next tick, rather than papering over a genuine defect.
+    private static async Task SyncOnceToAsync(EventStoreContext dbA, HttpClient targetHostClient, AppResidencyPolicyService residencyPolicies, string expectedPeerId)
     {
         var addressBook = new PeerAddressBook(Options.Create(new PeerSyncOptions { SeedPeers = [""] }));
         var httpClientFactory = new FixedHttpClientFactory(new Dictionary<string, HttpClient> { ["PeerSync"] = targetHostClient, ["DevIdp"] = _devIdpClient });
         var peerSyncClientOptions = Options.Create(new PeerSyncClientOptions { ClientId = "peer-sync-client", ClientSecret = "peer-sync-client-secret" });
         var peerSyncClient = new PeerSyncClient(httpClientFactory, peerSyncClientOptions);
 
-        await PeerSyncWorker.RunOnceAsync(dbA, peerSyncClient, addressBook, "residency-site-a", 500, residencyPolicies, NullLogger.Instance, CancellationToken.None);
+        var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(10);
+        while (true)
+        {
+            await PeerSyncWorker.RunOnceAsync(dbA, peerSyncClient, addressBook, "residency-site-a", 500, residencyPolicies, NullLogger.Instance, CancellationToken.None);
+            if (await dbA.PeerSyncCursors.AnyAsync(c => c.PeerId == expectedPeerId))
+                return;
+            if (DateTime.UtcNow >= deadline)
+                Assert.Fail($"sync to '{expectedPeerId}' never produced a cursor row within the retry deadline -- a genuinely unreachable peer, not just a transient hiccup");
+            await Task.Delay(150);
+        }
     }
 
     [TestMethod]
@@ -176,8 +196,8 @@ public class DataResidencyHttpSqliteTests
         var published = (PublishResult.Accepted)await publishA.PublishAsync(
             "OrderPlaced", new PublishEventRequest(appId, 1, """{ "OrderId": "residency-1", "Amount": 10.00 }""", null, null), TestClaimsPrincipal.None);
 
-        await SyncOnceToAsync(dbA, _hostClientB, residencyPoliciesA);
-        await SyncOnceToAsync(dbA, _hostClientC, residencyPoliciesA);
+        await SyncOnceToAsync(dbA, _hostClientB, residencyPoliciesA, "residency-site-b");
+        await SyncOnceToAsync(dbA, _hostClientC, residencyPoliciesA, "residency-site-c");
 
         await using var dbB = OpenContext(_dbPathB);
         await using var dbC = OpenContext(_dbPathC);
@@ -208,8 +228,8 @@ public class DataResidencyHttpSqliteTests
         var published = (PublishResult.Accepted)await publishA.PublishAsync(
             "OrderPlaced", new PublishEventRequest(appId, 1, """{ "OrderId": "residency-2", "Amount": 5.00 }""", null, null), TestClaimsPrincipal.None);
 
-        await SyncOnceToAsync(dbA, _hostClientB, residencyPoliciesA);
-        await SyncOnceToAsync(dbA, _hostClientC, residencyPoliciesA);
+        await SyncOnceToAsync(dbA, _hostClientB, residencyPoliciesA, "residency-site-b");
+        await SyncOnceToAsync(dbA, _hostClientC, residencyPoliciesA, "residency-site-c");
 
         await using var dbB = OpenContext(_dbPathB);
         await using var dbC = OpenContext(_dbPathC);

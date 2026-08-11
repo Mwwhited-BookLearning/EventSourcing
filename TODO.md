@@ -248,14 +248,21 @@ here instead of inlining.
   `DataResidencyHttpSqliteTests.AnAppIdRestrictedToOneRegionReplicatesOnlyToPeersTaggedWithThatRegion...`
   failed once with `PeerSyncCursors.SingleAsync(...) ->
   InvalidOperationException: Sequence contains no elements` — passed
-  cleanly in isolation immediately after. Root cause understood, not yet
-  fixed: `PeerSyncWorker.SyncOnceWithAsync` is deliberately wrapped in a
-  per-peer `catch (Exception) { }` in production (`ADR-033`'s own "one
+  cleanly in isolation immediately after. Root cause: `PeerSyncWorker.
+  SyncOnceWithAsync` is deliberately wrapped in a per-peer
+  `catch (Exception) { }` in production (`ADR-033`'s own "one
   unreachable peer never blocks sync with any other" requirement) — a
   genuinely transient HTTP hiccup talking to a shared `TestServer` under
   heavier overall suite load looks IDENTICAL, from this test's own
   perspective, to "that peer was truly unreachable," silently skipping
-  cursor creation. If this recurs, either add a bounded retry inside the
-  test's own `SyncOnceToAsync` helper, or thread a way to observe/assert
-  on the swallowed exception directly instead of only its downstream
-  absence-of-a-cursor-row symptom.
+  cursor creation. **Fixed**: `SyncOnceToAsync` (the test's own helper)
+  now takes an `expectedPeerId` and retries `PeerSyncWorker.RunOnceAsync`
+  in a bounded loop (150ms between attempts, 10s deadline) until a
+  `PeerSyncCursor` row actually appears for that peer, rather than
+  assuming one call is enough — mirroring how a real deployment would
+  also just retry a transiently-failed peer on its own next tick.
+  Verified: `DataResidencyHttpSqliteTests` passed 3/3 in isolation across
+  3 separate runs, and the full SQLite regression suite was re-run 3
+  more times afterward (0-1 failures each, only the pre-existing SSE
+  flake, zero `DataResidencyHttpSqliteTests` failures) — no reproduction
+  of either this race or the original 21-failure anomaly above.
