@@ -84,7 +84,18 @@ after-the-fact.
 | Vitals | D — Intraoperative Monitoring & Alert Response | [Intraoperative Monitoring and Alert Response](clinical-trials-device-telemetry/features/intraoperative-monitoring-and-alert-response.md) | Done |
 | Meridian | A — Document/Biometric Capture → Verification | [Document and Biometric Capture](digital-identity-kyc/features/document-and-biometric-capture.md), [Customer Onboarding and Identity Verification](digital-identity-kyc/features/customer-onboarding-and-identity-verification.md) | Done |
 | Meridian | B — Relying-Party Access | [Relying-Party Verification Request](digital-identity-kyc/features/relying-party-verification-request.md) | Done |
-| Meridian | C — Ongoing Screening & SAR Escalation | [Periodic Screening and SAR Escalation](digital-identity-kyc/features/periodic-screening-and-sar-escalation.md) | Not started |
+| Meridian | C — Ongoing Screening & SAR Escalation | [Periodic Screening and SAR Escalation](digital-identity-kyc/features/periodic-screening-and-sar-escalation.md) | Done |
+
+**All 7 workflows across both proving-ground applications are now
+Done.** Six real, run-and-found divergences between a feature doc's own
+illustrative narrative and what the framework actually built were
+surfaced and honestly recorded along the way (below) — none silently
+smoothed over, each fixed at the sample-code level or, where the gap was
+genuinely in the core engine itself (`ADR-029`'s per-event late-arrival
+guard), recorded in `TODO.md` instead of worked around. Only Meridian's
+own Workflow C needed no correction at all — confirmed by actually
+running every one of its scenarios, not assumed from the doc's own claim
+that "no new framework mechanism is introduced."
 
 **One real, load-bearing implementation note, found while scoping this
 work, not while writing an individual workflow**: `RouterWorker.FoldAsync`/
