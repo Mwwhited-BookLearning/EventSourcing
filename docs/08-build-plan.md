@@ -95,7 +95,7 @@ provider they apply to — not "code written."
 | 34 | [Outbound Webhooks](#outbound-webhooks) | Publish API, Auth + Orchestration, Property-Level Masking, Leader Election | Done |
 | 35 | [Data Residency (Region Pinning)](#data-residency-region-pinning) | Sharding & Replication, Multi-Tenancy | Done |
 | 36 | [Bulk Ingestion & External Interchange-Format Adapters](#bulk-ingestion--external-interchange-format-adapters) | Publish API, Non-Authoritative Capture, Outbound Webhooks | Done |
-| 37 | [Tenant-to-Tenant Federation Mapping](#tenant-to-tenant-federation-mapping) | Multi-Tenancy, Auth + Orchestration, Bulk Ingestion & Interchange Adapters | Not started |
+| 37 | [Tenant-to-Tenant Federation Mapping](#tenant-to-tenant-federation-mapping) | Multi-Tenancy, Auth + Orchestration, Bulk Ingestion & Interchange Adapters | Done |
 | 38 | [Sanctions/Watchlist Screening Extensibility Seam](#sanctionswatchlist-screening-extensibility-seam) | Scaffolding & Persistence, Non-Authoritative Capture | Not started |
 | 39 | [Release Engineering, Packaging & Supply Chain](#release-engineering-packaging--supply-chain) | Scaffolding & Persistence, Compatibility & Deployment Discipline | Not started |
 | 40 | [Signing Secret Rotation, Dual Signature](#signing-secret-rotation-dual-signature) | Outbound Webhooks, Auth + Orchestration | Not started |
@@ -190,7 +190,7 @@ state "External Services" as tierExternal {
   state "Auth + Orchestration" as p5 #palegreen
   state "SPIFFE/SPIRE Identity & API Gateway" as p23 #palegreen
   state "Outbound Webhooks" as a10 #palegreen
-  state "Tenant Federation Mapping" as a12
+  state "Tenant Federation Mapping" as a12 #palegreen
   state "Bulk Ingestion +\nInterchange Adapters" as a13 #palegreen
   state "Sanctions Screening Seam" as a14
   state "Signing Secret Rotation" as a16
@@ -3233,6 +3233,46 @@ confirmed no new authentication mechanism or credential type was
 involved beyond ordinary `client_credentials`; confirmed the mapping is
 bespoke, per-pair application code, not a shared framework-level
 canonical schema.
+
+**Status: Done — confirms no new mechanism was needed, exactly as this
+section's own Scope predicted.** The one real code change:
+`InterchangeEndpoints.MapInterchangeEndpoints` (item 36) was generalized
+from a FHIR-specific `POST /interchange/fhir/{appId}` route into
+`POST /interchange/{adapterKey}/{appId}`, resolving whatever
+`IInterchangeFormatAdapter` is registered under `{adapterKey}` — FHIR
+now flows through this SAME generic route (`/interchange/Fhir/{appId}`)
+rather than a second, federation-specific endpoint being added beside
+it. A caller naming a key nothing is registered under gets a `404`, not
+a silent fallback to whatever adapter happens to be registered.
+
+No core Duplex project gained a bespoke tenant-pair mapping class —
+`ADR-082`'s own "bespoke, per-tenant-pair integration code... not a
+shared framework-level canonical schema" text is literal: the mapping
+adapter used to prove this item lives entirely inside the TEST project
+(`TenantFederationHttpSqliteTests.TenantAOrderMappingAdapter`),
+registered via `WebApplicationFactory.ConfigureServices` standing in for
+"tenant B's own composition root, a deployment team's own `Program.cs`,"
+never a change to any `EventStore.*` project.
+
+Verified with `TenantFederationHttpSqliteTests.cs` (real HTTP): tenant A
+authenticates with the SAME ordinary `publisher-client`
+`client_credentials` token every other caller in this repo already uses
+(confirming no new authentication mechanism); its own deliberately
+tenant-A-shaped payload (`LegacyOrderRef`/`TotalCents`, fields that don't
+exist anywhere in tenant B's own registered schema) is mapped by the
+test-registered adapter and lands in tenant B's Event Log as the
+registered `OrderPlaced` shape (`OrderId`/`Amount`) — the raw
+`LegacyOrderRef`/`TotalCents` fields are asserted absent from the stored
+payload, not just the mapped fields asserted present, closing the "never
+the raw cross-tenant shape" exit criterion both ways. A second scenario
+confirms an unregistered adapter key is rejected `404`, not silently
+routed to any other registered adapter. Full SQLite regression suite
+re-run clean except this repo's own already-tracked load-induced flakes
+(the SSE-subscription race, and — new this pass, understood but not yet
+fixed, see `TODO.md`'s addendum — an occasional `PeerSyncCursor` race in
+`DataResidencyHttpSqliteTests` under this suite's now-heavier
+`WebApplicationFactory` Host count; confirmed to pass cleanly in
+isolation).
 
 ## Sanctions/Watchlist Screening Extensibility Seam
 

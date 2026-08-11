@@ -1488,11 +1488,35 @@ stale numbers here are worse than none)*
   immediate re-runs (0-2 failures each, all already-known flake classes,
   no interchange-specific test ever failing) — tracked as a `TODO.md`
   addendum, not treated as a real regression.
-- **Next up**: item 37, "Tenant-to-Tenant Federation Mapping" — depends
-  on Multi-Tenancy (Done), Auth + Orchestration (Done), and Bulk
-  Ingestion & External Interchange-Format Adapters (Done, item 36) — the
-  bespoke tenant-pair mapping is written as an `IInterchangeFormatAdapter`
-  implementation.
+- **Item 37, "Tenant-to-Tenant Federation Mapping" (`ADR-082`), is Done —
+  confirms no new mechanism was needed, exactly as its own Scope
+  predicted.** The one real code change: `InterchangeEndpoints.
+  MapInterchangeEndpoints` (item 36) was generalized from a FHIR-specific
+  route into `POST /interchange/{adapterKey}/{appId}`, resolving whatever
+  `IInterchangeFormatAdapter` is registered under `{adapterKey}` — FHIR
+  now flows through this SAME generic route, not a second endpoint added
+  beside it; an unregistered key gets `404`, never a silent fallback. No
+  core Duplex project gained a bespoke tenant-pair mapping class — the
+  adapter used to prove this item lives entirely inside the TEST project
+  (`TenantFederationHttpSqliteTests.TenantAOrderMappingAdapter`),
+  registered via `WebApplicationFactory.ConfigureServices` standing in
+  for "tenant B's own composition root," matching `ADR-082`'s own
+  "bespoke, per-tenant-pair integration code, never a shared
+  framework-level canonical schema" text literally. Verified with real
+  HTTP: tenant A authenticates with the SAME ordinary `publisher-client`
+  `client_credentials` token every other caller already uses (no new
+  auth mechanism); its own deliberately tenant-A-shaped payload
+  (`LegacyOrderRef`/`TotalCents`, fields absent from tenant B's own
+  schema) is mapped and lands in tenant B's Event Log as the registered
+  `OrderPlaced` shape — asserted both that the mapped fields are present
+  AND the raw cross-tenant fields are absent. Full SQLite regression
+  suite re-run clean except already-tracked load-induced flakes (plus one
+  NEW manifestation this pass — an occasional `PeerSyncCursor` race in
+  `DataResidencyHttpSqliteTests` under this suite's now-heavier Host
+  count, understood but not yet fixed, see `TODO.md`).
+- **Next up**: item 38, "Sanctions/Watchlist Screening Extensibility
+  Seam" — depends on Non-Authoritative Capture (Done) and Delegated
+  Grants, RBAC, Federated Claims & Read Audit Logging (Done).
 
 ## How to resume cold
 
@@ -1507,13 +1531,14 @@ stale numbers here are worse than none)*
    narrative.
 5. `dotnet build EventStore.slnx` and `dotnet test tests/EventStore.IntegrationTests` —
    confirm the build/test baseline the last session left still holds
-   before adding to it (130 tests should pass — 118 (115, itself 105 —
-   98 plus item 33's `RateLimitingGatewayTests.cs` — plus item 34's 10
-   webhook methods, plus item 35's 3 residency methods)) plus item 36's
-   12 new methods across `BatchPublishHttpSqliteTests`/
+   before adding to it (132 tests should pass — 130 (118 (115, itself
+   105 — 98 plus item 33's `RateLimitingGatewayTests.cs` — plus item 34's
+   10 webhook methods, plus item 35's 3 residency methods)) plus item
+   36's 12 new methods across `BatchPublishHttpSqliteTests`/
    `InterchangeAdapterTests`/`Hl7V2MllpListenerTests`/
    `FhirIngestionHttpSqliteTests`/one new `WebhookDeliveryHttpSqliteTests`
-   scenario). Requires Docker running
+   scenario) plus item 37's 2 new `TenantFederationHttpSqliteTests`
+   methods). Requires Docker running
    (Testcontainers for Postgres/SQL Server) and the SDK pinned in
    `global.json`. A full multi-provider run has a known, pre-existing,
    unrelated flake — see `TODO.md`'s entry — where one or two SQL Server

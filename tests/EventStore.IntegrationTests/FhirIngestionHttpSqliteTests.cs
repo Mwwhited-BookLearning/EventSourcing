@@ -93,7 +93,7 @@ public class FhirIngestionHttpSqliteTests
 
         var (token, key) = await AuthScenarioAssertions.GetTokenAsync(_devIdpClient, "publisher-client", "publisher-client-secret", "events:publish");
         var fhirResource = """{ "resourceType": "Patient", "id": "fhir-http-pat-1", "name": [{ "family": "Nguyen", "given": ["Anh"] }] }""";
-        using var request = new HttpRequestMessage(HttpMethod.Post, $"/interchange/fhir/{appId}") { Content = new StringContent(fhirResource, Encoding.UTF8, "application/fhir+json") };
+        using var request = new HttpRequestMessage(HttpMethod.Post, $"/interchange/Fhir/{appId}") { Content = new StringContent(fhirResource, Encoding.UTF8, "application/fhir+json") };
         AuthScenarioAssertions.AttachAuth(request, _hostClient, token, key);
 
         using var response = await _hostClient.SendAsync(request);
@@ -110,7 +110,7 @@ public class FhirIngestionHttpSqliteTests
     {
         const string appId = "fhir-http-demo-2";
         var (token, key) = await AuthScenarioAssertions.GetTokenAsync(_devIdpClient, "publisher-client", "publisher-client-secret", "events:publish");
-        using var request = new HttpRequestMessage(HttpMethod.Post, $"/interchange/fhir/{appId}") { Content = new StringContent("""{ "resourceType": "Observation" }""", Encoding.UTF8, "application/fhir+json") };
+        using var request = new HttpRequestMessage(HttpMethod.Post, $"/interchange/Fhir/{appId}") { Content = new StringContent("""{ "resourceType": "Observation" }""", Encoding.UTF8, "application/fhir+json") };
         AuthScenarioAssertions.AttachAuth(request, _hostClient, token, key);
 
         using var response = await _hostClient.SendAsync(request);
