@@ -2005,19 +2005,39 @@ stale numbers here are worse than none)*
   `WithParentRelationship` (no dedicated "resource group" primitive
   exists in this Aspire version, confirmed by reflecting over the
   installed DLLs). Full narrative: `docs/changes/2026-08-11.md`.
-- **Next up, per direct request ("After all that is done I would like
-  the providing ground applications to be built out")**: build the two
-  proving-ground reference applications — Vitals (clinical trials +
-  device telemetry) and Meridian (digital identity/KYC) — under a new
-  `samples/` folder, one subfolder per domain (direct request: "the
-  proving ground projects should show under the sample folder but also
-  within subfolders for each proving ground model"). Once built, apply
-  the same Aspire dashboard-grouping pattern just established
-  (`WithParentRelationship`) to each proving-ground app's own resources,
-  per direct request ("can aspire create a pool for the common resources
-  as well as for each of the proving grounds... nice to have the stuff
-  logically grouped in the UI") — the pattern is proven, just not yet
-  applied to resources that don't exist yet.
+- **Both proving-ground applications are now fully built — all 7
+  workflows across Vitals (4) and Meridian (3), per direct request
+  ("the providing ground applications to be built out," "the proving
+  ground projects should show under the sample folder... within
+  subfolders for each proving ground model," "full depth" chosen when
+  asked how much to build).** New `samples/Vitals/`/`samples/Meridian/`
+  solution folders, each holding a plain class-library project
+  (`Samples.Vitals`/`Samples.Meridian` — registration code, no
+  `Program.cs` of their own; no feature doc ever asked for a seeding
+  worker) plus one Gherkin-driven `*ScenarioAssertions.cs` + provider
+  test-class pair per workflow in `EventStore.IntegrationTests`. Full
+  narrative, including the six real, run-and-found divergences between
+  each feature doc's own illustrative narrative and what the framework
+  actually built (the `authorityDecision` reactor reused in place of a
+  doc-invented "sibling resolver"; `revealField` in place of a
+  nonexistent generic entity-read GraphQL query; `ADR-029`'s per-event,
+  not per-field, late-arrival guard — recorded in `TODO.md`, not fixed;
+  the Router-side "auto token-exchange" step in `customer-onboarding-
+  and-identity-verification.md` that was never built; `UcanDelegation`+
+  `AppTrustRoot` in place of `accessGrant`/`accessGrantRevoked`-as-events;
+  no live revocation-before-expiry mechanism at all): `docs/domains/
+  README.md`'s own "Sample application build status" section (the
+  authoritative tracker for this build, kept current the same pass each
+  workflow's own status changed) and `docs/changes/2026-08-11.md`'s own
+  per-workflow entries. The Aspire dashboard-grouping pattern
+  (`WithParentRelationship`) established for the core engine's own
+  resources has nothing to attach to yet, honestly noted in that same
+  build-status section — neither sample is a runnable deployable.
+- **Next up**: nothing currently queued. The user's own request queue
+  from this session (doc audit → SLA-branch merge/item 49 → AppHost
+  migrations/client-UI → Aspire dashboard grouping → proving-ground
+  build-out) is now fully worked through. A fresh session resuming here
+  should check with the user for the next task rather than assume one.
 
 ## How to resume cold
 
@@ -2032,8 +2052,9 @@ stale numbers here are worse than none)*
    narrative.
 5. `dotnet build EventStore.slnx` and `dotnet test tests/EventStore.IntegrationTests` —
    confirm the build/test baseline the last session left still holds
-   before adding to it. **As of item 49 (2026-08-11, now the last
-   build-plan item — all 49 Done): 175 `[TestMethod]`s total**
+   before adding to it. **As of both proving-ground apps' own completion
+   (2026-08-11, after item 49 — all 49 build-plan items plus all 7
+   Vitals/Meridian workflows Done): 186 `[TestMethod]`s total**
    (`grep -rc "\[TestMethod\]" tests/EventStore.IntegrationTests/*.cs`
    is the reliable way to recheck this count directly — don't hand-thread
    a running tally through prose any further, it already drifted
