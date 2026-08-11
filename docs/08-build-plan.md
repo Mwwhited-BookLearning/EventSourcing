@@ -106,7 +106,7 @@ provider they apply to — not "code written."
 | 45 | [Accessibility Standard](#accessibility-standard) | MVVM Client | Done |
 | 46 | [i18n/l10n Architectural Scope](#i18nl10n-architectural-scope) | MVVM Client | Done |
 | 47 | [Mechanism-Level OpenTelemetry Instrumentation](#mechanism-level-opentelemetry-instrumentation) | Hardening & Evolution, Sharding & Replication, Entity-Centric Core Rebuild, Outbound Webhooks | Done |
-| 48 | [Event Log/AccessLog Archival Segment Detachment](#event-logaccesslog-archival-segment-detachment) | Binary Attachments, Delegated Grants/RBAC/Read Audit Logging, Hardening & Evolution, Lineage Export & Bitemporal Playback | Not started |
+| 48 | [Event Log/AccessLog Archival Segment Detachment](#event-logaccesslog-archival-segment-detachment) | Binary Attachments, Delegated Grants/RBAC/Read Audit Logging, Hardening & Evolution, Lineage Export & Bitemporal Playback | Done |
 
 Two groups worth naming up front, since they explain most of the
 ordering below:
@@ -199,7 +199,7 @@ state "External Services" as tierExternal {
 state "Persistence" as tierPersistence {
   state "Scaffolding & Persistence" as p0 #palegreen
   state "Data Residency\n(Region Pinning)" as a11 #palegreen
-  state "Event Log/AccessLog\nArchival" as a24
+  state "Event Log/AccessLog\nArchival" as a24 #palegreen
   state "Data Lifecycle &\nBackup Classification" as a25 #palegreen
 }
 state "Local Services" as tierLocal {
@@ -4375,6 +4375,94 @@ mechanism, with its own distinct `ChainCheckpoint` row, confirmed not to
 share or collide with the Event Log's checkpoint; the archival backend is
 confirmed to be an ordinary registered `IAttachmentContentStore`
 implementation with no new extensibility interface introduced anywhere.
+
+**Status: Done — the last item in this build plan.** New `EventStore.
+Archival` project: `ArchivalService` (`ArchiveEventLogSegmentAsync`/
+`ArchiveAccessLogSegmentAsync`, `ReVerifyEventLogSegmentAsync`/
+`ReVerifyAccessLogSegmentAsync`, `ArchiveResult` union). `ChainCheckpoint`
+(`EventStore.Domain/EventLog`) gained a surrogate `Id` (no natural key
+survives more than one archival) and is registered TWICE via EF Core's
+"shared-type entity" feature — one CLR type, two genuinely distinct
+tables (`EventStoreContext.EventLogChainCheckpoints`/
+`AccessLogChainCheckpoints`) — verified against a real scratch program
+before wiring it into the real DbContext, not assumed to work. Archive
+order is verify → serialize → write the blob → save the checkpoint →
+THEN detach (`ExecuteDeleteAsync`, no change-tracker round trip needed)
+— a crash at any point always leaves the archived bytes/checkpoint
+durable before the only local copy is ever removed, this design's own
+"never lose or corrupt data" principle applied to the archival operation
+itself.
+
+`ADR-089`'s own text says to reuse `ADR-068`'s litigation-export NDJSON
+format; that type (`ExportedEventLine`) turned out EntityId-scoped and
+missing `ParentEventIds`/`Signature` — both genuinely needed to
+recompute `PayloadHash`/`ChainHash` for re-verification — so this reuses
+the FORMAT CONVENTION (one JSON record per line) with a new,
+sequence-range-scoped `ArchivedEventLine` shape instead, an honest
+partial reuse per this repo's own "say when something is only partially
+borrowed" convention, not the ADR's literal types. `ChainVerificationService`/
+`AccessLogChainVerificationService` (`EventStore.Inbox`) now seed live
+verification from the latest `ChainCheckpoint`'s own `ChainHashAtRangeEnd`
+and query only `SequenceNumber` strictly past it — ordinary verification
+after an archival never reads the archived segment at all, per this
+item's own exit criterion.
+
+**A real, critical bug found only by actually running a publish
+immediately after an archival, not caught by any code review**:
+`EventAppender.AppendAsync`/`AccessLogAppender.AppendAsync` compute their
+own next `ChainHash` by reading the CURRENT highest-`SequenceNumber`
+live row's own `ChainHash` — once that row has been archived (physically
+deleted), that query finds nothing, and both appenders silently fell back
+to `EventChainHash.Genesis`, restarting the chain from zero and breaking
+every `ChainHash` computed from that point on. Fixed in both appenders:
+fall back to the latest `ChainCheckpoint`'s own `ChainHashAtRangeEnd`
+when no live row exists, mirroring the identical fix the two verifiers
+above already needed for the same underlying reason. `LogicalClock`
+needed no equivalent fix — it's wall-clock-anchored (`HybridLogicalClock.Next`),
+not a pure counter chain, so it stays monotonic across an archival on
+its own.
+
+A still-live child's own `EventParents` reference to an archived parent
+is deliberately left as a tolerated dangling reference (`EventParent`
+already carries no FK constraint at all, per `ADR-005`'s own Permissive-
+mode design) — only the archived events' OWN parent-link rows (as the
+child side) are removed, since that information is preserved inside the
+archived bundle itself.
+
+Tests: `ArchivalScenarioAssertions.cs` (9 scenarios: correct checkpoint
+boundaries, live verification after archival, re-verification of a
+clean archived segment, a tampered archived blob detected, a second
+segment chaining from the first checkpoint rather than Genesis, a
+tampered LIVE segment refused with nothing detached/checkpointed, a
+no-op re-archival attempt, `AccessLog`'s own independent archival/
+re-verification with a distinct checkpoint row, and a live child's
+dangling reference surviving its parent's archival) +
+`ArchivalSqliteTests`/`Postgres`/`SqlServer`. **A real test-design bug
+found while writing these, the same class this repo's tests have hit
+before**: an early scenario's own direct-DB payload tamper (proving a
+refused archival) was never reverted, permanently poisoning every LATER
+scenario sharing the same `EventStoreContext` — every archival attempt
+after it failed with `SegmentNotVerified` for a completely unrelated
+reason, until traced back and fixed by restoring the tampered row in a
+`finally` block once that scenario's own assertion was done with it.
+Several scenario assertions also initially hardcoded an assumed
+`SequenceNumber`/count as if starting fresh from 1 — wrong in a shared-
+context test suite where `SchemaRegisteredEventType`'s own bootstrap
+event(s) and earlier scenarios' own archival history both shift the true
+numbers; fixed to derive expected values from the checkpoint's own
+recorded range or from a captured before/after delta instead of a
+literal. Full non-container suite passing (count captured in `.claude/
+context.md`); Postgres and SqlServer archival-specific runs both passing
+too, confirming the `ChainCheckpoint` migration on every provider, not
+just SQLite.
+
+**Built-scope note**: `ADR-056`'s own retention-window/cadence policy
+(WHEN archival should run) is explicitly out of this item's scope, per
+that ADR's own deferral — `ArchivalService`'s methods are directly-
+callable, on-demand operations here, not wired to a background worker
+or a scheduled trigger of any kind. No HTTP endpoint was built either,
+for the same reason: nothing in this build has a policy decision to
+call it from yet.
 
 ## Cross-cutting, every item
 

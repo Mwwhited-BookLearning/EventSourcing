@@ -51,6 +51,14 @@ public class EventStoreContext(DbContextOptions<EventStoreContext> options, IJso
     public DbSet<WebhookOutbox> WebhookOutbox => Set<WebhookOutbox>();
     public DbSet<WebhookDeliveryCursor> WebhookDeliveryCursors => Set<WebhookDeliveryCursor>();
 
+    // ADR-089 -- ONE CLR type (ChainCheckpoint), TWO genuinely distinct
+    // tables via EF Core's "shared-type entity" feature, so the Event
+    // Log's own checkpoints and AccessLog's own checkpoints can never
+    // collide -- confirmed against a real scratch program before wiring
+    // this in, not assumed to work as expected.
+    public DbSet<ChainCheckpoint> EventLogChainCheckpoints => Set<ChainCheckpoint>("EventLogChainCheckpoints");
+    public DbSet<ChainCheckpoint> AccessLogChainCheckpoints => Set<ChainCheckpoint>("AccessLogChainCheckpoints");
+
     protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder) =>
         optionsBuilder.ReplaceService<IModelCacheKeyFactory, ProviderAwareModelCacheKeyFactory>();
 
@@ -263,6 +271,18 @@ public class EventStoreContext(DbContextOptions<EventStoreContext> options, IJso
         modelBuilder.Entity<WebhookDeliveryCursor>(e =>
         {
             e.HasKey(x => x.SubscriptionId);
+        });
+
+        modelBuilder.SharedTypeEntity<ChainCheckpoint>("EventLogChainCheckpoints", e =>
+        {
+            e.ToTable("EventLogChainCheckpoints");
+            e.HasKey(x => x.Id);
+        });
+
+        modelBuilder.SharedTypeEntity<ChainCheckpoint>("AccessLogChainCheckpoints", e =>
+        {
+            e.ToTable("AccessLogChainCheckpoints");
+            e.HasKey(x => x.Id);
         });
     }
 

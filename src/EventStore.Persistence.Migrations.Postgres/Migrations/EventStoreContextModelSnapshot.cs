@@ -22,6 +22,68 @@ namespace EventStore.Persistence.Migrations.Postgres.Migrations
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
+            modelBuilder.Entity("AccessLogChainCheckpoints", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("ChainHashAtRangeEnd")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("ContentProviderKey")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("ContentProviderRef")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<long>("SequenceNumberRangeEnd")
+                        .HasColumnType("bigint");
+
+                    b.Property<long>("SequenceNumberRangeStart")
+                        .HasColumnType("bigint");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("AccessLogChainCheckpoints", (string)null);
+                });
+
+            modelBuilder.Entity("EventLogChainCheckpoints", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("ChainHashAtRangeEnd")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("ContentProviderKey")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("ContentProviderRef")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<long>("SequenceNumberRangeEnd")
+                        .HasColumnType("bigint");
+
+                    b.Property<long>("SequenceNumberRangeStart")
+                        .HasColumnType("bigint");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("EventLogChainCheckpoints", (string)null);
+                });
+
             modelBuilder.Entity("EventStore.Domain.AccessLog.AccessLogEntry", b =>
                 {
                     b.Property<long>("SequenceNumber")

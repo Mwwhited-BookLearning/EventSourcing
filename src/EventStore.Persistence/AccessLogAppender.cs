@@ -39,9 +39,19 @@ public static class AccessLogAppender
                 .Select(e => e.ChainHash)
                 .FirstOrDefaultAsync(ct);
 
+            // ADR-089 -- the identical fallback EventAppender.AppendAsync
+            // now needs for the Event Log's own chain: once AccessLog's own
+            // live tail has been archived away, nothing is left to read a
+            // "prior" ChainHash from even though a real prior chain exists.
+            var priorChainHash = prior ?? await db.AccessLogChainCheckpoints
+                .AsNoTracking()
+                .OrderByDescending(c => c.SequenceNumberRangeEnd)
+                .Select(c => c.ChainHashAtRangeEnd)
+                .FirstOrDefaultAsync(ct);
+
             await db.SaveChangesAsync(ct);
 
-            entry.ChainHash = EventChainHash.Compute(prior ?? EventChainHash.Genesis, AccessLogEntryHash.Compute(entry), entry.SequenceNumber);
+            entry.ChainHash = EventChainHash.Compute(priorChainHash ?? EventChainHash.Genesis, AccessLogEntryHash.Compute(entry), entry.SequenceNumber);
             await db.SaveChangesAsync(ct);
             await transaction.CommitAsync(ct);
         }

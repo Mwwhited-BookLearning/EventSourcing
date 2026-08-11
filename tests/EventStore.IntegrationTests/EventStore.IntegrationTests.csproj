@@ -34,6 +34,8 @@
     <ProjectReference Include="..\..\src\EventStore.LeaderElection\EventStore.LeaderElection.csproj" />
     <ProjectReference Include="..\..\src\EventStore.ViewRegistry\EventStore.ViewRegistry.csproj" />
     <ProjectReference Include="..\..\src\EventStore.Inbox\EventStore.Inbox.csproj" />
+    <ProjectReference Include="..\..\src\EventStore.Archival\EventStore.Archival.csproj" />
+    <ProjectReference Include="..\..\src\EventStore.Attachments\EventStore.Attachments.csproj" />
     <ProjectReference Include="..\..\src\EventStore.Erasure\EventStore.Erasure.csproj" />
     <ProjectReference Include="..\..\src\EventStore.Derivation\EventStore.Derivation.csproj" />
     <ProjectReference Include="..\..\src\EventStore.Spiffe\EventStore.Spiffe.csproj" />

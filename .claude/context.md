@@ -21,10 +21,13 @@ follow/lineage APIs), a CQRS read side, and two fully worked proving-ground
 domains (clinical trials + device telemetry — "Vitals"; digital identity/
 KYC — "Meridian"). Governing principle: never lose or corrupt data. All 93
 ADRs (`docs/adrs/adr-001` through `adr-093`) are Accepted — the *decisions*
-are done; the remaining work is (a) keeping ~150 docs internally consistent
-with no compiler to catch drift, and (b) building the real `src/`/`tests/`
-tree in `docs/08-build-plan.md`'s dependency order, checking off that
-file's status table one item at a time.
+are done. **All 48 `docs/08-build-plan.md` items are now Done, as of
+2026-08-11** — the real `src/`/`tests/` tree exists in full, in that
+file's own dependency order. Remaining work going forward is (a) keeping
+~150 docs internally consistent with no compiler to catch drift, and (b)
+whatever new capability/hardening/domain-depth work gets decided next —
+there is no more unbuilt backlog in `08-build-plan.md` itself to check
+off.
 
 ## Current state
 
@@ -1897,10 +1900,59 @@ stale numbers here are worse than none)*
   still hardcoded a count of 5 interfaces from before item 42 added
   `ITimestampAuthorityClient` as the 6th — surfaced by running the full
   suite as part of this item's own verification, not caused by it.
-- **Next up**: item 48, "Event Log/AccessLog Archival Segment
-  Detachment" — the last item in `08-build-plan.md`. No further
-  dependency notes recorded here; check that item's own "Depends on"
-  text directly.
+- **Item 48, "Event Log/AccessLog Archival Segment Detachment," is
+  Done — the LAST item in `08-build-plan.md`. Same session, continuing
+  directly from item 47.** New `EventStore.Archival` project:
+  `ArchivalService` (`Archive{EventLog,AccessLog}SegmentAsync`,
+  `ReVerify{EventLog,AccessLog}SegmentAsync`). `ChainCheckpoint`
+  (`EventStore.Domain/EventLog`) gained a surrogate `Id` and is
+  registered via EF Core's "shared-type entity" feature — one CLR type,
+  two genuinely distinct tables (`EventLogChainCheckpoints`/
+  `AccessLogChainCheckpoints`) — verified against a real scratch program
+  first. Archive order: verify → serialize → write blob → save
+  checkpoint → THEN detach (`ExecuteDeleteAsync`), so a crash mid-
+  operation never loses data before its backup copy exists.
+  **Found and fixed a REAL, critical, pre-existing-class-of-bug**:
+  `EventAppender`/`AccessLogAppender` compute their next `ChainHash` by
+  reading the current live tail's own `ChainHash` — once that tail is
+  archived away, both silently fell back to `EventChainHash.Genesis`,
+  restarting the chain from zero. Caught only by actually publishing an
+  event immediately after an archival in a test, not by code review.
+  Fixed by falling back to the latest `ChainCheckpoint`'s own
+  `ChainHashAtRangeEnd` in both appenders — the same fix
+  `ChainVerificationService`/`AccessLogChainVerificationService` also
+  needed (both now seed live verification from the latest checkpoint and
+  query only past it, satisfying "never reads the archived segment").
+  **`ADR-088's`-style honest partial reuse**: `ADR-089` said to reuse
+  `ADR-068`'s litigation-export NDJSON format; that type turned out
+  EntityId-scoped and missing `ParentEventIds`/`Signature`, both needed
+  for correct re-verification — reused the FORMAT CONVENTION (one JSON
+  record per line) with a new `ArchivedEventLine` shape instead, not the
+  literal types.
+  **A real test-design bug, the same class this repo's tests have hit
+  before**: one scenario's own direct-DB payload tamper was never
+  reverted, permanently poisoning every LATER scenario sharing the same
+  `EventStoreContext` (every later archival attempt failed with
+  `SegmentNotVerified` for a completely unrelated reason) — fixed with a
+  `finally` block restoring the tampered row. Several other scenario
+  assertions initially hardcoded assumed `SequenceNumber`/count values
+  as if starting fresh from 1 — wrong given `SchemaRegisteredEventType`'s
+  own bootstrap events and earlier scenarios' own archival history both
+  shift the true numbers; fixed to derive expected values from the
+  checkpoint's own recorded range instead.
+  Tests: `ArchivalScenarioAssertions.cs` (9 scenarios) +
+  `ArchivalSqliteTests`/`Postgres`/`SqlServer`, all passing on every
+  provider (Postgres/SqlServer both actually run this pass, not skipped).
+  Full non-container suite: 126 total, 2 rotating flaky failures
+  matching `TODO.md`'s already-tracked "load-induced flakiness" entry
+  exactly (confirmed by running the specific failing classes alone —
+  clean both times, different classes failed each full-suite run).
+  **Built-scope note**: `ADR-056`'s own retention-window/cadence policy
+  (WHEN archival runs) stays explicitly deferred — `ArchivalService`'s
+  methods are directly-callable, on-demand operations, not wired to a
+  background worker, a scheduled trigger, or an HTTP endpoint of any
+  kind, since nothing yet has a policy decision to call it from.
+- **All 48 build-plan items are now Done.** This was the last one.
 
 ## How to resume cold
 
@@ -1915,8 +1967,8 @@ stale numbers here are worse than none)*
    narrative.
 5. `dotnet build EventStore.slnx` and `dotnet test tests/EventStore.IntegrationTests` —
    confirm the build/test baseline the last session left still holds
-   before adding to it. **As of item 47 (2026-08-11): 169 `[TestMethod]`s
-   total** (`grep -rc "\[TestMethod\]" tests/EventStore.IntegrationTests/*.cs`
+   before adding to it. **As of item 48 (2026-08-11, the last build-plan
+   item): 172 `[TestMethod]`s total** (`grep -rc "\[TestMethod\]" tests/EventStore.IntegrationTests/*.cs`
    is the reliable way to recheck this count directly — don't hand-thread
    a running tally through prose any further, it already drifted
    silently across items 38-40 before this pass caught it). Requires
