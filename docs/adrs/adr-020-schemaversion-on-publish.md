@@ -46,7 +46,7 @@ Decision:
   `ProjectionHost` reader sees the upcasted shape, exactly as `ADR-018`
   already designs. The publish-time run is a validation pass, not a
   storage-shape change.
-- **On failure** (a hop between `schemaVersion` and the active version
+- ~~**On failure** (a hop between `schemaVersion` and the active version
   fails to parse, fails to evaluate, or its output doesn't validate
   against that hop's target schema): the store does **not** reject the
   publish outright, and does **not** silently store an unreconcilable
@@ -54,19 +54,30 @@ Decision:
   system-defined event type**, `EventUpcastFailed`, in the original
   event's place. Its payload carries: the original `eventType`, the
   original `schemaVersion`, the original (verbatim, unmodified) submitted
-  payload, and which `(EventType, FromVersion)` hop failed and why. ~~The
-  HTTP response is still `201 Created`~~ — **corrected to `202 Accepted`**,
-  matching `ADR-023`'s always-`202` publish response adopted after this
-  ADR was originally written (found and fixed by a design review this
-  session) — something durable *was*
+  payload, and which `(EventType, FromVersion)` hop failed and why. The
+  HTTP response is still `201 Created` — something durable *was*
   recorded — but its body names `EventUpcastFailed` as the stored type,
-  not the caller's originally-intended one.
-- `EventUpcastFailed` is the first **system-owned event type** in this
+  not the caller's originally-intended one.~~
+- ~~`EventUpcastFailed` is the first **system-owned event type** in this
   design — not registered through `PUT /registry/{event-type}` by an
   operator, but reserved at the platform level. It's fully queryable like
   any other type: `QUERY /follow/EventUpcastFailed` lets an operator (or a
   monitoring projection) watch upgrade failures as they happen, rather
-  than needing to poll logs.
+  than needing to poll logs.~~
+- **Both bullets above are superseded by `ADR-023` and retired in
+  "Entity-Centric Core Rebuild" (`08-build-plan.md`)**: `ADR-023`'s
+  persist-everything posture explicitly reframes an upcast failure as
+  "exactly a `SchemaStatus: invalid` situation like any other" rather than
+  a uniquely-shaped dead-letter exception — once that item actually landed
+  (this file's own "corrected to `202 Accepted`" note above was already
+  anticipating it), the `EventUpcastFailed` synthetic event type was
+  removed from `PublishService` entirely. A publish-time hop failure now
+  simply leaves the *original* event persisted, `SchemaStatus: invalid`,
+  exactly like a plain schema-shape violation — no substituted event type,
+  no separate mechanism. `PublishService`'s own synchronous validation
+  step (including the upcast-compatibility check this ADR originally
+  added) was removed too; schema/upcast validation is now the async
+  Router's job (`ADR-023`), not the Inbox's.
 - **Deliberately no proactive/synthetic-data check for a hop nobody has
   exercised yet, and none is wanted.** A hop between two versions that no
   lagging publisher has ever actually hit has no observable behavior at

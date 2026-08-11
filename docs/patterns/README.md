@@ -45,6 +45,8 @@ per kind).
 | [Anti-Corruption Layer](anti-corruption-layer.md) | An isolating translation layer between two subsystems with different data models, so a foreign system's shape/quirks never leak into your own domain model | `ADR-072` (`IInterchangeFormatAdapter` — HL7v2/FHIR inbound, ICH E2B(R3)/GS1-EPCIS outbound) | Written |
 | [Idempotent Receiver & Inbox/Dead Letter](idempotent-receiver-and-inbox.md) | Safe retries; persist-before-understand; failures become inspectable records, not silent drops | `ADR-011`, `ADR-020`, `ADR-023` | Written |
 | [Tolerant Reader & Schema Evolution](tolerant-reader-and-schema-evolution.md) | Ignore what you don't recognize; reconcile old-shaped data on read, never by rewriting history | `ADR-018`, `ADR-020`, `ADR-022`; the enum unknown-value fallback contract and N-1/N+1 window are the same tolerance restated as a deployment-time guarantee (`ADR-038`) | Written |
+| [Request-Reply & Correlation Identifier](request-reply-correlation.md) | A reply carries a unique identifier naming which request it answers, so the pairing survives arbitrary delay between the two | `ADR-094` (`RespondsToEventId` envelope field, `ExpectedResponse` opt-in tracked deadline) | Written |
+| Humble Object (testable static core + thin hosted-service wrapper) | Pull a background worker's real logic out of its hard-to-test `IHostedService`/`BackgroundService` shell into a public static method taking explicit (and optionally nullable) collaborator parameters, so tests call it directly with no DI container; the hosted service itself becomes a thin, humble caller | `RouterWorker`, `PeerSyncWorker`, `WebhookOutboxPump`, `ArchivalService` all follow this shape identically (`ADR-023`, `ADR-033`, `ADR-060`, `ADR-089`) | Catalog only |
 
 ## Architecture patterns
 
@@ -80,6 +82,7 @@ per kind).
 | Rate limiting (Token Bucket / Sliding Window / Concurrency Limiter) | Bound a caller's request volume or concurrent resource usage, partitioned per tenant so one caller can't starve another | `ADR-058` | Catalog only |
 | Bitemporal modeling (valid time vs. transaction time) | Track two independent time axes — when something was true in reality, vs. when the system learned about it — so "what do we know now" and "what did we show at the time" can both be queried honestly | `ADR-068` | Catalog only |
 | Expand/Contract (Parallel Change) database migration | Add new structures without touching existing ones (Expand), cut over writers/readers to the new shape (Migrate), remove the old shape only once nothing depends on it, much later if ever (Contract) — a rolling deployment's binary rollback then just works, since the database never stops understanding the old code | `ADR-038`, layered on this design's existing "never lose data" posture (`ADR-023`) | Catalog only |
+| Leader Election | Exactly one instance of a singleton background-worker role is ever actively running per site at a time, arbitrated via a database-backed lease rather than an external coordination service — so two fold/upcast-materializer/outbox-pump instances never double-process the same work | `ADR-078` | Catalog only |
 
 ## Standards
 
@@ -121,6 +124,7 @@ primarily a system-shape or code-structure decision.*
 | Property-based testing | Test a general property a function must hold ("for all valid inputs, X"), checked against a large number of randomly generated cases | `ADR-063` (`FsCheck`, for `ADR-019`'s hash-chain and `ADR-024`'s conflict-resolution invariants) | Catalog only |
 | Fault injection / Chaos Engineering | Deliberately introduce failure into a running system to build confidence it survives real turbulent conditions | `ADR-063` (`Polly`+`Simmy` now; `Testcontainers`+`Toxiproxy` named as the next escalation) | Catalog only |
 | Test Pyramid | Many fast, cheap unit tests at the base; fewer integration tests in the middle; the fewest, slowest UI/E2E tests at the top | `ADR-055` (MSTest+Moq unit, Testcontainers integration, Playwright E2E) | Catalog only |
+| Checkpoint-before-destroy (verify → durably externalize → checkpoint → detach) | Never remove the original copy of data until its replacement has been independently verified, durably written elsewhere, and a small pointer/checkpoint recording that fact has itself been committed — the same discipline WAL-based databases use for log-truncation-via-checkpointing and Kafka uses for segment retention | `ADR-089` (Event Log/`AccessLog` archival: verify → serialize → write blob → save `ChainCheckpoint` → THEN detach) | Catalog only |
 
 ## Interactions — where two patterns compose
 

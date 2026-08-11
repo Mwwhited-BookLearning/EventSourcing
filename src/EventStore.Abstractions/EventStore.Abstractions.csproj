@@ -1,0 +1,29 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- ADR-062: "a new package, EventStore.Abstractions, carries every
+       interface catalogued in docs/extensibility-points.md... with no
+       implementation." Carries the 5 catalogued interfaces that are
+       genuinely implementer-facing seams with no back-reference into the
+       engine's own internals (a downstream project references only this
+       package, never the full engine, to write a custom extension).
+       docs/08-build-plan.md's "Release Engineering..." item explains why
+       IEventLineageQueryProvider/IJsonPathTranslator stay in
+       EventStore.Persistence instead (parameterized directly over
+       EventStoreContext/EF Core's own SqlExpression, so moving them here
+       would not actually shrink an implementer's footprint), and why
+       IProjection(T)/IInterchangeFormatAdapter stay in their own existing
+       EventStore.Projections.Abstractions/EventStore.Interchange.Abstractions
+       packages rather than being folded in (already interfaces-only,
+       already satisfying this ADR's goal; merging would just be churn on
+       every project that already references them). -->
+  <ItemGroup>
+    <ProjectReference Include="..\EventStore.Domain\EventStore.Domain.csproj" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+</Project>

@@ -42,7 +42,12 @@ actor "SPA / backend service\n(header-capable)" as caller
 participant "EventStore.DevIdp\n(OpenIddict, ADR-006)" as idp
 participant "<video src> / <img src>\n(header-incapable)" as element
 
-caller -> idp: POST /oauth/token\nAuthorization: Bearer <JWT>, DPoP: <proof> (ADR-017, unchanged)\ngrant_type=urn:ietf:params:oauth:grant-type:token-exchange\nsubject_token=<the JWT above>\nsubject_token_type=urn:ietf:params:oauth:token-type:access_token\nrequested_token_type=urn:eventstore:token-type:ticket\nclient_id=<registered client> OR one_time_secret=<caller-generated random value>
+alt caller uses a registered client_id (routed through OpenIddict)
+  caller -> idp: POST /connect/token\nAuthorization: Bearer <JWT>, DPoP: <proof> (ADR-017, unchanged)\ngrant_type=urn:ietf:params:oauth:grant-type:token-exchange\nsubject_token=<the JWT above>\nsubject_token_type=urn:ietf:params:oauth:token-type:access_token\nrequested_token_type=urn:eventstore:token-type:ticket\nclient_id=<registered client>\nclient_secret=<its registered secret>
+  note right: OpenIddict's own /connect/token pipeline unconditionally\nrequires client_id + client_secret for ANY grant type reaching it --\ngenuinely incompatible with the one_time_secret path below, which is\nhandled by a separate, non-OpenIddict endpoint instead (ADR-040)
+else caller uses a fresh one_time_secret (never a registered client_id)
+  caller -> idp: POST /oauth/ticket-exchange\nDPoP: <proof> (ADR-017 still applies in full; a plain,\nnon-OpenIddict minimal-API endpoint, no Authorization header required)\nsubject_token=<the JWT above>\none_time_secret=<caller-generated random value, never persisted\nanywhere except this Ticket's own secretRef, ADR-040>
+end
 idp -> idp: validate subject_token (ordinary bearer+DPoP check, ADR-006/017)
 idp -> idp: generate ticket -- opaque, single-use,\ncryptographically random, NOT a JWT,\nnot self-describing (deliberately)
 idp -> idp: store Ticket record, in-process/non-persistent\n{ ticket, clientIdOrOneTimeSecretRef, expiresAt,\n  consumed: false, originalTokenClaims }\n-- same InMemory OpenIddict-adjacent store\nauth.md already documents client/token state living in,\nNOT EventStoreContext (ADR-040's own consequence)
@@ -107,15 +112,27 @@ there's nothing here that needs the durability guarantees
 `EventStoreContext` exists to provide.
 
 **The shared secret used for HMAC signing is likewise not a new entity**
-— checked against `ADR-093` (which briefly assumed otherwise before being
-corrected) — it's either the caller's already-registered OAuth2
-`client_secret` (`ADR-006`, DevIdp-side state) or a caller-generated
-`one_time_secret` that's used for exactly one ticket and never persisted
-at all. `ADR-093`'s current+previous rotation support applies to the
-`client_secret` path as an instance of ordinary OAuth2 client-credential
-rotation (OpenIddict already supports a client holding more than one
-valid credential) — not a field this design's own data model needs to
-add anywhere.
+— it's either the caller's already-registered OAuth2 `client_secret`
+(`ADR-006`, DevIdp-side state) or a caller-generated `one_time_secret`
+that's used for exactly one ticket and never persisted at all.
+
+**Corrected, 2026-08-11**: the paragraph above previously claimed
+`ADR-093`'s current+previous rotation support extends to this
+`client_secret` path too, "as an instance of ordinary OAuth2 client-
+credential rotation (OpenIddict already supports a client holding more
+than one valid credential)." That claim was never actually verified
+before being written down, and turned out to be false — checked against
+OpenIddict's own docs/source/issue tracker while building `ADR-093`:
+`OpenIddictApplicationDescriptor.ClientSecret` is a single string per
+application, with no built-in multi-secret mechanism. `ADR-093` itself
+now says so explicitly (struck through, with the real finding), and
+only its webhook half (`ADR-060`'s `WebhookSubscription.SigningSecret`)
+was actually built. Zero-downtime rotation for THIS path's own
+`client_secret` still needs one of: (a) a custom OpenIddict event
+handler accepting a locally-stored previous secret alongside the
+current one, or (b) registering a second client application as a
+temporary stopgap during rotation. Neither is built — tracked in
+`TODO.md`, not silently claimed done.
 
 ## Salt (UI mockup) — the SPA's own flow constructing a header-incapable URL
 

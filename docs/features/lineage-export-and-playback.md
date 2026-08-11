@@ -231,6 +231,15 @@ end note
 @enduml
 ```
 
+**Implementation note (added once built, 2026-08-11):** "recompute
+ChainHash sequence" above is realized as a manifest-hash recomputation
+(exact, over the bundle's own ordered `ChainHash` values) plus a masked/
+erased-field count, not a per-event `PayloadHash`-from-`Payload` re-hash
+-- `ExportedEventLine` carries no `ParentEventIds`, so that recomputation
+isn't safely buildable without risking a false "tampered" result for any
+event with real causal parents. See `ADR-068`'s own "Corrected, 2026-08-11"
+Consequences note and `client-web/src/playback/verifyBundle.ts`.
+
 ## Data model (ER diagram)
 
 ```plantuml
@@ -295,11 +304,8 @@ event ..> playbackResult : "folded, in arrival order, up to a\nchosen SequenceNu
 
 note right of event
   OriginalSequenceNumber/OriginalChainHash/ImportedFrom
-  are ADR-068's own decided shape but are NOT YET
-  reflected in ../data/event-log.md's StoredEvent
-  listing -- existing propagation drift, not introduced
-  by this doc, flagged rather than silently repeated
-  as if already landed there.
+  are ADR-068's own decided shape, reflected in
+  ../data/event-log.md's StoredEvent listing.
 end note
 @enduml
 ```

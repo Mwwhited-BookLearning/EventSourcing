@@ -127,23 +127,40 @@ seam's general shape; this doc only covers the transport half.
 autonumber
 participant "Tenant A's deployment\n(publishing system)" as tenantA
 participant "Tenant B's DevIdp\n(client_credentials, ADR-006)" as bIdp
-participant "Tenant B's Publish API" as bApi
-participant "Tenant B's custom\nIInterchangeFormatAdapter\n(bespoke, per-pair, ADR-082)" as adapter
+participant "Tenant B's InterchangeEndpoints\n(generic POST /interchange/{adapterKey}/{appId},\nADR-072/082 -- the SAME route FHIR uses,\nnever a federation-specific endpoint)" as bInterchange
+participant "Tenant B's custom\nIInterchangeFormatAdapter\n(bespoke, per-pair, ADR-082,\nregistered under its own adapterKey)" as adapter
+participant "PublishService" as publish
 database "Tenant B's Event Log" as bLog
 
 tenantA -> bIdp: POST /connect/token\ngrant_type=client_credentials\nclient_id, client_secret\n(a credential Tenant B issued to Tenant A specifically)
 bIdp --> tenantA: 200 { access_token }
-tenantA -> bApi: POST /publish/{event-type}\nAuthorization: Bearer <access_token>\n{ Tenant A's own native event shape }
-bApi -> adapter: map(Tenant A's shape) -> Tenant B's registered event shape
-adapter --> bApi: mapped payload
-bApi -> bLog: publish mapped event into Tenant B's own Event Log\n(ordinary publish path, ADR-023, unchanged)
-bApi --> tenantA: 202 { status, schemaStatus }
+tenantA -> bInterchange: POST /interchange/{adapterKey}/{appId}\nAuthorization: Bearer <access_token>\n{ Tenant A's own native event shape }
+bInterchange -> bInterchange: resolve IInterchangeFormatAdapter keyed\nadapterKey (GetRequiredKeyedService) --\nnot found -> 404, never a silent fallback
+bInterchange -> adapter: ParseInboundAsync(appId, rawBody)
+adapter -> adapter: map(Tenant A's shape) -> Tenant B's registered event shape
+adapter --> bInterchange: InterchangeInboundResult { EventType, Payload }
+bInterchange -> publish: PublishAsync(EventType, ...)\n-- an IN-PROCESS call, not a second HTTP hop
+publish -> bLog: publish mapped event into Tenant B's own Event Log\n(ordinary publish path, ADR-023, unchanged)
+publish --> bInterchange: PublishResult.Accepted { CorrelationId, SequenceNumber }
+bInterchange --> tenantA: 202 Accepted { correlationId, sequenceNumber }
 @enduml
 ```
 
 No new component appears in this diagram beyond a per-pair adapter
 implementation and a `client_credentials` client — both are reuses of
-existing framework surface, exactly as `ADR-082` states.
+existing framework surface, exactly as `ADR-082` states. **Corrected
+here**: an earlier draft of this diagram routed the mapped publish
+through tenant B's ordinary `POST /publish/{event-type}` Publish API,
+with the adapter mapping shown as an inline step inside that same call.
+The real, tested flow (`tests/EventStore.IntegrationTests/
+TenantFederationHttpSqliteTests.cs`) instead POSTs to the same generic
+`/interchange/{adapterKey}/{appId}` endpoint "Bulk Ingestion & External
+Interchange-Format Adapters" already built for FHIR — a dedicated route
+from the ordinary Publish API, not a variant of it — which itself
+resolves the keyed adapter and calls `PublishService.PublishAsync(...)`
+in-process; see
+[`bulk-ingestion-and-interchange-adapters.md`](bulk-ingestion-and-interchange-adapters.md)
+for that endpoint's own general shape.
 
 ## Data model (ER diagram)
 
@@ -298,7 +315,7 @@ Feature: Multi-tenancy (AppId-scoped schemas and entities)
     Given Tenant "tenant-b" has issued a client_credentials credential to Tenant "tenant-a" specifically
     And Tenant "tenant-b" has registered a custom IInterchangeFormatAdapter mapping Tenant "tenant-a"'s native "ShipmentDispatched" shape to its own "OrderShipped" event type
     When Tenant "tenant-a" requests a token from Tenant "tenant-b"'s deployment using that credential
-    And Tenant "tenant-a" publishes a "ShipmentDispatched" event to Tenant "tenant-b"'s Publish API using that token
+    And Tenant "tenant-a" POSTs its native "ShipmentDispatched" shape to Tenant "tenant-b"'s "/interchange/{adapterKey}/{appId}" endpoint using that token (the same generic route "Bulk Ingestion & External Interchange-Format Adapters" already built for FHIR, not tenant B's ordinary Publish API)
     Then the response status should be 202
     And Tenant "tenant-b"'s Event Log should contain a mapped "OrderShipped" event, not a raw "ShipmentDispatched" one
     And no new authentication mechanism beyond ordinary client_credentials was involved

@@ -9,6 +9,7 @@ public class StoredEvent
     public string? OriginId { get; set; }       // which site/peer this event originated at, in a multi-site mesh -- null/local-site-implied for a single-site deployment (ADR-033; propagated to this file, ADR-090). NOT related to TelemetryChannel.Origin (raw-source-vs-derived, ADR-031, docs/data/streaming-and-attachments.md) -- both use the word "Origin" for unrelated concepts; disambiguated explicitly, not renamed
     public string? LogicalClock { get; set; }   // hybrid logical clock value assigned at the origin site, for cross-site ordering (ADR-033; propagated to this file, ADR-090)
     public Guid EventId { get; set; }          // unique — client-supplied for idempotent retries, or server-generated (ADR-011); plays the "CorrelationId" role too
+    public string AppId { get; set; } = default!;      // the publisher's own declared AppId (ADR-021) -- the real source for EntityId's {appId}:... prefix below; closes docs/10-open-questions.md row 1's ambiguity for entity resolution specifically ("Entity-Centric Core Rebuild" is the "dedicated fix" that row's own text named as one resolution path). Follow/Lineage's own read-time claim lookups still use their pre-existing bare-name tie-break -- not rewired to this field in the same pass, tracked in TODO.md
     public string EntityId { get; set; } = default!;   // {appId}:{entityType}:{uniqueId} — required (ADR-021); supersedes the old optional StreamId
     public string EventType { get; set; } = default!;  // normalized lowercase
     public int SchemaVersion { get; set; }
@@ -17,12 +18,13 @@ public class StoredEvent
     public long? ExpectedVersion { get; set; }          // Entity Store Version this patch was based on — optional, enables conflict detection (ADR-024)
     public string Payload { get; set; } = default!;    // JSON text; known properties typed, unknown routed to Extensions at fold time (ADR-022)
     public string PayloadHash { get; set; } = default!; // hash of {EventType, Payload, sorted parentEventIds} -- ADR-011
-    public string ChainHash { get; set; } = default!;    // SHA-256(prior ChainHash || PayloadHash || SequenceNumber) -- ADR-019
+    public string ChainHash { get; set; } = default!;    // SHA-256(prior ChainHash || PayloadHash || SequenceNumber [|| JSON(Signature) if present]) -- ADR-019, extended by ADR-066 (docs/changes/2026-08-10.md)
     public string Status { get; set; } = default!;      // received | processing | applied | rejected — transport-level only (ADR-023)
     public string? SchemaStatus { get; set; }           // unknown | invalid | conformant — advisory, never gates Status (ADR-023)
     public bool ConflictFlag { get; set; }              // set by the fold step if a concurrent conflicting patch was detected (ADR-024)
     public bool LateArrivalFlag { get; set; }           // set by the fold step if OccurredAt was behind the entity/property's high-water mark (ADR-029)
     public DateTimeOffset OccurredAt { get; set; }      // CLIENT-DECLARED logical occurrence time, not server receipt time (ADR-029) — load-bearing for fold order
+    public DateTimeOffset AppendedAt { get; set; }      // SERVER-ASSIGNED wall-clock arrival time at this site, stamped once by EventAppender.AppendAsync the same moment SequenceNumber becomes known -- never client-supplied, distinct from OccurredAt above (ADR-088; the timestamp Router fold-lag instrumentation diffs against)
     public string ActorId { get; set; } = default!;      // verified caller identity (sub, or iss+sub per ADR-047) -- ALWAYS populated, blocking, not advisory (ADR-064) -- distinct from AttestedActorId below
     public string? AttestedActorId { get; set; }        // self-attested submitter identity — advisory, never gates Status (ADR-035) -- a CLAIM, not a verified fact; never conflated with ActorId above
     public string? AttestedClaims { get; set; }          // JSON — structured capability/delegation claims (e.g. a UCAN invocation, ADR-036); references the attestation schema-registry entry
@@ -33,14 +35,24 @@ public class StoredEvent
     public long? OriginalSequenceNumber { get; set; }      // set only on an event imported via ADR-068's lineage-export bundle format -- this environment's own SequenceNumber/ChainHash above are freshly computed (it IS a new append here); these three fields record provenance, never presented as if organically published here (ADR-068)
     public string? OriginalChainHash { get; set; }         // the exporting environment's own ChainHash for this event, at export time (ADR-068)
     public string? ImportedFrom { get; set; }              // identifies the exporting environment (ADR-068) -- a seventh distinct relationship-shaped envelope field, answering "where did this event actually originate" as opposed to OriginId (ADR-033/090, which peer/site in THIS deployment's own multi-site mesh)
+    public int DerivationHopCount { get; set; }             // 0 for an ordinarily-published event; incremented by one each time a derivation worker's republish is itself the triggering event for another derivation (ADR-007, deferred) -- belt-and-suspenders runtime cap against the residual race a derivation-definition registration-time cycle check can't fully close, see docs/data/schema-registry.md's "Derived/materialized event types" section
+    public Guid? RespondsToEventId { get; set; }            // optional on any publish -- the EventId this event is a reply to (Correlation Identifier pattern, Hohpe & Woolf). An eighth distinct relationship-shaped envelope field, answering "which prior event does this one satisfy a declared response expectation for" -- not existence-validated at publish time, unlike parentEventIds (ADR-094)
 }
 
 // Left behind in the primary table when a segment of StoredEvent rows is
 // detached/archived to an externalized IAttachmentContentStore backend
 // (ADR-089) -- lets ongoing chain verification for events appended after
-// the archived segment proceed without ever touching archived data.
+// the archived segment proceed without ever touching archived data. The
+// SAME class is reused, unchanged, for AccessLog's own independent
+// checkpoint (docs/data/access-log.md) -- implemented as two separate EF
+// Core "shared-type entity" tables on EventStoreContext
+// (EventLogChainCheckpoints/AccessLogChainCheckpoints), one CLR type
+// mapped to two genuinely distinct tables, never one shared table, so the
+// two stores' own checkpoints can never collide (ADR-089's own exit
+// criterion).
 public class ChainCheckpoint
 {
+    public int Id { get; set; } // surrogate key, added once actually built -- no natural composite key exists once more than one archival operation has happened (ADR-089)
     public long SequenceNumberRangeStart { get; set; }
     public long SequenceNumberRangeEnd { get; set; }
     public string ChainHashAtRangeEnd { get; set; } = default!;
@@ -101,6 +113,30 @@ the registered JSON Schema, so it can't collide with schema validation or
   lineage answers "what is this causally derived from," a different question
   from "what is this a re-shaped copy of."
 
+## Expected-response tracking (`ADR-094`)
+
+`RespondsToEventId` is envelope metadata, kept out of `Payload`, the same
+reasoning `ADR-005` established for `parentEventIds`. Any publish may set
+it, naming the `EventId` of the event this one is a reply to — it is
+**not** existence-validated at publish time (no `ParentValidationMode`-
+style Strict/Permissive fork), so a `RespondsToEventId` naming an
+`EventId` that doesn't resolve is simply a response correlating to
+nothing findable, never a rejected publish.
+
+Setting `RespondsToEventId` alone does nothing beyond record the
+relationship — tracking only activates when the *request* event's own
+type declares `EventTypeDefinition.ExpectedResponse` (`schema-
+registry.md`). `ExpectedResponseTracker` (`schema-registry.md`) is the
+durable state a background `ExpectedResponseWatcher` maintains per
+tracked request event, and the reserved `ExpectedResponseMissing` event
+is what gets published, through the ordinary publish path, if a matching
+response doesn't arrive within the declared window — see `ADR-094` for
+the full mechanism. `ExpectedResponseMissing` itself sets
+`RespondsToEventId` back at the original request, so a request event's
+children, its actual response (if any), and its missing-response
+escalation (if any) all resolve through this one field rather than a
+second mechanism.
+
 ## Publish idempotency (`ADR-011`)
 
 `PayloadHash` (a hash of `{EventType, Payload, sorted parentEventIds}`) is
@@ -122,6 +158,24 @@ onto the immediately preceding event's `ChainHash`, so altering any past
 row breaks every `ChainHash` after it — detectable by replaying the chain
 from `SequenceNumber = 1`, not just comparing one row to itself. See
 `ADR-019` for why this is a linear chain, not a full Merkle tree.
+
+`EventChainHash.Compute` (`src/EventStore.Domain/EventLog/EventChainHash.cs`,
+called by `EventAppender` at insert time and `ChainVerificationService` at
+verify time — `src/EventStore.Persistence/EventAppender.cs` and
+`src/EventStore.Inbox/ChainVerificationService.cs`) additionally folds in
+`JSON(Signature)` when `Signature` is non-null: `ChainHash[n] =
+SHA-256(ChainHash[n-1] || PayloadHash[n] || SequenceNumber[n] ||
+JSON(Signature[n]))` for a signed event, or the unextended
+`SHA-256(ChainHash[n-1] || PayloadHash[n] || SequenceNumber[n])` when
+`Signature` is absent — so every event type that never uses
+`RequiredSignature` computes byte-identical `ChainHash` values to before
+this extension existed. Added so a tamper to `SignerId`/`SignedAt`/
+`Meaning`/`Acr` (none of which are part of `PayloadHash`, which is also
+`ADR-011`'s idempotency-comparison basis and can't include a field that
+varies across a legitimate retry) diverges the chain at exactly that
+`SequenceNumber`, closing a gap in `ADR-066`'s original "reuses the
+existing hash chain, no new primitive" claim (`docs/changes/2026-08-
+10.md`).
 
 ## Event upcasting (`ADR-018`) and materialization (`ADR-027`)
 

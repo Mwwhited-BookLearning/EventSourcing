@@ -26,7 +26,7 @@ untrusted-ish, versioned mapping expressions.
 | | |
 |---|---|
 | **Pros** | Purpose-built for exactly this shape: [cel.dev](https://cel.dev/) describes it as "fast, portable, and safe to execute," **non-Turing-complete by design** (no loops that don't terminate, no unbounded recursion), evaluating in nanoseconds-to-microseconds — built for "predicates and simple data transformations," which is precisely what an upcast mapping is and never more than that. Used in production for exactly this kind of embedded, frequently-re-evaluated, operator-authored expression (Kubernetes admission policies, Envoy, Google Cloud IAM conditions, Firebase security rules). |
-| **Cons** | **The .NET port ecosystem is genuinely fragmented** — four small, differently-maintained community packages (`Cel.NET`, `Cel`, `cel-net`, `cel-csharp`), no single dominant implementation the way there is for JS/Go/Java (`docs/libraries/dotnet/cel-dotnet.md`'s own honest caveat). The *design fit* is excellent; the *concrete .NET implementation maturity* is the weakest part of this option, not the strongest. |
+| **Cons** | **The .NET port ecosystem is still fragmented** — four small, differently-maintained community packages (`Cel.NET`, `Cel`, `cel-net`, `cel-csharp`), no single dominant implementation the way there is for JS/Go/Java. Resolved to a specific, spiked-and-verified choice (`Cel.NET`) rather than left as an abstract risk — see `docs/libraries/dotnet/cel-dotnet.md` — but the *design fit* was always excellent; it was only the *concrete .NET implementation maturity* that needed settling, and now has been. |
 
 ### Option B — JSONata
 
@@ -143,8 +143,17 @@ complications this comparison surfaces, neither glossed over:
   JSONata wouldn't have.
 
 Neither complication flips the recommendation outright, but together
-they mean "CEL, obviously" understates the real trade-off. Recorded as
-its own row in `docs/10-open-questions.md` rather than quietly
-resolved here: the right call may come down to which upcast shapes
-this project actually ends up needing, not which language looks better
-in the abstract.
+they mean "CEL, obviously" understates the real trade-off.
+
+**The .NET-implementation-maturity complication is resolved, not just
+weighed**: build-plan item 11 ("Hardening & Evolution," the first item
+that actually needs a working evaluator) spiked two of the four
+fragmented CEL-for-.NET candidates against a real NuGet restore and a
+real compile-and-execute round trip — see `docs/libraries/dotnet/
+cel-dotnet.md` for the verification detail. `Cel.NET` (1.1.0, actively
+maintained since 2022, already at a stable `1.x`) is the adopted
+implementation. The array-aggregation expressiveness gap noted above is
+**not** resolved by this — it's a real, structural difference between
+the two languages, not a maturity question — and remains the documented
+reason `Jsonata.Net.Native` stays available as a per-deployment swap
+(`ADR-053`), not a fallback for CEL's .NET ecosystem being behind.

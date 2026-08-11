@@ -1,14 +1,23 @@
 # CQRS Read-Model Projections
 
-> **Transport superseded, per `ADR-037`.** `ProjectionHost` subscribes
-> through the GraphQL Gateway now, not `QUERY /follow` directly — same
-> tail/replay semantics (`ADR-010`), different transport (see
-> `features/cqrs-projections.md`'s banner, which already reflects this).
-> Every mechanism this document actually describes — `ChangeKind`-driven
-> merge, snapshotting, checkpointing, rebuild — is unchanged; only how a
-> projection connects to the write side is different. References to
-> `QUERY /follow/{event-type}` below should be read as "subscribes via
-> the GraphQL Gateway."
+> **`ProjectionHost`'s own transport was NOT moved onto GraphQL by
+> `ADR-037`, despite an earlier version of this banner claiming
+> otherwise.** Verified against `src/EventStore.Projections.Host/
+> FollowClient.cs`: `ProjectionHost` still issues a plain HTTP `QUERY
+> /follow/{event-type}` request (the `QUERY` method, `ADR-012`) with a
+> hand-built JSON body (`{"appId", "mode", "fromSequenceNumber"}`), then
+> parses the response as a raw Server-Sent Events stream line-by-line
+> (`"data: "`-prefixed lines, deserialized as `FollowedEventEnvelope`) —
+> there is no GraphQL query/subscription document anywhere in this
+> client. `ADR-037` moved *interactive/browser* Follow consumers onto a
+> GraphQL Subscription (`03-api-contracts.md`); `ProjectionHost`, an
+> internal read-side worker rather than a public API consumer, was never
+> in that item's own scope and was not touched by it. Same tail/replay
+> semantics (`ADR-010`) either way. Every mechanism this document
+> actually describes — `ChangeKind`-driven merge, snapshotting,
+> checkpointing, rebuild — is unaffected regardless of transport.
+> References to `QUERY /follow/{event-type}` below describe
+> `ProjectionHost`'s actual, current transport, not a historical one.
 
 Documents `01`–`08` are the **write side**: an event-sourced store of
 record, append-only, queryable only through the general-purpose Publish/
@@ -183,9 +192,11 @@ choice this design doesn't need to make for you.
 
 `ProjectionHost` is a Follow caller like any other (`ADR-015`), so it
 needs its own OAuth2 client — a fourth seeded client alongside the three
-in `ADR-006` (e.g. `projections-client`, scope `events:follow`) — see
-[`features/auth.md`](features/auth.md)'s seeded-clients table, which must
-be extended to include it. If a projection consumes an event type gated by a
+in `ADR-006` (`projections-client`, scope `events:follow`) — see
+[`features/auth.md`](features/auth.md)'s seeded-clients table (landed
+there as of `ADR-094`'s propagation pass, not before — this section had
+said "must be extended" for several sessions before that actually
+happened). If a projection consumes an event type gated by a
 Read-direction `RequiredClaims` entry (`ADR-008`/`ADR-050`),
 `projections-client`'s token needs one of those claims too, exactly as
 any other follower would.

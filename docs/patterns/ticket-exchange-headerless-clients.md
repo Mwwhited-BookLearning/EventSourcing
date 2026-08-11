@@ -25,7 +25,7 @@ participant "Identity Provider\n(ticket issuance + introspection)" as idp
 participant "Header-incapable component\n(<video src>, <img src>)" as component
 participant "Receiving service\n(streams the actual content)" as service
 
-caller -> idp: POST /oauth/token (RFC 8693 token exchange)\nAuthorization: Bearer <JWT>, requested_token_type=ticket
+caller -> idp: POST /connect/token (RFC 8693 token exchange)\nAuthorization: Bearer <JWT>, requested_token_type=ticket
 idp --> caller: { ticket, expiresIn }
 caller -> caller: sig = HMAC-SHA256(ticket, sharedSecret)
 caller -> component: set src = ".../resource?ticket=...&sig=..."

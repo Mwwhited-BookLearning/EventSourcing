@@ -60,3 +60,55 @@ docs/domains/{domain-slug}/
 See [`docs/comparisons/proving-ground-domain.md`](../comparisons/proving-ground-domain.md)
 for the full coverage matrix, regulatory mapping table, and the decision
 reasoning behind choosing the first two over the other thirteen.
+
+## Sample application build status
+
+Both chosen domains now also have a real, runnable `samples/Vitals/`/
+`samples/Meridian/` project set (`ADR-021`'s naming, `docs/naming.md`),
+one Duplex-registration + Gherkin-driven integration-test unit per
+workflow below, distinct from the design-only feature docs above (a
+feature doc can be fully written with no code; this table tracks the
+code). Direct request: "the proving-ground applications [should] be
+built out... under the sample folder... within subfolders for each
+proving-ground model," to full workflow depth. This table is the
+authoritative tracker for that build, the same role `08-build-plan.md`'s
+own "Implementation status" table plays for the core engine — kept
+current in the same pass a workflow's own status changes, not
+after-the-fact.
+
+| Domain | Workflow | Feature doc(s) | Status |
+|---|---|---|---|
+| Vitals | A — Enrollment & Consent | [Patient Enrollment and Informed Consent](clinical-trials-device-telemetry/features/patient-enrollment-and-informed-consent.md) | Done |
+| Vitals | B — Device Monitoring → Adverse Event Review | [Device Onboarding and Continuous Monitoring](clinical-trials-device-telemetry/features/device-onboarding-and-continuous-monitoring.md), [Adverse Event Capture and Review](clinical-trials-device-telemetry/features/adverse-event-capture-and-review.md) | Not started |
+| Vitals | C — Trial Data Export & Subject Rights | [Trial Data Export and Subject Rights](clinical-trials-device-telemetry/features/trial-data-export-and-subject-rights.md) | Not started |
+| Vitals | D — Intraoperative Monitoring & Alert Response | [Intraoperative Monitoring and Alert Response](clinical-trials-device-telemetry/features/intraoperative-monitoring-and-alert-response.md) | Not started |
+| Meridian | A — Document/Biometric Capture → Verification | [Document and Biometric Capture](digital-identity-kyc/features/document-and-biometric-capture.md), [Customer Onboarding and Identity Verification](digital-identity-kyc/features/customer-onboarding-and-identity-verification.md) | Not started |
+| Meridian | B — Relying-Party Access | [Relying-Party Verification Request](digital-identity-kyc/features/relying-party-verification-request.md) | Not started |
+| Meridian | C — Ongoing Screening & SAR Escalation | [Periodic Screening and SAR Escalation](digital-identity-kyc/features/periodic-screening-and-sar-escalation.md) | Not started |
+
+**One real, load-bearing implementation note, found while scoping this
+work, not while writing an individual workflow**: `RouterWorker.FoldAsync`/
+`FoldLiveAsync`/`SplitByConformance` (`EventStore.Router`) — the fold
+primitives a "special-purpose reactor" like `AuthorityDecisionResolver`
+calls to catch the authoritative Entity Store up — are `internal`, not
+`public`; a sample project in a separate assembly cannot call them
+directly (confirmed: no `InternalsVisibleTo` exists anywhere in this
+repo — even `EventStore.IntegrationTests` only ever drives each worker's
+own `public static RunOnceAsync`, never these internal helpers). A
+domain-specific decision-review reactor a sample needs (`patient-
+enrollment-and-informed-consent.md`'s own "sibling `ConsentApprovalResolver`"
+framing, for one) therefore cannot be a genuinely new resolver class the
+way that doc's prose describes — it must instead reuse the CORE engine's
+own existing, already-generic, already-tested `authoritydecision`
+reserved-event-type mechanism directly (`AuthorityDecisionResolver`
+already resolves purely by `targetEventId`, with zero knowledge of what
+entity/event type the target actually is), the same mechanism `adverse-
+event-capture-and-review.md` itself already uses under that exact
+literal name. Each sample workflow below that needs a "human decides on
+a captured record" step publishes under the real, reserved `authorityDecision`
+type (lowercase field names `targetEventId`/`decision`/`decidingActorId`/
+`reason`, exactly as the engine's own resolver expects) rather than a
+domain-invented type name — a deliberate, honestly-recorded divergence
+from a feature doc's own narrative choice of name, not a silent
+substitution, per this repo's own "say when something is only partially
+borrowed" convention.

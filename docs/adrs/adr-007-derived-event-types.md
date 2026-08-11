@@ -2,8 +2,15 @@
 
 # ADR-007: Derived/materialized event types via cross-stream join+projection
 
-Status: Deferred — captured for design continuity, not part of v1. Build
-after the primary system (publish/follow/registry/lineage/auth) is working.
+Status: ~~Deferred — captured for design continuity, not part of v1. Build
+after the primary system (publish/follow/registry/lineage/auth) is
+working.~~ **Corrected, later pass**: built — `docs/08-build-plan.md`'s
+item 8 ("Derived/Materialized Event Types (deferred)") is marked Done.
+`src/EventStore.Derivation/` implements the mechanism this ADR describes:
+`DerivationRegistrationService`/`DerivationEndpoints` (registration, the
+`$from`/`$on`/`$select` grammar via `OnClauseParser`/`SelectClauseParser`,
+and the cycle-guard walk) and `DerivationWorker` (the tailing/join/emit
+background process).
 
 Context: There's a real want for **derived event types**: an event type
 whose instances are produced not by an external publisher, but by a

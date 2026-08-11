@@ -27,7 +27,7 @@ public class EntityStoreRow
     public string Hash { get; set; } = default!;         // SHA-256 of canonicalized Data — per-entity integrity/diff, a different
                                                            // application of ADR-019's hash primitive than the event ChainHash
     public int SchemaVersion { get; set; }                // current shape, post-upcast (best effort — ADR-018)
-    public string AuthorityStatus { get; set; } = default!; // rolled up from contributing events — advisory (ADR-035)
+    public string AuthorityStatus { get; set; } = "accepted"; // rolled up from contributing events — advisory (ADR-035)
     public long LastAppliedSequenceNumber { get; set; }   // REPLAY CHECKPOINT — always advances past every event processed, including a rejected late arrival (ADR-029); distinct from Version above
     public DateTimeOffset LastAppliedLogicalTime { get; set; } // high-water mark for fold ordering — compared against OccurredAt, not SequenceNumber (ADR-029)
     public bool LateArrivalFlag { get; set; }             // rolled up from contributing events (ADR-029)
@@ -106,10 +106,19 @@ public class EntityErasureKey
 {
     public string EntityId { get; set; } = default!;      // PK -- {appId}:{entityType}:{uniqueId}, same key as EntityStoreRow
     public string KeyReference { get; set; } = default!;   // opaque handle into the configured IErasureKeyStore -- never the key itself
+    public string BackendName { get; set; } = default!;    // which IErasureKeyStore this KeyReference resolves against -- see below
     public DateTimeOffset CreatedAt { get; set; }           // first time a classified field was published for this entity
     public DateTimeOffset? ErasedAt { get; set; }            // set once EntityErasureRequested is processed and the key is destroyed
 }
 ```
+
+`BackendName` was added during implementation, correcting this doc's
+original shape: backend selection (`ErasureOptions.BackendByAppId`) is
+ordinary, changeable-over-time configuration, but decrypt must always
+reach the SAME backend that originally created a given key, regardless
+of what that `AppId`'s configuration says now — recording it once, at
+creation time, on this row is what makes that possible without a global
+"never change an `AppId`'s backend" rule.
 
 `ErasedAt` being set is a local convenience flag for "don't bother
 calling the key store, it's already gone" — the actual source of truth
@@ -121,6 +130,23 @@ losing it (independent of the external key store) loses the mapping
 needed to ever *request* an entity's erasure, though not the ability to
 erase, since `KeyReference` is recoverable from the external store's own
 listing if truly lost.
+
+### Local backend key material
+
+The "Local" `IErasureKeyStore` backend (dev/single-node deployments with
+no external KMS) stores its actual key material in the same
+`EventStoreContext`, deliberately durable rather than in-memory (losing
+it is equivalent to erasing every subject it protects at once, the same
+criticality `EntityErasureKey` itself carries above):
+
+```csharp
+public class LocalErasureKeyMaterial
+{
+    public string KeyReference { get; set; } = default!;  // PK -- "local:{guid}", matches EntityErasureKey.KeyReference
+    public byte[]? WrappedKey { get; set; }                 // AES-256 key bytes; set to null on destroy, not merely flagged
+    public bool Destroyed { get; set; }
+}
+```
 
 ## Read-side data model (CQRS projections) is elsewhere, deliberately
 

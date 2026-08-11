@@ -1,0 +1,100 @@
+name: CI
+
+# ADR-091: GitHub Actions is the CI/CD platform, because that's where this
+# repository is hosted -- no build->release->run/promotion-path design is
+# attempted yet, since there's no real published feed/environment to
+# sequence releases into. This workflow covers the test-suite/vulnerability
+# half of build-plan item "Release Engineering, Packaging & Supply Chain"'s
+# exit criteria: run the test suite and scan for known-vulnerable
+# dependencies (ADR-080). This file has never actually been run by GitHub
+# Actions itself (docs/08-build-plan.md says so explicitly) -- every step
+# it runs was verified locally first (dotnet build/test, dotnet list
+# package --vulnerable, npm audit), so this is real, structurally valid
+# automation of already-proven commands, not a guess at syntax.
+#
+# SBOM generation (ADR-074) and build-provenance attestation (ADR-080,
+# SLSA Level 2) are deliberately NOT jobs in this workflow, at direct user
+# request (this session) -- they're a local-only script instead
+# (scripts/generate-sbom.sh), the same "local scripts for POC/PoV are
+# perfect" posture already applied to the migration-bundle-apply step
+# (ADR-076). See that ADR's own additive correction note and docs/
+# changes/2026-08-11.md for the full reasoning.
+
+on:
+  push:
+    branches: [main, "dev/**"]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+env:
+  DOTNET_NOLOGO: true
+  DOTNET_CLI_TELEMETRY_OPTOUT: true
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      - name: Restore
+        run: dotnet restore EventStore.slnx
+
+      - name: Build
+        run: dotnet build EventStore.slnx --no-restore -c Release
+
+      # Testcontainers-based Postgres/SQL Server tests need Docker, already
+      # present on ubuntu-latest runners.
+      - name: Test
+        run: dotnet test tests/EventStore.IntegrationTests/EventStore.IntegrationTests.csproj --no-build -c Release --logger "console;verbosity=normal"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: client-web/package-lock.json
+
+      - name: Client-web install and test
+        working-directory: client-web
+        run: |
+          npm ci
+          npm test
+
+  vulnerability-scan:
+    runs-on: ubuntu-latest
+    needs: build-and-test
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      - name: Restore
+        run: dotnet restore EventStore.slnx
+
+      # ADR-080 -- fails the job on any known-vulnerable dependency
+      # (NuGet). Real command, verified locally against this exact
+      # solution file this session: caught and fixed a critical
+      # System.Drawing.Common CVE and a high SQLitePCLRaw.lib.e_sqlite3
+      # CVE before this workflow was even written.
+      - name: dotnet list package --vulnerable
+        run: |
+          set -o pipefail
+          dotnet list EventStore.slnx package --vulnerable --include-transitive | tee vulnerable-nuget.log
+          ! grep -q "has the following vulnerable packages" vulnerable-nuget.log
+
+      # --omit=dev: production dependencies only. client-web's own
+      # devDependencies (vitest/vite/esbuild) carry a currently-open
+      # dev-server-only vulnerability chain with no non-breaking fix
+      # available (verified locally this session) -- tracked in TODO.md,
+      # not this gate's job to enforce until a compatible upgrade lands.
+      - name: npm audit (production dependencies)
+        working-directory: client-web
+        run: npm audit --omit=dev --audit-level=high

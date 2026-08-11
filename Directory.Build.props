@@ -1,0 +1,32 @@
+<Project>
+
+  <!-- ADR-062: every EventStore.* project (excluding provider glue and
+       samples) becomes a published NuGet package of the same name. Setting
+       PackageId once here via $(MSBuildProjectName) gives every project
+       its own correct PackageId automatically, matching this ADR's own
+       "EventStore.Core, EventStore.GraphQL, ... becomes a published NuGet
+       package of the same name" text literally, without a per-project
+       line to keep in sync across ~35 projects. Version is a single
+       SemVer 2.0.0 (semver.org, ADR-062) number shared by every package in
+       this repo, bumped together, 0.y.z per SemVer's own "initial
+       development" meaning, since public API surface discipline (this
+       ADR's own new Consequence) is not yet enforced anywhere. Test
+       projects need no opt-out: the Microsoft.NET.Test.Sdk MSBuild targets
+       already set IsPackable=false for any project referencing them. -->
+  <PropertyGroup>
+    <PackageId>$(MSBuildProjectName)</PackageId>
+    <Version>0.1.0</Version>
+    <Authors>OoBDev</Authors>
+    <Company>OoBDev</Company>
+    <Product>Duplex</Product>
+    <Description>Duplex event-sourcing framework -- $(MSBuildProjectName)</Description>
+    <PackageLicenseFile>LICENSE</PackageLicenseFile>
+    <RepositoryUrl>https://github.com/Mwwhited-BookLearning/EventSourcing.git</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+  </PropertyGroup>
+
+  <ItemGroup Condition="'$(IsPackable)' != 'false'">
+    <None Include="$(MSBuildThisFileDirectory)LICENSE" Pack="true" PackagePath="" Visible="false" />
+  </ItemGroup>
+
+</Project>

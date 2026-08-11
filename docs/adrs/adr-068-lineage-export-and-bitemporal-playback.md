@@ -202,6 +202,26 @@ Consequences:
   offline player (sharing `ADR-039`'s Vue playback component, a separate
   `vite-plugin-singlefile`-configured build, not a separate app) — not
   yet detailed, flagged as remaining propagation work.
+  **Corrected, 2026-08-11: built.** `client-web/offline-player/` (entry
+  point + `vite.offline-player.config.ts`) and `client-web/scripts/
+  embed-bundle.mjs` (the per-export "embed and rebuild" step `§4` below
+  describes) now exist; `OfflineBundleViewer.vue`/`BitemporalPlaybackControl.vue`
+  under `client-web/src/components/playback/` are the shared Vue
+  component this bullet anticipated, mounted from both build targets.
+  One honest scope narrowing found while building, not anticipated by
+  this ADR's own sequence diagram wording: the player recomputes the
+  **manifest hash** exactly (SHA-256 over the bundle's own ordered
+  `ChainHash` values, cross-verified against the real C# `ManifestHash.
+  Compute` output this session) plus a masked/erased-field **count**,
+  but does **not** attempt a per-event `PayloadHash`-from-`Payload`
+  re-derivation — `ExportedEventLine` carries no `ParentEventIds`
+  (`EventPayloadHash.Compute`'s third input), so recomputing that hash
+  for any event with real causal parents (`ADR-005`) would produce a
+  false "tampered" result on ordinary, legitimate lineage data. The
+  "fully verified" / "verified except N masked fields" distinction this
+  ADR calls for is preserved, just derived from the manifest-hash check
+  plus the masked-field count rather than a per-event byte-exact
+  re-hash. See `client-web/src/playback/verifyBundle.ts`'s own comments.
 - `docs/libraries/web/vite-plugin-singlefile.md` is the concrete usage
   write-up for the new library dependency — added this pass.
 

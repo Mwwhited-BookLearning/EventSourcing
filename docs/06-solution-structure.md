@@ -16,6 +16,33 @@ line-by-line against every ADR past `ADR-041` (explicit composition) —
 treat any code sketch not explicitly called out above with the same
 "concept accurate, exact wiring unverified" caution as before.
 
+**Propagation note, added building "SPIFFE/SPIRE Service Identity & API
+Gateway" (`08-build-plan.md` item 24)**: the actual build consolidated
+several of the separate deployables sketched below into fewer processes
+rather than splitting one-project-per-service as literally drawn --
+`EventStore.PeerSync` below was actually implemented as
+`EventStore.Replication`, wired directly into each `EventStore.Host.
+<Provider>` process rather than as its own deployable; the same is true
+of `EventStore.Router`/`.Fold`/`.GraphQL`/`.Sharding`/`.Streaming`/
+`.Attachments`, each a library namespace inside the same Host process,
+not an independently-addressable service. `EventStore.Gateway` (YARP)
+and `EventStore.Spiffe` (the SPIFFE ID/trust-bundle/mTLS primitives
+`ADR-048` decided) **are** real, separate projects, matching this
+sketch. Per `ADR-048`'s own Consequences ("each internal service project
+[needs] its SPIFFE ID convention" annotated here): every SVID this
+build actually issues follows `spiffe://<trust-domain>/eventstore/
+<service-name>` exactly as decided, but since there is no real internal
+network hop *between* Router/Fold/GraphQL/etc. in the actual build (they
+share one process), SPIFFE/mTLS is only actually exercised at the two
+genuine inter-process boundaries that exist: peer-to-peer sync between
+independent site deployments, and the Gateway-to-Host hop this item
+introduces -- both share one internal mTLS listener per Host
+(`EventStore.Host.Core.SpiffePeerIdentity`/`SpiffePeerOptions.
+AllowedInternalCallerPaths`), not one per sketched service below.
+Reconciling this entire file's project list against what was actually
+built, item by item, is a larger, separate cleanup -- tracked in
+`TODO.md`, not attempted here.
+
 **Deployment-unit note, added this session (`ADR-075`)**: this whole
 solution builds to **one dedicated deployment per tenant** (the silo
 model), not one shared deployment serving many tenants. `AppId` below
@@ -30,31 +57,73 @@ solution, never a second `AppId` inside the same running instance.
 EventStore.sln
   src/
     EventStore.Gateway/              -- YARP reverse proxy, the single external entry point (ADR-049); external TLS termination + ADR-006/017/040 auth happen here, handing off to ADR-048 SPIFFE/SPIRE workload identity internally; per-AppId rate limiting (Token Bucket for Inbox, Concurrency Limiter for GraphQL Subscriptions/Follow, Sliding Window for everything else, ADR-058) is enforced here first
+    EventStore.Spiffe/               -- SpiffeId/SpiffeSvidFactory/SpiffeTrustBundle/SpiffeCertificateValidator + SpiffeKestrelExtensions (mTLS listener wiring), ADR-048 -- the one internal mTLS listener per Host.<Provider> process (SpiffePeerIdentity/SpiffePeerOptions.AllowedInternalCallerPaths) plus the Gateway-to-Host and peer-to-peer sync hops, per the note above
+    EventStore.Dpop/                 -- DpopProofValidator/DpopKeyPair/DpopReplayCache/EcJwk/JwkThumbprint/SelfSignedJwtVerifier, ADR-017 -- validates the DPoP header against the access token's own cnf.jkt claim on every request once bearer auth already passed (see the "Auth: DPoP proof validation" section below), replay-cached to reject a captured proof reused a second time
+    EventStore.Abstractions/         -- 5 extensibility interfaces, no implementation (ADR-062, build-plan item 39): IMaskingStrategy, IStreamRedactionStrategy, IUpcastExpressionEvaluator, IErasureKeyStore, IAttachmentContentStore -- shared by both the framework's own built-in implementations and any hosting team's custom ones, so neither side needs a reference to the other's assembly
     EventStore.Domain/              -- entities, no EF dependency; AppId is now part of every key (ADR-030)
     EventStore.Persistence/         -- DbContext, repositories, IJsonPathTranslator interface + all 3 impls
     EventStore.Persistence.Migrations.Sqlite/
     EventStore.Persistence.Migrations.Postgres/
     EventStore.Persistence.Migrations.SqlServer/
     EventStore.SchemaRegistry/      -- registration service, AppId-scoped lookups (ADR-030), ParentLinkService, upcast/downcast map validation (ADR-018/028); complex-case upcast mappings run sandboxed via Jint, common case via CEL (candidates only, see docs/libraries/dotnet/cel-dotnet.md)
+    EventStore.ViewRegistry/        -- ViewDefinitionService/RegisterViewDefinitionRequest/Result + TranslationKeyValidator -- the same registration-service shape as SchemaRegistry above, but for the MVVM client's own ViewDefinition rows (docs/data/schema-registry.md, ADR-039) rather than EventTypeDefinition rows
     EventStore.Inbox/               -- POST /publish; Idempotent Receiver + always-202 append (ADR-011/023) -- the ONLY still-blocking-on-shape step is "can I parse the envelope at all"
     EventStore.Router/              -- background service: entity resolution (ADR-021), advisory schema/claim/authority checks (ADR-023/035), live upcast validation + materialization (ADR-020/027)
-    EventStore.Fold/                -- background service: always-on Entity Store projector, logical-order fold (ADR-029), conflict flagging (ADR-024) -- distinct from opt-in custom projections below
-    EventStore.GraphQL/             -- GraphQL Gateway: Query/Subscription, per-AppId schema (ADR-030/037), served via HotChocolate (docs/libraries/dotnet/hotchocolate.md); supersedes EventStore.Follow.Api/EventStore.Lineage.Api entirely
-    EventStore.Sharding/            -- Shard Resolver: EntityId -> ShardKey -> store, entity-type-based (ADR-034)
-    EventStore.PeerSync/            -- gossip peer-sync outbox/inbox, fault/abend/restart-tolerant (ADR-033)
+    EventStore.Derivation/          -- DerivationRegistrationService/DerivationWorker + OnClauseParser/SelectClauseParser (build-plan item 8) -- a background worker publishing a derived event from an existing one per a registered SELECT/ON mapping, distinct from both upcasting (same event type, newer schema version) and CQRS projections (a whole separate read-side database) below
+    EventStore.Fold/                -- NEVER BUILT AS ITS OWN PROJECT (unlike Streaming/Attachments/GraphQL below, which ARE real
+                                     -- libraries just consolidated into the Host process) -- zero project/namespace footprint at
+                                     -- all. The always-on Entity Store fold is two plain methods, FoldAsync/FoldLiveAsync, directly
+                                     -- inside EventStore.Router/RouterWorker.cs -- confirmed by that method's own header comment
+    EventStore.GraphQL/             -- GraphQL Gateway: Query/Subscription, per-AppId schema (ADR-030/037), served via HotChocolate (docs/libraries/dotnet/hotchocolate.md); ADR-037 intended this to supersede EventStore.Follow.Api/EventStore.Lineage.Api entirely, but the actual build kept both as real, separate projects, still mapped alongside it -- see the correction below
+    EventStore.Follow.Api/          -- kept as its own real project despite ADR-037's intent (see the correction below): EventTailReader/FilterPredicateBuilder/FollowService/FollowEndpoints -- the pre-GraphQL tail-follow surface, still mapped by every Host.<Provider>/Program.cs alongside GraphQL
+    EventStore.Lineage.Api/         -- same "kept, not superseded" gap as Follow.Api above: LineageService/LineageEndpoints -- the pre-GraphQL parent/child DAG query surface (ancestors/descendants/restricted-node stubs, ADR-008), still mapped alongside GraphQL
+    EventStore.Upcasting/           -- UpcastChain/DowncastChain (ADR-018/053) + both pluggable IUpcastExpressionEvaluator implementations, CelUpcastExpressionEvaluator (default) and JsonataUpcastExpressionEvaluator (documented alternative) -- Jint's sandboxed escape hatch lives here too; called from EventStore.Router's UpcastMaterializer, the GraphQL Gateway's read-time reshape, and ProjectionHost, never from Inbox directly (see the "Event upcasting" section below)
+    EventStore.Sharding/            -- NEVER BUILT AS ITS OWN PROJECT, same gap as Fold above -- ADR-034's ShardKey resolution
+                                     -- collapsed to one field default (ShardKey = EntityType) set directly inside
+                                     -- EventStore.Router/RouterWorker.cs's own FoldAsync, no separate resolver class anywhere
+    EventStore.PeerSync/            -- renamed EventStore.Replication in the actual build (PeerSyncClient/PeerSyncWorker/
+                                     -- PeerAddressBook/PeerSyncEndpoints/PeerSyncOptions), wired directly into each Host
+                                     -- process via AddReplication()/MapPeerSyncEndpoints() -- no Program.cs of its own
+    EventStore.LeaderElection/       -- LeaderElectionService/LeaseHolderId, build-plan item 32 -- the lease-gated "internal follower" shape every singleton background worker in this solution needs when more than one Host replica can be running at once (PeerSyncWorker, WebhookOutboxPump, ExpectedResponseWatcher below); a DB-row lease, not a distributed-lock library, since the DB is already the one shared, durable resource every replica already talks to
+    EventStore.Masking/              -- the real IPayloadMasker implementation (PayloadMasker + FixedValueMaskingStrategy/PartialRevealMaskingStrategy/HashMaskingStrategy), ADR-009/057 -- the data-level half of masking described in the "IPayloadMasker" section below; MaskingSchemaTransformer (the schema-level half) stays in EventStore.SpecGeneration, not here, since it's needed at spec-build time regardless of masking's own build phase
+    EventStore.Erasure/              -- ErasureKeyService/ErasureScopeResolver/EntityErasureResolver + LocalErasureKeyStore/HashiCorpVaultErasureKeyStore (IErasureKeyStore, ADR-057/062) + PayloadEncryptor -- crypto-shredding: a masked leaf's "value" branch decrypts against the entity's own EntityErasureKey, and destroying that key (on EntityErasureRequested) makes every field it protected permanently unrecoverable without deleting the event log rows themselves (ADR-009's no-erasure stance, reversed by ADR-057)
     EventStore.Webhooks/            -- outbound webhook dispatcher: drains the durable WebhookOutbox (same fault/abend/restart-tolerant primitive as PeerSync/client outbox, ADR-033/039), Standard Webhooks HMAC signing, masks every payload against its subscription's fixed claim set before sending, exponential-backoff retry, dead-letters as WebhookDeliveryFailed on exhaustion (ADR-060)
+    EventStore.ExpectedResponse/     -- ExpectedResponseWatcher (build-plan item 49, ADR-094): maintains an ExpectedResponseTracker row per request event carrying a configured EventTypeDefinition.ExpectedResponse, stamps it satisfied on a matching RespondsToEventId response, escalates an unmet deadline to the reserved ExpectedResponseMissing event -- a same-process worker reading EventStoreContext directly, like Router/Derivation/Webhooks above, not the Follow-over-HTTP client ADR-094's own text originally sketched (see that ADR's "Corrected, 2026-08-11" note)
     EventStore.Streaming/           -- TelemetryChannel/TelemetrySample ingestion + tail/replay, separate from the event pipeline entirely (ADR-031)
-    EventStore.Attachments/         -- content-addressed binary storage; POST upload, GET with Range, browsable via the GraphQL Gateway (ADR-032)
+    EventStore.Attachments/         -- content-addressed binary storage; POST upload, GET with Range (ADR-032) -- NOT browsable via the GraphQL Gateway: there is no generic "get current entity" query field anywhere in EventStore.GraphQL for an attachments field to attach to (08-build-plan.md item 19's own exit criteria never named this)
+    EventStore.Archival/            -- detaches a verified, contiguous StoredEvent/AccessLogEntry segment to IAttachmentContentStore, leaving a ChainCheckpoint behind (ADR-089); directly-callable, on-demand operations only -- no background worker/scheduled trigger/HTTP endpoint, since ADR-056's own retention-window policy (WHEN this runs) stays deliberately deferred
+    EventStore.Timestamping/        -- ITimestampAuthorityClient's default shipped implementation, HttpTimestampAuthorityClient (RFC 3161, build-plan item 42) -- populates StoredEvent.RFC3161Timestamp; docs/extensibility-points.md's own audit-corrected row (this pass) now says so, having previously and wrongly claimed "None shipped by default"
+    EventStore.LineageExport/       -- LineageExportService/BundleStore/Endpoints + ExportManifest/ManifestHash/FrameworkVersion (ADR-068, build-plan items 42-43) + BitemporalPlaybackService -- exports a signed, self-verifying lineage bundle (ADR-068); the offline playback UI itself is client-web/offline-player below, a separate build target, not this project
     EventStore.InterchangeAdapters/  -- IInterchangeFormatAdapter seam + built-in adapters (Hl7V2Adapter, FhirAdapter, IchE2bR3Adapter, Gs1EpcisAdapter, ADR-072); inbound transforms publish through the ordinary Inbox path unchanged, outbound composes ahead of EventStore.Webhooks' delivery
     EventStore.InterchangeAdapters.Hl7v2MllpListener/  -- a dedicated background TCP listener speaking MLLP (ADR-072) -- HL7v2's real transport, unlike every other component in this solution (all HTTP/GraphQL); FHIR's own inbound path is ordinary HTTP, no separate listener needed. Transport security (TLS termination or network isolation) is the deploying team's own responsibility -- MLLP carries none itself
+    EventStore.Interchange.Abstractions/  -- the real, SECOND project the actual build needed beyond either sketch name above: just IInterchangeFormatAdapter, zero dependency on EventStore.Inbox -- see the explanation right below for why this had to be its own assembly, not folded into EventStore.Interchange itself
+    -- Actual build (item 36) consolidated the two sketch names above into
+       ONE project, EventStore.Interchange (Hl7V2Adapter/FhirAdapter/
+       IchE2bR3Adapter/Gs1EpcisAdapter + Hl7V2MllpListener as one class
+       inside it, not its own project) -- the same "concept accurate,
+       exact wiring unverified" gap this file's own Router/Fold entry
+       already covers, applied here too. A SECOND, separate project,
+       EventStore.Interchange.Abstractions, was needed beyond the sketch's
+       own single-project framing: EventStore.Webhooks needs
+       IInterchangeFormatAdapter for its own outbound-composition step,
+       and EventStore.Router already depends on EventStore.Webhooks
+       (WebhookEnqueueResolver) -- so the interface itself had to carry
+       zero dependency on EventStore.Inbox to avoid recreating the exact
+       circular project reference "Outbound Webhooks" (item 34) already
+       found and fixed once.
     EventStore.SpecGeneration/      -- OpenAPI builder (publish) + GraphQL SDL builder (supersedes the AsyncAPI builder for Follow -- Follow itself is gone, replaced by GraphQL Subscription); the two specs this project generates are what Kiota / GraphQL Code Generator / Strawberry Shake regenerate typed client SDKs from at consumer build time (ADR-054) -- no SDK-generation project lives in this solution itself, since generated code is never committed here, only in a consuming application's own build
     EventStore.Host.Core/           -- shared, provider-agnostic composition root logic (see below)
     EventStore.Host.Sqlite/         -- the actual deployable: Host.Core + SQLite wiring (ADR-001)
     EventStore.Host.Postgres/       -- the actual deployable: Host.Core + PostgreSQL wiring
     EventStore.Host.SqlServer/      -- the actual deployable: Host.Core + SQL Server wiring
-    EventStore.DevIdp/              -- dev-only OpenIddict token issuer + OAuth Token Exchange for UCAN (ADR-006/036)
+    EventStore.Rbac/                -- Host-side write path for RBAC role/permission grants + AppTrustRoot registration (ADR-067): Bearer+scope-gated Minimal API endpoints (registry:admin / registry:trust-admin) that publish reserved RoleGranted/RoleRevoked/PermissionGranted/AppTrustRootRegistered events through the ordinary PublishService, rather than a bespoke CRUD write -- EventStore.DevIdp's own former /oauth/roles/-role-assignments/-user-permissions/-trust-roots endpoints are retired in favor of these
+    EventStore.Ucan/                -- UcanDelegation/DelegatedCapability/UcanValidator, ADR-006/036/093 -- validates a UCAN-shaped delegation chain (capability, not just identity) presented alongside a Token Exchange-issued access token; the Federated Claims half of build-plan item 23, distinct from EventStore.TicketExchange below (that's for header-incapable clients, not delegation)
+    EventStore.TicketExchange/      -- TicketAuthenticationHandler/Options/Defaults + HmacSigner + TicketClaims, build-plan item 22 (ADR-093 -- only the webhook-delivery half was built, per 07-adrs.md's own index correction) -- a short-lived, HMAC-signed, query-string-carryable ticket exchanged for a real bearer token, for a caller that cannot set an Authorization header at all (e.g. a raw webhook-receiver URL); NOT the same mechanism as Ucan above
+    EventStore.FeatureFlags/        -- FeatureFlagService/Endpoints + EventLogFeatureFlagConfigurationProvider/Source -- a Microsoft.Extensions.Configuration provider backed by FeatureFlagSet events in the ordinary event log, not a third-party flag service; a flag change is itself a published, chained, replayable event like everything else in this design
+    EventStore.DevIdp/              -- dev-only OpenIddict token issuer + OAuth Token Exchange for UCAN (ADR-006/036); RbacProjectionWorker follows EventStore.Rbac's reserved role/permission/trust-root events to keep DevIdp's own local read models current at token-issuance time, rather than calling back into a Host synchronously on every token request
     EventStore.ServiceDefaults/     -- Aspire scaffolding: full OpenTelemetry (logging/tracing/metrics), health checks, service discovery (ADR-026)
-    EventStore.AppHost/             -- Aspire orchestration for LOCAL DEV ONLY (ADR-026) -- production is docker-compose.yml, not this
+    EventStore.AppHost/             -- Aspire orchestration for LOCAL DEV ONLY (ADR-026) -- production is docker-compose.yml, not this; also orchestrates client-web's own Vite dev server as a real resource (ADR-039), migrator/devidp/postgres-server/client-web all dashboard-grouped under eventstore via WithParentRelationship (no dedicated "resource group" primitive exists in this Aspire version -- verified by reflecting over the installed Aspire.Hosting/Aspire.Hosting.JavaScript DLLs directly)
+    EventStore.Migrator/            -- one-shot Database.MigrateAsync() runner, added as an EventStore.AppHost resource specifically -- ADR-076's own single-execution-before-any-replica-starts guarantee, realized via Aspire's WaitForCompletion rather than a generated migration bundle, for this ONE orchestration path (docker-compose.yml still has no equivalent, tracked in TODO.md)
 
     -- CQRS read side (09-cqrs-read-models.md, ADR-015/016) -- opt-in,
     -- custom projections built ON TOP of the always-on Entity Store
@@ -62,12 +131,39 @@ EventStore.sln
     -- database, talking to the write side only via the GraphQL Gateway
     -- like any other consumer:
     EventStore.Projections.Abstractions/  -- IProjection<T>, ChangeKind-agnostic; projection authors depend on only this
-    EventStore.Projections.Host/          -- ProjectionHost, SnapshotMerger (Optional<T>-aware, ADR-022), ProjectionsDbContext
+    EventStore.Projections.Host/          -- ProjectionHost, SnapshotMerger (Optional<T>-aware, ADR-022), ProjectionsDbContext --
+                                           -- a PLAIN LIBRARY in the actual build (no Program.cs of its own), despite this
+                                           -- sketch's own prose elsewhere calling it "a separate deployable". The real running
+                                           -- hosts that reference it are Samples.Orders.Projections (below, has a real
+                                           -- Program.cs) and EventStore.DevIdp's own RbacProjectionWorker
 
     -- MVVM client (ADR-039) -- consumes the framework, doesn't extend it:
-    EventStore.Client.Core/               -- ViewModel base types, ICommandDispatcher, client-local durable outbox/inbox (same fault-tolerance bar as EventStore.PeerSync)
-    EventStore.Client.WebViewBridge/      -- native<->HTML+JS bridge (WebView2/WKWebView/CEF), hosts the web app below
-    EventStore.Client.DeviceInput/        -- IDeviceInputSource seam (docs/extensibility-points.md) + NativeBridgeInputSource, the local companion app exposing a localhost WebSocket/HTTP server for Firefox/Safari or any device interface none of the four browser APIs below reach (ADR-070); captured readings feed EventStore.Client.Core's outbox unchanged
+    EventStore.Client.Core/               -- NEVER BUILT. This was sketched as a separate .NET class library (ViewModel
+                                           -- base types, ICommandDispatcher, a client-local durable outbox/inbox), but
+                                           -- the actual implementation put all of that directly into client-web/'s own
+                                           -- TypeScript layer instead, as Pinia stores/composables, not a class library
+                                           -- one layer down (client-web/src/stores/outbox.ts, entityCache.ts,
+                                           -- viewDefinitions.ts). useOutboxStore owns the durable, IndexedDB-backed
+                                           -- outbox (same fault-tolerance bar this sketch described); useEntityCacheStore
+                                           -- is the read-side "last-known-good" cache, updated only from a confirmed
+                                           -- Subscription event, never by a local write; useEntityViewActions
+                                           -- (client-web/src/composables/) is the closest thing to the sketched
+                                           -- ICommandDispatcher -- a composable function that enqueues onto the outbox
+                                           -- store, not an interface/DI abstraction. See docs/patterns/mvvm-client-
+                                           -- architecture.md for the real shape.
+    EventStore.Client.WebViewBridge/      -- NEVER BUILT, same "sketch assumed a class library, the actual build put it
+                                           -- straight into client-web/'s own TypeScript layer" gap as Client.Core above. No
+                                           -- native (.NET/WebView2/WKWebView/CEF) shell project exists anywhere in src/ --
+                                           -- the closest real artifact is client-web/native-bridge-reference/server.mjs, a
+                                           -- small Node reference server for NativeBridgeInputSource's own WebSocket protocol,
+                                           -- explicitly NOT the shipped production bridge (real OS-level hardware access is
+                                           -- separate software this framework doesn't build, ADR-070's own scoping)
+    EventStore.Client.DeviceInput/        -- NEVER BUILT AS A SEPARATE PROJECT, same gap -- IDeviceInputSource
+                                           -- (docs/extensibility-points.md) and all five adapters (WebUsbInputSource/
+                                           -- WebHidInputSource/WebSerialInputSource/WebBluetoothInputSource/
+                                           -- NativeBridgeInputSource) live directly in client-web/src/deviceInput/*.ts
+                                           -- instead (ADR-070); captured readings feed the SAME durable outbox
+                                           -- client-web/src/stores/outbox.ts already owns, not a second mechanism
     client-web/                           -- npm workspace, NOT a .NET project: Vue 3 + Pinia + Naive UI application shell
                                            -- (docs/patterns/mvvm-client-architecture.md, docs/libraries/web/*.md); built to
                                            -- static assets, loaded by WebViewBridge for the native shell and served directly
@@ -86,24 +182,42 @@ EventStore.sln
     -- Sample application, explicitly NOT part of the framework (ADR-030):
     Samples.Orders.Projections/           -- worked example: OrderSummaryProjection (features/cqrs-projections.md)
   tests/
-    EventStore.UnitTests/            -- MSTest + Moq (ADR-055)
-    EventStore.IntegrationTests/    -- runs against all three providers (see below)
-    EventStore.E2ETests/             -- Playwright, MSTest base classes -- drives the Vue client through a real browser (ADR-055)
-    EventStore.Bdd/                 -- Reqnroll/SpecFlow-style step definitions for *.feature files
+    EventStore.UnitTests/            -- NEVER BUILT as its own project -- the same class of consolidation this whole
+                                      -- section documents for src/, on the tests/ side. Every test in this solution
+                                      -- (unit-level and integration-level alike) lives in the ONE project below instead.
+    EventStore.IntegrationTests/    -- runs against all three providers (see below); ALSO where every "unit test" actually
+                                     -- lives -- descriptively-named MSTest [TestMethod]s / shared *ScenarioAssertions.cs
+                                     -- helper classes calling services directly, not a separate fast/slow test-project split
+    EventStore.E2ETests/             -- NEVER BUILT -- no Playwright package reference exists anywhere in this solution's
+                                      -- own .csproj files. client-web's own a11y.spec.ts (Vitest, real axe-core) and the
+                                      -- headless-Edge cross-checks used while building several items are the closest real
+                                      -- equivalent, neither of them a literal Playwright E2E suite (ADR-055)
+    EventStore.Bdd/                 -- NEVER BUILT -- no Reqnroll/SpecFlow package reference exists anywhere either. Every
+                                     -- feature doc's own fenced Gherkin block stays documentation-only; the corresponding
+                                     -- real test is a same-intent MSTest [TestMethod] in EventStore.IntegrationTests above,
+                                     -- never a literal parsed *.feature file with step definitions -- consistent across
+                                     -- every one of the 48 build-plan items, not a one-off skip (see TODO.md's own entry)
 ```
 
 Frontend unit tests (`Vitest` + `Vue Test Utils`, `ADR-055`) live inside
-`EventStore.Client.Vue/` itself, alongside the components they test, not
-under `tests/` — matching how that project is already its own top-level
-solution area, not a subfolder of the write-side services above.
+`client-web/src/` itself, alongside the components/composables/stores they
+test (a `*.spec.ts` next to its subject, e.g. `stores/outbox.spec.ts`,
+`composables/useEntityViewActions.spec.ts`), not under `tests/` — matching
+how that npm workspace is already its own top-level solution area, not a
+subfolder of the write-side .NET services above. There is no
+`EventStore.Client.Vue/` directory; that name never matched anything built.
 
-`EventStore.Follow.Api` and `EventStore.Lineage.Api` (the OData-era
-projects) no longer exist as separate projects — `ADR-037` folds both
-into `EventStore.GraphQL`; the underlying traversal/tailing logic they
-contained is unchanged, only its transport and query-argument syntax
-moved. `EventStore.Publish.Api` is renamed `EventStore.Inbox` and split
-from a new `EventStore.Router`, reflecting `ADR-023`'s inbox/router
-separation — persistence and understanding are no longer the same step.
+**Correction, this pass**: `EventStore.Follow.Api` and `EventStore.Lineage.Api`
+(the OData-era projects) were intended to fold into `EventStore.GraphQL`
+per `ADR-037`, but the actual build kept both as real, separate projects
+(`FollowEndpoints`/`FollowService`/`EventTailReader`/`FilterPredicateBuilder`,
+and `LineageEndpoints`/`LineageService`, respectively) — still deployed
+alongside `EventStore.GraphQL`, not replaced by it. Every
+`EventStore.Host.<Provider>/Program.cs` maps both `app.MapFollowEndpoints()`
+and `app.MapLineageEndpoints()` in addition to GraphQL. `EventStore.Publish.Api`
+is renamed `EventStore.Inbox` and split from a new `EventStore.Router`,
+reflecting `ADR-023`'s inbox/router separation — persistence and
+understanding are no longer the same step.
 
 There is no single `EventStore.Host` project. Per `ADR-001`, provider
 selection is a build-time choice — `EventStore.Host.Sqlite`,
@@ -151,8 +265,15 @@ public static class HostCoreExtensions
         builder.Services.AddScoped<ISchemaRegistryReader, SchemaRegistryReader>();
         builder.Services.AddScoped<SchemaValidationService>();
         builder.Services.AddScoped<ParentLinkService>();
-        // ODataFilterParser removed, ADR-037 -- HotChocolate's [UseFiltering] middleware resolves
-        // the GraphQL `where` argument natively; there is no separate parser this project owns anymore.
+        // ODataFilterParser removed, ADR-037 -- the GraphQL `where` argument is resolved by a
+        // hand-rolled GraphQlFilterPredicateBuilder against a static EventFilterInput type, NOT
+        // HotChocolate's own [UseFiltering] middleware: that middleware infers a per-event-type
+        // filter-input object by reflecting over a bound C# CLR type, which this project's fully
+        // dynamic, per-registered-event-type ObjectType has none of (EventFilterInput.cs's own
+        // code comment explains the gap). GraphQlFilterPredicateBuilder rejects an undeclared
+        // Field name with a GraphQL error before it ever reaches the database -- the same
+        // functional safety ADR-003 originally required, just enforced one step later than
+        // schema validation, not [UseFiltering] under a different name.
         builder.Services.AddProblemDetails(); // ADR-013: one error shape, every endpoint (Publish only -- GraphQL uses its own partial-success error shape, 03-api-contracts.md)
         builder.Services.AddMemoryCache(); // backs the ~60s spec-document cache, ADR-002
         builder.Services.AddSingleton<EventSchemaConverter>();      // JsonSchema text -> shared Microsoft.OpenApi OpenApiSchema
@@ -349,7 +470,9 @@ before schema validation — `ADR-050` generalized this from a single
 `RequiredPublishClaim` to a list, `OR`-matched) and the GraphQL
 Gateway's Follow **Subscription resolver** (against a `Read`-direction
 `RequiredClaims` entry for its own event type, once at connect time,
-alongside `[UseFiltering]`'s `where`-field validation) exactly as a
+alongside `GraphQlFilterPredicateBuilder`'s own `where`-field validation
+— not HotChocolate's `[UseFiltering]` middleware, see the correction in
+`AddEventStoreCommonServices` above) exactly as a
 single pass/fail check. The Lineage **Query resolver** uses it
 differently, per `ADR-008`'s "you can only see what you can see": once
 for the root `eventId`'s own type (pass/fail, `403` if it fails — you
@@ -430,10 +553,16 @@ transport-specific:
 ```csharp
 public interface IPayloadMasker
 {
-    // Pure: only needs the schema and the data. Claim-checking is injected,
-    // not resolved internally -- this knows nothing about ClaimsPrincipal,
-    // HttpContext, or where the data came from.
-    JsonNode Mask(JsonSchema schema, JsonNode payload, Func<string, bool> hasClaim);
+    // Claim-checking is injected, not resolved internally -- this knows
+    // nothing about ClaimsPrincipal, HttpContext, or where the data came
+    // from. Async and cancellable, unlike this section's original sketch:
+    // entityId is threaded through for ADR-057's crypto-shredding reveal
+    // path -- a claim holder's "value" branch may need to decrypt against
+    // EntityErasureKey (a DB lookup, possibly a Vault call) before
+    // returning real plaintext, which the original synchronous JsonSchema.Net-
+    // based sketch never accounted for. The non-claim-holder "masked" branch
+    // never touches either and stays synchronous in spirit.
+    Task<JsonNode?> MaskAsync(JsonNode schema, JsonNode? payload, string? entityId, Func<string, bool> hasClaim, CancellationToken ct = default);
 }
 ```
 
@@ -498,7 +627,7 @@ embedded in the Follow Subscription resolver specifically:
 
 ```csharp
 // Follow Subscription resolver's per-event pipeline (illustrative):
-var maskedPayload = payloadMasker.Mask(activeSchema, rawPayload, claimType => user.HasClaim(...));
+var maskedPayload = await payloadMasker.MaskAsync(activeSchema, rawPayload, entityId, claimType => user.HasClaim(...), ct);
 ```
 
 The *set* of claims to check is fixed for the life of one Follow connection
@@ -552,8 +681,10 @@ out of the request body itself; `ADR-003`'s old per-field `$filter`/`$top`/
 
 The Follow **Subscription resolver** runs one continuous poll loop
 (`04-odata-filter-pushdown.md`: `WHERE SequenceNumber > lastSeen AND
-predicate`, translated now from a GraphQL `where` argument via
-`[UseFiltering]` rather than a parsed OData AST — see that document for the
+predicate`, translated now from a GraphQL `where` argument via the
+hand-rolled `GraphQlFilterPredicateBuilder`/`EventFilterInput` mechanism
+(not HotChocolate's `[UseFiltering]` middleware — see the correction
+above) rather than a parsed OData AST — see that document for the
 current pipeline) regardless of `mode` — only how `lastSeen` is
 *initialized*, once, at connect time, differs:
 
@@ -639,53 +770,80 @@ mechanism uses anymore — that section is preserved for the unrelated
 `$filter` surface only, don't confuse the two:
 
 ```csharp
-public class UpcastChain
+// Real shape, src/EventStore.Upcasting/UpcastChain.cs -- synchronous (the
+// evaluator itself is synchronous, ADR-053; no I/O happens in this loop)
+// and takes the destination-version definitions it needs as a plain
+// caller-supplied dictionary rather than resolving them itself via
+// ISchemaRegistryReader -- the caller (UpcastMaterializer below, or the
+// GraphQL Gateway's own read-time reshape) already knows the AppId its
+// own lookup needs; UpcastChain itself never takes one, so it stays usable
+// from both an AppId-scoped Publish/Router context and a bare-EventType-
+// name Follow context (docs/10-open-questions.md row 1's own workaround).
+public class UpcastChain(IUpcastExpressionEvaluator evaluator)
 {
-    private readonly ISchemaRegistryReader _registry;
-    private readonly IUpcastExpressionEvaluator _evaluator; // resolved via DI, ADR-053 -- CEL by default
-
-    public async Task<JsonNode> ApplyAsync(string eventType, int storedVersion, int currentVersion, JsonNode payload)
+    public UpcastOutcome Apply(
+        IReadOnlyDictionary<int, UpcastableVersion> definitionsByVersion, int fromVersion, int toVersion, JsonNode payload)
     {
-        var node = payload;
-        for (var v = storedVersion; v < currentVersion; v++)
+        var current = payload;
+        for (var version = fromVersion + 1; version <= toVersion; version++)
         {
-            var definition = await _registry.GetVersionAsync(eventType, v + 1);
-            if (definition.UpcastFromPrevious is { } expression)
-                node = await _evaluator.EvaluateAsync(expression, node); // engine-agnostic text in, transformed JsonNode out
-            // no upcastFromPrevious registered for this hop -- passed through as-is (ADR-018's accepted risk)
+            if (!definitionsByVersion.TryGetValue(version, out var definition))
+                return new UpcastOutcome.Failed(version, "destination schema version not found");
+            if (string.IsNullOrEmpty(definition.UpcastFromPrevious))
+                continue; // a purely additive hop needs no transform -- payload passes through unchanged (ADR-018's accepted risk)
+
+            // UpcastFromPrevious is a list of {Alias, Expression} clauses (UpcastExpressionListParser),
+            // one CEL/JSONata/Jint expression per destination property, not one big expression per hop.
+            var next = new JsonObject();
+            foreach (var clause in UpcastExpressionListParser.Parse(definition.UpcastFromPrevious))
+                next[clause.Alias] = evaluator.Evaluate(clause.Expression, current); // caller catches evaluation failure
+            current = next;
         }
-        return node;
+        return new UpcastOutcome.Success(current);
     }
 }
-```
 
-Called from the Follow Subscription resolver (per streamed event, before
-masking's transform runs — masking operates on the *current* schema shape,
-so it must see the upcasted payload, not the as-stored one) and from
-`ProjectionHost` (per event, before `SnapshotMerger` — `09-cqrs-read-
-models.md`, `ADR-016`), never from the Lineage Query resolver (which never
-includes `Payload`).
+public record UpcastableVersion(int Version, string? UpcastFromPrevious);
 
-**Also called from `PublishEndpoint` itself now (`ADR-020`)** — not to
-transform what gets stored, but as a live validation pass:
-
-```csharp
-if (request.SchemaVersion < activeVersion)
+public abstract record UpcastOutcome
 {
-    try { await upcastChain.ApplyAsync(eventType, request.SchemaVersion, activeVersion, request.Payload); }
-    catch (UpcastFailedException ex)
-    {
-        return await appender.AppendAsync(BuildEventUpcastFailed(request, ex.FailedHop, ex.Reason));
-    }
+    public sealed record Success(JsonNode Payload) : UpcastOutcome;
+    public sealed record Failed(int FailedAtVersion, string Reason) : UpcastOutcome; // a hop didn't parse/evaluate/validate
 }
-// upcast succeeded (or wasn't needed) -- store the ORIGINAL request.Payload at request.SchemaVersion, unchanged
-return await appender.AppendAsync(BuildStoredEvent(request));
 ```
 
-The upcasted result itself is discarded here — only whether it *succeeded*
-matters at publish time; what actually gets stored is always the caller's
-original, as-declared payload (`ADR-020`'s "on success, behavior is
-otherwise unchanged").
+Called from `UpcastMaterializer.TryMaterializeAsync` (`EventStore.Router`,
+`ADR-027`) — **not** from `PublishEndpoint` itself. "Entity-Centric Core
+Rebuild" retired the publish-time *blocking* validation pass `ADR-020`
+originally described here; `RouterWorker.cs`'s own comment at the call
+site says so explicitly ("even though the publish-time BLOCKING half of
+that check was retired"). `UpcastMaterializer` threads `AppId` through
+(`original.AppId`, from the `StoredEvent` being materialized) to the
+registry lookup this sketch's own previous version omitted. Two triggers
+call into the same `TryMaterializeAsync`: `RouterWorker` itself,
+immediately after folding an event whose own declared `SchemaVersion` is
+conformant but behind the type's current active version (Trigger 1,
+publish-time-adjacent), and `ReconcileBacklogAsync` (Trigger 2, a
+background sweep re-scanned every tick that catches events already in the
+log from before an `upcastFromPrevious` mapping existed for that gap).
+Neither ever throws for an ordinary upcast failure — `TryMaterializeAsync`
+returns `false` and the original event is simply left un-materialized,
+the same "fail open" posture `EventTailReader`'s own read-time reshape
+already has. `UpcastChain.Apply` is also called from the GraphQL Gateway's
+own read-time reshape (`ADR-018`/`027`) and from `ProjectionHost` (per
+event, before `SnapshotMerger` — `09-cqrs-read-models.md`, `ADR-016`) —
+never from the Lineage Query resolver (which never includes `Payload`).
+
+**`EventUpcastFailed` dead-lettering is retired, not merely
+deprioritized.** `ADR-020` originally described a `BuildEventUpcastFailed`
+event constructed on a failed live-validation hop, but that entire
+blocking check no longer runs at publish time (above), so nothing ever
+constructs one anymore — confirmed by e.g. `EventStore.Webhooks/
+WebhookDeliveryFailedEventType.cs`'s own comment ("the same treatment
+`ADR-020`'s (now-retired) `EventUpcastFailed` already established").
+There is no live `UpcastFailedException`/dead-letter code path to sketch
+here; a failed upcast at materialization time is just a `false` return, as
+shown above.
 
 ## Auth: DPoP proof validation (`ADR-017`)
 
@@ -812,19 +970,103 @@ the result (verify via a token request instead — see
 
 Quick-reference for whoever sizes a backup plan, so it isn't
 reconstructed from first principles across three separate data-model
-docs: **authoritative, must back up** — Event Log + `EventParent`
-(`event-log.md`), Schema Registry (`schema-registry.md`), Streaming
-Channel Store (`streaming-and-attachments.md`), Attachment Store (same),
-Read Access Audit Log (`ADR-045`), and `ADR-057`'s `EntityErasureKey`
-metadata (`entity-store.md` — losing it doesn't prevent *future*
-erasure, but does lose the mapping needed to *request* one for an
-already-existing entity without consulting the external key store's own
-listing). **Rebuildable, backup optional** — Entity Store, every CQRS
-read model/snapshot, materialized upcasts: all recoverable by re-running
-the existing fold/rebuild mechanism (`ADR-021`/`ADR-015`) against a
-restored authoritative store. Nothing about `ADR-004`'s portable-column
-choice blocks a provider's native backup/PITR tooling from working
-against any of the above.
+docs. Re-checked against the actual current set of `EventStoreContext`
+`DbSet`s while building "Data Lifecycle & Backup/Restore Classification"
+(`08-build-plan.md` item 25) — five tables this section had not yet
+named (`DerivationDefinition`/`DerivationCursor`/`PendingJoinState`,
+added by "Derived/Materialized Event Types"; `PeerSyncCursor`, added by
+"Sharding & Replication"; `ViewDefinition`, added by "Entity-Centric Core
+Rebuild") are folded in below, per this item's own dependency text
+("its coverage of specific stores grows accurate as [more items] land").
+
+**Authoritative, must back up**:
+- Event Log + `EventParent` (`event-log.md`), Schema Registry
+  (`schema-registry.md`), Streaming Channel Store (`streaming-and-
+  attachments.md`), Attachment Store (same), Read Access Audit Log
+  (`ADR-045`), and `ADR-057`'s `EntityErasureKey` metadata (`entity-
+  store.md` — losing it doesn't prevent *future* erasure, but does lose
+  the mapping needed to *request* one for an already-existing entity
+  without consulting the external key store's own listing; not yet
+  built as of this item, "GDPR/CCPA Erasure via Crypto-Shredding" is the
+  re-check trigger named below).
+- `DerivationDefinition` and `PendingJoinState` (`schema-registry.md`,
+  `ADR-007`, deferred) — a registered derivation is admin-configured
+  metadata, the same class as `EventTypeDefinition` itself; nothing
+  recomputes it from the Event Log. `PendingJoinState` is a FireOnce
+  join's own in-flight, not-yet-completed state — losing it silently
+  drops whichever sources had already arrived for that join key, and no
+  existing mechanism replays history to reconstruct which joins were
+  pending at the moment of loss.
+- `DerivationCursor` (same doc/ADR) — `DerivationWorker.ProcessDerivationAsync`
+  skips a source entirely when its cursor row is missing (`cursors.
+  TryGetValue` returning false, not "start from 0"); losing this row
+  silently and permanently stops that derivation consuming that source,
+  not merely a slower resync. Grouped with the two above rather than
+  called "rebuildable," since no code path currently regenerates it.
+- `ViewDefinition` (`entity-store.md`, "Entity-Centric Core Rebuild") —
+  admin-configured metadata, the same class as `EventTypeDefinition`;
+  nothing recomputes a registered view's shape from other data.
+- **`RedactedRange`** (`streaming-and-attachments.md`, `ADR-052`) — added
+  while checking this table against the current `EventStoreContext`
+  `DbSet`s; not previously named here. An operator-configured substitution
+  range for a telemetry channel, the same admin-authored class as
+  `WebhookSubscription`/`ViewDefinition`, not folded from anything —
+  nothing recomputes which spans should read back as zero-fill/tone/blank-
+  frame/partial-reveal if this row is lost, and a caller who should have
+  been shown a redaction would instead see the real underlying bytes.
+- **`WebhookSubscription`** (`schema-registry.md`, `ADR-060`) — admin-
+  configured registration metadata (target URL, signing secret, fixed
+  claims snapshot), the same class as `EventTypeDefinition`/`ViewDefinition`
+  above; nothing recomputes it.
+- **`WebhookOutbox`** (`schema-registry.md`, `ADR-060`) — the durable,
+  fault/abend/restart-tolerant outbox row for a webhook delivery already
+  enqueued but not yet delivered (the same primitive `ADR-033`'s peer-sync
+  outbox and `ADR-039`'s client outbox share, `CLAUDE.md`'s standing
+  requirement). Grouped with `PendingJoinState` above, not "rebuildable"
+  below: once `RouterWorker` folds the source event and marks it
+  `"applied"`, nothing re-derives this row from the Event Log again, so
+  losing it silently drops that pending delivery for good, not merely a
+  slower resync.
+- **`LocalErasureKeyMaterial`** (`entity-store.md`, `ADR-057`) — the
+  wrapped DEK bytes for a local (non-cloud-KMS) crypto-shredding key.
+  `docs/data/entity-store.md` already states losing this table "is
+  equivalent to erasing every subject it protects at once" — the highest-
+  severity item in this whole list, not merely authoritative.
+
+**Rebuildable, backup optional** — Entity Store, every CQRS read model/
+snapshot, materialized upcasts: all recoverable by re-running the
+existing fold/rebuild mechanism (`ADR-021`/`ADR-015`) against a restored
+authoritative store, verified end to end for `EntityStoreRow`/
+`LiveEntityStoreRow` specifically by this item's own restore-drill test
+(`DataLifecycleScenarioAssertions`) — wipe both tables, reset every
+`StoredEvent.Status` back to `"received"`, re-run `RouterWorker.
+RunOnceAsync` (the same public entry point the live worker already
+uses, no separate rebuild-only code path), and the reconstructed rows
+match the pre-wipe state field for field. `PeerSyncCursor` (`ADR-033`,
+`schema-registry.md`) belongs here too, on the same reasoning: losing it
+only costs a slower resync (`ADR-033`'s peers naturally re-exchange
+already-acked events, its own idempotency absorbing the resend) —
+backup optional, a pure RTO trade, not a data-loss risk.
+
+Also belonging here, added while checking this table against the current
+`EventStoreContext` `DbSet`s: **`AppResidencyPolicy`** (`ADR-061`) and
+**`FeatureFlagState`** (`ADR-077`) are both, per their own code comments,
+"folded from" a reserved control-plane event (`AllowedRegionsSet` /
+`FeatureFlagSet` respectively) — the same synchronous-fold-from-the-Event-
+Log posture `EntityStoreRow` already establishes, not admin-authored rows
+in their own right, so both are rebuildable exactly like the Entity Store
+is. **`LeaderLease`** (`ADR-078`) is pure ephemeral coordination state —
+which instance currently holds a worker role's lease, and until when;
+losing it only forces the next tick's lease acquisition to succeed
+immediately rather than wait out a stale lease's expiry, never a data-loss
+risk. **`WebhookDeliveryCursor`** (`ADR-060`, `schema-registry.md`) is
+"structurally identical to `PeerSyncCursor`... confirming this really does
+inherit the primitive" per that doc's own text — grouped here on the
+identical reasoning: losing it only costs redelivering some already-
+delivered events from `WebhookOutbox` above, not data loss.
+
+Nothing about `ADR-004`'s portable-column choice blocks a provider's
+native backup/PITR tooling from working against any of the above.
 
 ## Integration test strategy
 

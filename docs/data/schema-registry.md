@@ -15,11 +15,13 @@ public class EventTypeDefinition
     public List<RequiredClaim> RequiredClaims { get; set; } = new(); // generalizes RequiredPublishClaim/RequiredReadClaim from one fixed claim per direction to a list (ADR-050); OR semantics within one Direction by default -- any one listed claim for that direction satisfies the gate
     public ChangeKind ChangeKind { get; set; }          // Full | Partial — required, no default (ADR-016); Partial payloads are Optional<T>-wrapped per-property (ADR-022)
     public string EntityIdField { get; set; } = default!; // JSON path into Payload that yields this type's uniqueId (ADR-021) — required, no default
+    public string EntityType { get; set; } = default!;  // the logical entity this event type patches, e.g. "Order" (ADR-021's EntityId format is {appId}:{entityType}:{uniqueId}) — distinct from Name: OrderPlaced/OrderShipped are two event types sharing one EntityType. Defaults to this type's own normalized Name when not given explicitly at registration — a real, deliberately-safe default (every type trivially patches "itself" unless told to share), unlike EntityIdField/ChangeKind's "no safe default" posture
     public string? UpcastFromPrevious { get; set; }     // originally an OData compute() expression list, this version <- previous (ADR-018); materialized on success (ADR-027); evaluated via a pluggable IUpcastExpressionEvaluator, CEL by default (ADR-053), since ADR-037 moved this off OData entirely
     public string? DowncastToPrevious { get; set; }     // previous <- this version (ADR-028); read-time only, never materialized; same pluggable-evaluator move as UpcastFromPrevious above (ADR-037/ADR-053)
     public RejectionBehavior RejectionBehavior { get; set; } = RejectionBehavior.Annotate; // Annotate | Compensate — how an authorityDecision:rejected is handled for this type (ADR-035, comparisons/authority-rejection-behavior.md)
     public RequiredSignature? RequiredSignature { get; set; } // null = no sign-off required; set = publish must satisfy an RFC 9470 step-up challenge first (ADR-066)
     public DateTimeOffset? DeprecatedAt { get; set; }   // set, not removed, when a field/version is marked deprecated-but-still-emitted for at least one full deprecation window (ADR-038); null = not deprecated
+    public ExpectedResponse? ExpectedResponse { get; set; } // null = no tracked response expected (default); set = a ResponseEventType event carrying a matching RespondsToEventId is expected within Within, watched by ExpectedResponseWatcher (ADR-094)
 
     public List<FilterableField> FilterableFields { get; set; } = new();
 }
@@ -48,6 +50,7 @@ public class RequiredSignature
 {
     public List<string> AcrValues { get; set; } = new(); // RFC 9470 acr_values -- which authentication context the caller's token must carry
     public int? MaxAge { get; set; }                      // RFC 9470 max_age (seconds) -- how recently that authentication must have occurred
+    public bool EnableRfc3161Timestamp { get; set; }      // ADR-086 -- opt-in per event type; true also obtains an RFC 3161 TimeStampToken over hash(ChainHash), stored on the resulting Signature.RFC3161Timestamp
 }
 
 public enum RejectionBehavior
@@ -56,9 +59,16 @@ public enum RejectionBehavior
     Compensate  // a rejected event triggers a compensating patch, per-type opt-in where the domain needs it
 }
 
+public class ExpectedResponse
+{
+    public string ResponseEventType { get; set; } = default!; // which event type's RespondsToEventId satisfies this expectation -- v1 allows exactly one, not a RequiredClaims-style OR-of-list (ADR-094)
+    public TimeSpan Within { get; set; }                        // how long after the request event's receipt a matching response is expected before ExpectedResponseMissing fires
+}
+
 public class FilterableField
 {
     public int Id { get; set; }
+    public string EventTypeAppId { get; set; } = default!; // part of the composite FK (ADR-030) -- missing here until this pass; features/schema-registry.md's ER diagram already had it
     public string EventTypeName { get; set; } = default!;
     public int EventTypeVersion { get; set; }
     public string JsonPath { get; set; } = default!;    // e.g. "$.Amount"
@@ -92,6 +102,21 @@ resolved in `ADR-044`'s Consequences — a narrow `registry:trust-admin`
 scope, separate from `registry:admin` — see
 `../comparisons/trust-root-registration-gate.md` for the full comparison.
 
+**`AppTrustRoot` is a `EventStore.DevIdp`-owned table, folded from a
+reserved control-plane event** — `AppTrustRootRegistered` (`ADR-067`'s
+control-plane-actions-as-reserved-events pattern). The write path moved:
+a Host-side, `registry:trust-admin`-gated Minimal API (`EventStore.Rbac`'s
+`PUT /rbac/trust-roots/{issuerDid}`) publishes the reserved event into the
+core engine's own Event Log; DevIdp's `RbacProjectionWorker` (a
+`BackgroundService`) follows it cross-process via the core engine's own
+Follow API and folds it into this SAME table via `TrustRootService`'s own
+already-idempotent `RegisterAsync`, reused verbatim — only the caller
+changed, from an inbound HTTP request to a Follow consumer. This table
+itself is **not** a core-engine `EntityStoreRow`-folded entity (DevIdp is
+an identity provider process, not part of the core engine) — the fold
+happens entirely within `EventStore.DevIdp`, one level removed from the
+core engine's own generic fold mechanism.
+
 ## Roles (`ADR-046`)
 
 ```csharp
@@ -113,14 +138,27 @@ public class UserPermission
 A named, `AppId`-scoped bundle of the same opaque permission strings
 used everywhere else in this design (`RequiredClaims`' claim values,
 `ADR-008`/`ADR-050`; `ADR-044`'s application-defined permission types).
-**`Role` and `UserPermission` are both core-engine entities, folded from
-reserved control-plane events** — `RoleGranted`/`RoleRevoked` and
-`PermissionGranted` respectively (`ADR-067`'s control-plane-actions-as-
-reserved-events pattern). **Corrected here**: an earlier version of this
-section said role assignment and direct per-user grants were identity-
-provider state, not core-engine data — `ADR-046` originally took that
-position but `ADR-067` (written later) explicitly superseded it, and
-this file was never updated to match until now. The IdP still expands a
+**`Role` and `UserPermission` are both `EventStore.DevIdp`-owned tables
+(identity-provider state, per `ADR-046`'s original position), and the role-
+*assignment*/direct-*grant* halves are folded from reserved control-plane
+events** — `RoleGranted`/`RoleRevoked` and `PermissionGranted`
+respectively (`ADR-067`'s control-plane-actions-as-reserved-events
+pattern); `Role`'s own permission-*bundle definition* (what a role NAME
+contains) stays a direct, synchronous DevIdp write (`PUT /oauth/roles`,
+unaffected by `ADR-067` — it names exactly 5 reserved event types, and a
+role's own bundle definition isn't one of them). **Corrected here**: an
+earlier version of this section claimed `Role`/`UserPermission` became
+core-engine entities under `ADR-067` — building the actual mechanism
+(this session) confirmed the fold happens entirely inside
+`EventStore.DevIdp` itself: a Host-side, scope-gated Minimal API
+(`EventStore.Rbac`'s `RbacEndpoints.cs`) publishes the reserved events
+into the core engine's own Event Log, and DevIdp's own
+`RbacProjectionWorker` (a `BackgroundService`) follows them cross-process
+via the core engine's Follow API, folding into these SAME tables via
+`RoleService`'s own already-idempotent `AssignRoleAsync`/`RevokeRoleAsync`/
+`GrantDirectPermissionAsync`, reused verbatim — only the caller changed,
+from an inbound HTTP request to a Follow consumer. There is no core-engine
+`EntityStoreRow` involved anywhere in this fold. The IdP still expands a
 user's roles plus any direct grants into one flattened claim set at
 token issuance; every claim check in this design (`ADR-008`, `ADR-043`,
 `ADR-044`) is unchanged and unaware whether a claim arrived via a role,
@@ -148,19 +186,24 @@ than a reused shape.
 ## Data residency (`ADR-061`)
 
 ```csharp
-public class AppDataResidencyPolicy
+public class AppResidencyPolicy
 {
-    public string AppId { get; set; } = default!;         // part of the composite key (ADR-030)
+    public string AppId { get; set; } = default!;         // the whole key -- one row per AppId (ADR-030)
     public List<string> AllowedRegions { get; set; } = new(); // e.g. ["eu-west", "eu-central"] -- matches a peer's Region tag (ADR-051's SeedPeers config)
+    public long LastAppliedSequenceNumber { get; set; }     // the reserved AllowedRegionsSet event's own SequenceNumber this row was last folded from -- guards a replayed/idempotent-retry publish from regressing an already-newer row
 }
 ```
 
 Absent for a given `AppId`, that tenant is unconstrained (today's
-behavior, unchanged) — this table is purely additive. Enforced at
-`ADR-033`'s peer-sync outbox, which filters candidate destination peers
-to those tagged with one of the listed regions before including an
-`AppId`'s events in an outbound sync batch — not enforced here at the
-registry layer, which only holds the *declared* constraint.
+behavior, unchanged) — this table is purely additive. Populated by a
+synchronous fold (the same posture `FeatureFlagState` already
+established, not a cross-process Follow fold): `AppResidencyPolicyService`
+publishes the reserved `AllowedRegionsSet` event and upserts this row in
+the same call (`src/EventStore.Replication/AppResidencyPolicyService.cs`).
+Enforced at `ADR-033`'s peer-sync outbox, which filters candidate
+destination peers to those tagged with one of the listed regions before
+including an `AppId`'s events in an outbound sync batch — not enforced
+here at the registry layer, which only holds the *declared* constraint.
 
 ## Webhook subscriptions (`ADR-060`)
 
@@ -176,6 +219,7 @@ public class WebhookSubscription
     public string FixedClaimsSnapshot { get; set; } = default!; // JSON -- the claim set computed once at registration time (ADR-060), never re-evaluated per delivery
     public bool Active { get; set; } = true;
     public DateTimeOffset RegisteredAt { get; set; }
+    public string? OutboundAdapterKey { get; set; }           // ADR-072 -- names a registered IInterchangeFormatAdapter's own keyed-DI key; null delivers the ordinary masked JSON unchanged
 }
 ```
 
@@ -186,8 +230,10 @@ live re-check, the same "claims fixed for a connection's lifetime" rule
 `ADR-009` already applies to a Follow connection. `WebhookOutbox`/
 `WebhookDeliveryCursor` (the delivery-side durable queue and per-
 subscription cursor) are a separate concern from this registration
-record — not yet placed in this file, still flagged as remaining
-propagation work per `ADR-060`'s own Consequences.
+record — see "Webhook outbox and delivery cursor" below (a stale note
+here once called this remaining propagation work per `ADR-060`'s own
+Consequences; that section already exists in this same file, corrected
+in place while building the matching build-plan item).
 
 ## Entity view definitions (`ADR-039`)
 
@@ -237,7 +283,8 @@ public class WebhookOutbox
 {
     public long SequenceNumber { get; set; }               // own append-only sequence, matched against StoredEvent's for resumption
     public Guid SubscriptionId { get; set; }               // FK -> WebhookSubscription
-    public string EventPayloadSnapshot { get; set; } = default!; // masked (ADR-009) against FixedClaimsSnapshot at enqueue time
+    public string EventPayloadSnapshot { get; set; } = default!; // masked (ADR-009) against FixedClaimsSnapshot -- refreshed on every delivery attempt, not written once and left stale
+    public long SourceSequenceNumber { get; set; }         // FK -> StoredEvent.SequenceNumber
     public DateTimeOffset EnqueuedAt { get; set; }
 }
 
@@ -256,6 +303,52 @@ share — `WebhookOutbox` is a durable table (never an in-memory queue),
 and `WebhookDeliveryCursor` is structurally identical to
 `PeerSyncCursor` above, confirming this really does inherit the
 primitive rather than merely resembling it.
+
+**`SourceSequenceNumber`, added while implementing this item's own build-
+plan work**: `ADR-060`'s own Consequences state a *retry* attempted after
+a crypto-shredding erasure must "correctly re-mask through `IPayloadMasker`
+against the now-erased key" — but `IPayloadMasker`'s reveal path decrypts
+the ORIGINAL ciphertext live, checking the erasure key's current state
+each call (`ADR-057`); a value already baked into `EventPayloadSnapshot`
+at enqueue time can't be re-derived from itself. `SourceSequenceNumber`
+lets `WebhookOutboxPump` re-fetch the originating `StoredEvent`'s raw
+`Payload`/`EntityId` and re-run `IPayloadMasker.MaskAsync` fresh on every
+delivery attempt (first attempt or retry alike) — `EventPayloadSnapshot`
+is then this row's own record of what was actually just sent, not a
+frozen, potentially-stale copy from enqueue time.
+
+## Expected-response tracker (`ADR-094`)
+
+```csharp
+public class ExpectedResponseTracker
+{
+    public Guid RequestEventId { get; set; }               // PK
+    public string RequestEventType { get; set; } = default!;
+    public string ExpectedResponseEventType { get; set; } = default!;
+    public DateTimeOffset DeadlineAt { get; set; }          // request event's receipt time + EventTypeDefinition.ExpectedResponse.Within
+    public Guid? SatisfiedByEventId { get; set; }           // set once a matching RespondsToEventId is observed, on time or late -- never treated as an error
+    public DateTimeOffset? SatisfiedAt { get; set; }
+    public DateTimeOffset? EscalatedAt { get; set; }        // set once ExpectedResponseMissing has been published for this row -- fires exactly once
+}
+```
+
+The durable, per-request checkpoint `ExpectedResponseWatcher` maintains —
+the same "durable tracker, not an in-memory timer" discipline
+`ProjectionCheckpoint`/`PeerSyncCursor`/`WebhookDeliveryCursor` above
+already establish for their own background workers. `ADR-094`'s own text
+frames `ExpectedResponseWatcher` as architecturally an "internal
+follower" (`ADR-015`'s `ProjectionHost` shape) — the actual build placed
+it directly inside the same `EventStore.Host.<Provider>` process as
+`Router`/`Derivation`/`Webhooks` instead, reading `EventStoreContext`
+directly rather than a real Follow-over-HTTP client, since there is no
+real process boundary between this mechanism and the events it tails
+(see `ADR-094`'s own "Corrected, 2026-08-11" note). It tails every event
+type carrying a configured `ExpectedResponse` to insert rows here, tails
+every named `ResponseEventType` to stamp `SatisfiedByEventId`/
+`SatisfiedAt`, and sweeps past-deadline, unsatisfied, unescalated rows to
+publish the reserved `ExpectedResponseMissing` event (`ADR-094`).
+Leader-lease-gated like every other singleton worker (`ADR-078`'s
+`LeaderLease`, `WorkerRole = "ExpectedResponseWatcher"`).
 
 ## Feature flag state (`ADR-077`)
 
@@ -282,7 +375,7 @@ model concern, so it isn't specified further here.
 ```csharp
 public class LeaderLease
 {
-    public string WorkerRole { get; set; } = default!;  // "Router" | "UpcastMaterializer" | "PeerSyncOutboxPump" | "WebhookOutboxPump" — primary key
+    public string WorkerRole { get; set; } = default!;  // "Router" | "UpcastMaterializer" | "PeerSyncOutboxPump" | "WebhookOutboxPump" | "ExpectedResponseWatcher" (ADR-094) — primary key
     public string LeaseHolderId { get; set; } = default!; // this instance's own identity (host name + process id, or similar)
     public DateTimeOffset LeaseExpiresAt { get; set; }
 }
@@ -303,6 +396,20 @@ issues a provider-specific migration to add a computed/expression index:
 | SQLite | Expression index: `CREATE INDEX ... ON Events(json_extract(Payload, '$.Amount'))` (SQLite 3.9+) |
 | PostgreSQL | Expression index: `CREATE INDEX ... ON "Events" ((("Payload"::jsonb) ->> 'Amount'))` |
 | SQL Server | Computed column + index: `ALTER TABLE Events ADD Amount AS JSON_VALUE(Payload, '$.Amount'); CREATE INDEX ... ON Events(Amount)` |
+
+**`JsonPath` is restricted to a safe dotted-identifier chain** (`$.Amount`,
+`$.Order.Id` — `^\$(\.[A-Za-z_][A-Za-z0-9_]*)+$`), rejected `400` at
+registration otherwise, added this pass while implementing the Schema
+Registry build-plan item. `04-odata-filter-pushdown.md` documents
+`FilterableField.JsonPath` as following RFC 9535 JSONPath generally, but no
+real example anywhere in this design uses bracket notation, wildcards, or a
+filter expression — and a `JsonPath` flows directly into raw provider DDL
+here (the index/computed-column migration above) and, later, into query
+pushdown, so an unrestricted grammar would be a real injection surface, not
+just an unsupported-feature gap. Multi-provider translation for PostgreSQL
+uses `#>>` with a `{segment,segment}` path array (not `->>`, which only
+extracts one level) so a multi-segment path like `$.Order.Id` still
+translates correctly.
 
 This is generated/applied by the Schema Registry Service at field-registration
 time, not part of the baseline EF model — see
@@ -339,6 +446,107 @@ direction" limitation no longer applies.
 - Enforcement needs the caller's claims to already be populated by JWT
   bearer auth (`ADR-006`), so this can only be enforced once that auth
   middleware exists — see `../08-build-plan.md`, "Event-Type Security".
+
+## Derived/materialized event types (deferred, `ADR-007`)
+
+```csharp
+// Registered via POST /create/{event-type}, analogous to PUT /registry/
+// {event-type} (ADR-007) -- an EventTypeDefinition for (AppId, Name) is
+// registered alongside this row, in the same transaction, with JsonSchema
+// auto-composed from SelectFields rather than hand-authored.
+public class DerivationDefinition
+{
+    public string AppId { get; set; } = default!;       // part of the composite key, same scoping as EventTypeDefinition (ADR-030)
+    public string Name { get; set; } = default!;         // the derived event type's own name
+    public List<string> Sources { get; set; } = new();   // $from -- ordered, arbitrary-length source event type names (ADR-007)
+    public List<JoinCondition> JoinConditions { get; set; } = new(); // $on -- conjunction of pairwise field equalities across Sources
+    public List<SelectField> SelectFields { get; set; } = new();     // $select -- output field <- source field mapping; also drives the auto-composed JsonSchema
+    public JoinTriggerMode JoinTriggerMode { get; set; }  // FireOnce | ContinuousEnrichment (ADR-007) -- per-derivation, not global
+    public BackfillMode BackfillMode { get; set; }        // FromHistory | FromNow (ADR-007) -- per-derivation, not global
+    public bool BackfillThroughDerivedSources { get; set; } // only meaningful when a declared source is itself a derived type (ADR-007)
+    public TimeSpan PendingJoinTtl { get; set; }          // FireOnce only -- ExpiresAt = FirstSeenAt + this, swept periodically (ADR-007)
+    public int MaxHopCount { get; set; } = 5;             // derivationHopCount runtime cap, belt-and-suspenders against the residual race a registration-time cycle check can't fully close (ADR-007)
+    public DateTimeOffset RegisteredAt { get; set; }
+    public bool IsActive { get; set; }                    // the worker only tails Sources for active derivations
+}
+
+public class JoinCondition
+{
+    public string LeftSource { get; set; } = default!;  // must name one of the owning DerivationDefinition's Sources
+    public string LeftField { get; set; } = default!;   // JSON path into that source's Payload
+    public string RightSource { get; set; } = default!;
+    public string RightField { get; set; } = default!;
+}
+
+public class SelectField
+{
+    public string OutputField { get; set; } = default!; // JSON path in the derived type's own Payload
+    public string SourceType { get; set; } = default!;   // which declared source this value comes from
+    public string SourceField { get; set; } = default!;  // JSON path into that source's Payload
+}
+
+public enum JoinTriggerMode
+{
+    FireOnce,             // wait for one event per source per join key, emit once, key closes (ADR-007)
+    ContinuousEnrichment  // any new arrival on any source re-emits, joined against the current latest state of the others (ADR-007)
+}
+
+public enum BackfillMode
+{
+    FromHistory, // the derivation worker starts by tailing each source from SequenceNumber 0
+    FromNow      // the derivation worker starts tailing each source from its SequenceNumber as of registration
+}
+
+// Per-(derivation, source) tailing checkpoint -- the concrete
+// "checkpointing" mechanism ADR-007 names as a complexity without
+// specifying a shape; this is this pass's answer, following
+// EventTailReader's own lastSeen-cursor model but persisted so a worker
+// restart resumes instead of re-tailing from BackfillMode's starting
+// point every time.
+public class DerivationCursor
+{
+    public string AppId { get; set; } = default!;
+    public string DerivationName { get; set; } = default!;
+    public string SourceEventType { get; set; } = default!;
+    public long LastProcessedSequenceNumber { get; set; }
+}
+
+// FireOnce-mode join state, durable and TTL-bounded rather than an
+// in-memory cache (ADR-007) -- so a key that hasn't completed across all
+// declared sources survives a worker restart, and is dropped with a
+// recorded reason if the remaining sources never arrive. Not used by
+// ContinuousEnrichment mode, which never waits.
+public class PendingJoinState
+{
+    public Guid Id { get; set; }
+    public string AppId { get; set; } = default!;
+    public string DerivationName { get; set; } = default!;
+    public string JoinKeyValue { get; set; } = default!;       // the shared value connecting Sources' JoinConditions for this pending join
+    public string ArrivedSourcesJson { get; set; } = default!; // JSON: { [sourceType]: { eventId, payload } } for sources seen so far
+    public DateTimeOffset FirstSeenAt { get; set; }
+    public DateTimeOffset ExpiresAt { get; set; }               // FirstSeenAt + owning DerivationDefinition.PendingJoinTtl
+    public string? ExpiredReason { get; set; }                  // set (row kept, not deleted) when the sweep drops this past ExpiresAt -- a minimal dead-letter record, per ADR-007's own "not designed further here" note on the exact shape
+}
+```
+
+Registration walks the existing derivation-definition graph (derived
+type → its declared `Sources`) with a plain DFS and a visited-set,
+rejecting (`400`) if the new registration's `Sources` transitively
+include the type being defined — a different cycle from `ADR-005`'s
+`CycleGuard`, which guards a single traversal of the already-published,
+inert event DAG; this one guards the small, admin-scale graph of
+derivation *definitions themselves*, which is not inert (`ADR-007`).
+`StoredEvent.DerivationHopCount` (`docs/data/event-log.md`) is the
+runtime belt-and-suspenders cap for the residual race this
+registration-time check can't fully close.
+
+The derivation worker is architecturally "an internal follower"
+(`ADR-007`): it reads directly, with no claims filtering of its own —
+it is a server-side process producing new data, not exposing existing
+data to an external caller, so `RequiredClaims`' Read direction (above)
+doesn't apply to it. `EventParents` (no schema change) already records
+which source events a derived event was computed from, exactly as
+`ADR-007` anticipated.
 
 Property-level **masking** — wrapping individual field *values* in a
 `{"value": ...}` / `{"masked": "***"}` / `{"erased": true}` envelope

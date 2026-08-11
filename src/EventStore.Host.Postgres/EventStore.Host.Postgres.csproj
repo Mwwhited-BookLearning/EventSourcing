@@ -1,0 +1,45 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <ItemGroup>
+    <ProjectReference Include="..\EventStore.Host.Core\EventStore.Host.Core.csproj" />
+    <ProjectReference Include="..\EventStore.Persistence.Migrations.Postgres\EventStore.Persistence.Migrations.Postgres.csproj" />
+    <ProjectReference Include="..\EventStore.SchemaRegistry\EventStore.SchemaRegistry.csproj" />
+    <ProjectReference Include="..\EventStore.Rbac\EventStore.Rbac.csproj" />
+    <ProjectReference Include="..\EventStore.FeatureFlags\EventStore.FeatureFlags.csproj" />
+    <ProjectReference Include="..\EventStore.Inbox\EventStore.Inbox.csproj" />
+    <ProjectReference Include="..\EventStore.Derivation\EventStore.Derivation.csproj" />
+    <ProjectReference Include="..\EventStore.Erasure\EventStore.Erasure.csproj" />
+    <ProjectReference Include="..\EventStore.Timestamping\EventStore.Timestamping.csproj" />
+    <ProjectReference Include="..\EventStore.Router\EventStore.Router.csproj" />
+    <ProjectReference Include="..\EventStore.SpecGeneration\EventStore.SpecGeneration.csproj" />
+    <ProjectReference Include="..\EventStore.Lineage.Api\EventStore.Lineage.Api.csproj" />
+    <ProjectReference Include="..\EventStore.Follow.Api\EventStore.Follow.Api.csproj" />
+    <ProjectReference Include="..\EventStore.Streaming\EventStore.Streaming.csproj" />
+    <ProjectReference Include="..\EventStore.Archival\EventStore.Archival.csproj" />
+    <ProjectReference Include="..\EventStore.ExpectedResponse\EventStore.ExpectedResponse.csproj" />
+    <ProjectReference Include="..\EventStore.Attachments\EventStore.Attachments.csproj" />
+    <ProjectReference Include="..\EventStore.Replication\EventStore.Replication.csproj" />
+    <ProjectReference Include="..\EventStore.Webhooks\EventStore.Webhooks.csproj" />
+    <ProjectReference Include="..\EventStore.Interchange\EventStore.Interchange.csproj" />
+    <ProjectReference Include="..\EventStore.GraphQL\EventStore.GraphQL.csproj" />
+    <ProjectReference Include="..\EventStore.ServiceDefaults\EventStore.ServiceDefaults.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.10">
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+      <PrivateAssets>all</PrivateAssets>
+    </PackageReference>
+  </ItemGroup>
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <!-- ADR-062: Microsoft.NET.Sdk.Web defaults IsPackable to false, but
+         this Host is explicitly named as a published package/quickstart
+         template a downstream project can reference. -->
+    <IsPackable>true</IsPackable>
+  </PropertyGroup>
+
+</Project>

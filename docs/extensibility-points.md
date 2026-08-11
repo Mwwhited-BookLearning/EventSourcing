@@ -36,7 +36,34 @@ distinction matters.
 | `IDeviceInputSource` | How the MVVM client reads from a connected physical device | `WebUsbInputSource`, `WebHidInputSource`, `WebSerialInputSource`, `WebBluetoothInputSource`, `NativeBridgeInputSource` (localhost WebSocket, for Firefox/Safari) | Dictated by the device's own hardware interface, not a deployment pick — several active simultaneously | `ADR-070` |
 | `IInterchangeFormatAdapter` | Transform between this framework's own JSON Schema shape and an external interchange standard, inbound or outbound | None shipped by default — a deployment registers `Hl7V2Adapter`, `FhirAdapter`, `IchE2bR3Adapter`, `Gs1EpcisAdapter`, or others as needed | Chosen per integration need — several active simultaneously | `ADR-072` |
 | `IAttachmentContentStore` | Where a large attachment's actual bytes are stored/tiered | None shipped by default — a deployment registers any mix of Azure Blob (Hot/Cool/Cold/Archive), S3 (Standard/Infrequent-Access/Glacier), or a local dev store | Keyed per `ContentProviderKey`, same multi-backend-simultaneously shape as `IErasureKeyStore` above | `ADR-032` |
-| `ITimestampAuthorityClient` | Which RFC 3161 Time Stamping Authority signs a `TimeStampToken` over a `ChainHash` | None shipped by default — a deployment registers a public TSA or an internally-operated one | Selected per deployment; enabled per event type alongside `RequiredSignature` | `ADR-086` |
+| `ITimestampAuthorityClient` | Which RFC 3161 Time Stamping Authority signs a `TimeStampToken` over a submitted hash — a `Signature`'s `ChainHash`-derived hash, or a Lineage Export `ManifestHash` | `HttpTimestampAuthorityClient` (a generic RFC 3161 HTTP client, ships by default; requires `Timestamping:TsaUrl` — no TSA vendor hardcoded) | Selected per deployment; enabled per event type alongside `RequiredSignature`, and for Lineage Export whenever a TSA is configured | `ADR-086` |
+
+**Which package each interface actually ships in**, verified against
+`src/` this pass (not repeated per row above, since it cuts across rows
+rather than following the table's own per-seam structure): `IMaskingStrategy`,
+`IStreamRedactionStrategy`, `IUpcastExpressionEvaluator`, `IErasureKeyStore`,
+`IAttachmentContentStore`, and, added by `08-build-plan.md` item 42,
+`ITimestampAuthorityClient`, all now ship in one consolidated
+`EventStore.Abstractions` package (`ADR-062`, `08-build-plan.md` item 39) —
+a hosting team's custom implementation of any of these six references
+only that one small assembly, never the framework's own larger internal
+projects. `ITimestampAuthorityClient`'s own default implementation
+(`HttpTimestampAuthorityClient`, a real RFC 3161 HTTP client using the
+BCL's `System.Security.Cryptography.Pkcs` types) ships in a separate new
+`EventStore.Timestamping` package instead, the same "interface in
+Abstractions, default implementation in its own small package"
+split `IErasureKeyStore`/`EventStore.Erasure` already established. `IEventLineageQueryProvider` and `IJsonPathTranslator`
+deliberately stay in `EventStore.Persistence` instead — both are
+provider-specific, build-time-selected (`ADR-001`), never a hosting-team
+extension point the way the five `EventStore.Abstractions` interfaces are,
+so consolidating them alongside those five would misrepresent what they're
+actually for. `IProjection<TReadModel>` and `IInterchangeFormatAdapter`
+similarly stay in their own pre-existing, purpose-built packages
+(`EventStore.Projections.Abstractions`, `EventStore.Interchange.Abstractions`
+respectively) rather than moving into `EventStore.Abstractions` — each
+already had a narrower, more appropriate home before this consolidation,
+and moving them would cost their existing dependents a reference change
+for no real gain.
 
 **Not a seam, for contrast**: `IPayloadMasker` itself (`ADR-009`) is the
 one framework-owned orchestrator that *consumes* `IMaskingStrategy` — a

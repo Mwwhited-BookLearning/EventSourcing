@@ -131,10 +131,16 @@ offline review requires locally-usable data with no network present.
   local/edge client subscribes with an explicit scope filter — the same
   `FilterableFields`-backed argument shape any GraphQL Subscription
   already supports (`ADR-037`), e.g. "entities assigned to this site/
-  device AND still open." Falling out of scope (closed, completed,
-  reassigned) proactively evicts the local cached copy — the
-  subscription's own filter *is* the retention policy, not an unrelated
-  TTL.
+  device AND still open." **Built as a server-side subscription filter,
+  not a client-side eviction signal** — the filter bounds what the client
+  ever receives (and therefore ever caches) going forward, which is the
+  entire retention policy this ADR names; it is not a push-based "this
+  entity just fell out of scope, delete it now" notification, since
+  nothing in the underlying GraphQL Subscription mechanism sends one.
+  Honest, named limitation: an already-cached entity whose later update
+  stops matching the filter (closed, completed, reassigned) simply stops
+  receiving further updates through that connection — it goes stale
+  rather than being proactively purged the instant that happens.
 - **Receiving an `EntityErasureRequested` event for a subscribed entity
   is a mandatory, immediate local purge**, not deferred to the next
   scope-eviction cycle. `ADR-057`'s erasure event reaches a subscribed
@@ -345,6 +351,37 @@ the mockup above) or a template-backed `ViewDefinition`'s own markup is
 exempt merely for being a fallback or being content-addressed — both are
 screens a real user reads.
 
+**Implementation note (added once built, 2026-08-11):** `client-web/src/
+a11y.spec.ts` runs the real, published `axe-core` ruleset (`wcag2a`/
+`wcag2aa`/`wcag21a`/`wcag21aa` tags specifically, matching this ADR's own
+cited legal baseline, not the newer 2.2 tags) against the ACTUALLY
+rendered DOM of `GenericFallbackView` (plain and with an Extensions-
+sourced property), a `TemplateRenderer`-backed screen, and the shared
+`FlagRow` convention (including its active/warning state) — zero
+critical/serious violations across all four. A real, verified gap in the
+automated check itself was found and closed, not glossed over: jsdom has
+no working `HTMLCanvasElement.getContext`, so axe's `color-contrast` rule
+always lands in `results.incomplete` (impact `"serious"`) under jsdom,
+never actually determined pass or fail — confirmed by inspecting
+`results.incomplete` directly, not assumed from a clean `violations`
+array. Closed with a real browser (a self-contained HTML harness
+embedding these components' own actually-rendered HTML/CSS plus axe-
+core's browser bundle, run headlessly in Edge — the same technique
+`ADR-068`'s own offline-player verification already used), confirming
+zero violations AND zero incomplete findings there. One real,
+concrete accessibility fix was found by reasoning directly about screen-
+reader behavior, not flagged by any automated tool: `GenericFallbackView`'s
+property table had no header semantics at all — fixed with `<th
+scope="row">` per property row plus a visually-hidden `<caption>`
+describing the table's purpose. **Honest, still-open gap**: the ADR's
+own literal "manual screen-reader pass" (a real NVDA/JAWS/VoiceOver
+session) was not performed — no such software is installable/operable
+in this environment — tracked in `TODO.md`, not silently claimed
+equivalent to the automated pass above (industry-documented: automated
+tools catch roughly 30-50% of real accessibility issues, the rest need
+human review, exactly this exit criterion's own stated reason for
+asking for one specifically).
+
 ## Internationalization & localization (ADR-087)
 
 `ADR-087` draws the same separation for i18n/l10n that `ADR-073` already
@@ -366,6 +403,26 @@ sequence diagram (above) shows, and to the client generally:
   `ViewDefinition` rendering today regardless, the same way the
   Accessibility section above treats WCAG 2.1 AA as already governing
   every screen before every implementation detail is filled in.
+
+  **Implementation note (added once built, 2026-08-11):** the previously-
+  open resource-key convention is now `{{ t:key }}` — reusing this same
+  format's existing `{{ field }}` interpolation shape rather than
+  inventing a second templating syntax, disambiguated by the literal `t:`
+  marker. `{{ field:date }}`/`{{ field:number }}` apply `Intl.
+  DateTimeFormat`/`Intl.NumberFormat` to a bound field for the resolved
+  locale (the "Locale-aware formatting" bullet below, made concrete).
+  Enforced server-side at registration time by
+  `EventStore.ViewRegistry/TranslationKeyValidator.cs` (strips every
+  `{{ }}` interpolation and HTML tag/comment via regex, matching this
+  format's own "small injected binding runtime" style rather than adding
+  an HTML-parser dependency; any non-whitespace text left over is a
+  hardcoded literal and rejected), and resolved client-side by
+  `client-web/src/components/entity/TemplateRenderer.vue` against
+  `client-web/src/i18n/translations.ts`'s resource map for the locale
+  `client-web/src/api/localeClient.ts` negotiated. An unresolved key
+  renders visibly as `[key]` rather than silently blanking, matching this
+  doc's own "never a blank/failed render" framing for the generic
+  fallback.
 - **Locale-aware formatting via built-in culture APIs.** Any date/number/
   currency value a `ViewDefinition` template binds renders through the
   `Intl` API (`Intl.DateTimeFormat`, `Intl.NumberFormat`) in the embedded
@@ -464,12 +521,23 @@ Feature: MVVM client (entity views, client-local outbox, native/JS bridge)
     Then the receiving system should verify the bundle is complete and unaltered before importing it
     And the queued command should then be delivered to the Entity Store from the connected system
 
-  Scenario: Falling out of active scope proactively evicts the local cached copy (ADR-065)
-    Given client instance "A" subscribed with a scope filter for "entities assigned to this site AND still open"
-    And Order "o-1" is currently within that scope and cached locally
-    When Order "o-1" is closed, and no longer matches client instance "A"'s subscription filter
-    Then client instance "A" should proactively purge its local cached copy of Order "o-1"
-    And the eviction should happen without waiting for any unrelated TTL
+  Scenario: An explicit scope filter bounds what the local cache ever receives, not a client-side post-filter (ADR-065)
+    Given client instance "A" subscribes with a scope filter for "entities assigned to this site AND still open"
+    Then the filter travels as the Subscription's own "where" argument (the same [EventFilterInput!] shape ADR-037 already exposes)
+    And only events matching that filter are ever delivered to, or cached by, client instance "A"
+    # Honest, named limitation (ADR-065), decided rather than silently
+    # narrowed: the filter is enforced server-side, per event -- once a
+    # cached entity's own later update stops matching it (closed, completed,
+    # reassigned), the server simply stops delivering further updates for it
+    # through this connection. There is no push-based "you fell out of
+    # scope, evict now" signal, so an already-cached copy goes stale rather
+    # than being proactively purged the moment that happens; it is not
+    # actively wrong (no further writes reach it), and a fresh reconnect
+    # with the same filter never re-delivers it. This is the accepted
+    # trade-off of reusing ADR-037's existing filter mechanism verbatim,
+    # rather than building a new removal-notification protocol this ADR's
+    # own Consequences explicitly rule out ("no new sync protocol, no new
+    # replication tier").
 
   Scenario: Receiving an erasure event for a subscribed entity triggers an immediate, mandatory local purge (ADR-065)
     Given client instance "A" is subscribed to and has a locally cached, decrypted copy of Order "o-1"

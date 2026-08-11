@@ -51,6 +51,15 @@ Decision:
   system-wide default, but are no longer categorically inapplicable).
 
 Consequences:
+- **Cross-reference, `ADR-078`**: this ADR's optimistic concurrency
+  resolves concurrent *write-time* races between two API callers
+  publishing against the same entity version — it is explicitly **not**
+  the mechanism that makes concurrent *fold-time* access to the Entity
+  Store safe (two background workers applying the same event stream at
+  once). That's a different problem, settled separately by `ADR-078`'s
+  single-active-worker leader election. Noted here because this ADR (and
+  `ADR-029`) could otherwise be misread as already covering concurrent-
+  fold safety — they don't.
 - Conflicts are surfaced, never hidden or auto-resolved beyond stream-
   order LWW — a user or support engineer can always see both concurrent
   values via change history and understand a genuine concurrent edit

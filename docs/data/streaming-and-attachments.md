@@ -24,6 +24,14 @@ public class TelemetryChannel
     public List<string>? SourceChannelIds { get; set; }    // Derived channels only
     public string? TransformKind { get; set; }             // Resample | Filter | Aggregate | Transcode -- Derived channels only
     public string? RequiredReadClaim { get; set; }         // reuses ADR-008's "type:value" format, applied to a channel instead of an event type. Deliberately NOT generalized to EventTypeDefinition.RequiredClaims's list/Direction shape (ADR-050): a channel is read-only ingest (ADR-031, never gated by a Publish-direction claim), so there is no second direction to distinguish, and nothing has asked for OR-multiple-claims on one channel yet. Revisit as its own ADR if that need ever shows up -- not silently widened here.
+
+    // Ingestion's own mutable state, added at build time -- not part of the
+    // channel's own declared/registered shape above, the same distinction
+    // EntityStoreRow draws between its declared identity and its own
+    // LastAppliedLogicalTime (ADR-021/029).
+    public DateTimeOffset LastAppliedLogicalTime { get; set; } // ADR-029's high-water-mark mechanism, reused per-channel (ADR-031) for out-of-order/late-arrival detection
+    public DateTimeOffset? LastBatchReceivedAt { get; set; }    // wall-clock receive time of the last accepted batch -- ADR-031's slow-upload/producer-lag detection compares THIS gap (receive time), not sample Timestamp, against ExpectedInterArrivalInterval
+    public DateTimeOffset? LastSampleTimestampReceived { get; set; } // the last batch's own last sample Timestamp -- carried on a ChannelLagDetected event's TelemetryPointer as "the last sample actually received before the gap"
 }
 
 public enum ContentKind { RawScalar, RawBinary, Media }
@@ -66,6 +74,8 @@ public class Attachment
     public string? ContentProviderRef { get; set; }          // opaque, provider-specific locator (a blob path/key) within that backend -- ADR-032; unused once ChunkIndex is populated
     public DateTimeOffset LastAccessedAt { get; set; }        // updated on every read -- the concrete field the tiering mover's "access-pattern threshold" checks (ADR-032)
     public List<ChunkRef>? ChunkIndex { get; set; }           // optional, only populated above a configurable size threshold -- content-defined chunking, ADR-032. When populated, this Attachment's own ContentProviderKey/Ref are unused -- each chunk is independently addressed instead
+    public string? RequiredReadClaim { get; set; }             // ADR-032's "Standalone attachments and direct permissions" -- reuses ADR-008's "type:value" format. A direct claim here always governs if set, even over a linked event/entity's own claim; propagated to this file only now, alongside "Binary Attachments"' own build pass -- named in that ADR's prose since Accepted but never added here until this item actually needed the field
+    public string? RequiredPublishClaim { get; set; }          // same ADR/section -- gates re-upload of identical bytes (a ContentHash collision) once an Attachment already exists, not the first upload that creates it
 }
 
 public class ChunkRef
@@ -79,6 +89,7 @@ public class ChunkRef
 
 public class AttachmentRef
 {
+    public long Id { get; set; }                              // surrogate PK -- EntityId/EventId are both independently nullable, so there's no clean natural composite key the way EventParent has one (added alongside "Binary Attachments"' own build pass; not shown as a PK marker anywhere earlier, since none was actually designed until this item needed a real table)
     public string ContentHash { get; set; } = default!;     // FK -> Attachment
     public string? EntityId { get; set; }                    // ADR-021 -- either/both may be set
     public Guid? EventId { get; set; }                        // -- links to a specific event, not just its entity generally

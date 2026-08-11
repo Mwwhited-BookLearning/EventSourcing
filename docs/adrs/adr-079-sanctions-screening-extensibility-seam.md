@@ -52,10 +52,18 @@ Decision:
   decision, unchanged from the existing feature doc.
 
 Consequences:
-- `docs/domains/digital-identity-kyc/README.md`'s Special Concerns note
+- ~~`docs/domains/digital-identity-kyc/README.md`'s Special Concerns note
   ("no existing ADR addresses OFAC sanctions screening... a candidate
   for a future ADR") is superseded by this ADR — propagation work to
-  update that file, not yet done.
+  update that file, not yet done.~~ **Corrected, later pass**: doubly
+  stale. First, `docs/domains/digital-identity-kyc/README.md`'s Special
+  Concerns section was already updated (a prior pass) to read "OFAC
+  sanctions screening / BSA Suspicious Activity Report filing —
+  resolved, `ADR-079`..." — the propagation work this note called
+  outstanding was already done. Second, separately, `docs/08-build-plan.md`'s
+  item 38 ("Sanctions/Watchlist Screening Extensibility Seam") has since
+  actually built and closed the seam: see
+  [`tests/EventStore.IntegrationTests/SanctionsScreeningExtensibilityHttpSqliteTests.cs`](../../tests/EventStore.IntegrationTests/SanctionsScreeningExtensibilityHttpSqliteTests.cs).
 - Establishes that not every extension point needs to be promoted into
   core Duplex to be a real, documented, reusable seam — a precedent
   future domain-specific needs (e.g. a similar automated-screening shape

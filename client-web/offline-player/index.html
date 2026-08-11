@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Duplex Offline Lineage Player</title>
+  </head>
+  <body>
+    <!--
+      The literal marker string assigned below is replaced with the real
+      exported bundle's NDJSON (JSON-string-escaped) by embed-bundle.mjs,
+      AFTER `vite build` produces this file's singlefile output -- the
+      build itself never embeds a real bundle (there isn't one yet at
+      build time); this is the "matching player travels with the export"
+      step ADR-068 §4 describes, run once per export, not baked into the
+      reusable player build itself. The marker name is deliberately NOT
+      spelled out again in this comment -- embed-bundle.mjs replaces its
+      first occurrence in this file, and an earlier version of this
+      comment that also spelled it out got substituted instead of the
+      real one below (caught by an end-to-end test this session).
+    -->
+    <script>window.__DUPLEX_LINEAGE_EXPORT_BUNDLE__ = "DUPLEX_BUNDLE_PLACEHOLDER"</script>
+    <div id="app"></div>
+    <script type="module" src="./main.ts"></script>
+  </body>
+</html>
