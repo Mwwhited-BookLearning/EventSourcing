@@ -42,4 +42,9 @@ public record PeerSyncPushResponse(long AckedThroughSequenceNumber, List<KnownPe
 // currently-live sites" -- every push/ack round trip also exchanges
 // what each side currently knows, so a peer configured with only one
 // seed eventually learns every other peer transitively.
-public record KnownPeer(string PeerId, string Address);
+//
+// Region (ADR-061) rides along on this SAME existing gossip exchange --
+// "not a new discovery mechanism," that ADR's own text -- so a site
+// learns a transitively-gossiped peer's own region without needing to
+// contact it directly via /peer-sync/whoami first.
+public record KnownPeer(string PeerId, string Address, string? Region = null);

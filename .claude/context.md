@@ -1417,8 +1417,39 @@ stale numbers here are worse than none)*
   duplicated delivery, and the erasure/retry interaction both ways). Full
   SQLite regression suite re-run clean (65/66 — only the pre-existing,
   unrelated SSE-subscription flake).
-- **Next up**: item 35, "Data Residency (Region Pinning)" — depends on
-  Sharding & Replication (Done) and Multi-Tenancy (Done).
+- **Item 35, "Data Residency (Region Pinning)" (`ADR-061`), is Done.**
+  New `AppResidencyPolicy` (`{AppId, AllowedRegions, LastAppliedSequenceNumber}`)
+  folded from a reserved `AllowedRegionsSet` event, synchronous fold —
+  `FeatureFlagService`'s own exact precedent, since it's read by the same
+  process that publishes it. `PUT /replication/residency/{appId}`, reusing
+  `registry:admin`. Region propagation reuses two EXISTING mechanisms, no
+  new discovery: this site's own tagged `Region` rides the already-
+  existing `/peer-sync/whoami` handshake; a peer's own `Region` then
+  propagates transitively through the SAME `KnownPeer` gossip exchange
+  `PeerId` already uses. Enforced in `PeerSyncWorker.SyncOnceWithAsync`,
+  per-event not per-peer: a constrained `AppId`'s event only reaches a
+  peer whose known `Region` is in its `AllowedRegions`; a peer with no
+  yet-known region can never receive a constrained `AppId`'s events at
+  all (the conservative default). A residency-excluded event still
+  advances that peer's own cursor (permanently excluded, never retried
+  forever). The "surfaced as an operational signal" exit criterion is a
+  `LogWarning` when a constrained `AppId`'s allowed regions have fewer
+  than 2 known live sites — never a hard failure or blocked write.
+  Verified with `DataResidencyHttpSqliteTests.cs` (SQLite-only, real
+  HTTP across 3 Host TestServers — region is learned over the real
+  whoami handshake, not something a direct-service-call test could
+  exercise). Found and fixed the same test-isolation bug class item 34
+  already hit (`WebhookOutboxPump`): `PeerSyncCursor`/global
+  `SequenceNumber` aren't `AppId`-scoped, so the sender side needed its
+  own per-test database file under MSTest's 32-way parallelism. Full
+  SQLite regression suite re-run clean (68/69 — only the pre-existing,
+  unrelated SSE-subscription flake; confirmed by re-running the ONE other
+  test that failed on a noisier run in isolation, where it passed
+  cleanly — the same load-induced fixed-wait-margin flake class already
+  tracked in `TODO.md`, not a new regression).
+- **Next up**: item 36, "Bulk Ingestion & External Interchange-Format
+  Adapters" — depends on Publish API (Done) and Non-Authoritative Capture
+  (Done).
 
 ## How to resume cold
 
@@ -1433,10 +1464,10 @@ stale numbers here are worse than none)*
    narrative.
 5. `dotnet build EventStore.slnx` and `dotnet test tests/EventStore.IntegrationTests` —
    confirm the build/test baseline the last session left still holds
-   before adding to it (115 tests should pass — 105 (98 plus item 33's
-   `RateLimitingGatewayTests.cs`, 7 methods) plus item 34's 10 new methods
-   across `WebhookSqliteTests`/`WebhookPostgresTests`/`WebhookSqlServerTests`/
-   `WebhookDeliveryHttpSqliteTests.cs`). Requires Docker running
+   before adding to it (118 tests should pass — 115 (105, itself 98 plus
+   item 33's `RateLimitingGatewayTests.cs`, plus item 34's 10 new webhook
+   methods) plus item 35's 3 new `DataResidencyHttpSqliteTests.cs`
+   methods). Requires Docker running
    (Testcontainers for Postgres/SQL Server) and the SDK pinned in
    `global.json`. A full multi-provider run has a known, pre-existing,
    unrelated flake — see `TODO.md`'s entry — where one or two SQL Server

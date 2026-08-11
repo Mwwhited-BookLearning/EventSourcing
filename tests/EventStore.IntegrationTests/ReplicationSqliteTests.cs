@@ -65,6 +65,7 @@ public class ReplicationSqliteTests
         await ReplicationScenarioAssertions.ASlowUploadingSiteNeverLosesQueuedEventsAcrossASimulatedRestart(registryA, publishA, dbA, () => CreateContext(_dbPathA));
         await ReplicationScenarioAssertions.TwoSitesDisconnectedAndIndependentlyWrittenToConvergeWithAGenuineConflictFlagged(registryA, publishA, dbA, registryB, publishB, dbB);
         ReplicationScenarioAssertions.APeerAddressLearnedFromAnotherPeersResponseIsMergedIntoTheLocalAddressBook();
+        ReplicationScenarioAssertions.APeersRegionLearnedFromAnotherPeersGossipResponseIsMergedAlongsideItsPeerId();
         await ReplicationScenarioAssertions.AnEntityOfAGivenEntityTypeAlwaysResolvesToTheSameShardKey(registryA, publishA, dbA);
     }
 }

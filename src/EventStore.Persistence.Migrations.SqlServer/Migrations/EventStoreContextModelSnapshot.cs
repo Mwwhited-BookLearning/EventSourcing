@@ -365,6 +365,23 @@ namespace EventStore.Persistence.Migrations.SqlServer.Migrations
                     b.ToTable("LeaderLeases");
                 });
 
+            modelBuilder.Entity("EventStore.Domain.Replication.AppResidencyPolicy", b =>
+                {
+                    b.Property<string>("AppId")
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<string>("AllowedRegions")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<long>("LastAppliedSequenceNumber")
+                        .HasColumnType("bigint");
+
+                    b.HasKey("AppId");
+
+                    b.ToTable("AppResidencyPolicies");
+                });
+
             modelBuilder.Entity("EventStore.Domain.Replication.PeerSyncCursor", b =>
                 {
                     b.Property<string>("PeerId")
