@@ -25,6 +25,26 @@ here instead of inlining.
 
 ## Active
 
+- **`ADR-073`/build-plan item 45's own exit criterion asks for a manual
+  screen-reader pass (a real NVDA/JAWS/VoiceOver session) confirming
+  `GenericFallbackView` is fully navigable — not performed.** No screen-
+  reader software is installable/operable in this environment. Automated
+  `axe-core` conformance (zero critical/serious violations, verified
+  both under jsdom and, for `color-contrast` specifically since jsdom
+  can't determine it, a real headless-Chromium cross-check) was done
+  instead, plus one real, concrete fix found by reasoning directly about
+  screen-reader behavior (`<th scope="row">` + a visually-hidden
+  `<caption>` on the property table, closing a gap no automated tool
+  flagged). Automated conformance and a literal manual pass are
+  genuinely different checks — industry-standard automated tools catch
+  roughly 30-50% of real accessibility issues, the rest need human
+  review — so this is a real, honestly-named gap, not equivalent
+  coverage under a different name. Investigate: a real NVDA (Windows,
+  free) or VoiceOver (macOS, built-in) session against the built
+  `client-web` app, specifically tabbing through `GenericFallbackView`
+  and confirming each announced label/value pairing and the "Retry
+  sync" button's own reachability/announcement.
+
 - **`docs/06-solution-structure.md`'s "Project layout" sketch names one
   deployable per internal service (`EventStore.Router`/`.Fold`/`.GraphQL`/
   `.Sharding`/`.PeerSync`/`.Streaming`/`.Attachments`, etc.), but the

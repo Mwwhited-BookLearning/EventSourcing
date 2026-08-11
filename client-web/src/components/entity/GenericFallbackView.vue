@@ -25,10 +25,21 @@ const rows = computed(() => [
 <template>
   <section class="generic-fallback" aria-label="Entity (generic fallback view)">
     <h2>{{ entry.entityType }} {{ entry.entityId }} (no registered ViewDefinition -- generic fallback)</h2>
+    <!-- ADR-073's own exit criterion calls for a manual screen-reader pass
+         specifically confirming this fallback is fully navigable, not
+         merely visually present -- `<th scope="row">` for the property
+         name (rather than a plain `<td>`) is exactly what makes a screen
+         reader announce each value together with its own label
+         ("carrier: UPS", not two anonymous cells); axe-core's automated
+         ruleset doesn't flag a headerless 2-column table as a violation
+         (nothing automated can tell whether a given table's first column
+         is semantically a label), so this was found by reasoning about
+         real screen-reader behavior directly, not by a tool. -->
     <table>
+      <caption class="visually-hidden">Entity properties</caption>
       <tbody>
         <tr v-for="row in rows" :key="row.name">
-          <td>{{ row.name }}</td>
+          <th scope="row">{{ row.name }}</th>
           <td>
             {{ row.value }}
             <em v-if="row.fromExtensions">(Extensions)</em>
@@ -46,8 +57,26 @@ const rows = computed(() => [
   border-collapse: collapse;
   margin-bottom: 0.75rem;
 }
-.generic-fallback td {
+.generic-fallback td,
+.generic-fallback th {
   padding: 0.25rem 0.75rem;
   border-bottom: 1px solid var(--duplex-border, #eee);
+}
+.generic-fallback th {
+  font-weight: normal;
+  text-align: left;
+}
+/* Standard screen-reader-only pattern: announced by assistive tech,
+   never rendered visually -- this table's purpose is already clear
+   sighted from context (the section's own aria-label + heading), so
+   the caption exists for screen-reader users specifically, not for
+   everyone. */
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
 }
 </style>

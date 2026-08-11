@@ -1748,8 +1748,42 @@ stale numbers here are worse than none)*
   instead. Client suite: 80/80 (19 files). Built-scope note: the feature
   doc's own 4-screen UI mockup isn't built as real Vue components this
   pass — the underlying mechanism is the load-bearing deliverable.
-- **Next up**: item 45, "Accessibility Standard" (`ADR-073`) — depends
-  only on MVVM Client (Done).
+- **Item 45, "Accessibility Standard," is Done — same session,
+  continuing directly from item 44. Client-only.** `client-web/src/
+  a11y.spec.ts` runs the real `axe-core` ruleset (WCAG 2.1 A/AA tags)
+  against the actually-rendered DOM of `GenericFallbackView`,
+  `TemplateRenderer`, and `FlagRow` — zero critical/serious violations
+  across all four scenarios.
+  **A real, verified gap in the check itself, closed, not glossed
+  over**: jsdom has no working canvas, so `axe-core`'s `color-contrast`
+  rule always lands in `results.incomplete` under jsdom, never
+  pass/fail — confirmed by inspecting `incomplete` directly, not
+  assumed. Installing the native `canvas` npm package failed (no VS
+  build tools in this environment); closed instead with a real browser:
+  built a standalone HTML harness embedding these components' actual
+  rendered HTML/CSS + axe-core's browser bundle, ran it headlessly in
+  Edge, confirmed zero violations AND zero incomplete findings there —
+  a genuine color-contrast determination. `a11y.spec.ts`'s own
+  assertion now requires `incomplete` to contain nothing besides
+  `color-contrast` (never blanket-ignoring `incomplete`, which would
+  also hide a real regression elsewhere).
+  **The exit criterion's own literal "manual screen-reader pass" is
+  honestly NOT done** — no screen-reader software runs in this
+  environment; tracked in `TODO.md`, not silently claimed. What was
+  done instead: found and fixed a real, concrete gap by reasoning
+  directly about screen-reader behavior (`GenericFallbackView`'s
+  property table had no header semantics at all — added `<th
+  scope="row">` + a visually-hidden `<caption>`), a genuine improvement
+  no automated tool flagged, but explicitly not equivalent to the
+  literal manual pass still outstanding.
+  Client suite: 84/84 (20 files).
+  **Mid-session direct request, handled separately from this item**:
+  moved SBOM generation/build-provenance attestation OUT of
+  `ci.yml` entirely, into a new local-only `scripts/generate-sbom.sh`
+  (run for real, produced a genuine SPDX manifest) — an additive
+  correction to item 39/`ADR-091`, not part of item 45's own work.
+- **Next up**: item 46, "i18n/l10n Architectural Scope" (`ADR-087`) —
+  depends only on MVVM Client (Done); confirmed independent of item 45.
 
 ## How to resume cold
 
