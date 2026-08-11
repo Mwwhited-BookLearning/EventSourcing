@@ -12,7 +12,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="HotChocolate.AspNetCore" Version="16.5.1" />
+    <PackageReference Include="HotChocolate.AspNetCore" Version="16.6.0" />
     <PackageReference Include="HotChocolate.CostAnalysis" Version="16.5.1" />
   </ItemGroup>
 
