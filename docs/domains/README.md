@@ -63,18 +63,32 @@ reasoning behind choosing the first two over the other thirteen.
 
 ## Sample application build status
 
-Both chosen domains now also have a real, runnable `samples/Vitals/`/
-`samples/Meridian/` project set (`ADR-021`'s naming, `docs/naming.md`),
-one Duplex-registration + Gherkin-driven integration-test unit per
-workflow below, distinct from the design-only feature docs above (a
-feature doc can be fully written with no code; this table tracks the
-code). Direct request: "the proving-ground applications [should] be
-built out... under the sample folder... within subfolders for each
-proving-ground model," to full workflow depth. This table is the
-authoritative tracker for that build, the same role `08-build-plan.md`'s
-own "Implementation status" table plays for the core engine — kept
-current in the same pass a workflow's own status changes, not
-after-the-fact.
+Both chosen domains now also have a real `samples/Vitals/`/`samples/
+Meridian/` project set (`ADR-021`'s naming, `docs/naming.md`), one
+Duplex-registration + Gherkin-driven integration-test unit per workflow
+below, distinct from the design-only feature docs above (a feature doc
+can be fully written with no code; this table tracks the code). Direct
+request: "the proving-ground applications [should] be built out...
+under the sample folder... within subfolders for each proving-ground
+model," to full workflow depth. This table is the authoritative tracker
+for that build, the same role `08-build-plan.md`'s own "Implementation
+status" table plays for the core engine — kept current in the same pass
+a workflow's own status changes, not after-the-fact.
+
+**Honestly scoped, not silently left out**: `Samples.Vitals`/`Samples.
+Meridian` are plain class libraries (registration code called from
+tests), not runnable `EventStore.Host`-style deployables with their own
+`Program.cs` — no feature doc for either domain ever asked for a
+seeding worker or a domain-specific deployable, only that the framework
+demonstrably carry each real workflow end to end, which every scenario
+above actually running proves. This means the AppHost dashboard-grouping
+pattern this session's own earlier `EventStore.Migrator`/`postgres-
+server`/`devidp`/`client-web` work established (`WithParentRelationship`)
+has nothing to attach to here yet — there is no real Aspire resource for
+either proving-ground app to group. If a real seeding worker or
+domain-specific Host ever gets built for either domain, apply that same
+established grouping pattern to it then; nothing about it needs
+rediscovering.
 
 | Domain | Workflow | Feature doc(s) | Status |
 |---|---|---|---|
