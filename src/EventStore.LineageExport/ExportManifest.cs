@@ -15,11 +15,12 @@ public record ExportManifest(
     string ExportedByActorId,
     DateTimeOffset ExportedAt,
     string FrameworkVersion,
-    // ADR-086 ("RFC 3161 Trusted Timestamping") is a LATER build-plan item
-    // this one is a named dependency FOR -- never built ahead of it. Null
-    // here, always, until that item lands and populates it; the field
-    // exists now so importing/verification code never needs a schema
-    // change once it does.
+    // ADR-086 ("RFC 3161 Trusted Timestamping") landed as a later
+    // build-plan item this one named as a dependency for -- populated by
+    // LineageExportService.ExportAsync whenever an ITimestampAuthorityClient
+    // is configured (base64 TimeStampToken bytes over this manifest's own
+    // ManifestHash directly, no re-hash), null only when no TSA is
+    // registered for this deployment.
     string? Rfc3161Timestamp = null);
 
 // One line of the NDJSON bundle body (after the manifest line) -- the

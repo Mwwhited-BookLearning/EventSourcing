@@ -28,7 +28,7 @@ Consequences: <trade-offs accepted>
 | [006](adrs/adr-006-dev-oauth-oidc-auth.md) | Dev-mode OAuth2/OIDC bearer-token auth via an in-process OpenIddict host, orchestrated with .NET Aspire | Accepted |
 | [007](adrs/adr-007-derived-event-types.md) | Derived/materialized event types via cross-stream join+projection | Accepted; built (`08-build-plan.md` item 8, Done) |
 | [008](adrs/adr-008-event-type-security.md) | Event-type security via per-event-type required claims | Accepted |
-| [009](adrs/adr-009-property-level-masking.md) | Property-level masking via a value/masked wrapper | Accepted; built (`08-build-plan.md` item 9, Done) |
+| [009](adrs/adr-009-property-level-masking.md) | Property-level masking via a value/masked/erased three-way wrapper (the third branch added by `ADR-057`) | Accepted; built (`08-build-plan.md` item 9, Done) |
 | [010](adrs/adr-010-tail-vs-replay-mode.md) | Explicit tail-vs-replay mode on Follow, via a `mode` parameter | Accepted |
 | [011](adrs/adr-011-publish-idempotency.md) | Publish idempotency via an optional client-supplied `eventId` + a stored payload hash | Accepted |
 | [012](adrs/adr-012-http-query-method.md) | HTTP `QUERY` method (RFC 10008) for OData data-queries, replacing `GET` | Accepted |
@@ -36,10 +36,10 @@ Consequences: <trade-offs accepted>
 | [014](adrs/adr-014-cors-policy.md) | CORS policy — configurable allowlist, deny by default | Accepted |
 | [015](adrs/adr-015-cqrs-projections-follow-api.md) | Read-model projections consume the public Follow API, not a private hook | Accepted |
 | [016](adrs/adr-016-changekind-centralized-merge.md) | Event-type `ChangeKind` (Full \| Partial) and centralized snapshot merge | Accepted |
-| [017](adrs/adr-017-dpop-bound-tokens.md) | DPoP-bound access tokens (RFC 9449) | Accepted; built in Phase 10 |
+| [017](adrs/adr-017-dpop-bound-tokens.md) | DPoP-bound access tokens (RFC 9449) | Accepted; built (`08-build-plan.md`'s "Hardening & Evolution" item, Done) |
 | [018](adrs/adr-018-event-upcasting.md) | Event upcasting for schema evolution | Accepted |
 | [019](adrs/adr-019-hash-chained-tamper-evidence.md) | Hash-chained events for tamper evidence | Accepted |
-| [020](adrs/adr-020-schemaversion-on-publish.md) | Explicit `schemaVersion` on publish, with publish-time upcast validation and a reserved dead-letter event type | Accepted |
+| [020](adrs/adr-020-schemaversion-on-publish.md) | Explicit `schemaVersion` on publish, with publish-time upcast validation (the `EventUpcastFailed` dead-letter event type was retired, superseded by `ADR-023`'s persist-everything posture) | Accepted |
 | [021](adrs/adr-021-entity-concept.md) | Entity as a first-class concept (`EntityId`, Entity Store, `ExpectedVersion`) | Accepted |
 | [022](adrs/adr-022-optional-t-property-patches.md) | `Optional<T>` property-level patches (refines `ADR-016`) | Accepted |
 | [023](adrs/adr-023-persist-everything-ingestion.md) | Persist-everything ingestion posture (supersedes reject-on-invalid framing in `ADR-011`/`ADR-013`/`ADR-020`) | Accepted |
@@ -97,7 +97,7 @@ Consequences: <trade-offs accepted>
 | [075](adrs/adr-075-siloed-per-tenant-deployment.md) | Siloed, dedicated-per-tenant deployment — revises `ADR-030`'s pool model; cross-tenant exchange is federation via `ADR-060`/`ADR-072`, never shared infrastructure | Accepted |
 | [076](adrs/adr-076-ef-core-migration-bundles-deployment.md) | Database schema deployment via EF Core migration bundles, applied as a single deploy-time step (never `Database.Migrate()` at app startup) | Accepted |
 | [077](adrs/adr-077-dynamic-feature-flag-configuration-provider.md) | Instant feature-flag toggles via a chained, reloadable `IConfigurationProvider` — resolves the apparent `ADR-038`/`ADR-041`/`ADR-058` contradiction | Accepted |
-| [078](adrs/adr-078-leader-election-database-lease.md) | Single-active-worker leader election via a database-backed lease, per worker role (Router, UpcastMaterializer, each outbox pump) | Accepted |
+| [078](adrs/adr-078-leader-election-database-lease.md) | Single-active-worker leader election via a database-backed lease, per independent worker role (Router — which also runs UpcastMaterializer inline, not as its own leased role — and each outbox pump) | Accepted |
 | [079](adrs/adr-079-sanctions-screening-extensibility-seam.md) | Pluggable sanctions/watchlist screening (`ISanctionsScreeningProvider`) — an application-scoped (KYC/Meridian) extension point, not core Duplex | Accepted |
 | [080](adrs/adr-080-dependency-scanning-and-build-provenance.md) | Dependency-vulnerability scanning (Dependabot, `dotnet list package --vulnerable`, `npm audit`) and build provenance (NuGet author signing, `npm publish --provenance`, SLSA Level 2) on top of `ADR-074`'s SBOM | Accepted |
 | [081](adrs/adr-081-thread-id-and-telemetry-pointer-list.md) | `TelemetryChannel.ThreadId` for multi-channel session grouping, and `TelemetryPointer` generalized to a list — revises `ADR-031` | Accepted |
@@ -112,5 +112,5 @@ Consequences: <trade-offs accepted>
 | [090](adrs/adr-090-read-your-writes-via-existing-filters.md) | Read-your-writes stays declined as a built-in guarantee — achievable today via `EventId`/`OriginId`+`SequenceNumber` filtering; no frontier token adopted | Accepted |
 | [091](adrs/adr-091-ci-cd-platform-github-actions.md) | CI/CD platform — GitHub Actions, because that's where this repository lives; revisit if that ever changes | Accepted |
 | [092](adrs/adr-092-benign-actor-trust-model-perimeter-defense.md) | Core-engine trust model assumes non-malicious actors; hostile-traffic defense (WAF/gateway) is a deployment-perimeter concern, not a framework one | Accepted |
-| [093](adrs/adr-093-signing-secret-rotation-dual-signature.md) | `ADR-040`/`ADR-060` signing secrets become a current+previous pair with dual-signature emission (Standard Webhooks' own mechanism); rotation cadence stays ops-configurable | Accepted |
+| [093](adrs/adr-093-signing-secret-rotation-dual-signature.md) | `ADR-060`'s webhook signing secret becomes a current+previous pair with dual-signature emission (Standard Webhooks' own mechanism); `ADR-040`'s ticket-exchange rotation was found unbuildable as originally assumed and remains open/unbuilt (see `TODO.md`); rotation cadence stays ops-configurable | Accepted |
 | [094](adrs/adr-094-expected-response-tracking.md) | Expected-response tracking — a generic `RespondsToEventId` envelope field (Correlation Identifier) + opt-in `EventTypeDefinition.ExpectedResponse` registry declaration, escalation policy left to the application | Accepted |

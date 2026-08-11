@@ -79,15 +79,21 @@ assumed each mechanism's own `ActivitySource` would be named to match
 `builder.Environment.ApplicationName` (`ADR-026`'s existing
 `AddSource(...)` call), resolved via a DI-injected `IHostEnvironment`.
 That doesn't hold for the shared, static-instance shape actually built:
-`RouterWorker.RunOnceAsync` (and its peer static entry points across
-`EventStore.Replication`/`Webhooks`/`Inbox`) are directly callable by a
-test with no DI container in scope at all — the same seam their existing
+`RouterWorker.RunOnceAsync` and its peer static entry points across
+`EventStore.Replication`/`Webhooks` are directly callable by a test
+with no DI container in scope at all — the same seam their existing
 optional `erasureKeyService`/`payloadMasker` parameters already depend
-on, and the only way a single shared `Meter`/`ActivitySource` instance
-(named `"Duplex.Core"`, living in `EventStore.Domain/Observability/
+on. (`EventStore.Inbox`'s own `ChainVerificationService` is an ordinary
+DI-injected, instance-based service, not a static entry point — it
+reaches the same shared static instance below for consistency with the
+other three mechanisms, not because it lacks a container of its own.)
+The only way a single shared `Meter`/`ActivitySource` instance (named
+`"Duplex.Core"`, living in `EventStore.Domain/Observability/
 DuplexInstrumentation.cs` — the one project already a common dependency
-of all four mechanism projects) can be reached from those methods. A
-second, explicit `.AddSource("Duplex.Core")` call was added instead,
+of all four mechanism projects) can be reached from Router/Replication/
+Webhooks' own static methods is a static field, so it was made the ONE
+shared instance every mechanism uses uniformly. A second, explicit
+`.AddSource("Duplex.Core")` call was added instead,
 mirroring the metrics `.AddMeter("Duplex.Core")` call exactly — one
 added pipeline line, not zero, but still far short of "a new
 observability stack." The Decision text above is left as originally

@@ -351,6 +351,37 @@ the mockup above) or a template-backed `ViewDefinition`'s own markup is
 exempt merely for being a fallback or being content-addressed — both are
 screens a real user reads.
 
+**Implementation note (added once built, 2026-08-11):** `client-web/src/
+a11y.spec.ts` runs the real, published `axe-core` ruleset (`wcag2a`/
+`wcag2aa`/`wcag21a`/`wcag21aa` tags specifically, matching this ADR's own
+cited legal baseline, not the newer 2.2 tags) against the ACTUALLY
+rendered DOM of `GenericFallbackView` (plain and with an Extensions-
+sourced property), a `TemplateRenderer`-backed screen, and the shared
+`FlagRow` convention (including its active/warning state) — zero
+critical/serious violations across all four. A real, verified gap in the
+automated check itself was found and closed, not glossed over: jsdom has
+no working `HTMLCanvasElement.getContext`, so axe's `color-contrast` rule
+always lands in `results.incomplete` (impact `"serious"`) under jsdom,
+never actually determined pass or fail — confirmed by inspecting
+`results.incomplete` directly, not assumed from a clean `violations`
+array. Closed with a real browser (a self-contained HTML harness
+embedding these components' own actually-rendered HTML/CSS plus axe-
+core's browser bundle, run headlessly in Edge — the same technique
+`ADR-068`'s own offline-player verification already used), confirming
+zero violations AND zero incomplete findings there. One real,
+concrete accessibility fix was found by reasoning directly about screen-
+reader behavior, not flagged by any automated tool: `GenericFallbackView`'s
+property table had no header semantics at all — fixed with `<th
+scope="row">` per property row plus a visually-hidden `<caption>`
+describing the table's purpose. **Honest, still-open gap**: the ADR's
+own literal "manual screen-reader pass" (a real NVDA/JAWS/VoiceOver
+session) was not performed — no such software is installable/operable
+in this environment — tracked in `TODO.md`, not silently claimed
+equivalent to the automated pass above (industry-documented: automated
+tools catch roughly 30-50% of real accessibility issues, the rest need
+human review, exactly this exit criterion's own stated reason for
+asking for one specifically).
+
 ## Internationalization & localization (ADR-087)
 
 `ADR-087` draws the same separation for i18n/l10n that `ADR-073` already

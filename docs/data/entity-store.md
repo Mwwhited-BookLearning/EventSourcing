@@ -27,7 +27,7 @@ public class EntityStoreRow
     public string Hash { get; set; } = default!;         // SHA-256 of canonicalized Data — per-entity integrity/diff, a different
                                                            // application of ADR-019's hash primitive than the event ChainHash
     public int SchemaVersion { get; set; }                // current shape, post-upcast (best effort — ADR-018)
-    public string AuthorityStatus { get; set; } = default!; // rolled up from contributing events — advisory (ADR-035)
+    public string AuthorityStatus { get; set; } = "accepted"; // rolled up from contributing events — advisory (ADR-035)
     public long LastAppliedSequenceNumber { get; set; }   // REPLAY CHECKPOINT — always advances past every event processed, including a rejected late arrival (ADR-029); distinct from Version above
     public DateTimeOffset LastAppliedLogicalTime { get; set; } // high-water mark for fold ordering — compared against OccurredAt, not SequenceNumber (ADR-029)
     public bool LateArrivalFlag { get; set; }             // rolled up from contributing events (ADR-029)

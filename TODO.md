@@ -45,24 +45,6 @@ here instead of inlining.
   and confirming each announced label/value pairing and the "Retry
   sync" button's own reachability/announcement.
 
-- **`docs/06-solution-structure.md`'s "Project layout" sketch names one
-  deployable per internal service (`EventStore.Router`/`.Fold`/`.GraphQL`/
-  `.Sharding`/`.PeerSync`/`.Streaming`/`.Attachments`, etc.), but the
-  actual build consolidated most of these into library namespaces inside
-  each `EventStore.Host.<Provider>` process, and named the peer-sync one
-  `EventStore.Replication`, not `EventStore.PeerSync` as sketched.**
-  Noticed while building "SPIFFE/SPIRE Service Identity & API Gateway"
-  (item 24) checking ADR-048's own flagged propagation gap ("each
-  internal service project [needs] its SPIFFE ID convention annotated");
-  a one-line propagation note was added at that file's top explaining the
-  divergence for THIS item's own purposes, but reconciling the entire
-  project-layout listing against what every prior item actually built
-  (which projects are real deployables vs. consolidated namespaces, which
-  names changed) is a larger sweep across many already-Done items, not
-  scoped to one. Investigate: read every `src/EventStore.*` project's own
-  `Program.cs` (or its absence) against this file's list, correct each
-  mismatch, and add a standing note about which split is authoritative
-  going forward.
 - **`FollowSubscriptionTypeModule`'s dynamic Subscription schema
   (`EventStore.GraphQL`, "GraphQL-Only Query Layer") only reflects
   whatever event types are active at Host warmup — registering a new
@@ -220,25 +202,6 @@ here instead of inlining.
   <cursor+1>` instead of blind `Tail` whenever a stopped subscription is
   restarted, the same tail-then-replay-cursor shape `EventTailReader`
   already uses server-side.
-- **`docs/06-solution-structure.md`'s solution layout still names an
-  `EventStore.Bdd/` project ("Reqnroll/SpecFlow-style step definitions
-  for `*.feature` files," extracted from each feature doc's fenced
-  Gherkin block "once implementation starts") that ten build-plan items
-  in (1 through 10, all Done) has never actually been built.** Every
-  item's real tests instead use descriptively-named MSTest
-  `[TestMethod]`s / shared `*ScenarioAssertions.cs` methods calling the
-  services directly (e.g. `PublishScenarioAssertions.
-  PublishingAValidEventSucceeds`) — covering the same Gherkin scenarios'
-  intent, just never as literal parsed `.feature` files with step
-  definitions. This has been consistent across every item so far, not a
-  one-off skip, so it reads as a real (if never explicitly decided)
-  divergence from the solution-structure sketch rather than an oversight
-  still pending — found while doing a doc-consistency sweep after item
-  10, not caused by items 8–10 specifically. Needs an explicit decision:
-  either retrofit `EventStore.Bdd` now (a real, sizeable undertaking
-  across everything already built) or revise `06-solution-structure.md`'s
-  own text to describe the testing approach actually adopted, so the doc
-  stops promising a project that, ten items in, evidently isn't coming.
 - **The full SQLite regression suite's own known load-induced flakiness
   (see `.claude/context.md`'s repeated notes on
   `SubscribingOverRealHttpStreamsAMatchingEventAsSse` and the leader-

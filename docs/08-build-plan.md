@@ -3958,8 +3958,10 @@ unavailable and prompts the user to launch it; a continuous device output
 appends `TelemetrySample`s, publishing **no** `StoredEvent` per sample; a
 discrete reading publishes an ordinary `StoredEvent`, appending **no**
 `TelemetrySample`; a device with no self-attested identity defaults to
-`AuthorityStatus: non_authoritative`; a device presenting a self-attested
-DID/UCAN identity carries that attestation through instead; a recording
+`ReviewPending` (the honest resolution of this bullet's own originally-
+imprecise "non-authoritative" framing — see the "Status" text below); a
+device presenting a self-attested DID/UCAN identity carries that
+attestation through instead (`AttestedActorId`/`AttestedClaims`); a recording
 agent capturing both `Timestamp` and `MonotonicElapsedMicros` side by
 side lets a downstream analysis flag a sample whose claimed wall-clock
 delta diverges sharply from its actual monotonic delta as a suspiciously

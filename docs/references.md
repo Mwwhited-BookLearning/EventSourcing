@@ -50,7 +50,8 @@ comprehensive index, organized by whether the concept was actually
 | Vue 3 | [vuejs.org](https://vuejs.org/) | `ADR-039`, `mvvm-client-architecture.md` — see `docs/libraries/web/vue.md` |
 | Pinia | [pinia.vuejs.org](https://pinia.vuejs.org/) | `mvvm-client-architecture.md` — see `docs/libraries/web/pinia.md` |
 | Naive UI | [naiveui.com](https://www.naiveui.com/) | `mvvm-client-architecture.md` — see `docs/libraries/web/naive-ui.md` |
-| OpenTelemetry | [opentelemetry.io](https://opentelemetry.io/), via .NET Aspire's `ServiceDefaults` | `ADR-026` — logging, tracing, and metrics for every service |
+| OpenTelemetry | [opentelemetry.io](https://opentelemetry.io/), via .NET Aspire's `ServiceDefaults` | `ADR-026` — logging, tracing, and metrics for every service; `ADR-088` — mechanism-level custom `Meter`/`ActivitySource` instrumentation (`Duplex.Core`) for the framework's own async mechanisms (router fold lag, peer-sync outbox depth/age, webhook delivery lag, hash-chain verification outcomes) |
+| axe-core | [github.com/dequelabs/axe-core](https://github.com/dequelabs/axe-core) | `ADR-073` — automated WCAG 2.1/2.2 A/AA conformance checks (`wcag2a`/`wcag2aa`/`wcag21a`/`wcag21aa` rulesets) against the MVVM client's actually-rendered DOM — see `docs/libraries/web/axe-core.md` |
 | Docker Compose | [docs.docker.com/compose](https://docs.docker.com/compose/) | `ADR-026` — production deployment path |
 | OAuth 2.0 Token Exchange | [RFC 8693](https://datatracker.ietf.org/doc/html/rfc8693) | `ADR-036` — exchanging a self-attested UCAN for an ordinary bearer JWT. **Previously reference-only** (rejected for lack of an "act on behalf of" need) — un-rejected once `ADR-035`'s non-authoritative capture created a real one. |
 | UCAN | [ucan.xyz](https://ucan.xyz/specification/) | `ADR-036` — offline-verifiable delegated capability for self-attested capture. **Previously reference-only** — see above; the exact same reversal. |
