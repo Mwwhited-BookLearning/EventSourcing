@@ -314,12 +314,23 @@ granted the Token Exchange grant type (`TokenExchangeClients`, `ADR-040`/
 | `clinician-spa-client` | `client_credentials` + Token Exchange | `telemetry:read`, `attachments:read` | `clearance:phi` ("Delegated Grants" — the granter role; also "Ticket Exchange"'s header-capable caller) |
 | `colleague-client` | `client_credentials` + Token Exchange | *(none)* | — ("Delegated Grants" — the grantee; holds nothing of its own, everything comes from what `clinician-spa-client` delegates) |
 | `devidp-rbac-follower-client` | `client_credentials` | `events:follow` | — (`RbacProjectionWorker`'s own identity when tailing `RoleGranted`/`RoleRevoked`/`PermissionGranted`/`AppTrustRootRegistered`) |
-| `expected-response-watcher-client` | `client_credentials` | `events:follow`, `events:publish` | — (`ExpectedResponseWatcher`'s own identity — tails request/response event types, publishes the reserved `ExpectedResponseMissing` event on an unmet deadline, `ADR-094`) |
 
-That's 12 distinct scopes across the 12 clients (`colleague-client` holds
+That's 11 distinct scopes across the 11 clients (`colleague-client` holds
 none directly), each named for the build-plan item that introduced the
 need for a new caller identity — see `DevIdpSeeder.cs`'s own header
 comment and per-entry comments for the full reasoning behind each.
+
+**Corrected, 2026-08-11**: `ADR-094`'s own Decision text implied a 12th
+row here, `expected-response-watcher-client`, on the assumption that
+`ExpectedResponseWatcher` would be a genuine Follow-over-HTTP caller like
+`devidp-rbac-follower-client` above. The actual build placed it directly
+inside the same `EventStore.Host.<Provider>` process as `Router`/
+`Derivation`/`Webhooks` instead — reading `EventStoreContext` directly,
+crossing no real process boundary, needing no OAuth2 client credential at
+all, the same reason none of those three other same-process reactors has
+a row here either. `devidp-rbac-follower-client` still needs one
+precisely because `EventStore.DevIdp` genuinely is a separate deployable
+from the Host it tails.
 
 ## Salt (UI mockup)
 

@@ -181,6 +181,7 @@ public class PublishService(
             TelemetryPointer = request.TelemetryPointer is { Count: > 0 } pointer
                 ? JsonSerializer.Serialize(pointer, (JsonSerializerOptions?)null)
                 : null,
+            RespondsToEventId = request.RespondsToEventId, // ADR-094 -- not existence-validated, unlike parentEventIds above
         };
 
         try

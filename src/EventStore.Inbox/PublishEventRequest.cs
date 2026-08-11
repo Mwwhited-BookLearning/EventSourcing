@@ -41,4 +41,8 @@ public record PublishEventRequest(
     // RequiredSignature configured; ignored entirely otherwise, the same
     // "completely unaffected" posture every other optional envelope field
     // here already has.
-    string? Meaning = null);
+    string? Meaning = null,
+    // ADR-094 -- Correlation Identifier: the EventId this publish is a
+    // reply to. Envelope metadata, kept out of Payload, the same reasoning
+    // ADR-005 established for ParentEventIds; never existence-validated.
+    Guid? RespondsToEventId = null);

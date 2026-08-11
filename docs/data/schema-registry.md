@@ -335,15 +335,20 @@ public class ExpectedResponseTracker
 The durable, per-request checkpoint `ExpectedResponseWatcher` maintains —
 the same "durable tracker, not an in-memory timer" discipline
 `ProjectionCheckpoint`/`PeerSyncCursor`/`WebhookDeliveryCursor` above
-already establish for their own background workers. `ExpectedResponseWatcher`
-is architecturally an "internal follower" (`ADR-015`'s `ProjectionHost`
-shape): it tails every event type carrying a configured `ExpectedResponse`
-to insert rows here, tails every named `ResponseEventType` to stamp
-`SatisfiedByEventId`/`SatisfiedAt`, and sweeps past-deadline,
-unsatisfied, unescalated rows to publish the reserved
-`ExpectedResponseMissing` event (`ADR-094`). Leader-lease-gated like
-every other singleton worker (`ADR-078`'s `LeaderLease`, `WorkerRole =
-"ExpectedResponseWatcher"`).
+already establish for their own background workers. `ADR-094`'s own text
+frames `ExpectedResponseWatcher` as architecturally an "internal
+follower" (`ADR-015`'s `ProjectionHost` shape) — the actual build placed
+it directly inside the same `EventStore.Host.<Provider>` process as
+`Router`/`Derivation`/`Webhooks` instead, reading `EventStoreContext`
+directly rather than a real Follow-over-HTTP client, since there is no
+real process boundary between this mechanism and the events it tails
+(see `ADR-094`'s own "Corrected, 2026-08-11" note). It tails every event
+type carrying a configured `ExpectedResponse` to insert rows here, tails
+every named `ResponseEventType` to stamp `SatisfiedByEventId`/
+`SatisfiedAt`, and sweeps past-deadline, unsatisfied, unescalated rows to
+publish the reserved `ExpectedResponseMissing` event (`ADR-094`).
+Leader-lease-gated like every other singleton worker (`ADR-078`'s
+`LeaderLease`, `WorkerRole = "ExpectedResponseWatcher"`).
 
 ## Feature flag state (`ADR-077`)
 

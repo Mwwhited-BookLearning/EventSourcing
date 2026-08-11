@@ -23,10 +23,16 @@ public record RegisterEventTypeRequest(
     // ADR-066 -- null (the default) means no sign-off required, completely
     // unaffected; set means a publish targeting this type must satisfy an
     // RFC 9470 step-up challenge first.
-    RequiredSignatureRequest? RequiredSignature = null);
+    RequiredSignatureRequest? RequiredSignature = null,
+    // ADR-094 -- null (the default) means no tracked response expected,
+    // completely unaffected; set means a ResponseEventType event carrying a
+    // matching RespondsToEventId is expected within Within.
+    ExpectedResponseRequest? ExpectedResponse = null);
 
 public record FilterableFieldRequest(string JsonPath, string DataType, bool IsIndexed);
 
 public record RequiredClaimRequest(string Direction, string Claim);
 
 public record RequiredSignatureRequest(List<string> AcrValues, int? MaxAge, bool EnableRfc3161Timestamp = false);
+
+public record ExpectedResponseRequest(string ResponseEventType, TimeSpan Within);

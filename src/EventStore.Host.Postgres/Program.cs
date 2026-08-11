@@ -1,5 +1,6 @@
 using EventStore.Derivation;
 using EventStore.Erasure;
+using EventStore.ExpectedResponse;
 using EventStore.FeatureFlags;
 using EventStore.Follow.Api;
 using EventStore.GraphQL;
@@ -70,6 +71,7 @@ builder.Services.AddAttachments();
 builder.Services.AddArchival();
 builder.Services.AddReplication();
 builder.Services.AddWebhooks();
+builder.Services.AddExpectedResponseTracking();
 builder.Services.Configure<WebhookOptions>(builder.Configuration.GetSection("Webhooks"));
 builder.Services.AddEventStoreGraphQl();
 builder.Services.Configure<OriginIdOptions>(builder.Configuration.GetSection("OriginId"));

@@ -50,6 +50,7 @@ public class EventStoreContext(DbContextOptions<EventStoreContext> options, IJso
     public DbSet<WebhookSubscription> WebhookSubscriptions => Set<WebhookSubscription>(); // ADR-060
     public DbSet<WebhookOutbox> WebhookOutbox => Set<WebhookOutbox>();
     public DbSet<WebhookDeliveryCursor> WebhookDeliveryCursors => Set<WebhookDeliveryCursor>();
+    public DbSet<ExpectedResponseTracker> ExpectedResponseTrackers => Set<ExpectedResponseTracker>(); // ADR-094
 
     // ADR-089 -- ONE CLR type (ChainCheckpoint), TWO genuinely distinct
     // tables via EF Core's "shared-type entity" feature, so the Event
@@ -82,6 +83,10 @@ public class EventStoreContext(DbContextOptions<EventStoreContext> options, IJso
             e.Property(x => x.RequiredSignature)
                 .HasConversion(JsonValueConverter.ForNullable<RequiredSignature>())
                 .Metadata.SetValueComparer(JsonValueConverter.NullableComparer<RequiredSignature>());
+
+            e.Property(x => x.ExpectedResponse) // ADR-094
+                .HasConversion(JsonValueConverter.ForNullable<ExpectedResponse>())
+                .Metadata.SetValueComparer(JsonValueConverter.NullableComparer<ExpectedResponse>());
 
             e.HasMany(x => x.FilterableFields)
                 .WithOne()
@@ -271,6 +276,12 @@ public class EventStoreContext(DbContextOptions<EventStoreContext> options, IJso
         modelBuilder.Entity<WebhookDeliveryCursor>(e =>
         {
             e.HasKey(x => x.SubscriptionId);
+        });
+
+        modelBuilder.Entity<ExpectedResponseTracker>(e =>
+        {
+            e.HasKey(x => x.RequestEventId); // ADR-094
+            e.HasIndex(x => x.DeadlineAt); // ExpectedResponseWatcher's own past-deadline sweep
         });
 
         modelBuilder.SharedTypeEntity<ChainCheckpoint>("EventLogChainCheckpoints", e =>

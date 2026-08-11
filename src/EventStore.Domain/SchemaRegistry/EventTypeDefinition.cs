@@ -30,6 +30,7 @@ public class EventTypeDefinition
     public RejectionBehavior RejectionBehavior { get; set; } = RejectionBehavior.Annotate;
     public RequiredSignature? RequiredSignature { get; set; }
     public DateTimeOffset? DeprecatedAt { get; set; }
+    public ExpectedResponse? ExpectedResponse { get; set; }
 
     public List<FilterableField> FilterableFields { get; set; } = new();
 }
