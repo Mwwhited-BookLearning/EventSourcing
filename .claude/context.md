@@ -1782,8 +1782,67 @@ stale numbers here are worse than none)*
   `ci.yml` entirely, into a new local-only `scripts/generate-sbom.sh`
   (run for real, produced a genuine SPDX manifest) — an additive
   correction to item 39/`ADR-091`, not part of item 45's own work.
-- **Next up**: item 46, "i18n/l10n Architectural Scope" (`ADR-087`) —
-  depends only on MVVM Client (Done); confirmed independent of item 45.
+- **Item 46, "i18n/l10n Architectural Scope," is Done — same session,
+  continuing directly from item 45 ("keep doing"). Both server and
+  client.** Server: `EventStore.Host.Core/HostCoreExtensions.cs` wires
+  ASP.NET Core's own first-party `RequestLocalizationMiddleware`
+  (en-US default; en-US/fr-FR/ar-SA supported;
+  `ApplyCurrentCultureToResponseHeaders = true`) — verified via a real
+  `TestServer` scratch program first, then a real HTTP round trip
+  (`LocalizationHttpSqliteTests.cs`, 4 tests) against the actual
+  `Content-Language` response header. `EventStore.ViewRegistry/
+  TranslationKeyValidator.cs` (new) enforces the translation-key
+  discipline requirement (strips `{{ }}` interpolations/HTML tags via
+  regex, matching `TemplateRenderer.vue`'s own client-side regex style
+  rather than adding an HTML-parser dependency), wired into
+  `ViewDefinitionService.RegisterAsync`.
+  **Found by the new validator itself**: four pre-existing
+  `ViewDefinitionScenarioAssertions.cs` fixtures hardcoded literal text
+  (`"<div>v1</div>"` and siblings) — fixed to reference translation
+  keys. Then my own new "compliant" fixture was ALSO rejected, by a
+  literal `": "` separator between two otherwise-valid interpolations —
+  fixed by removing the separator rather than weakening the check.
+  Client: `client-web/src/i18n/locale.ts` (`resolveLocale`,
+  `isRtlLocale`), `i18n/translations.ts` (`resolveTranslations` +
+  placeholder en-US/fr-FR/ar-SA resources — real content stays
+  domain-owned, per this ADR's own explicit framing), `api/
+  localeClient.ts` (`negotiateLocale`, reading the server's negotiated
+  `Content-Language` back rather than trusting `navigator.language`).
+  `TemplateRenderer.vue` extends its `{{ field }}` regex with
+  `{{ t:key }}` (unresolved renders as `[key]`, never silently blank)
+  and `{{ field:date }}`/`{{ field:number }}` (`Intl.DateTimeFormat`/
+  `Intl.NumberFormat`), and sets a real `dir="rtl"`/`"ltr"` on its
+  container from the resolved locale. `EntityView.vue` calls the new
+  `resolveLocale()` alongside `loadViewDefinition` and passes
+  `locale`/`translations` through.
+  **A genuine editing slip caught before it shipped**: the `Edit`
+  adding `resolveLocale()` to `EntityView.vue`'s `onMounted` block
+  dropped the block's closing `})` — caught by re-reading the file
+  immediately after (not trusting the tool's success message alone)
+  and fixed before any test ran.
+  **CSS Logical Properties, checked codebase-wide via `grep`, not just
+  claimed**: found and fixed the only two remaining physical-property
+  rules in the client (`text-align: left` in `GenericFallbackView.vue`/
+  `OfflineBundleViewer.vue`) to `text-align: start`, so the `dir`
+  attribute this item sets actually drives layout everywhere, not just
+  in new code.
+  Client suite: 108/108 across 23 files (5 new spec files/additions);
+  `npx vue-tsc -b` clean; both builds succeed.
+  **.NET regression run in full surfaced a real, pre-existing gap from
+  item 42**, unrelated to this item's own code: `PackagingScenarioAssertions.
+  EventStoreAbstractionsCarriesEveryCurrentlyBuiltImplementerFacingSeam`
+  still hardcoded a count of 5 interfaces, never updated when
+  `ITimestampAuthorityClient` became the 6th. Fixed in this pass.
+  Two already-tracked flaky SQLite-provider test failures recurred
+  (`TODO.md`'s existing "load-induced flakiness" entry —
+  `DigitalSignOffHttpSqliteTests.ClassCleanup`'s file-lock race,
+  `GraphQlHttpSqliteTests.SubscribingOverRealHttpStreamsAMatchingEventAsSse`'s
+  cross-test pickup) — confirmed pre-existing, not a regression, by
+  re-running 3 times (different/no failure each time) and by `git log`
+  showing neither file touched this session.
+- **Next up**: item 47, "Mechanism-Level OpenTelemetry Instrumentation"
+  (`ADR-088`) — depends on Entity-Centric Core Rebuild, Hardening &
+  Evolution, Sharding & Replication, and Outbound Webhooks (all Done).
 
 ## How to resume cold
 
@@ -1798,22 +1857,25 @@ stale numbers here are worse than none)*
    narrative.
 5. `dotnet build EventStore.slnx` and `dotnet test tests/EventStore.IntegrationTests` —
    confirm the build/test baseline the last session left still holds
-   before adding to it. **As of item 41 (2026-08-11): 157 `[TestMethod]`s
+   before adding to it. **As of item 46 (2026-08-11): 165 `[TestMethod]`s
    total** (`grep -rc "\[TestMethod\]" tests/EventStore.IntegrationTests/*.cs`
    is the reliable way to recheck this count directly — don't hand-thread
    a running tally through prose any further, it already drifted
    silently across items 38-40 before this pass caught it). Requires
    Docker running (Testcontainers for Postgres/SQL Server) and the SDK
-   pinned in `global.json`. A full multi-provider run has a known, pre-
-   existing, unrelated flake — see `TODO.md`'s entry — where one or more
-   SQL Server test classes occasionally fail their own container
+   pinned in `global.json`. A full multi-provider run has TWO known,
+   pre-existing, unrelated flakes — see `TODO.md`'s entry — (a) one or
+   more SQL Server test classes occasionally fail their own container
    readiness/`ClassInit` under host resource contention from many
    concurrent `MsSqlContainer`s (seen as high as 10/21 failing in one
-   SqlServer-only rerun this pass); re-running the same class(es) alone
-   always passes. Don't mistake this for a real regression — confirm by
+   SqlServer-only rerun this pass), and (b) `DigitalSignOffHttpSqliteTests.
+   ClassCleanup`'s temp-file deletion/`GraphQlHttpSqliteTests.
+   SubscribingOverRealHttpStreamsAMatchingEventAsSse`'s cross-test pickup
+   under full-suite load; re-running the same class(es) alone always
+   passes. Don't mistake either for a real regression — confirm by
    checking whether any failing test name actually touches the feature
    just built before assuming otherwise.
-6. `client-web/`: `npm test` (49 tests, `vitest`), `npm run build`, and
+6. `client-web/`: `npm test` (108 tests, `vitest`), `npm run build`, and
    `npm run build:offline-player` — the last of these is easy to assume
    works from a clean `vite build` exit code alone; it isn't a full
    check (see item 41's own note above about a bug only an actual

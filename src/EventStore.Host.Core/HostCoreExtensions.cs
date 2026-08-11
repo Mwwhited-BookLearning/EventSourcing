@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Net;
 using System.Net.Security;
 using EventStore.Dpop;
@@ -7,6 +8,7 @@ using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Localization;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -89,6 +91,28 @@ public static class HostCoreExtensions
             .AllowAnyMethod() // includes QUERY (ADR-012), which always preflights
             .WithHeaders("Authorization", "Content-Type")));
 
+        // ADR-087 -- RFC 9110 §12 Accept-Language negotiation via ASP.NET
+        // Core's own first-party RequestLocalizationMiddleware, never
+        // hand-rolled header parsing. Verified directly against the real
+        // installed assembly before adopting: a request naming an
+        // unsupported culture (or none) falls back to DefaultRequestCulture
+        // rather than erroring, and ApplyCurrentCultureToResponseHeaders
+        // echoes the NEGOTIATED culture back as a real `Content-Language`
+        // response header -- the value client-web's own locale-detection
+        // reads to select which locale's translation resources a
+        // ViewDefinition template resolves its keys against (this doc's
+        // own "the client-side consequence of server-side negotiation,"
+        // mvvm-client.md). `ar-SA` is included specifically so an RTL
+        // locale is always negotiable, not merely a hypothetical.
+        builder.Services.Configure<RequestLocalizationOptions>(options =>
+        {
+            CultureInfo[] supportedCultures = [new("en-US"), new("fr-FR"), new("ar-SA")];
+            options.DefaultRequestCulture = new RequestCulture("en-US");
+            options.SupportedCultures = supportedCultures;
+            options.SupportedUICultures = supportedCultures;
+            options.ApplyCurrentCultureToResponseHeaders = true;
+        });
+
         return builder;
     }
 
@@ -134,6 +158,11 @@ public static class HostCoreExtensions
 
     public static WebApplication MapEventStoreCommonEndpoints(this WebApplication app)
     {
+        // ADR-087 -- must run before anything that could read CultureInfo.
+        // CurrentCulture or write the Content-Language response header;
+        // first in the pipeline, ahead of CORS/auth, matches Microsoft's
+        // own documented placement for this middleware.
+        app.UseRequestLocalization();
         app.UseCors(CorsPolicyName);
         app.UseAuthentication();
         app.UseDpopValidation(); // ADR-017 -- after authentication (needs the validated bearer's cnf.jkt), before authorization (short-circuits a DPoP failure before any scope policy could otherwise let it through)

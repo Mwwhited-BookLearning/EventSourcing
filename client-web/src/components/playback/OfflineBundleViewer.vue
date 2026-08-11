@@ -101,6 +101,6 @@ watchEffect(async () => {
 .offline-player th {
   padding: 0.25rem 0.75rem;
   border-bottom: 1px solid var(--duplex-border, #eee);
-  text-align: left;
+  text-align: start; /* ADR-087 -- a CSS Logical Property, flips with dir="rtl" instead of staying pinned physically left */
 }
 </style>

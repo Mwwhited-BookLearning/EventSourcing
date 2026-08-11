@@ -7,6 +7,7 @@ import { useEntityCacheStore } from '../stores/entityCache'
 import * as publishClientModule from '../api/publishClient'
 import * as graphqlClientModule from '../api/graphqlClient'
 import * as streamingClientModule from '../api/streamingClient'
+import * as localeClientModule from '../api/localeClient'
 
 vi.mock('../api/publishClient', () => ({
   publishCommand: vi.fn(),
@@ -19,6 +20,10 @@ vi.mock('../api/streamingClient', () => ({
 vi.mock('../api/graphqlClient', () => ({
   graphqlQuery: vi.fn(),
   graphqlSubscribe: vi.fn(),
+}))
+
+vi.mock('../api/localeClient', () => ({
+  negotiateLocale: vi.fn(),
 }))
 
 const config: ClientConfig = {
@@ -42,6 +47,39 @@ describe('useEntityViewActions (docs/patterns/mvvm-client-architecture.md\'s "Ac
     vi.mocked(streamingClientModule.ingestSamples).mockReset()
     vi.mocked(graphqlClientModule.graphqlQuery).mockReset()
     vi.mocked(graphqlClientModule.graphqlSubscribe).mockReset()
+    vi.mocked(localeClientModule.negotiateLocale).mockReset()
+  })
+
+  // ADR-087 -- EntityView calls this alongside loadViewDefinition so a
+  // TemplateRenderer always has a real, server-negotiated locale (never
+  // the browser's raw preference) by the time it first renders.
+  describe('resolveLocale (i18n/l10n architectural scope)', () => {
+    it('starts with the en-US default before resolution completes', () => {
+      const fetchToken = vi.fn().mockResolvedValue('token-123')
+      const actions = useEntityViewActions(config, { fetchToken })
+      expect(actions.locale.value).toBe('en-US')
+    })
+
+    it('adopts the server-negotiated locale and its matching translations once resolved', async () => {
+      vi.mocked(localeClientModule.negotiateLocale).mockResolvedValue('fr-FR')
+      const fetchToken = vi.fn().mockResolvedValue('token-123')
+      const actions = useEntityViewActions(config, { fetchToken })
+
+      await actions.resolveLocale()
+
+      expect(actions.locale.value).toBe('fr-FR')
+      expect(actions.translations.value.carrier_label).toBe('Transporteur')
+    })
+
+    it('sends config.acceptLanguage, not navigator.language, when explicitly configured', async () => {
+      vi.mocked(localeClientModule.negotiateLocale).mockResolvedValue('ar-SA')
+      const fetchToken = vi.fn().mockResolvedValue('token-123')
+      const actions = useEntityViewActions({ ...config, acceptLanguage: 'ar-SA' }, { fetchToken })
+
+      await actions.resolveLocale()
+
+      expect(localeClientModule.negotiateLocale).toHaveBeenCalledWith(config.hostBaseUrl, 'ar-SA')
+    })
   })
 
   // ADR-070 -- the seam every IDeviceInputSource adapter's captured

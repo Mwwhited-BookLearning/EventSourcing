@@ -26,6 +26,7 @@ const viewDefinition = computed(() => viewDefinitions.get(props.entityType, 'Det
 
 onMounted(() => {
   void props.viewActions.loadViewDefinition('Detail')
+  void props.viewActions.resolveLocale() // ADR-087 -- a real, server-negotiated locale before the first TemplateRenderer render, not the browser's raw preference
 })
 
 async function handleCommand(fieldPath: string, value: string): Promise<void> {
@@ -43,6 +44,8 @@ async function handleRetry(): Promise<void> {
     v-else-if="viewDefinition"
     :template-content="viewDefinition.templateContent"
     :entry="entry"
+    :locale="viewActions.locale.value"
+    :translations="viewActions.translations.value"
     @command="handleCommand"
   />
   <GenericFallbackView v-else :entry="entry" @retry="handleRetry" />

@@ -34,6 +34,13 @@ public class ViewDefinitionService(EventStoreContext db)
         if (string.IsNullOrWhiteSpace(request.EntityType))
             errors.Add("entityType is required");
 
+        // ADR-087 -- checked before the version-increment/hash-compute
+        // steps below, matching EnumFallbackSchemaValidator/
+        // MaskingSchemaValidator's own "reject before anything else
+        // happens" placement for a structural check.
+        if (!string.IsNullOrWhiteSpace(request.TemplateContent))
+            TranslationKeyValidator.Validate(request.TemplateContent, errors);
+
         if (errors.Count > 0)
             return new RegisterViewDefinitionResult.ValidationFailed(errors);
 

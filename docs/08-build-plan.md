@@ -104,7 +104,7 @@ provider they apply to — not "code written."
 | 43 | [Pluggable Outbox Flush Triggers](#pluggable-outbox-flush-triggers) | MVVM Client, Lineage Export & Bitemporal Playback | Done |
 | 44 | [Device Input Integration](#device-input-integration) | MVVM Client, Pluggable Outbox Flush Triggers, Non-Authoritative Capture | Done |
 | 45 | [Accessibility Standard](#accessibility-standard) | MVVM Client | Done |
-| 46 | [i18n/l10n Architectural Scope](#i18nl10n-architectural-scope) | MVVM Client | Not started |
+| 46 | [i18n/l10n Architectural Scope](#i18nl10n-architectural-scope) | MVVM Client | Done |
 | 47 | [Mechanism-Level OpenTelemetry Instrumentation](#mechanism-level-opentelemetry-instrumentation) | Hardening & Evolution, Sharding & Replication, Entity-Centric Core Rebuild, Outbound Webhooks | Not started |
 | 48 | [Event Log/AccessLog Archival Segment Detachment](#event-logaccesslog-archival-segment-detachment) | Binary Attachments, Delegated Grants/RBAC/Read Audit Logging, Hardening & Evolution, Lineage Export & Bitemporal Playback | Not started |
 
@@ -242,7 +242,7 @@ state "UI" as tierUi {
   state "Pluggable Outbox\nFlush Triggers" as a19 #palegreen
   state "Device Input Integration" as a20 #palegreen
   state "Accessibility Standard" as a21 #palegreen
-  state "i18n/l10n Scope" as a22
+  state "i18n/l10n Scope" as a22 #palegreen
 }
 
 ' Hidden edges between the 4 tier containers themselves -- not a real
@@ -4169,6 +4169,60 @@ Logical Properties; a rendered string sourced from a hardcoded literal
 rather than a translation key is confirmed to be rejected/flagged by
 whatever structural check enforces the requirement (lint rule, build
 check, or equivalent).
+
+**Status: Done.** Server-side: `EventStore.Host.Core/
+HostCoreExtensions.cs` configures ASP.NET Core's first-party
+`RequestLocalizationMiddleware` (en-US default; en-US/fr-FR/ar-SA
+supported; `ApplyCurrentCultureToResponseHeaders = true`), verified via a
+real `TestServer` round trip (`LocalizationHttpSqliteTests.cs`, 4 tests)
+against an unweighted culture, a weighted `Accept-Language` list, and an
+unsupported culture's fallback, each confirmed by the real
+`Content-Language` response header this item's negotiation exit
+criterion names. `EventStore.ViewRegistry/TranslationKeyValidator.cs`
+enforces the structural check the last exit criterion names — strips
+every `{{ }}` interpolation and HTML tag/comment via regex (this
+format's own "small injected binding runtime" style, matching
+`TemplateRenderer.vue`'s own client-side regex rather than adding an
+HTML-parser dependency) and rejects any hardcoded literal text left
+over, wired into `ViewDefinitionService.RegisterAsync` — a real
+pre-existing test fixture (`ViewDefinitionScenarioAssertions.cs`) was
+found still hardcoding literal `<div>v1</div>`-style text once this
+check went live, fixed to reference translation keys instead.
+
+Client-side: `client-web/src/i18n/locale.ts` (`resolveLocale`,
+`isRtlLocale`), `client-web/src/i18n/translations.ts`
+(`resolveTranslations` + `placeholderTranslations` — en-US/fr-FR/ar-SA,
+domain-owned real content explicitly out of scope per this item's own
+Scope text), `client-web/src/api/localeClient.ts` (`negotiateLocale`,
+reading the server's own negotiated `Content-Language` back rather than
+trusting `navigator.language` directly). `TemplateRenderer.vue` extends
+its existing `{{ field }}` interpolation regex with `{{ t:key }}`
+(translation-key resolution; an unresolved key renders as `[key]`,
+visible rather than silently blank) and `{{ field:date }}`/
+`{{ field:number }}` (`Intl.DateTimeFormat`/`Intl.NumberFormat`,
+satisfying the number/date exit criterion), and sets a real `dir`
+attribute (`rtl`/`ltr`) on its rendered container from the resolved
+locale — the mechanism that actually drives the browser's own bidi
+algorithm and this codebase's CSS Logical Properties
+(`GenericFallbackView.vue`'s and `OfflineBundleViewer.vue`'s own
+`text-align: left` were, found during this item, the only two remaining
+physical-property rules in the client; both corrected to `text-align:
+start`). `EntityView.vue` calls `resolveLocale()` alongside
+`loadViewDefinition` and passes the resolved `locale`/`translations`
+through to `TemplateRenderer`. All new modules covered by real,
+non-mocked-DOM tests (`locale.spec.ts`, `translations.spec.ts`,
+`localeClient.spec.ts` — the last stubs `fetch` directly, a new
+convention for this test suite — and extended `TemplateRenderer.spec.ts`/
+`useEntityViewActions.spec.ts`); the RTL exit criterion's "actual
+rendered layout direction" is verified by asserting the real `dir`
+attribute switches between `ar-SA` and `en-US`, since that attribute is
+what the exit criterion's own CSS-Logical-Properties mechanism keys off.
+
+**Named limitation, honestly not extended by this item**: the generic
+native-fallback view's raw property-name labels remain outside the
+translation-key requirement, per the open point `features/mvvm-client.md`
+already flags — this item did not resolve that ambiguity on its own
+authority.
 
 ## Mechanism-Level OpenTelemetry Instrumentation
 

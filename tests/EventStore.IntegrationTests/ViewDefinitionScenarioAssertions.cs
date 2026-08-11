@@ -25,8 +25,14 @@ internal static class ViewDefinitionScenarioAssertions
 
     public static async Task RegisteringANewVersionDeprecatesThePriorOneButBothStillExist(ViewDefinitionService registry)
     {
-        await registry.RegisterAsync(new RegisterViewDefinitionRequest("mvvm-demo-order-2", "Detail", [1], "<div>v1</div>"));
-        await registry.RegisterAsync(new RegisterViewDefinitionRequest("mvvm-demo-order-2", "Detail", [1, 2], "<div>v2</div>"));
+        // ADR-087 -- literal text (e.g. plain "v1") is no longer a legal
+        // templateContent at all (TranslationKeyValidator rejects it);
+        // {{ t:key }} distinguishes the two versions by KEY, never by an
+        // embedded literal, the same "reference a translation key, never
+        // a hardcoded literal" discipline this item's own exit criteria
+        // require of every ViewDefinition template from here on.
+        await registry.RegisterAsync(new RegisterViewDefinitionRequest("mvvm-demo-order-2", "Detail", [1], "<div>{{ t:version_1_label }}</div>"));
+        await registry.RegisterAsync(new RegisterViewDefinitionRequest("mvvm-demo-order-2", "Detail", [1, 2], "<div>{{ t:version_2_label }}</div>"));
 
         var active = await registry.GetActiveAsync("mvvm-demo-order-2", "Detail");
         Assert.IsNotNull(active);
@@ -40,8 +46,8 @@ internal static class ViewDefinitionScenarioAssertions
 
     public static async Task ASchemaVersionTheActiveTemplateDoesNotDeclareCompatibilityWithFallsBackToTheDeprecatedButCompatibleVersion(ViewDefinitionService registry)
     {
-        await registry.RegisterAsync(new RegisterViewDefinitionRequest("mvvm-demo-order-3", "Detail", [1], "<div>v1, understands schema 1 only</div>"));
-        await registry.RegisterAsync(new RegisterViewDefinitionRequest("mvvm-demo-order-3", "Detail", [2], "<div>v2, understands schema 2 only</div>"));
+        await registry.RegisterAsync(new RegisterViewDefinitionRequest("mvvm-demo-order-3", "Detail", [1], "<div>{{ t:understands_schema_1_only }}</div>"));
+        await registry.RegisterAsync(new RegisterViewDefinitionRequest("mvvm-demo-order-3", "Detail", [2], "<div>{{ t:understands_schema_2_only }}</div>"));
 
         var forOldSchema = await registry.GetActiveAsync("mvvm-demo-order-3", "Detail", schemaVersion: 1);
         Assert.IsNotNull(forOldSchema);
@@ -67,5 +73,27 @@ internal static class ViewDefinitionScenarioAssertions
         var noVersions = (RegisterViewDefinitionResult.ValidationFailed)await registry.RegisterAsync(
             new RegisterViewDefinitionRequest("mvvm-demo-order-4", "Detail", [], "<div/>"));
         Assert.IsTrue(noVersions.Errors.Any(e => e.Contains("compatibleSchemaVersions")));
+    }
+
+    // ADR-087's own exit criterion, verified directly: "a rendered string
+    // sourced from a hardcoded literal rather than a translation key is
+    // confirmed to be rejected/flagged by whatever structural check
+    // enforces the requirement."
+    public static async Task ATemplateContainingAHardcodedLiteralInsteadOfATranslationKeyIsRejected(ViewDefinitionService registry)
+    {
+        var hardcoded = (RegisterViewDefinitionResult.ValidationFailed)await registry.RegisterAsync(
+            new RegisterViewDefinitionRequest("mvvm-demo-order-5", "Detail", [1], "<div>Carrier: {{carrier}}</div>"));
+        Assert.IsTrue(hardcoded.Errors.Any(e => e.Contains("templateContent") && e.Contains("hardcoded text")), string.Join("; ", hardcoded.Errors));
+
+        // The exact same content, with the literal label AND its literal
+        // ": " separator both replaced by a translation key (the
+        // separator is itself hardcoded text a strict "never a literal"
+        // rule correctly also catches -- some locales punctuate a
+        // label/value pair differently), registers successfully --
+        // proving the rejection above was specifically about the
+        // literal content, not some other property of the template.
+        var compliant = (RegisterViewDefinitionResult.Success)await registry.RegisterAsync(
+            new RegisterViewDefinitionRequest("mvvm-demo-order-5", "Detail", [1], "<div>{{ t:carrier_label_with_separator }}{{carrier}}</div>"));
+        Assert.AreEqual(1, compliant.Version);
     }
 }
