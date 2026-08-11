@@ -113,3 +113,4 @@ Consequences: <trade-offs accepted>
 | [091](adrs/adr-091-ci-cd-platform-github-actions.md) | CI/CD platform — GitHub Actions, because that's where this repository lives; revisit if that ever changes | Accepted |
 | [092](adrs/adr-092-benign-actor-trust-model-perimeter-defense.md) | Core-engine trust model assumes non-malicious actors; hostile-traffic defense (WAF/gateway) is a deployment-perimeter concern, not a framework one | Accepted |
 | [093](adrs/adr-093-signing-secret-rotation-dual-signature.md) | `ADR-040`/`ADR-060` signing secrets become a current+previous pair with dual-signature emission (Standard Webhooks' own mechanism); rotation cadence stays ops-configurable | Accepted |
+| [094](adrs/adr-094-expected-response-tracking.md) | Expected-response tracking — a generic `RespondsToEventId` envelope field (Correlation Identifier) + opt-in `EventTypeDefinition.ExpectedResponse` registry declaration, escalation policy left to the application | Accepted |

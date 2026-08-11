@@ -107,6 +107,7 @@ provider they apply to — not "code written."
 | 46 | [i18n/l10n Architectural Scope](#i18nl10n-architectural-scope) | MVVM Client | Done |
 | 47 | [Mechanism-Level OpenTelemetry Instrumentation](#mechanism-level-opentelemetry-instrumentation) | Hardening & Evolution, Sharding & Replication, Entity-Centric Core Rebuild, Outbound Webhooks | Done |
 | 48 | [Event Log/AccessLog Archival Segment Detachment](#event-logaccesslog-archival-segment-detachment) | Binary Attachments, Delegated Grants/RBAC/Read Audit Logging, Hardening & Evolution, Lineage Export & Bitemporal Playback | Done |
+| 49 | [Expected-Response Tracking](#expected-response-tracking) | CQRS Read-Model Projections (worked example), Streaming Channels, Outbound Webhooks, Leader Election via Database-Backed Lease | Not started |
 
 Two groups worth naming up front, since they explain most of the
 ordering below:
@@ -235,6 +236,7 @@ state "Local Services" as tierLocal {
   state "Release Engineering,\nPackaging & Supply Chain" as a15 #palegreen
   state "Lineage Export +\nBitemporal Playback" as a17 #palegreen
   state "Mechanism-Level\nOTel Instrumentation" as a23 #palegreen
+  state "Expected-Response\nTracking" as a26
 }
 state "UI" as tierUi {
   state "MVVM Client" as p20 #palegreen
@@ -359,6 +361,10 @@ p15 --> a24
 p22 --> a24
 p10 --> a24
 p0 --> a25
+p9 --> a26
+p14 --> a26
+a10 --> a26
+a8 --> a26
 @enduml
 ```
 
@@ -456,6 +462,12 @@ here as prose:
   advisory (`ADR-064`)". Filled `#palegreen` (already Done, inherited
   from item 6) so it reads as resolved, not as an open dependency edge
   the way a same-level sibling node would.
+- **Expected-Response Tracking** (`ADR-094`, merged in from the
+  `design/service-level-agreement` branch — not yet implemented, queued
+  as this file's own next item) depends on **CQRS Read-Model Projections
+  (worked example)**, **Streaming Channels**, **Outbound Webhooks**, and
+  **Leader Election via Database-Backed Lease** — see that item's own
+  full section below for the reasoning behind each.
 - **GDPR/CCPA Erasure** depends on **Property-Level Masking** and
   **Entity-Centric Core Rebuild**.
 - **PCI-DSS SAD Boundary** depends on **Schema Registry** and
@@ -540,6 +552,14 @@ here as prose:
   **Scaffolding & Persistence** (the classification exists from day one)
   but its exit criteria stay accurate only as later items land — see its
   own entry.
+- **Expected-Response Tracking** depends on **CQRS Read-Model Projections
+  (worked example)** — the Follow-based internal-follower shape and
+  seeded-OAuth2-client extension pattern `ExpectedResponseWatcher`
+  reuses unchanged — and **Streaming Channels** — the reserved-detector-
+  event shape (`ChannelLagDetected`) `ExpectedResponseMissing` directly
+  mirrors — plus, per the diagram above, **Outbound Webhooks** (the
+  durable-tracker/cursor-table shape) and **Leader Election** (the
+  singleton-worker gate every other background worker already uses).
 
 ## Scaffolding & Persistence
 
@@ -4376,7 +4396,10 @@ share or collide with the Event Log's checkpoint; the archival backend is
 confirmed to be an ordinary registered `IAttachmentContentStore`
 implementation with no new extensibility interface introduced anywhere.
 
-**Status: Done — the last item in this build plan.** New `EventStore.
+**Status: Done — the last item in this build plan as of when this item
+was written; "Expected-Response Tracking" below was merged in
+afterward, from a separate design branch, and is not yet built.** New
+`EventStore.
 Archival` project: `ArchivalService` (`ArchiveEventLogSegmentAsync`/
 `ArchiveAccessLogSegmentAsync`, `ReVerifyEventLogSegmentAsync`/
 `ReVerifyAccessLogSegmentAsync`, `ArchiveResult` union). `ChainCheckpoint`
@@ -4463,6 +4486,53 @@ callable, on-demand operations here, not wired to a background worker
 or a scheduled trigger of any kind. No HTTP endpoint was built either,
 for the same reason: nothing in this build has a policy decision to
 call it from yet.
+
+## Expected-Response Tracking
+
+**Scope**: `ADR-094` — a generic `StoredEvent.RespondsToEventId`
+envelope field (Correlation Identifier, Hohpe & Woolf) any publish may
+set, plus an opt-in, nullable `EventTypeDefinition.ExpectedResponse
+{ ResponseEventType, Within }` a *request* event type declares. A new
+singleton `ExpectedResponseWatcher` — architecturally an internal
+follower, the same shape `ProjectionHost` already uses — maintains a
+durable `ExpectedResponseTracker` row per tracked request event and, on
+a periodic sweep, publishes the reserved `ExpectedResponseMissing` event
+(never registered via `PUT /registry/{event-type}`, the same treatment
+`EventUpcastFailed` gets) exactly once for any row past its deadline with
+no matching response yet. Escalation policy (what happens on a miss) is
+explicitly out of scope — an application concern, the same boundary
+`ADR-031` already draws for telemetry detection.
+
+**Depends on**: CQRS Read-Model Projections (worked example) — the
+Follow-based internal-follower shape and the seeded-OAuth2-client
+extension pattern `ExpectedResponseWatcher` reuses unchanged; Streaming
+Channels — the reserved-detector-event shape (`ChannelLagDetected`) this
+item's `ExpectedResponseMissing` directly mirrors; Outbound Webhooks —
+the durable-tracker/cursor-table shape (`WebhookOutbox`/
+`WebhookDeliveryCursor`) `ExpectedResponseTracker` follows; Leader
+Election via Database-Backed Lease — `ExpectedResponseWatcher` is a
+singleton worker gated by it, like `Router`/`UpcastMaterializer`/the
+outbox pumps.
+
+**Exit criteria**: an event type with no `ExpectedResponse` configured
+behaves exactly as before (no tracker row, no watcher activity) —
+confirms this is purely additive. An event type with `ExpectedResponse`
+configured gets a tracker row on publish, with `DeadlineAt` set
+correctly from `Within`; a matching `ResponseEventType` event carrying
+the correct `RespondsToEventId`, published before the deadline, stamps
+`SatisfiedByEventId`/`SatisfiedAt` and no `ExpectedResponseMissing` is
+ever published for that row; the same response published *after* the
+deadline still stamps `SatisfiedAt` (recorded, not treated as an error)
+even if `ExpectedResponseMissing` already fired; no matching response at
+all results in exactly one `ExpectedResponseMissing` publish per tracker
+row, `Follow`-able like any ordinary event, carrying `RespondsToEventId`
+back at the original request; killing and restarting
+`ExpectedResponseWatcher` mid-sweep loses no tracker state and never
+double-publishes `ExpectedResponseMissing` for a row already escalated.
+
+**Status: Not started** — merged in from the `design/service-level-agreement`
+branch on 2026-08-11, after all 48 items above were already Done. This
+is now the 49th item; not yet implemented.
 
 ## Cross-cutting, every item
 

@@ -159,10 +159,16 @@ re-derive the process from scratch:
   template.md`, the same depth as `docs/features/*.md` for the core
   engine). **The 13 considered-not-chosen domains stay at one feature
   doc each; the two chosen proving-ground domains (clinical trials +
-  device telemetry, digital identity/KYC) were taken further, each to 4
-  feature docs sequenced into a `## Workflows` section on that domain's
-  own `README.md`** — see `docs/changes/2026-07-30.md`'s "two chosen
-  domains taken to full reference-application depth" section. Distinct
+  device telemetry, digital identity/KYC) were taken further, sequenced
+  into a `## Workflows` section on that domain's own `README.md`** — see
+  `docs/changes/2026-07-30.md`'s "two chosen domains taken to full
+  reference-application depth" section. Originally 4 feature docs/3
+  workflows each; clinical trials + device telemetry grew to 5 feature
+  docs/4 workflows on direct request once `ADR-094` gave its named IONM
+  use case a real mechanism to exercise end-to-end
+  (`docs/changes/2026-08-04.md`) — the two domains were never required to
+  stay at matching depth, that was just how it happened to work out
+  until this addition. Distinct
   from `docs/glossary.md`, which covers Duplex's own
   cross-cutting engine terms once, not per domain. Generated from — not
   a repeat of — `docs/comparisons/proving-ground-domain.md`'s coverage
@@ -235,17 +241,21 @@ re-derive the process from scratch:
   again, it goes back in `TODO.md`, not here.
 - **A repeated relationship gets its own envelope-metadata field, never
   conflated with an existing one just because the shape looks similar.**
-  This design has seven now: `parentEventIds` (causal derivation,
+  This design has eight now: `parentEventIds` (causal derivation,
   `ADR-005`), `MaterializationOfEventId` (reshaped copy of, `ADR-027`),
   `TelemetryPointer` (position in a signal/media stream, `ADR-031`),
   `AttachmentRef` (supporting binary content, `ADR-032`), `erasureScope`
   (whose crypto-shredding key protects this field, `ADR-057`),
-  `Signature` (a captured sign-off attestation, `ADR-066`), and
+  `Signature` (a captured sign-off attestation, `ADR-066`),
   `OriginalSequenceNumber`/`OriginalChainHash`/`ImportedFrom` (provenance
   of an imported lineage-export event, `ADR-068` — added without the
   explicit "ask before a seventh" gut-check this convention calls for;
-  flagged, not undone, since the fit is genuine on inspection). If an
-  eighth comes up, ask what question it specifically answers first.
+  flagged, not undone, since the fit is genuine on inspection), and
+  `RespondsToEventId` (which prior event this one satisfies a declared
+  response expectation for — the Correlation Identifier pattern, Hohpe &
+  Woolf — distinct from `parentEventIds`' broader, untimed causal
+  derivation; `ADR-094`, gut-check done explicitly this time). If a
+  ninth comes up, ask what question it specifically answers first.
 - **A new capability gets a named item in `08-build-plan.md`.** That file
   moved off fixed `Phase N` numbering this session — each item names its
   own prerequisite items instead of a phase number, so adding one never

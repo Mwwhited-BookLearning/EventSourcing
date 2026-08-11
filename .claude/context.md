@@ -1952,7 +1952,30 @@ stale numbers here are worse than none)*
   methods are directly-callable, on-demand operations, not wired to a
   background worker, a scheduled trigger, or an HTTP endpoint of any
   kind, since nothing yet has a policy decision to call it from.
-- **All 48 build-plan items are now Done.** This was the last one.
+- **All 48 build-plan items are now Done.**
+- **Merged in from a separate branch, `design/service-level-agreement`
+  (2026-08-11), after all 48 items above were already Done**: `ADR-094`
+  ("Expected Response Tracking" — a generic `RespondsToEventId` envelope
+  field + opt-in `EventTypeDefinition.ExpectedResponse`, watched by a new
+  `ExpectedResponseWatcher` singleton worker that publishes a reserved
+  `ExpectedResponseMissing` event on an unmet deadline), a comparison doc
+  (`docs/comparisons/event-response-acknowledgment.md`), a feature doc
+  (`docs/features/expected-response-tracking.md`), a pattern doc
+  (`docs/patterns/request-reply-correlation.md`), and a 5th clinical-
+  trials-device-telemetry workflow (`intraoperative-monitoring-and-
+  alert-response.md`, IONM's first domain-level exercise of `ADR-094`).
+  Now build-plan item 49, **Not started** — design only, no `src/`/
+  `tests/` code exists for it yet. Full design-session narrative:
+  `docs/changes/2026-08-04.md`'s "Session 2" section. The merge itself
+  hit real conflicts in every shared "living index" doc both branches
+  had independently evolved since their common ancestor (this file,
+  `08-build-plan.md`, `docs/data/event-log.md`/`schema-registry.md`,
+  `docs/features/auth.md`, `docs/changes/2026-08-04.md` itself) —
+  resolved additively (keep both sides' genuinely new content) in every
+  case, not by picking one side.
+- **Next up**: build-plan item 49, "Expected-Response Tracking"
+  (`ADR-094`) — depends on CQRS Read-Model Projections, Streaming
+  Channels, Outbound Webhooks, and Leader Election (all Done).
 
 ## How to resume cold
 

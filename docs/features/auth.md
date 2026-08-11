@@ -314,8 +314,9 @@ granted the Token Exchange grant type (`TokenExchangeClients`, `ADR-040`/
 | `clinician-spa-client` | `client_credentials` + Token Exchange | `telemetry:read`, `attachments:read` | `clearance:phi` ("Delegated Grants" — the granter role; also "Ticket Exchange"'s header-capable caller) |
 | `colleague-client` | `client_credentials` + Token Exchange | *(none)* | — ("Delegated Grants" — the grantee; holds nothing of its own, everything comes from what `clinician-spa-client` delegates) |
 | `devidp-rbac-follower-client` | `client_credentials` | `events:follow` | — (`RbacProjectionWorker`'s own identity when tailing `RoleGranted`/`RoleRevoked`/`PermissionGranted`/`AppTrustRootRegistered`) |
+| `expected-response-watcher-client` | `client_credentials` | `events:follow`, `events:publish` | — (`ExpectedResponseWatcher`'s own identity — tails request/response event types, publishes the reserved `ExpectedResponseMissing` event on an unmet deadline, `ADR-094`) |
 
-That's 11 distinct scopes across the 11 clients (`colleague-client` holds
+That's 12 distinct scopes across the 12 clients (`colleague-client` holds
 none directly), each named for the build-plan item that introduced the
 need for a new caller identity — see `DevIdpSeeder.cs`'s own header
 comment and per-entry comments for the full reasoning behind each.
