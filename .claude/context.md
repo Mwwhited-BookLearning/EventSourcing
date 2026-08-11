@@ -1513,7 +1513,9 @@ stale numbers here are worse than none)*
   suite re-run clean except already-tracked load-induced flakes (plus one
   NEW manifestation this pass — an occasional `PeerSyncCursor` race in
   `DataResidencyHttpSqliteTests` under this suite's now-heavier Host
-  count, understood but not yet fixed, see `TODO.md`).
+  count — since fixed with a bounded retry in the test's own sync
+  helper, verified with 3 isolated + 3 full-suite clean re-runs, see
+  `TODO.md`).
 - **Next up**: item 38, "Sanctions/Watchlist Screening Extensibility
   Seam" — depends on Non-Authoritative Capture (Done) and Delegated
   Grants, RBAC, Federated Claims & Read Audit Logging (Done).

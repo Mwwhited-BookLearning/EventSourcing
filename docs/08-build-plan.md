@@ -3268,11 +3268,11 @@ the raw cross-tenant shape" exit criterion both ways. A second scenario
 confirms an unregistered adapter key is rejected `404`, not silently
 routed to any other registered adapter. Full SQLite regression suite
 re-run clean except this repo's own already-tracked load-induced flakes
-(the SSE-subscription race, and — new this pass, understood but not yet
-fixed, see `TODO.md`'s addendum — an occasional `PeerSyncCursor` race in
-`DataResidencyHttpSqliteTests` under this suite's now-heavier
-`WebApplicationFactory` Host count; confirmed to pass cleanly in
-isolation).
+(the SSE-subscription race, and — new this pass, an occasional
+`PeerSyncCursor` race in `DataResidencyHttpSqliteTests` under this
+suite's now-heavier `WebApplicationFactory` Host count, since fixed with
+a bounded retry in the test's own sync helper, see `TODO.md`'s
+addendum).
 
 ## Sanctions/Watchlist Screening Extensibility Seam
 
