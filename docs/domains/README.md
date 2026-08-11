@@ -80,7 +80,7 @@ after-the-fact.
 |---|---|---|---|
 | Vitals | A — Enrollment & Consent | [Patient Enrollment and Informed Consent](clinical-trials-device-telemetry/features/patient-enrollment-and-informed-consent.md) | Done |
 | Vitals | B — Device Monitoring → Adverse Event Review | [Device Onboarding and Continuous Monitoring](clinical-trials-device-telemetry/features/device-onboarding-and-continuous-monitoring.md), [Adverse Event Capture and Review](clinical-trials-device-telemetry/features/adverse-event-capture-and-review.md) | Done |
-| Vitals | C — Trial Data Export & Subject Rights | [Trial Data Export and Subject Rights](clinical-trials-device-telemetry/features/trial-data-export-and-subject-rights.md) | Not started |
+| Vitals | C — Trial Data Export & Subject Rights | [Trial Data Export and Subject Rights](clinical-trials-device-telemetry/features/trial-data-export-and-subject-rights.md) | Done (erasure half only — export/playback deliberately reuses the already-proven core mechanism unchanged, see note below) |
 | Vitals | D — Intraoperative Monitoring & Alert Response | [Intraoperative Monitoring and Alert Response](clinical-trials-device-telemetry/features/intraoperative-monitoring-and-alert-response.md) | Not started |
 | Meridian | A — Document/Biometric Capture → Verification | [Document and Biometric Capture](digital-identity-kyc/features/document-and-biometric-capture.md), [Customer Onboarding and Identity Verification](digital-identity-kyc/features/customer-onboarding-and-identity-verification.md) | Not started |
 | Meridian | B — Relying-Party Access | [Relying-Party Verification Request](digital-identity-kyc/features/relying-party-verification-request.md) | Not started |
@@ -133,3 +133,22 @@ event type has no real counterpart at all: a `UcanDelegation` is capped
 only by its own TTL, with no revocation-before-expiry mechanism built
 anywhere in `EventStore.Ucan`/`EventStore.Rbac` (confirmed by search, not
 assumed) — a genuine, open gap, not one this sample works around.
+
+**A third: Workflow C's export/playback half, deliberately scoped down.**
+`trial-data-export-and-subject-rights.md`'s own `exportLineage`/
+`playbackAsOf` sequence diagrams name two claims, `export:lineage`/
+`export:playback`, that don't exist either — the real `LineageExportQueries`
+gates both fields behind one ordinary GraphQL scope,
+`events:lineage:read` (`GraphQlAuth.RequireScopeAsync`), the same scope
+every other GraphQL field checks. `EntityErasureRequestedPayload.EntityId`
+is real as `TargetEntityId`, and `EntityErasureKey.DestroyedAt`/
+`KeyStoreBackendKey` are real as `ErasedAt`/`BackendName` — confirmed
+against the actual classes, not assumed from the ER diagram. Since
+`ADR-068`'s export/playback mechanism is already fully exercised
+generically (`LineageExportHttpSqliteTests.cs`) and this domain changes
+no risk in it (only which entity/event names are involved), this sample
+deliberately does NOT re-prove that half with a second, redundant HTTP
+test — only the erasure half (`VitalsWorkflowCScenarioAssertions.cs`),
+which genuinely is domain-specific (PHI fields, a non-continuity
+subject, the retention-vs-erasure tension this domain's own `README.md`
+names as real), gets real sample code and tests.
