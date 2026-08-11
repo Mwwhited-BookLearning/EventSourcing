@@ -51,12 +51,8 @@
     <Project Path="tests/EventStore.IntegrationTests/EventStore.IntegrationTests.csproj" />
   </Folder>
   <Folder Name="/samples/">
+    <Project Path="src/Samples.Meridian/Samples.Meridian.csproj" />
     <Project Path="src/Samples.Orders.Projections/Samples.Orders.Projections.csproj" />
-    <Folder Name="/samples/Vitals/">
-      <Project Path="src/Samples.Vitals/Samples.Vitals.csproj" />
-    </Folder>
-    <Folder Name="/samples/Meridian/">
-      <Project Path="src/Samples.Meridian/Samples.Meridian.csproj" />
-    </Folder>
+    <Project Path="src/Samples.Vitals/Samples.Vitals.csproj" />
   </Folder>
 </Solution>
