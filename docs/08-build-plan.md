@@ -96,7 +96,7 @@ provider they apply to — not "code written."
 | 35 | [Data Residency (Region Pinning)](#data-residency-region-pinning) | Sharding & Replication, Multi-Tenancy | Done |
 | 36 | [Bulk Ingestion & External Interchange-Format Adapters](#bulk-ingestion--external-interchange-format-adapters) | Publish API, Non-Authoritative Capture, Outbound Webhooks | Done |
 | 37 | [Tenant-to-Tenant Federation Mapping](#tenant-to-tenant-federation-mapping) | Multi-Tenancy, Auth + Orchestration, Bulk Ingestion & Interchange Adapters | Done |
-| 38 | [Sanctions/Watchlist Screening Extensibility Seam](#sanctionswatchlist-screening-extensibility-seam) | Scaffolding & Persistence, Non-Authoritative Capture | Not started |
+| 38 | [Sanctions/Watchlist Screening Extensibility Seam](#sanctionswatchlist-screening-extensibility-seam) | Scaffolding & Persistence, Non-Authoritative Capture | Done |
 | 39 | [Release Engineering, Packaging & Supply Chain](#release-engineering-packaging--supply-chain) | Scaffolding & Persistence, Compatibility & Deployment Discipline | Not started |
 | 40 | [Signing Secret Rotation, Dual Signature](#signing-secret-rotation-dual-signature) | Outbound Webhooks, Auth + Orchestration | Not started |
 | 41 | [Lineage Export & Bitemporal Playback](#lineage-export--bitemporal-playback) | Lineage API, Entity-Centric Core Rebuild, MVVM Client, GraphQL-Only Query Layer, Property-Level Masking, GDPR/CCPA Erasure, Delegated Grants/RBAC/Read Audit Logging | Not started |
@@ -192,7 +192,7 @@ state "External Services" as tierExternal {
   state "Outbound Webhooks" as a10 #palegreen
   state "Tenant Federation Mapping" as a12 #palegreen
   state "Bulk Ingestion +\nInterchange Adapters" as a13 #palegreen
-  state "Sanctions Screening Seam" as a14
+  state "Sanctions Screening Seam" as a14 #palegreen
   state "Signing Secret Rotation" as a16
   state "RFC 3161 Timestamping" as a18
 }
@@ -3306,6 +3306,34 @@ with `AuthorityStatus: pending_review` regardless of match confidence
 `authorityDecision` event (gated by ordinary RBAC, unchanged) is what
 actually resolves the event to `accepted` or `rejected` — the provider
 supplies a signal, never the decision itself.
+
+**Status: Done.** `ISanctionsScreeningProvider`/`ScreeningResult` and one
+fake OFAC-SDN-style backend (`TestOfacScreeningProvider`) are declared and
+keyed-DI-registered entirely inside
+`SanctionsScreeningExtensibilityHttpSqliteTests.cs`'s own
+`WebApplicationFactory.ConfigureServices` block — the same "stands in for
+a hosting team's own `Program.cs`" simulation "Tenant-to-Tenant Federation
+Mapping" (item 37) already established — never in any core
+`EventStore.*` project, closing ADR-079's central claim literally. A
+screening pipeline helper standing in for the domain doc's own
+`PeriodicScreeningWorker` resolves the provider from this composition
+root and publishes `SanctionsScreeningPerformed` exactly like any other
+automated detector (`reviewPending: true` whenever `MatchFound`,
+regardless of `MatchConfidence` — verified at both 0.87 and 0.52).
+Resolution reuses "Non-Authoritative Capture" (item 18)'s
+`authorityDecision`/`AuthorityDecisionResolver` mechanism and "Delegated
+Grants, RBAC..." (item 23)'s role-to-permission flattening completely
+unchanged: a `ComplianceOfficer` role bundling `identity:aml-review` is
+registered and granted to `publisher-client` (which already holds the
+`events:publish` scope the `/publish` endpoint separately requires) for
+one demo `AppId`; a caller without that claim gets `403` at the ordinary
+`RequiredClaims` gate, never touching the target's `AuthorityStatus`. Six
+tests, one SQLite-only (auth/RBAC is provider-agnostic, the same posture
+"Delegated Grants..."/"Tenant Federation..." already established for
+their own HTTP test classes). No new framework mechanism was introduced
+anywhere in `EventStore.*` — matching this item's own Scope note that
+`ADR-079`'s central point is establishing a precedent for domain-scoped
+(non-core) extension points, not adding core capability.
 
 ## Release Engineering, Packaging & Supply Chain
 
