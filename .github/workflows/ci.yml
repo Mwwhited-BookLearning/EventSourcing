@@ -54,7 +54,7 @@ jobs:
       - name: Test
         run: dotnet test tests/EventStore.IntegrationTests/EventStore.IntegrationTests.csproj --no-build -c Release --logger "console;verbosity=normal"
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: "22"
           cache: npm
