@@ -230,6 +230,9 @@ namespace EventStore.Persistence.Migrations.Postgres.Migrations
                         .IsRequired()
                         .HasColumnType("text");
 
+                    b.Property<DateTimeOffset>("AppendedAt")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<string>("AttestedActorId")
                         .HasColumnType("text");
 

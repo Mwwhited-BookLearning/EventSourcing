@@ -1,4 +1,5 @@
 using EventStore.Domain.EventLog;
+using EventStore.Domain.Observability;
 using EventStore.Persistence;
 using Microsoft.EntityFrameworkCore;
 
@@ -13,6 +14,8 @@ public class ChainVerificationService(EventStoreContext db)
 {
     public async Task<ChainVerificationResult> VerifyAsync(long throughSequenceNumber, CancellationToken ct = default)
     {
+        using var activity = DuplexInstrumentation.ActivitySource.StartActivity("duplex.hashchain.verify");
+
         var events = await db.Events
             .AsNoTracking()
             .Where(e => e.SequenceNumber <= throughSequenceNumber)
@@ -44,9 +47,13 @@ public class ChainVerificationService(EventStoreContext db)
             // established.
             expected = EventChainHash.Compute(expected, payloadHash, e.SequenceNumber, e.Signature);
             if (expected != e.ChainHash)
+            {
+                DuplexInstrumentation.HashChainVerificationOutcomes.Add(1, new KeyValuePair<string, object?>("outcome", "tampered"));
                 return new ChainVerificationResult.Tampered(e.SequenceNumber);
+            }
         }
 
+        DuplexInstrumentation.HashChainVerificationOutcomes.Add(1, new KeyValuePair<string, object?>("outcome", "verified"));
         return new ChainVerificationResult.Verified(events.Count);
     }
 }

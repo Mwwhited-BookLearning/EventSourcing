@@ -105,7 +105,7 @@ provider they apply to — not "code written."
 | 44 | [Device Input Integration](#device-input-integration) | MVVM Client, Pluggable Outbox Flush Triggers, Non-Authoritative Capture | Done |
 | 45 | [Accessibility Standard](#accessibility-standard) | MVVM Client | Done |
 | 46 | [i18n/l10n Architectural Scope](#i18nl10n-architectural-scope) | MVVM Client | Done |
-| 47 | [Mechanism-Level OpenTelemetry Instrumentation](#mechanism-level-opentelemetry-instrumentation) | Hardening & Evolution, Sharding & Replication, Entity-Centric Core Rebuild, Outbound Webhooks | Not started |
+| 47 | [Mechanism-Level OpenTelemetry Instrumentation](#mechanism-level-opentelemetry-instrumentation) | Hardening & Evolution, Sharding & Replication, Entity-Centric Core Rebuild, Outbound Webhooks | Done |
 | 48 | [Event Log/AccessLog Archival Segment Detachment](#event-logaccesslog-archival-segment-detachment) | Binary Attachments, Delegated Grants/RBAC/Read Audit Logging, Hardening & Evolution, Lineage Export & Bitemporal Playback | Not started |
 
 Two groups worth naming up front, since they explain most of the
@@ -234,7 +234,7 @@ state "Local Services" as tierLocal {
   state "Per-Tenant Rate Limiting" as a9 #palegreen
   state "Release Engineering,\nPackaging & Supply Chain" as a15 #palegreen
   state "Lineage Export +\nBitemporal Playback" as a17 #palegreen
-  state "Mechanism-Level\nOTel Instrumentation" as a23
+  state "Mechanism-Level\nOTel Instrumentation" as a23 #palegreen
 }
 state "UI" as tierUi {
   state "MVVM Client" as p20 #palegreen
@@ -4264,7 +4264,68 @@ operation** — the trace half of the decision, not automatically covered
 just because the metrics pass; no alert-threshold or paging configuration
 is asserted anywhere in this item's tests.
 
-## Event Log/AccessLog Archival Segment Detachment
+**Status: Done.** `EventStore.Domain/Observability/
+DuplexInstrumentation.cs` — the one shared `Meter`/`ActivitySource`
+(`"Duplex.Core"`), living in `EventStore.Domain` since that's the one
+project already a common dependency of all four mechanism projects
+(`Router`/`Replication`/`Webhooks`/`Inbox`), confirmed by checking each
+one's own project references before adding it there. `EventStore.
+ServiceDefaults/Extensions.cs`'s `ConfigureOpenTelemetry` gained
+`.AddMeter("Duplex.Core")` and `.AddSource("Duplex.Core")` (the latter a
+correction to this ADR's own original claim — see its "Corrected,
+2026-08-11" note).
+
+A genuine, honestly-resolved gap found while instrumenting the fold-lag
+histogram: nothing anywhere persisted the "SequenceNumber assignment"
+timestamp this metric's own text names — `StoredEvent.OccurredAt` is
+explicitly the CLIENT-DECLARED logical time (`ADR-029`), never server
+receipt time. Added `StoredEvent.AppendedAt` (server-assigned, stamped
+once by `EventAppender.AppendAsync` the same moment `SequenceNumber`
+itself becomes known), migrated across all 3 providers, documented in
+`docs/data/event-log.md` per this repo's own "the item that adds a field
+is that field's shape authority" rule — not a scope-creep addition, the
+metric's own text is unbuildable without it.
+
+`RouterWorker.ProcessEventAsync` records `RouterFoldLagMs` (tagged
+`app.id`) and a `duplex.router.fold` `Activity`, strictly inside the
+`AuthorityStatus == "accepted"` branch, never around the ungated
+`FoldLiveAsync` call — proven by a dedicated negative-case test
+(`AReviewPendingPublishRecordsNoRouterFoldLagAtAll`) alongside the
+positive one, not just asserted from the code. `PeerSyncWorker.
+SyncOnceWithAsync` computes each peer's own POST-tick remaining
+backlog/oldest-pending-age and reports it into
+`DuplexInstrumentation.ReportPeerSyncOutbox` — the `ObservableGauge<T>`
+callbacks themselves only ever read a snapshot cache back, never query
+the database directly (the OTel SDK's own callback contract requires a
+synchronous, side-effect-free read). `WebhookOutboxPump.
+DeliverNextAsync` records `WebhookDeliveryLagMs` only in the CONFIRMED-
+delivery branch, diffed against `WebhookOutbox.EnqueuedAt` (already
+existed, no new field needed there). `ChainVerificationService.
+VerifyAsync` increments `HashChainVerificationOutcomes` tagged
+`outcome=verified`/`tampered` at each of its own two existing return
+points.
+
+Tests: `OpenTelemetryTestSupport.cs` (new — this repo's first
+`MeterListener`/`ActivityListener` test infrastructure, no prior
+precedent to follow); `OpenTelemetryInstrumentationScenarioAssertions.cs`
++ `OpenTelemetryInstrumentationSqliteTests.cs` (Router fold-lag positive/
+negative, hash-chain verified/tampered, webhook delivery-lag, each
+asserting both the metric AND a named `Activity` — the exit criterion's
+own "not automatically covered just because the metrics pass" text,
+taken literally). The peer-sync outbox gauge scenario needed a real
+`PeerSyncWorker.RunOnceAsync` tick (every existing replication test
+drives `PeerSyncReceiver` directly on the receiving side instead, never
+touching `SyncOnceWithAsync`'s own gauge-reporting code) — given its own
+isolated test class/fixture (`PeerSyncOutboxTelemetryHttpSqliteTests.cs`)
+rather than a second `[TestMethod]` added to the already-passing
+`ReplicationHttpSqliteTests.cs`: found, by actually running it, that a
+second method there drives the SAME shared two-Host/SQLite-file
+ClassInit fixture concurrently (`MSTestSettings.cs`'s own
+`ExecutionScope.MethodLevel`), and one push intermittently 500s under
+that contention — the identical class of bug `WebhookDeliveryHttpSqliteTests.cs`'s
+own header comment already documents for its own file, for the
+identical reason. Full non-container suite: 125/125 (up from 123),
+re-run 3× for the new peer-sync fixture specifically with zero flakes.
 
 **Scope**: `ADR-089` — detach a verified, contiguous segment of
 `StoredEvent` rows (or, independently, `AccessLogEntry` rows) once past

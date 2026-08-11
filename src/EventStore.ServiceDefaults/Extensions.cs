@@ -7,6 +7,7 @@ using Microsoft.Extensions.ServiceDiscovery;
 using OpenTelemetry;
 using OpenTelemetry.Metrics;
 using OpenTelemetry.Trace;
+using EventStore.Domain.Observability;
 
 namespace Microsoft.Extensions.Hosting;
 
@@ -57,11 +58,21 @@ public static class Extensions
             {
                 metrics.AddAspNetCoreInstrumentation()
                     .AddHttpClientInstrumentation()
-                    .AddRuntimeInstrumentation();
+                    .AddRuntimeInstrumentation()
+                    // ADR-088 -- Router fold lag, peer-sync outbox depth/
+                    // age, webhook delivery lag, hash-chain verification
+                    // outcomes. DuplexInstrumentation.Meter is the one
+                    // shared instance every mechanism's own instrument is
+                    // created against.
+                    .AddMeter(DuplexInstrumentation.Name);
             })
             .WithTracing(tracing =>
             {
                 tracing.AddSource(builder.Environment.ApplicationName)
+                    // ADR-088 -- the fold step, each outbox pump, and the
+                    // hash-chain verifier each wrap their own work in a
+                    // named Activity from this one shared ActivitySource.
+                    .AddSource(DuplexInstrumentation.Name)
                     .AddAspNetCoreInstrumentation(tracing =>
                         // Exclude health check requests from tracing
                         tracing.Filter = context =>

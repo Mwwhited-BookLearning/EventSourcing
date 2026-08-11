@@ -24,6 +24,7 @@ public class StoredEvent
     public bool ConflictFlag { get; set; }              // set by the fold step if a concurrent conflicting patch was detected (ADR-024)
     public bool LateArrivalFlag { get; set; }           // set by the fold step if OccurredAt was behind the entity/property's high-water mark (ADR-029)
     public DateTimeOffset OccurredAt { get; set; }      // CLIENT-DECLARED logical occurrence time, not server receipt time (ADR-029) — load-bearing for fold order
+    public DateTimeOffset AppendedAt { get; set; }      // SERVER-ASSIGNED wall-clock arrival time at this site, stamped once by EventAppender.AppendAsync the same moment SequenceNumber becomes known -- never client-supplied, distinct from OccurredAt above (ADR-088; the timestamp Router fold-lag instrumentation diffs against)
     public string ActorId { get; set; } = default!;      // verified caller identity (sub, or iss+sub per ADR-047) -- ALWAYS populated, blocking, not advisory (ADR-064) -- distinct from AttestedActorId below
     public string? AttestedActorId { get; set; }        // self-attested submitter identity — advisory, never gates Status (ADR-035) -- a CLAIM, not a verified fact; never conflated with ActorId above
     public string? AttestedClaims { get; set; }          // JSON — structured capability/delegation claims (e.g. a UCAN invocation, ADR-036); references the attestation schema-registry entry

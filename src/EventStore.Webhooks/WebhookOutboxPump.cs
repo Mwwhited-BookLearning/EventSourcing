@@ -2,6 +2,7 @@ using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using EventStore.Domain.EventLog;
+using EventStore.Domain.Observability;
 using EventStore.Domain.Webhooks;
 using EventStore.Interchange.Abstractions;
 using EventStore.LeaderElection;
@@ -108,6 +109,8 @@ public class WebhookOutboxPump(
         if (next is null)
             return;
 
+        using var activity = DuplexInstrumentation.ActivitySource.StartActivity("duplex.webhook.delivery_pump");
+
         var now = DateTimeOffset.UtcNow;
         if (retryTracker.ShouldWait(subscription.SubscriptionId, next.SequenceNumber, now))
             return;
@@ -160,6 +163,13 @@ public class WebhookOutboxPump(
             cursor.LastDeliveredSequenceNumber = next.SequenceNumber;
             cursor.LastSuccessAt = now;
             retryTracker.Clear(subscription.SubscriptionId, next.SequenceNumber);
+            // ADR-088 -- CONFIRMED delivery only; a retry still in backoff,
+            // or one that's about to be dead-lettered below, never reaches
+            // this branch at all, so this histogram never mixes in-flight/
+            // permanently-failed deliveries with a genuinely confirmed one.
+            DuplexInstrumentation.WebhookDeliveryLagMs.Record(
+                (now - next.EnqueuedAt).TotalMilliseconds,
+                new KeyValuePair<string, object?>("app.id", subscription.AppId));
         }
         else
         {

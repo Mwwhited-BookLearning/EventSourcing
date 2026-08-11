@@ -48,6 +48,14 @@ public static class EventAppender
 
             await db.SaveChangesAsync(ct);
 
+            // ADR-088 -- stamped exactly here, the same moment SequenceNumber
+            // itself became known via the insert above, not at method entry
+            // (which would include time spent inside the Serializable
+            // transaction's own retry/contention window, not genuine append
+            // latency) and not after the second SaveChangesAsync below (which
+            // would exclude the ChainHash/LogicalClock computation this row
+            // still needs before it's actually durable).
+            storedEvent.AppendedAt = DateTimeOffset.UtcNow;
             storedEvent.ChainHash = EventChainHash.Compute(prior?.ChainHash ?? EventChainHash.Genesis, storedEvent.PayloadHash, storedEvent.SequenceNumber, storedEvent.Signature);
             storedEvent.LogicalClock = HybridLogicalClock.Next(prior?.LogicalClock, observedRemoteClock);
             await db.SaveChangesAsync(ct);
