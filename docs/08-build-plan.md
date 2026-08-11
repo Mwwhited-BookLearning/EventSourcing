@@ -3495,14 +3495,26 @@ executed).**
 - **`ADR-091` (GitHub Actions CI)**: `.github/workflows/ci.yml` and
   `.github/dependabot.yml` are real, structurally-valid files (both
   YAML-parse-checked) wiring together every command actually verified
-  locally above (`dotnet build`/`test`/`pack`, the vulnerability scans,
-  `sbom-tool generate`, GitHub's own native `actions/attest-build-
-  provenance` for one published package). **Never actually executed by
-  GitHub Actions itself** — this environment has no push access to
-  trigger a real run, an explicit, deliberate scope limit agreed with the
-  user rather than a gap discovered afterward. Every step's underlying
-  command was proven to work against this exact repository first; only
-  the YAML orchestration around them is unexecuted.
+  locally above (`dotnet build`/`test`, the vulnerability scans).
+  **Never actually executed by GitHub Actions itself** — this
+  environment has no push access to trigger a real run, an explicit,
+  deliberate scope limit agreed with the user rather than a gap
+  discovered afterward. Every step's underlying command was proven to
+  work against this exact repository first; only the YAML orchestration
+  around them is unexecuted.
+  **Corrected, 2026-08-11 (direct request): SBOM generation/build
+  provenance moved OUT of `ci.yml` into a local-only script**
+  (`scripts/generate-sbom.sh`), the same "local scripts for POC/PoV are
+  perfect" posture already applied to the migration-bundle-apply step
+  (`ADR-076`). The `pack-and-sbom`/`provenance` jobs this bullet
+  originally described (`sbom-tool generate`, `actions/attest-build-
+  provenance`) no longer exist in `ci.yml` — `build-and-test`/
+  `vulnerability-scan` are the only two jobs there now. The local
+  script was run for real this pass (not just written): produced a
+  genuine SPDX 2.2 manifest (807 components detected across the NuGet
+  and npm graphs together) from a real `dotnet pack` output, confirming
+  the underlying mechanism still works standalone, outside any workflow
+  file.
 
 ## Signing Secret Rotation, Dual Signature
 

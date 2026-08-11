@@ -302,15 +302,22 @@ here instead of inlining.
   actually been run by GitHub Actions** (item 39) — this environment has
   no push access to trigger a real run, an explicit, deliberate scope
   limit agreed with the user rather than a gap discovered afterward.
-  Every command the workflow calls (`dotnet build`/`test`/`pack`,
-  `dotnet list package --vulnerable`, `npm audit --omit=dev`, `sbom-tool
-  generate`) was verified working against this exact repository first;
-  only the YAML orchestration itself (both files YAML-parse-checked, not
-  execution-checked) and the GitHub-native `actions/attest-build-
-  provenance` step are unexecuted. If this repo ever gets a real
-  `origin` with Actions enabled: push a branch and confirm the workflow
-  actually goes green, especially the provenance-attestation job (the
-  one step with no local equivalent at all).
+  Every command the workflow calls (`dotnet build`/`test`,
+  `dotnet list package --vulnerable`, `npm audit --omit=dev`) was
+  verified working against this exact repository first; only the YAML
+  orchestration itself (both files YAML-parse-checked, not execution-
+  checked) is unexecuted. If this repo ever gets a real `origin` with
+  Actions enabled: push a branch and confirm the workflow actually goes
+  green.
+  **Narrowed further, 2026-08-11, direct request**: SBOM generation/
+  build-provenance attestation (`sbom-tool generate`, `actions/attest-
+  build-provenance`) are no longer part of `ci.yml` at all — moved to a
+  local-only `scripts/generate-sbom.sh`, run for real this pass
+  (confirmed working standalone). If this ever needs to become a real CI
+  job again: the provenance-attestation half specifically has no local
+  equivalent at all (it needs a real CI provider's own signing
+  identity) — that's the one piece that would need writing fresh, not
+  just re-adding the already-proven `sbom-tool` step.
 
 - **A full docs-vs-implementation audit across all 39 completed
   build-plan items (this pass) found and fixed ~65 stale-doc findings

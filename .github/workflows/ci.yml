@@ -3,18 +3,22 @@ name: CI
 # ADR-091: GitHub Actions is the CI/CD platform, because that's where this
 # repository is hosted -- no build->release->run/promotion-path design is
 # attempted yet, since there's no real published feed/environment to
-# sequence releases into. This workflow covers what build-plan item
-# "Release Engineering, Packaging & Supply Chain"'s own exit criteria
-# actually names: run the test suite, pack every published NuGet package,
-# generate an SPDX SBOM covering both the NuGet and npm dependency graphs
-# in one pass (ADR-074), scan for known-vulnerable dependencies (ADR-080),
-# and produce a build provenance attestation for at least one published
-# package (ADR-080, targeting SLSA Level 2). This file has never actually
-# been run by GitHub Actions itself (docs/08-build-plan.md says so
-# explicitly) -- every step it runs was verified locally first (dotnet
-# build/test/pack, dotnet list package --vulnerable, sbom-tool generate),
-# so this is real, structurally valid automation of already-proven
-# commands, not a guess at syntax.
+# sequence releases into. This workflow covers the test-suite/vulnerability
+# half of build-plan item "Release Engineering, Packaging & Supply Chain"'s
+# exit criteria: run the test suite and scan for known-vulnerable
+# dependencies (ADR-080). This file has never actually been run by GitHub
+# Actions itself (docs/08-build-plan.md says so explicitly) -- every step
+# it runs was verified locally first (dotnet build/test, dotnet list
+# package --vulnerable, npm audit), so this is real, structurally valid
+# automation of already-proven commands, not a guess at syntax.
+#
+# SBOM generation (ADR-074) and build-provenance attestation (ADR-080,
+# SLSA Level 2) are deliberately NOT jobs in this workflow, at direct user
+# request (this session) -- they're a local-only script instead
+# (scripts/generate-sbom.sh), the same "local scripts for POC/PoV are
+# perfect" posture already applied to the migration-bundle-apply step
+# (ADR-076). See that ADR's own additive correction note and docs/
+# changes/2026-08-11.md for the full reasoning.
 
 on:
   push:
@@ -94,66 +98,3 @@ jobs:
       - name: npm audit (production dependencies)
         working-directory: client-web
         run: npm audit --omit=dev --audit-level=high
-
-  pack-and-sbom:
-    runs-on: ubuntu-latest
-    needs: build-and-test
-    outputs:
-      nupkg-name: ${{ steps.find-package.outputs.name }}
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-dotnet@v4
-        with:
-          global-json-file: global.json
-
-      - name: Pack every EventStore.* package (ADR-062)
-        run: dotnet pack EventStore.slnx -c Release -o ./artifacts/packages
-
-      - name: Install sbom-tool
-        run: dotnet tool install --global Microsoft.Sbom.DotNetTool
-
-      # ADR-074 -- SPDX 2.2, auto-detects both the NuGet graph (this
-      # solution) and the npm graph (client-web) from one BuildComponentPath
-      # scan, verified locally this session against this exact repository
-      # (592 packages detected across both ecosystems in one manifest).
-      - name: Generate SBOM
-        run: |
-          sbom-tool generate \
-            -b ./artifacts/packages \
-            -bc . \
-            -pn Duplex \
-            -pv 0.1.0 \
-            -ps OoBDev \
-            -nsb https://github.com/Mwwhited-BookLearning/EventSourcing
-
-      - name: Find one package for the provenance job
-        id: find-package
-        run: echo "name=$(basename "$(ls ./artifacts/packages/EventStore.Domain.*.nupkg)")" >> "$GITHUB_OUTPUT"
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: packages-and-sbom
-          path: |
-            artifacts/packages/*.nupkg
-            artifacts/packages/_manifest/**
-
-  provenance:
-    runs-on: ubuntu-latest
-    needs: pack-and-sbom
-    permissions:
-      id-token: write
-      attestations: write
-      contents: read
-    steps:
-      - uses: actions/download-artifact@v4
-        with:
-          name: packages-and-sbom
-          path: artifacts/packages
-
-      # ADR-080 -- GitHub's own native SLSA-provenance mechanism (targeting
-      # SLSA Level 2 now, this ADR's own stated bar), applied to at least
-      # one published package as this item's exit criterion requires.
-      - uses: actions/attest-build-provenance@v1
-        with:
-          subject-path: artifacts/packages/${{ needs.pack-and-sbom.outputs.nupkg-name }}
