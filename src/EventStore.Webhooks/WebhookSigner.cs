@@ -9,11 +9,21 @@ namespace EventStore.Webhooks;
 // webhook-signature = HMAC-SHA256("{id}.{timestamp}.{payload}", secret).
 public static class WebhookSigner
 {
-    public static (string WebhookId, string Timestamp, string Signature) Sign(string payload, string signingSecret, Guid webhookId, DateTimeOffset timestamp)
+    // ADR-093 -- Standard Webhooks' own zero-downtime rotation mechanism:
+    // "the webhook is signed both using the current key, and using an old
+    // key (for a set period of time), and both signatures are sent, space
+    // delimited, in the webhook-signature header" (verified against the
+    // spec directly, not assumed). previousSigningSecret is null outside
+    // a rotation overlap window -- the header then carries exactly the
+    // one signature it always has, byte-identical to before this ADR.
+    public static (string WebhookId, string Timestamp, string Signature) Sign(
+        string payload, string signingSecret, Guid webhookId, DateTimeOffset timestamp, string? previousSigningSecret = null)
     {
         var id = webhookId.ToString();
         var ts = timestamp.ToUnixTimeSeconds().ToString();
         var signature = ComputeSignature(id, ts, payload, signingSecret);
+        if (previousSigningSecret is not null)
+            signature = $"{signature} {ComputeSignature(id, ts, payload, previousSigningSecret)}";
         return (id, ts, signature);
     }
 

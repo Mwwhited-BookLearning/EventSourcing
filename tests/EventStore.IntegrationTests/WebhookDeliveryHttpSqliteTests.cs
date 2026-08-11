@@ -164,6 +164,81 @@ public class WebhookDeliveryHttpSqliteTests
     }
 
     [TestMethod]
+    public async Task RotatingTheSigningSecretEmitsDualSignaturesDuringTheOverlapWindowThenASingleSignatureOnceDiscarded()
+    {
+        // "Signing Secret Rotation, Dual Signature" (ADR-093) -- the full
+        // rotation lifecycle end to end: one signature before rotation,
+        // two (verifiable against EITHER secret) during the overlap
+        // window, back to one (the NEW secret only) once the previous
+        // secret is discarded.
+        using var db = CreateContext();
+        var registry = new SchemaRegistryService(db, new SqliteFilterableFieldIndexDdlGenerator(), new MemoryCache(new MemoryCacheOptions()), UpcastingTestSupport.CreateEvaluator());
+        var (_, payloadMasker, _) = ErasureTestSupport.CreateErasureStack(db, registry);
+        var publish = new PublishService(db, registry, new SqliteUniqueConstraintViolationDetector());
+        var upcastChain = UpcastingTestSupport.CreateChain();
+        var subscriptions = new WebhookSubscriptionService(db);
+        var options = new WebhookOptions();
+        var retryTracker = new WebhookRetryTracker();
+
+        var (backend, address, requests) = await StartBackendAsync(_ => Results.Ok());
+        const string appId = "webhooks-rotation-demo";
+        const string originalSecret = "whsec_original-secret";
+        await registry.RegisterAsync("OrderPlaced", new RegisterEventTypeRequest(
+            AppId: appId, JsonSchema: """{ "type": "object", "properties": { "OrderId": { "type": "string" } }, "required": ["OrderId"] }""",
+            FilterableFields: [], ChangeKind: "Full", EntityIdField: "$.OrderId", ParentValidationMode: "Permissive",
+            RequiredClaims: null, UpcastFromPrevious: null, DowncastToPrevious: null));
+        var subscription = await subscriptions.RegisterAsync(appId, address, ["OrderPlaced"], originalSecret, TestClaimsPrincipal.None);
+
+        using var httpClient = new HttpClient();
+
+        async Task PublishAndDeliverAsync(string orderId)
+        {
+            var published = await publish.PublishAsync("OrderPlaced",
+                new PublishEventRequest(appId, 1, $$"""{ "OrderId": "{{orderId}}" }""", null, null), TestClaimsPrincipal.None);
+            Assert.IsInstanceOfType<PublishResult.Accepted>(published);
+            await RouterWorker.RunOnceAsync(db, registry, upcastChain, payloadMasker: payloadMasker);
+            await WebhookOutboxPump.RunOnceAsync(db, httpClient, registry, payloadMasker, options, retryTracker);
+        }
+
+        // Before rotation: exactly one signature, verifiable against the original secret.
+        await PublishAndDeliverAsync("rotation-order-1");
+        Assert.AreEqual(1, requests.Count);
+        Assert.AreEqual(1, requests[0].Signature.Split(' ').Length, "no PreviousSigningSecret set yet -- the header carries exactly one signature, unchanged from before this ADR");
+        Assert.IsTrue(WebhookSigner.Verify(requests[0].Body, originalSecret, requests[0].WebhookId, requests[0].Timestamp, requests[0].Signature));
+
+        // Rotate: opens the overlap window.
+        var newSecret = await subscriptions.RotateSigningSecretAsync(subscription.SubscriptionId);
+        Assert.AreNotEqual(originalSecret, newSecret);
+        var afterRotate = await db.WebhookSubscriptions.AsNoTracking().SingleAsync(s => s.SubscriptionId == subscription.SubscriptionId);
+        Assert.AreEqual(originalSecret, afterRotate.PreviousSigningSecret);
+        Assert.AreEqual(newSecret, afterRotate.SigningSecret);
+
+        // During the window: a delivery carries BOTH signatures, each independently verifiable --
+        // a receiver caching only the old secret still verifies successfully.
+        await PublishAndDeliverAsync("rotation-order-2");
+        Assert.AreEqual(2, requests.Count);
+        var duringWindow = requests[1];
+        Assert.AreEqual(2, duringWindow.Signature.Split(' ').Length, "PreviousSigningSecret is set -- Standard Webhooks' own dual-signature rotation convention");
+        Assert.IsTrue(WebhookSigner.Verify(duringWindow.Body, originalSecret, duringWindow.WebhookId, duringWindow.Timestamp, duringWindow.Signature), "a receiver caching only the OLD secret still verifies during the overlap window");
+        Assert.IsTrue(WebhookSigner.Verify(duringWindow.Body, newSecret, duringWindow.WebhookId, duringWindow.Timestamp, duringWindow.Signature), "a receiver that already picked up the NEW secret also verifies");
+
+        // Discard: ends the window.
+        await subscriptions.DiscardPreviousSigningSecretAsync(subscription.SubscriptionId);
+        var afterDiscard = await db.WebhookSubscriptions.AsNoTracking().SingleAsync(s => s.SubscriptionId == subscription.SubscriptionId);
+        Assert.IsNull(afterDiscard.PreviousSigningSecret);
+
+        // After discard: exactly one signature again, verifiable against the NEW secret only.
+        await PublishAndDeliverAsync("rotation-order-3");
+        Assert.AreEqual(3, requests.Count);
+        var afterWindow = requests[2];
+        Assert.AreEqual(1, afterWindow.Signature.Split(' ').Length, "discarding the previous secret ends the window -- back to exactly one signature");
+        Assert.IsTrue(WebhookSigner.Verify(afterWindow.Body, newSecret, afterWindow.WebhookId, afterWindow.Timestamp, afterWindow.Signature));
+        Assert.IsFalse(WebhookSigner.Verify(afterWindow.Body, originalSecret, afterWindow.WebhookId, afterWindow.Timestamp, afterWindow.Signature), "the old secret no longer verifies once the window has ended");
+
+        await backend.StopAsync();
+    }
+
+    [TestMethod]
     public async Task AnOutboundAdapterTransformsTheEventIntoItsExternalFormatImmediatelyBeforeDeliveryUsingTheSubscriptionsUnmodifiedSigningRetryMechanics()
     {
         // "Bulk Ingestion & External Interchange-Format Adapters" (ADR-072)

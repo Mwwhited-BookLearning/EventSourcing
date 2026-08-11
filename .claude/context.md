@@ -1579,9 +1579,49 @@ stale numbers here are worse than none)*
   38's own fixed 500ms wait was insufficient under this suite's full-run
   parallel load) — same bounded-poll fix pattern as item 37's
   `DataResidencyHttpSqliteTests` flake.
-- **Next up**: item 40, "Signing Secret Rotation, Dual Signature"
-  (`ADR-093`) — depends on Outbound Webhooks (Done) and Auth (OIDC/
-  OpenIddict) + Orchestration (Done).
+- **Full docs-vs-implementation audit across all 39 completed
+  build-plan items** (direct request: "review the implementation with
+  the design docs... All code so far not just the last two tasks") —
+  4 parallel read-only research agents (one per item range) found real
+  drift, 6 parallel fix agents (disjoint file sets) corrected it. 44
+  files changed, zero code touched. Full narrative in
+  `docs/changes/2026-08-11.md`; residual code-side gaps surfaced (not
+  doc bugs) tracked in `TODO.md` (`ChainCheckpoint` never built,
+  `IUpcastExpressionEvaluator` not actually config-swappable, a stale
+  code comment in `RegisterEventTypeRequest.cs`, the `revealField`
+  step-up gap, GraphQL attachment browsing confirmed not built). Also
+  found and fixed the same class of drift in `CLAUDE.md` itself (two
+  stale backward references to a `TODO.md` item that no longer exists).
+- **Item 40, "Signing Secret Rotation, Dual Signature," is Done —
+  webhook half only.** Before building, verified `ADR-093`'s claim that
+  "OpenIddict already supports a client holding more than one valid
+  credential — no framework change needed" (the premise the
+  ticket-exchange half rested on) — searched OpenIddict's own docs/
+  source/issue tracker and found no such mechanism;
+  `OpenIddictApplicationDescriptor.ClientSecret` is a single string per
+  application. Direct user decision once this was found: correct
+  `ADR-093` (struck through, additive) and build only the webhook half.
+  `WebhookSubscriptionService` gained
+  `RotateSigningSecretAsync`/`DiscardPreviousSigningSecretAsync`;
+  `WebhookSigner.Sign` gained an optional `previousSigningSecret`
+  parameter emitting Standard Webhooks' real space-delimited dual-
+  signature format (verified directly against the spec text, not
+  assumed); `WebhookSigner.Verify` needed no change, since it already
+  tolerated multiple space-separated candidates from item 34's own
+  build. Two new endpoints (`POST /webhooks/subscriptions/{id}/
+  rotate-secret`, `.../discard-previous-secret`). One comprehensive test
+  proves the full lifecycle (one signature → two during the overlap
+  window, each independently verifiable → one again, old secret no
+  longer verifying, after discard). Full webhook regression suite
+  (12 tests) re-run clean. Ticket-exchange rotation mechanism (a custom
+  OpenIddict credential-validation handler, or a stopgap second
+  application) is real, undesigned follow-up work — tracked in
+  `TODO.md`, not built.
+- **Next up**: item 41, "Lineage Export & Bitemporal Playback"
+  (`ADR-068`) — depends on Lineage API (Done), Entity-Centric Core
+  Rebuild (Done), MVVM Client (Done), GraphQL-Only Query Layer (Done),
+  Property-Level Masking (Done), and GDPR/CCPA Erasure via
+  Crypto-Shredding (Done).
 
 ## How to resume cold
 
