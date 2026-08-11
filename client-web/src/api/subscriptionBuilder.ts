@@ -28,8 +28,44 @@ export function subscriptionFieldName(appId: string, eventType: string): string 
 // dynamically-built payload type actually has, then requests all of them.
 // This is what makes useEntityViewActions genuinely generic across any
 // registered event type, not just a demo "Order" type wired in by name.
+// Also fetches each field's own return type (kind/name) -- not just its
+// name -- so a masked field (below) can be told apart from an ordinary
+// scalar one before the subscription query itself gets built.
 export function buildIntrospectionQuery(appId: string, eventType: string): string {
-  return `query { __type(name: "${payloadTypeName(appId, eventType)}") { fields { name } } }`
+  return `query { __type(name: "${payloadTypeName(appId, eventType)}") { fields { name type { kind name } } } }`
+}
+
+export interface IntrospectedField {
+  name: string
+  type: { kind: string; name: string | null } | null
+}
+
+// Mirrors MaskedFieldTypes.cs's own four record names exactly -- the
+// GraphQL object types FollowSubscriptionTypeModule.BuildPayloadFields
+// declares (unwrapped/nullable, never NON_NULL) for any x-masking-
+// annotated property, regardless of its own underlying scalar kind.
+const MASKED_TYPE_NAMES = new Set(['MaskedString', 'MaskedFloat', 'MaskedBoolean', 'MaskedDateTimeOffset'])
+
+export function isMaskedFieldType(field: IntrospectedField): boolean {
+  return field.type?.kind === 'OBJECT' && field.type.name !== null && MASKED_TYPE_NAMES.has(field.type.name)
+}
+
+// A subscription field selection is either a bare field name (every
+// pre-existing call site, and every ordinary scalar field) or a masked
+// field needing its own { value masked erased } sub-selection -- GraphQL
+// itself would otherwise reject a bare name for a composite/object-typed
+// field. Found as a real, previously-unexercised gap while building the
+// Vitals/Meridian proving-ground samples: no test anywhere subscribed to
+// a masked field over this live path before, so this went unnoticed until
+// then -- masking IS the central concern of both those domains, not an
+// edge case for them.
+export interface SubscriptionFieldSelector {
+  name: string
+  masked: boolean
+}
+
+export function toSubscriptionFieldSelectors(fields: IntrospectedField[]): SubscriptionFieldSelector[] {
+  return fields.map((f) => ({ name: f.name, masked: isMaskedFieldType(f) }))
 }
 
 // Mirrors EventStore.GraphQL.EventFilterInput's own field set exactly
@@ -62,7 +98,19 @@ function serializeWhereClauses(clauses: ScopeFilterClause[]): string {
 // aren't guaranteed equivalent to GraphQlFilterPredicateBuilder server-side,
 // and every existing caller's query text should stay byte-identical to
 // before this argument existed.
-export function buildSubscriptionQuery(appId: string, eventType: string, fieldNames: string[], where?: ScopeFilterClause[]): string {
+//
+// Each entry may be a bare field name (every pre-existing caller, and any
+// ordinary scalar field -- selected literally, unchanged) or a
+// `SubscriptionFieldSelector` (from `toSubscriptionFieldSelectors` above)
+// -- a masked one expands to its own `{ value masked erased }`
+// sub-selection instead of a bare name.
+export function buildSubscriptionQuery(
+  appId: string,
+  eventType: string,
+  fields: Array<string | SubscriptionFieldSelector>,
+  where?: ScopeFilterClause[],
+): string {
   const whereArgument = where && where.length > 0 ? `, where: ${serializeWhereClauses(where)}` : ''
-  return `subscription { ${subscriptionFieldName(appId, eventType)}(mode: TAIL${whereArgument}) { ${fieldNames.join(' ')} } }`
+  const selection = fields.map((f) => (typeof f === 'string' ? f : f.masked ? `${f.name} { value masked erased }` : f.name)).join(' ')
+  return `subscription { ${subscriptionFieldName(appId, eventType)}(mode: TAIL${whereArgument}) { ${selection} } }`
 }
