@@ -9,6 +9,7 @@
     <ProjectReference Include="..\EventStore.Inbox\EventStore.Inbox.csproj" />
     <ProjectReference Include="..\EventStore.Derivation\EventStore.Derivation.csproj" />
     <ProjectReference Include="..\EventStore.Erasure\EventStore.Erasure.csproj" />
+    <ProjectReference Include="..\EventStore.Timestamping\EventStore.Timestamping.csproj" />
     <ProjectReference Include="..\EventStore.Router\EventStore.Router.csproj" />
     <ProjectReference Include="..\EventStore.SpecGeneration\EventStore.SpecGeneration.csproj" />
     <ProjectReference Include="..\EventStore.Lineage.Api\EventStore.Lineage.Api.csproj" />

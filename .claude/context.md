@@ -1653,10 +1653,38 @@ stale numbers here are worse than none)*
   placeholder marker, because the explanatory HTML comment happened to
   spell it out too) that the 49-test client-side `vitest` suite alone
   had not caught. Full narrative: `docs/changes/2026-08-11.md`.
-- **Next up**: item 42, "RFC 3161 Trusted Timestamping" (`ADR-086`) —
-  depends on Digital Sign-Off (Done) and Lineage Export & Bitemporal
-  Playback (Done). Will populate the `Rfc3161Timestamp`/
-  `RFC3161Timestamp` fields both those items deliberately left null.
+- **Item 42, "RFC 3161 Trusted Timestamping," is Done — same session,
+  continuing directly from item 41.** New `EventStore.Timestamping`
+  project (`HttpTimestampAuthorityClient`, `AddTimestamping`, registered
+  only when `Timestamping:TsaUrl` is configured) plus `ITimestampAuthorityClient`
+  in `EventStore.Abstractions` — built entirely on the BCL's
+  `System.Security.Cryptography.Pkcs` (RFC 3161 client support since
+  .NET 5), no third-party crypto library, verified via a real request/
+  issue/verify round trip before any production code depended on it.
+  `RequiredSignature.EnableRfc3161Timestamp` gates `PublishService`
+  (timestamps `SHA-256(ChainHash)`, added AFTER `EventAppender.AppendAsync`
+  since `ChainHash` itself already folds in `Signature`); `LineageExportService`
+  always timestamps `ManifestHash`'s own raw bytes directly when a TSA is
+  configured (no separate opt-in, per `ADR-086`). One real bug found only
+  by running the real HTTP round trip: mutating the tracked `Signature`
+  object's `RFC3161Timestamp` in place was invisible to EF's change
+  tracker (`JsonValueConverter.NullableComparer<T>()`'s snapshot function
+  returns the same reference, not a deep clone — the exact class of gap
+  that file's own comment already flagged once before) — fixed by
+  assigning a new `Signature` instance instead.
+  `TimestampingTestSupport.cs` builds a REAL fake TSA (genuine RSA/CMS
+  signing, no shortcuts) as a `TestServer`, wired into the real Host's
+  typed `HttpClient` via `ConfigurePrimaryHttpMessageHandler` for the
+  Signature half, and used directly for the Lineage Export half.
+  `TimestampingHttpSqliteTests.cs` (4 methods) independently re-verifies
+  every resulting token against the fake TSA's own certificate. Full
+  regression suite re-run clean except the two already-tracked flakes
+  (SqlServer container contention, SSE subscription timing) — neither
+  touches this item.
+- **Next up**: item 43, "Pluggable Outbox Flush Triggers" (`ADR-069`) —
+  depends on MVVM Client (Done) and Lineage Export & Bitemporal Playback
+  (Done, including its portable NDJSON+manifest bundle format the
+  air-gapped "explicit/manual" trigger category reuses).
 
 ## How to resume cold
 

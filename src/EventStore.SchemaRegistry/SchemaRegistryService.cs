@@ -114,7 +114,7 @@ public class SchemaRegistryService(
             else if (requiredSignatureRequest.MaxAge is { } maxAge && maxAge <= 0)
                 errors.Add($"requiredSignature.maxAge must be a positive number of seconds (got: {maxAge})");
             else
-                requiredSignature = new RequiredSignature { AcrValues = requiredSignatureRequest.AcrValues, MaxAge = requiredSignatureRequest.MaxAge };
+                requiredSignature = new RequiredSignature { AcrValues = requiredSignatureRequest.AcrValues, MaxAge = requiredSignatureRequest.MaxAge, EnableRfc3161Timestamp = requiredSignatureRequest.EnableRfc3161Timestamp };
         }
 
         // ADR-018 -- an alias that doesn't name an actual property of the

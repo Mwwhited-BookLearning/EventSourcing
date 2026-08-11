@@ -8,6 +8,7 @@ using EventStore.Host.Core;
 using EventStore.Inbox;
 using EventStore.Lineage.Api;
 using EventStore.LineageExport;
+using EventStore.Timestamping;
 using EventStore.Masking;
 using EventStore.Persistence;
 using EventStore.Persistence.Migrations.SqlServer;
@@ -58,6 +59,7 @@ builder.Services.AddDerivation();
 builder.Services.AddSpecGeneration();
 builder.Services.AddLineageApi();
 builder.Services.AddLineageExport();
+builder.Services.AddTimestamping(builder.Configuration);
 builder.Services.AddErasure(builder.Configuration);
 builder.Services.AddMasking(
     builder.Configuration.GetSection("Masking:HmacKeys").GetChildren().ToDictionary(c => c.Key, c => c.Value!));

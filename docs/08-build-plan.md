@@ -100,7 +100,7 @@ provider they apply to — not "code written."
 | 39 | [Release Engineering, Packaging & Supply Chain](#release-engineering-packaging--supply-chain) | Scaffolding & Persistence, Compatibility & Deployment Discipline | Done |
 | 40 | [Signing Secret Rotation, Dual Signature](#signing-secret-rotation-dual-signature) | Outbound Webhooks | Done (webhook half only — ticket-exchange half descoped, see `TODO.md`) |
 | 41 | [Lineage Export & Bitemporal Playback](#lineage-export--bitemporal-playback) | Lineage API, Entity-Centric Core Rebuild, MVVM Client, GraphQL-Only Query Layer, Property-Level Masking, GDPR/CCPA Erasure, Delegated Grants/RBAC/Read Audit Logging | Done |
-| 42 | [RFC 3161 Trusted Timestamping](#rfc-3161-trusted-timestamping) | Digital Sign-Off, Lineage Export & Bitemporal Playback | Not started |
+| 42 | [RFC 3161 Trusted Timestamping](#rfc-3161-trusted-timestamping) | Digital Sign-Off, Lineage Export & Bitemporal Playback | Done |
 | 43 | [Pluggable Outbox Flush Triggers](#pluggable-outbox-flush-triggers) | MVVM Client, Lineage Export & Bitemporal Playback | Not started |
 | 44 | [Device Input Integration](#device-input-integration) | MVVM Client, Pluggable Outbox Flush Triggers, Non-Authoritative Capture | Not started |
 | 45 | [Accessibility Standard](#accessibility-standard) | MVVM Client | Not started |
@@ -194,7 +194,7 @@ state "External Services" as tierExternal {
   state "Bulk Ingestion +\nInterchange Adapters" as a13 #palegreen
   state "Sanctions Screening Seam" as a14 #palegreen
   state "Signing Secret Rotation" as a16 #palegreen
-  state "RFC 3161 Timestamping" as a18
+  state "RFC 3161 Timestamping" as a18 #palegreen
 }
 state "Persistence" as tierPersistence {
   state "Scaffolding & Persistence" as p0 #palegreen
@@ -3724,6 +3724,59 @@ certificate chain — no verification code of this framework's own is
 required; a lineage export bundle's manifest similarly carries and can be
 independently verified via its own RFC 3161 timestamp token, once the
 propagation gap above is closed.
+
+**Status: Done.** `ITimestampAuthorityClient` (`EventStore.Abstractions`)
++ `HttpTimestampAuthorityClient`/`TimestampingOptions`/`AddTimestamping`
+(new `EventStore.Timestamping` project, wired into all three Hosts,
+registered only when `Timestamping:TsaUrl` is configured — the same
+"no silent fallback" posture `AddErasure`'s Vault registration already
+established). Built entirely on `System.Security.Cryptography.Pkcs`
+(BCL, since .NET 5) — no third-party RFC 3161 library needed; verified
+directly against the real installed API by running a full request/
+issue/verify round trip before any production code depended on it,
+including the `SigningCertificateV2`/`ESSCertIDv2` signed attribute RFC
+3161/5035 mandates and a real cross-check of `System.Text.Json`'s
+`DateTimeOffset` fractional-second trimming (needed for item 41's
+client-side manifest-hash reconstruction too, both found the same
+session).
+
+`RequiredSignature.EnableRfc3161Timestamp` (opt-in per event type, the
+same `requiredSignature` request shape `RequiredSignature.AcrValues`/
+`MaxAge` already use) gates `PublishService`'s call: after
+`EventAppender.AppendAsync` assigns `ChainHash` (necessarily after —
+`EventChainHash.Compute` already folds `Signature` into `ChainHash`, so
+`RFC3161Timestamp` is added afterward as a pure additive update,
+timestamping the chain value computed *without* it, never circular),
+`SHA-256(ChainHash)` is submitted to the TSA and the token stored.
+`LineageExportService.ExportAsync` always timestamps when a TSA is
+configured (no separate opt-in for exports, per `ADR-086`'s own text) —
+`ManifestHash`'s own raw bytes are submitted directly (it's already a
+SHA-256 digest), not re-hashed a second time, the literal opposite of
+`Signature`'s "a hash *of* ChainHash" wording.
+
+**One real bug found only by running the real HTTP round trip, not by
+reading the code back**: the first attempt mutated the already-tracked
+`Signature` object's `RFC3161Timestamp` property in place — invisible to
+EF's change tracker, since `JsonValueConverter.NullableComparer<T>()`'s
+snapshot function returns the same reference rather than a deep clone (a
+gap that file's own comment already documented once before, for the
+exact same class of property). Fixed by assigning a **new** `Signature`
+instance instead, the same workaround already established elsewhere.
+
+Tests: `TimestampingHttpSqliteTests.cs` (4 methods) proves both consumers
+against `TimestampingTestSupport.cs`'s fake TSA — a *real* RFC 3161
+issuer built entirely from BCL crypto (real RSA signature, real CMS
+SignedData, no shortcuts), reused as a real HTTP endpoint (`TestServer`,
+wired via `ConfigurePrimaryHttpMessageHandler` into the Host's own typed
+`HttpClient`) for the Signature half and constructed directly for the
+Lineage Export half. Every resulting token is decoded and independently
+re-verified against the fake TSA's own certificate — proving actual RFC
+3161 compliance, not merely "some bytes got stored." Sqlite-only, same
+provider-agnostic reasoning `DigitalSignOffHttpSqliteTests.cs` already
+established. Full regression suite re-run clean except the two already-
+tracked, pre-existing flakes (`TODO.md`): SqlServer-testcontainers
+resource contention, and the SSE-subscription timing flake — neither
+failure touches Timestamping, Lineage Export, or Digital Sign-Off.
 
 ## Pluggable Outbox Flush Triggers
 

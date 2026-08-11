@@ -6,4 +6,11 @@ public class RequiredSignature
 {
     public List<string> AcrValues { get; set; } = new();
     public int? MaxAge { get; set; }
+
+    // ADR-086 -- opt-in per event type, the same configuration surface
+    // RequiredSignature itself already uses (never a global switch): true
+    // means PublishService also obtains an RFC 3161 TimeStampToken and
+    // stores it on the resulting Signature.RFC3161Timestamp. Not every
+    // Signature-requiring event type needs third-party-verifiable timing.
+    public bool EnableRfc3161Timestamp { get; set; }
 }
