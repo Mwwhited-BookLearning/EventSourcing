@@ -77,6 +77,18 @@ Decision:
   carries a self-attested identity (`ADR-036`'s DID/UCAN), in which case
   that attestation travels with the reading the same way any other
   self-attested submission already does.
+  **Clarified, 2026-08-11 (build-plan item 44), not a reversal**: "non-
+  authoritative" above is this ADR's own descriptive phrase, not a
+  literal `AuthorityStatus` value — `PublishService`'s three real values
+  (`ADR-042`) are `"accepted"`, `"unattested"`, and `"pending_review"`,
+  and the literal absence of every attestation field actually produces
+  `"accepted"`, not a non-authoritative one. The default this bullet
+  describes is realized via `ReviewPending` (`ADR-042`'s content/
+  confidence trigger — an honest fit for "a raw, un-reviewed reading
+  with no identity claim attached"), not via `AttestedActorId`/
+  `AttestedClaims` (`ADR-042`'s IDENTITY-claim trigger, used instead
+  only when a device presents a REAL self-attested identity) — see
+  `client-web/src/deviceInput/deviceReadingOutbox.ts`.
 
 Consequences:
 - `docs/extensibility-points.md` gains the `IDeviceInputSource` row.

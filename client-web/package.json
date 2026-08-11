@@ -8,6 +8,7 @@
     "build": "vue-tsc -b && vite build",
     "build:offline-player": "vite build --config vite.offline-player.config.ts",
     "embed:offline-bundle": "node scripts/embed-bundle.mjs",
+    "bridge:reference": "node native-bridge-reference/server.mjs",
     "test": "vitest run",
     "test:watch": "vitest"
   },
@@ -16,6 +17,7 @@
     "vue": "^3.5.13"
   },
   "devDependencies": {
+    "@types/ws": "^8.18.1",
     "@vitejs/plugin-vue": "^5.2.1",
     "@vue/test-utils": "^2.4.6",
     "fake-indexeddb": "^6.0.0",
@@ -24,6 +26,7 @@
     "vite": "^6.0.7",
     "vite-plugin-singlefile": "^2.3.3",
     "vitest": "^2.1.8",
-    "vue-tsc": "^2.2.0"
+    "vue-tsc": "^2.2.0",
+    "ws": "^8.21.3"
   }
 }
