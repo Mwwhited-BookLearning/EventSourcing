@@ -42,6 +42,38 @@ public class WebhookSubscriptionService(EventStoreContext db)
     public Task<WebhookSubscription?> GetAsync(Guid subscriptionId, CancellationToken ct = default) =>
         db.WebhookSubscriptions.SingleOrDefaultAsync(s => s.SubscriptionId == subscriptionId, ct);
 
+    // ADR-093 -- opens a rotation overlap window: the still-valid current
+    // secret becomes PreviousSigningSecret, a freshly generated secret
+    // becomes the new SigningSecret. WebhookOutboxPump picks up the
+    // change on its own very next tick (it re-reads WebhookSubscriptions
+    // every RunOnceAsync, no cache to invalidate) and starts emitting
+    // dual signatures immediately -- a delivery already in flight when
+    // this call lands was already signed under the OLD secret alone, and
+    // a receiver holding only that old secret still verifies it, exactly
+    // per this ADR's own exit criterion.
+    public async Task<string> RotateSigningSecretAsync(Guid subscriptionId, CancellationToken ct = default)
+    {
+        var subscription = await db.WebhookSubscriptions.SingleAsync(s => s.SubscriptionId == subscriptionId, ct);
+        var newSecret = GenerateSecret();
+        subscription.PreviousSigningSecret = subscription.SigningSecret;
+        subscription.SigningSecret = newSecret;
+        await db.SaveChangesAsync(ct);
+        return newSecret;
+    }
+
+    // ADR-093 -- ends the overlap window: an ops team calls this once
+    // they're confident every receiver has picked up the new secret
+    // (this ADR's own "rotation cadence stays ops-configurable" —
+    // WHEN to call this is deployment policy, not a framework timer).
+    // After this, WebhookSigner.Sign never fires (previousSigningSecret
+    // null again) and only the current secret verifies.
+    public async Task DiscardPreviousSigningSecretAsync(Guid subscriptionId, CancellationToken ct = default)
+    {
+        var subscription = await db.WebhookSubscriptions.SingleAsync(s => s.SubscriptionId == subscriptionId, ct);
+        subscription.PreviousSigningSecret = null;
+        await db.SaveChangesAsync(ct);
+    }
+
     // ADR-008's own "type:value" claim string, the same primitive
     // RequiredClaimEvaluator.HasClaim parses -- a plain JSON string array
     // is enough to reconstruct an equivalent hasClaim(claim) check later,

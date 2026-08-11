@@ -29,10 +29,26 @@ Decision:
   `whsec_`-shaped keys, each producing its own signature in the
   `webhook-signature` header) — no new signing mechanism, using what
   `ADR-060` already committed to more fully.
-- **The ticket-exchange HMAC verifier accepts a signature against either
-  the current or previous secret** during the same overlap window — the
+- ~~The ticket-exchange HMAC verifier accepts a signature against either
+  the current or previous secret during the same overlap window — the
   read-side counterpart to the dual-signature emission above, using the
-  identical HMAC-SHA256 convention `ADR-040` already established.
+  identical HMAC-SHA256 convention `ADR-040` already established.~~
+  **Corrected, later pass — the premise below this rests on was never
+  actually verified before being written down, and turned out to be
+  false**: `OpenIddictApplicationDescriptor.ClientSecret` is a single
+  string per registered application, not a collection. Searched
+  OpenIddict's own documentation, source, and issue tracker
+  (`openiddict/openiddict-core`) for any built-in "multiple
+  simultaneously-valid secrets per client" mechanism — found none. Real
+  zero-downtime rotation for an OpenIddict-registered client requires
+  either registering a second client application as a temporary stopgap,
+  or a custom event handler overriding the default credential-validation
+  pipeline to also check a locally-stored previous secret — genuine
+  framework-level work, not "no framework change needed" as this ADR
+  originally claimed. **Descoped, not built this pass** (build-plan item
+  40, per direct user decision after this was found): only the webhook
+  half of this ADR (below) is built. The ticket-exchange HMAC-rotation
+  mechanism remains open design work — see `TODO.md`.
 - **The rotation cadence/schedule itself stays ops-configurable, not a
   framework decision** — how often to rotate, how long the overlap
   window lasts before the previous secret is discarded, is deployment
@@ -56,10 +72,25 @@ Consequences:
   states — or a caller-generated `one_time_secret`, which by design is
   used for exactly one ticket and never persisted at all, so "current vs.
   previous" doesn't apply to it any more than it would to a nonce.
-  **This ADR's rotation mechanism still applies to the `client_secret`
-  path** — but as an instance of ordinary OAuth2 client-credential
-  rotation (OpenIddict already supports a client holding multiple valid
+  ~~This ADR's rotation mechanism still applies to the `client_secret`
+  path — but as an instance of ordinary OAuth2 client-credential rotation
+  (OpenIddict already supports a client holding multiple valid
   credentials), not a new field this design's own data model needs to
-  invent. No entity added; none is needed.
-- Resolves `docs/10-open-questions.md` row 16 — the last remaining row
-  this session.
+  invent. No entity added; none is needed.~~ **Corrected, later pass**:
+  the "OpenIddict already supports multiple valid credentials" claim
+  repeats the same unverified premise struck through in the Decision
+  section above, and is equally false. No entity was added and none is
+  needed for the schema question — that much is still correct — but the
+  `client_secret` rotation path itself is NOT simply "ordinary OAuth2
+  client-credential rotation" with no framework change; it needs real
+  design work (a second registered application as a stopgap, or a
+  custom credential-validation handler) not attempted this pass.
+- Resolves `docs/10-open-questions.md` row 16 for the webhook half only
+  — **corrected, later pass**: the ticket-exchange half is not actually
+  resolved, since the mechanism its resolution rested on turned out not
+  to exist. Re-opened as a `TODO.md` item rather than a
+  `docs/10-open-questions.md` row, since the SCHEMA question (does a
+  current+previous pair exist) is answered (no, and none is needed) —
+  only the MECHANISM question (how does rotation actually work for an
+  OpenIddict client) is still open, a narrower, already-scoped follow-up
+  rather than a genuinely undecided fork.

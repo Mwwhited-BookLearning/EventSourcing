@@ -359,3 +359,29 @@ here instead of inlining.
     exists), but the re-verification item 16's own note promised, once
     "GraphQL-Only Query Layer" landed, never actually happened until this
     pass. Docs now state the gap as confirmed, not deferred.
+
+- **The ticket-exchange half of "Signing Secret Rotation, Dual
+  Signature" (`ADR-093`, item 40) is descoped, not built** — found while
+  starting item 40: `ADR-093`'s own claim that "OpenIddict already
+  supports a client holding more than one valid credential — no
+  framework change needed" was never actually verified before being
+  written down, and turned out to be false (verified this pass against
+  OpenIddict's own docs/source/issue tracker —
+  `OpenIddictApplicationDescriptor.ClientSecret` is a single string per
+  application, no built-in multi-secret mechanism). Direct user decision
+  once this was found: correct the ADR (done, struck through with the
+  real finding) and build only the webhook half of item 40 (also done —
+  `WebhookSubscriptionService.RotateSigningSecretAsync`/
+  `DiscardPreviousSigningSecretAsync`, `WebhookSigner`'s dual-signature
+  emission), rather than improvise a ticket-exchange mechanism on the
+  spot. Real zero-downtime rotation for an OpenIddict-registered
+  client's `client_secret` still needs one of: (a) a custom OpenIddict
+  event handler overriding the default credential-validation pipeline
+  to also accept a locally-stored previous secret (DevIdp-side state,
+  outside `EventStoreContext`, matching where `client_secret` already
+  lives per `ADR-040`'s Consequences), or (b) registering a second
+  client application as a temporary stopgap during rotation, accepting
+  either `client_id` while both are valid. Neither is built. Pick up
+  when ticket-exchange credential rotation is actually needed —
+  `docs/features/ticket-exchange.md` and `ADR-040`/`ADR-093` all need a
+  follow-up pass once a real mechanism is designed and built.

@@ -98,7 +98,7 @@ provider they apply to — not "code written."
 | 37 | [Tenant-to-Tenant Federation Mapping](#tenant-to-tenant-federation-mapping) | Multi-Tenancy, Auth + Orchestration, Bulk Ingestion & Interchange Adapters | Done |
 | 38 | [Sanctions/Watchlist Screening Extensibility Seam](#sanctionswatchlist-screening-extensibility-seam) | Scaffolding & Persistence, Non-Authoritative Capture | Done |
 | 39 | [Release Engineering, Packaging & Supply Chain](#release-engineering-packaging--supply-chain) | Scaffolding & Persistence, Compatibility & Deployment Discipline | Done |
-| 40 | [Signing Secret Rotation, Dual Signature](#signing-secret-rotation-dual-signature) | Outbound Webhooks, Auth + Orchestration | Not started |
+| 40 | [Signing Secret Rotation, Dual Signature](#signing-secret-rotation-dual-signature) | Outbound Webhooks | Done (webhook half only — ticket-exchange half descoped, see `TODO.md`) |
 | 41 | [Lineage Export & Bitemporal Playback](#lineage-export--bitemporal-playback) | Lineage API, Entity-Centric Core Rebuild, MVVM Client, GraphQL-Only Query Layer, Property-Level Masking, GDPR/CCPA Erasure, Delegated Grants/RBAC/Read Audit Logging | Not started |
 | 42 | [RFC 3161 Trusted Timestamping](#rfc-3161-trusted-timestamping) | Digital Sign-Off, Lineage Export & Bitemporal Playback | Not started |
 | 43 | [Pluggable Outbox Flush Triggers](#pluggable-outbox-flush-triggers) | MVVM Client, Lineage Export & Bitemporal Playback | Not started |
@@ -193,7 +193,7 @@ state "External Services" as tierExternal {
   state "Tenant Federation Mapping" as a12 #palegreen
   state "Bulk Ingestion +\nInterchange Adapters" as a13 #palegreen
   state "Sanctions Screening Seam" as a14 #palegreen
-  state "Signing Secret Rotation" as a16
+  state "Signing Secret Rotation" as a16 #palegreen
   state "RFC 3161 Timestamping" as a18
 }
 state "Persistence" as tierPersistence {
@@ -3508,33 +3508,35 @@ executed).**
 
 **Scope**: `ADR-093` (revises `ADR-040`/`ADR-060`'s single-secret
 assumption — **only where a persisted secret actually exists to
-revise**). Two genuinely different mechanisms, not one applied twice:
+revise**). Originally scoped as two mechanisms; **narrowed this pass
+after the ticket-exchange half's own premise failed verification** (see
+`ADR-093`'s own struck-through Decision/Consequences bullets for the
+full correction) — this item now builds only the webhook half:
 - **`WebhookSubscription.SigningSecret` (`ADR-060`) becomes a real,
   schema-level current+previous *pair*** — `PreviousSigningSecret` is
   added. The webhook dispatcher emits **dual signatures** during an
   ops-configured overlap window, using Standard Webhooks' own already-
   adopted multi-signature mechanism — no new signing mechanism invented.
-- **The ticket-exchange shared secret (`ADR-040`) does *not* gain any new
-  persisted field.** The shared secret used for the HMAC step is either
-  (a) the caller's already-registered OAuth2 `client_secret`, DevIdp-side
-  state entirely outside `EventStoreContext`, where "current vs.
-  previous" rotation is just ordinary OAuth2 client-credential rotation
+- ~~The ticket-exchange shared secret (`ADR-040`) does *not* gain any new
+  persisted field... ordinary OAuth2 client-credential rotation
   (OpenIddict already supports a client holding more than one valid
-  credential — no framework change needed), or (b) a caller-generated
-  `one_time_secret`, used for exactly one ticket and never persisted at
-  all. `docs/features/ticket-exchange.md`'s own Data model section states
-  this explicitly. Rotation cadence/overlap-window length stays
-  ops-configurable in both cases.
+  credential — no framework change needed)...~~ **Corrected, later
+  pass**: verified against OpenIddict's own documentation, source, and
+  issue tracker before building anything on top of this claim (this
+  repo's own "verify before citing" standing instruction) —
+  `OpenIddictApplicationDescriptor.ClientSecret` is a single string per
+  application; no built-in multi-secret mechanism exists. The "no
+  framework change needed" premise was never actually verified when
+  `ADR-093` was originally written. **Descoped, not built this pass**,
+  per direct user decision once this was found — see `TODO.md` for the
+  real mechanism this still needs (a custom credential-validation
+  handler, or a second registered application as a stopgap).
 
 **Depends on**: Outbound Webhooks (the real schema change,
 `WebhookSubscription.PreviousSigningSecret`, and the dual-signature
-emission logic) and, corrected this pass, **Auth (OIDC/OpenIddict) +
-Orchestration** — not Ticket Exchange for Header-Incapable Clients: the
-ticket-exchange path's rotation is entirely OpenIddict's existing
-multi-credential-per-client support, and Ticket Exchange's own
-mechanism/entity is untouched by this ADR — there was never a
-single-secret schema field there to revise, so no dependency on that item
-belongs here.
+emission logic). The ticket-exchange half's own dependency note (Auth +
+Orchestration) no longer applies to this item's actual built scope,
+since that half isn't built here.
 
 **Exit criteria**: rotating a webhook subscription's secret (`POST
 /webhooks/subscriptions/{id}/rotate-secret`) while a delivery is in
@@ -3542,14 +3544,29 @@ flight results in `PreviousSigningSecret` being set to the old secret and
 `SigningSecret` to the new one; a delivery sent during the overlap window
 carries two `webhook-signature` entries, one verifiable against each
 secret; a receiver caching only the old secret still verifies
-successfully during the window; discarding the previous secret ends the
-window, after which only the new secret verifies; separately and
-independently, a client with two valid OAuth2 credentials registered
-(ordinary OpenIddict multi-credential support, no framework change) can
-obtain a ticket-exchange-signing-capable token using either credential,
-and a ticket signed using the not-yet-revoked older credential still
-passes introspection — demonstrated as an instance of ordinary
-`client_credentials` rotation, not as a new Ticket-entity field.
+successfully during the window; discarding the previous secret (`POST
+/webhooks/subscriptions/{id}/discard-previous-secret`) ends the window,
+after which only the new secret verifies.
+
+**Status: Done, webhook half only** — the ticket-exchange half is
+deliberately descoped, tracked in `TODO.md`, not silently dropped.
+`WebhookSubscriptionService.RotateSigningSecretAsync`/
+`DiscardPreviousSigningSecretAsync` implement the two new endpoints;
+`WebhookSigner.Sign` gained an optional `previousSigningSecret`
+parameter emitting the real Standard Webhooks space-delimited dual-
+signature format (verified directly against the spec:
+`"{sig1} {sig2}"`, not assumed) — `WebhookSigner.Verify` already
+tolerated multiple space-separated candidates from item 34's own build,
+so no change was needed on the receiving side. One comprehensive test
+(`RotatingTheSigningSecretEmitsDualSignaturesDuringTheOverlapWindow
+ThenASingleSignatureOnceDiscarded`,
+`WebhookDeliveryHttpSqliteTests.cs`) proves the full lifecycle: one
+signature before rotation, two (independently verifiable against either
+secret) during the window, one (new secret only, old secret no longer
+verifies) after discarding — SQLite-only, since signing/HTTP delivery
+mechanics are provider-agnostic, the same posture this file already
+established for `WebhookDeliveryHttpSqliteTests.cs`'s other scenarios.
+Full webhook regression suite (12 tests) re-run clean.
 
 ## Lineage Export & Bitemporal Playback
 

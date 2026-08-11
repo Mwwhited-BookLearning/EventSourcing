@@ -184,7 +184,7 @@ public class WebhookOutboxPump(
     private static async Task<(bool Success, string? LastError)> AttemptDeliveryAsync(
         HttpClient httpClient, WebhookSubscription subscription, string wireBody, string contentType, DateTimeOffset now, CancellationToken ct)
     {
-        var (webhookId, timestamp, signature) = WebhookSigner.Sign(wireBody, subscription.SigningSecret, Guid.NewGuid(), now);
+        var (webhookId, timestamp, signature) = WebhookSigner.Sign(wireBody, subscription.SigningSecret, Guid.NewGuid(), now, subscription.PreviousSigningSecret);
         try
         {
             using var request = new HttpRequestMessage(HttpMethod.Post, subscription.TargetUrl)
