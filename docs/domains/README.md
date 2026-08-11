@@ -81,7 +81,7 @@ after-the-fact.
 | Vitals | A — Enrollment & Consent | [Patient Enrollment and Informed Consent](clinical-trials-device-telemetry/features/patient-enrollment-and-informed-consent.md) | Done |
 | Vitals | B — Device Monitoring → Adverse Event Review | [Device Onboarding and Continuous Monitoring](clinical-trials-device-telemetry/features/device-onboarding-and-continuous-monitoring.md), [Adverse Event Capture and Review](clinical-trials-device-telemetry/features/adverse-event-capture-and-review.md) | Done |
 | Vitals | C — Trial Data Export & Subject Rights | [Trial Data Export and Subject Rights](clinical-trials-device-telemetry/features/trial-data-export-and-subject-rights.md) | Done (erasure half only — export/playback deliberately reuses the already-proven core mechanism unchanged, see note below) |
-| Vitals | D — Intraoperative Monitoring & Alert Response | [Intraoperative Monitoring and Alert Response](clinical-trials-device-telemetry/features/intraoperative-monitoring-and-alert-response.md) | Not started |
+| Vitals | D — Intraoperative Monitoring & Alert Response | [Intraoperative Monitoring and Alert Response](clinical-trials-device-telemetry/features/intraoperative-monitoring-and-alert-response.md) | Done |
 | Meridian | A — Document/Biometric Capture → Verification | [Document and Biometric Capture](digital-identity-kyc/features/document-and-biometric-capture.md), [Customer Onboarding and Identity Verification](digital-identity-kyc/features/customer-onboarding-and-identity-verification.md) | Not started |
 | Meridian | B — Relying-Party Access | [Relying-Party Verification Request](digital-identity-kyc/features/relying-party-verification-request.md) | Not started |
 | Meridian | C — Ongoing Screening & SAR Escalation | [Periodic Screening and SAR Escalation](digital-identity-kyc/features/periodic-screening-and-sar-escalation.md) | Not started |
@@ -152,3 +152,20 @@ test — only the erasure half (`VitalsWorkflowCScenarioAssertions.cs`),
 which genuinely is domain-specific (PHI fields, a non-continuity
 subject, the retention-vs-erasure tension this domain's own `README.md`
 names as real), gets real sample code and tests.
+
+**A fourth: Workflow D's `IonmAlertRaised` is registered `ChangeKind
+"Partial"`, not the feature doc's own literal `"Full"` Background
+text** — a real, found-by-running-it correction (`VitalsWorkflowD.cs`'s
+own code comment has the full mechanics), not a silent substitution.
+Also surfaced, while running that same scenario, a genuine open
+framework question — `ADR-029`'s late-arrival guard is per-event, not
+per-field, and this domain's own ordering (an always-immediately-
+accepted `IonmAlertAcknowledged` racing ahead of `IonmAlertRaised`'s own
+deliberately-delayed catch-up fold) triggers it deterministically, every
+time, not as a rare race — recorded in `TODO.md`, not fixed here (fixing
+it would mean changing `RouterWorker.FoldAsync` itself, outside this
+sample's own scope). The sample's own test asserts the real, verified
+outcome (`AuthorityStatus` correctly reaches `accepted`; the Entity
+Store's `Data` gains `AckedBy` but not `Finding`/`Severity`), not the
+feature doc's own idealized assumption that all three would end up
+present together.
