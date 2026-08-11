@@ -15,6 +15,7 @@
     <Project Path="src/EventStore.Interchange/EventStore.Interchange.csproj" />
     <Project Path="src/EventStore.Interchange.Abstractions/EventStore.Interchange.Abstractions.csproj" />
     <Project Path="src/EventStore.LeaderElection/EventStore.LeaderElection.csproj" />
+    <Project Path="src/EventStore.LineageExport/EventStore.LineageExport.csproj" />
     <Project Path="src/EventStore.Rbac/EventStore.Rbac.csproj" />
     <Project Path="src/EventStore.Spiffe/EventStore.Spiffe.csproj" />
     <Project Path="src/EventStore.Host.Core/EventStore.Host.Core.csproj" />

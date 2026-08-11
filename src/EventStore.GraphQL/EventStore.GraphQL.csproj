@@ -5,6 +5,7 @@
     <ProjectReference Include="..\EventStore.SchemaRegistry\EventStore.SchemaRegistry.csproj" />
     <ProjectReference Include="..\EventStore.Follow.Api\EventStore.Follow.Api.csproj" />
     <ProjectReference Include="..\EventStore.Lineage.Api\EventStore.Lineage.Api.csproj" />
+    <ProjectReference Include="..\EventStore.LineageExport\EventStore.LineageExport.csproj" />
     <ProjectReference Include="..\EventStore.Masking\EventStore.Masking.csproj" />
     <ProjectReference Include="..\EventStore.Upcasting\EventStore.Upcasting.csproj" />
     <ProjectReference Include="..\EventStore.ViewRegistry\EventStore.ViewRegistry.csproj" />

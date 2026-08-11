@@ -90,6 +90,18 @@ here instead of inlining.
   `fs.aio-max-nr` sysctl, run SQL Server test classes with reduced
   parallelism, or a longer/more tolerant wait strategy on `MsSqlBuilder`,
   if this keeps costing re-run time in future sessions.
+  **Severity update, "Lineage Export & Bitemporal Playback" (item 41)**:
+  running the SqlServer-only subset three times in immediate succession
+  (`--filter FullyQualifiedName~SqlServer`, no other-provider tests
+  interleaved to give Docker breathing room) failed 10-12 of 21 classes
+  every single time, each visibly timing out its own container-readiness
+  `sqlcmd -Q "SELECT 1"` poll around 28-29s before the container was torn
+  down — worse than the "one or two classes" this entry originally
+  described, but the SAME root cause (every failing class passes alone;
+  zero failures ever named a class this item, or any recent item, added).
+  Confirms this is a real, worsening resource-contention ceiling in this
+  environment specifically when many `MsSqlContainer`s start back-to-back
+  with no other work between them, not a regression to chase per-item.
 
 - **`StoredEvent.AppId` now exists (added by "Entity-Centric Core Rebuild",
   `ADR-021` — the dedicated fix `docs/10-open-questions.md`'s former row 1
@@ -207,16 +219,6 @@ here instead of inlining.
   across everything already built) or revise `06-solution-structure.md`'s
   own text to describe the testing approach actually adopted, so the doc
   stops promising a project that, ten items in, evidently isn't coming.
-- **`EventStore.slnx` is missing several real, already-built `src/`
-  projects** (`EventStore.FeatureFlags`, `EventStore.LeaderElection`,
-  `EventStore.Erasure`, `EventStore.Rbac` at minimum) — noticed while
-  adding `EventStore.Webhooks` to it (item 34) and finding the list
-  already stale going in. Each missing project still builds and runs
-  fine (`dotnet build <project>.csproj`/the Host projects that reference
-  it directly), so this has never blocked anything — only IDE/`dotnet
-  build EventStore.slnx`-at-the-solution-level discoverability is
-  affected. Needs a pass reconciling the full `src/` directory listing
-  against this file's `<Project Path=...>` entries.
 - **The full SQLite regression suite's own known load-induced flakiness
   (see `.claude/context.md`'s repeated notes on
   `SubscribingOverRealHttpStreamsAMatchingEventAsSse` and the leader-

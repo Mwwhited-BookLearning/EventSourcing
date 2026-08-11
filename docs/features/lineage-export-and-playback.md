@@ -231,6 +231,15 @@ end note
 @enduml
 ```
 
+**Implementation note (added once built, 2026-08-11):** "recompute
+ChainHash sequence" above is realized as a manifest-hash recomputation
+(exact, over the bundle's own ordered `ChainHash` values) plus a masked/
+erased-field count, not a per-event `PayloadHash`-from-`Payload` re-hash
+-- `ExportedEventLine` carries no `ParentEventIds`, so that recomputation
+isn't safely buildable without risking a false "tampered" result for any
+event with real causal parents. See `ADR-068`'s own "Corrected, 2026-08-11"
+Consequences note and `client-web/src/playback/verifyBundle.ts`.
+
 ## Data model (ER diagram)
 
 ```plantuml
