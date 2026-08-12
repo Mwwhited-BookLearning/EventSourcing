@@ -16,12 +16,17 @@ namespace EventStore.ViewRegistry;
 // HTML-parsing dependency this codebase has no other use for.
 internal static class TranslationKeyValidator
 {
-    // Matches EITHER an ordinary data-field binding ({{ carrier }}) or a
-    // translation-key reference ({{ t:carrier_label }}) -- both are
-    // legitimate, non-literal content per TemplateRenderer.vue's own
-    // interpolation syntax; only text OUTSIDE either counts as a
-    // hardcoded literal.
-    private static readonly Regex InterpolationExpression = new(@"\{\{\s*(?:t:)?[\w.]+\s*\}\}", RegexOptions.Compiled);
+    // Matches EITHER an ordinary data-field binding ({{ carrier }},
+    // optionally with a {{ field:date }}/{{ field:number }} format
+    // modifier) or a translation-key reference ({{ t:carrier_label }}) --
+    // all three are legitimate, non-literal content per
+    // TemplateRenderer.vue's own interpolation syntax (that component's
+    // own INTERPOLATION regex, verbatim); only text OUTSIDE all three
+    // counts as a hardcoded literal. The date/number suffix was missing
+    // here until found by actually registering a template using it --
+    // every such template was rejected at registration time, even though
+    // the client fully supports rendering it once registered.
+    private static readonly Regex InterpolationExpression = new(@"\{\{\s*(?:t:[\w.]+|[\w.]+(?::(?:date|number))?)\s*\}\}", RegexOptions.Compiled);
     private static readonly Regex HtmlTagOrComment = new(@"<!--.*?-->|<[^>]+>", RegexOptions.Compiled | RegexOptions.Singleline);
 
     public static void Validate(string templateContent, List<string> errors)

@@ -176,5 +176,16 @@ describe('TemplateRenderer (ADR-039\'s "small injected binding runtime")', () =>
       })
       expect(wrapper.get('.dob').text()).toBe(new Intl.DateTimeFormat('en-US', { dateStyle: 'medium' }).format(new Date('1990-03-01T00:00:00.000Z')))
     })
+
+    it('renders a masked (not revealed) field\'s placeholder text as-is with a :date/:number modifier, never attempting to format it', () => {
+      const wrapper = mount(TemplateRenderer, {
+        props: {
+          templateContent: '<div class="dob">{{ dateOfBirth:date }}</div>',
+          entry: makeEntry({ data: { dateOfBirth: { value: null, masked: 'REDACTED', erased: null } } }),
+          locale: 'en-US',
+        },
+      })
+      expect(wrapper.get('.dob').text()).toBe('REDACTED')
+    })
   })
 })
