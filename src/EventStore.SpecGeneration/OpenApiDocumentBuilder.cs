@@ -54,10 +54,23 @@ public class OpenApiDocumentBuilder(EventStoreContext db, EventSchemaConverter c
                         ["application/json"] = new OpenApiMediaType { Schema = envelopeSchema },
                     },
                 },
+                // ADR-023's persist-everything rebuild changed this endpoint's
+                // whole response shape (PublishResult.cs is the authoritative
+                // list of cases) -- this generated spec had drifted back to
+                // the pre-rebuild "200/201, content can be rejected" framing,
+                // found stale by a design-compliance audit. 202 (not 201) is
+                // ADR-011/023's own explicit correction: every syntactically-
+                // parseable, authorized, non-conflicting publish is Accepted
+                // regardless of schema/entity validity, which the async
+                // Router determines afterward and never gates this response
+                // on -- there is no "content is invalid" rejection left to
+                // document as a 400 here.
                 Responses = new OpenApiResponses
                 {
-                    ["201"] = new OpenApiResponse { Description = "Created (or an identical-content idempotent replay)" },
-                    ["400"] = new OpenApiResponse { Description = "Unknown schemaVersion, non-conforming payload, or an unresolved Strict-mode parent" },
+                    ["202"] = new OpenApiResponse { Description = "Accepted (or an identical-content idempotent replay) -- schema/entity conformance is determined asynchronously by the Router and never gates this response" },
+                    ["400"] = new OpenApiResponse { Description = "An unresolved Strict-mode parent, or (RequiredSignature configured) a satisfied step-up with no Meaning supplied" },
+                    ["401"] = new OpenApiResponse { Description = "RequiredSignature configured and the caller's authentication strength doesn't satisfy it (RFC 9470 step-up challenge)" },
+                    ["403"] = new OpenApiResponse { Description = "Caller lacks a Publish-direction RequiredClaims entry, or the events:publish scope itself" },
                     ["404"] = new OpenApiResponse { Description = "Event type not registered" },
                     ["409"] = new OpenApiResponse { Description = "eventId already used with different content" },
                 },

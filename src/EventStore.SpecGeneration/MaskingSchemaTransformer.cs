@@ -44,7 +44,13 @@ public class MaskingSchemaTransformer
             new OpenApiSchema
             {
                 Type = JsonSchemaType.Object,
-                Properties = new Dictionary<string, IOpenApiSchema> { ["masked"] = new OpenApiSchema { Type = JsonSchemaType.Boolean } },
+                // The real runtime wrapper's "masked" branch is a string (the
+                // masking strategy's own placeholder text, e.g. "***" or
+                // "REDACTED" -- PayloadMasker.cs's own ["masked"] = strategy.Mask(...)
+                // assignment, matching docs/data/schema-registry.md's documented
+                // shape), not a boolean -- found by an ADR-002/009 compliance
+                // audit comparing this generated spec against the actual wrapper.
+                Properties = new Dictionary<string, IOpenApiSchema> { ["masked"] = new OpenApiSchema { Type = JsonSchemaType.String } },
                 Required = new HashSet<string> { "masked" },
             },
             new OpenApiSchema

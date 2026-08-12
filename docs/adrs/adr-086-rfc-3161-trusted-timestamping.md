@@ -61,7 +61,11 @@ Consequences:
 - A new `ITimestampAuthorityClient` extension point — cataloged in
   `docs/extensibility-points.md` (core-Duplex-scoped, since both
   `ADR-066` signatures and `ADR-068` exports are core mechanisms, unlike
-  `ADR-079`'s domain-scoped seam) — not yet built.
+  `ADR-079`'s domain-scoped seam). **Corrected, later pass: built** —
+  `src/EventStore.Timestamping/HttpTimestampAuthorityClient.cs`,
+  `docs/08-build-plan.md` item 42 marked Done; this line's own "not yet
+  built" note went stale once that landed and is corrected here by a
+  design-compliance audit, not by re-reading the code at the time.
 - Fully resolves `docs/10-open-questions.md` row 11 (formerly logged
   there; see `docs/changes/2026-07-31.md`) — no residual left.
 

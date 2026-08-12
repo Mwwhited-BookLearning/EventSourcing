@@ -6,9 +6,10 @@ namespace Samples.Meridian;
 // The shared, reserved-name "authorityDecision" reactor (EventStore.
 // Router's AuthorityDecisionResolver) is reused across every Meridian
 // workflow that needs a human decision on an already-captured record --
-// Workflow A's analyst review of an identity claim, and (should this
-// domain's own Workflow C need it later) a compliance officer's SAR
-// decision. Same "ensure at least this claim" union-of-claims mechanism
+// Workflow A's analyst review of an identity claim, and Workflow C's
+// own compliance-officer SAR decision (MeridianWorkflowC.cs's own
+// EnsureAuthorityDecisionRegisteredAsync call with "identity:aml-review").
+// Same "ensure at least this claim" union-of-claims mechanism
 // Samples.Vitals.VitalsSharedTypes already established -- deliberately
 // duplicated here, not shared across the two sample projects: Vitals and
 // Meridian are independent proving-ground applications a reader might

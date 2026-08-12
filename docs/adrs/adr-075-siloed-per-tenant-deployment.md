@@ -118,13 +118,12 @@ Consequences:
   tenant's own dedicated deployment naturally restores only that
   tenant, since there is no shared store to restore selectively from in
   the first place.
-- **Not yet propagated, flagged rather than silently left**:
-  `06-solution-structure.md`'s deployment-unit description, `08-build-plan.md`'s
-  phases referencing multi-tenant deployment, and `01-c4-architecture.md`'s
-  container diagram (if it depicts a single shared deployment boundary)
-  all still describe the pool-model assumption and need a pass — real,
-  substantial propagation work, matching this project's own established
-  pattern of naming rather than silently deferring such gaps.
+- **Corrected, later pass: propagated.** `06-solution-structure.md`'s
+  deployment-unit description, `08-build-plan.md`'s item text, and
+  `01-c4-architecture.md`'s container diagram all now correctly describe
+  the silo model, not the pool-model assumption this note originally
+  flagged as outstanding — confirmed directly by a design-compliance
+  audit re-checking this claim against the current files, not assumed.
 - **`ADR-030` is revised in place for the specific "many applications
   in one shared deployment" framing** — struck through there per this
   project's additive-history convention, not deleted; everything else

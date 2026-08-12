@@ -405,3 +405,170 @@ here instead of inlining.
   question, not yet decided, so left here rather than in `docs/10-open-
   questions.md` (this is "something to investigate," not yet a clearly
   posed fork with named options).
+
+- **`ADR-013`'s RFC 9457 Problem Details decision was never actually
+  implemented.** No `AddProblemDetails()`/`UseExceptionHandler`/
+  `UseStatusCodePages` registration exists anywhere in `src/` (confirmed
+  by grep across the whole repo). 16+ endpoint files
+  (`PublishEndpoints.cs`, `SchemaRegistryEndpoints.cs`,
+  `LineageEndpoints.cs`, `StreamingEndpoints.cs`, `RbacEndpoints.cs`,
+  `LineageExportEndpoints.cs`, `DerivationEndpoints.cs`,
+  `InterchangeEndpoints.cs`, and others) return ad hoc anonymous objects
+  (`Results.BadRequest(new { error = "..." })`) instead — exactly the
+  shape this ADR explicitly rejected. `DpopValidationMiddleware.cs`'s own
+  `Results.Problem(...)` call is the one real, correct usage, which only
+  highlights how isolated compliance is. `docs/03-api-contracts.md`
+  still asserts Problem Details is used everywhere — that claim is
+  false against the current code, not just aspirational. Found by a
+  full design-compliance audit (ADR-001–019 range). Fix: either wire
+  `AddProblemDetails()`/`UseExceptionHandler` globally and migrate every
+  ad hoc error response to it, or add an honest additive note to
+  `ADR-013` narrowing its own claim and correct `docs/03-api-contracts.md`
+  to match reality — a real decision the user should make, not a call
+  for a review pass to make silently.
+
+- **`ADR-024`'s conflict-detection Decision explicitly narrows to
+  same-property comparison** ("If another patch touching the **same
+  property** was already applied since `ExpectedVersion`, set
+  `ConflictFlag`... two patches based on the same version touching
+  **different** properties both fold cleanly... that is not a
+  conflict") **but `RouterWorker.cs` (~line 393-396) only ever compares
+  whole-entity `ExpectedVersion != row.Version`, with no property-level
+  check at all** — any stale version on any property patch is flagged,
+  exactly the false-positive case the ADR calls out as *not* a real
+  conflict. `docs/data/event-log.md`'s own comment matches the coarser
+  code, not the ADR's decided nuance. No test exercises "different
+  properties, same stale version → no conflict." Unlike `ADR-029`'s
+  analogous per-entity/per-property tradeoff (explicitly named an
+  "acceptable v1 default" with per-property as a documented upgrade
+  path, and already tracked above in this file), `ADR-024` states the
+  narrow per-property check as the actual default design — this gap was
+  untracked anywhere until a design-compliance audit found it. Fix:
+  either implement real per-property conflict comparison in
+  `RouterWorker.FoldAsync`, or add an additive note to `ADR-024`
+  acknowledging the coarser default actually shipped (matching how
+  `ADR-029` already handles the same class of tradeoff honestly).
+
+- **`ADR-025`'s Decision (Scalar UI at `/scalar`, a static AsyncAPI UI
+  page via `@asyncapi/react-component`) was never built.** No `Scalar`
+  package reference anywhere in `src/`, no `/scalar` or `/asyncapi-ui`
+  route. `docs/06-solution-structure.md` still shows this only as an
+  unverified code *sketch*, never confirmed built. Not its own
+  build-plan item, and not previously tracked here or in
+  `docs/10-open-questions.md` — an Accepted ADR with no implementation
+  and no acknowledgment of the gap, found by a design-compliance audit.
+  Fix: either build it (add `Scalar.AspNetCore`, map `/scalar`, add the
+  static AsyncAPI viewer page) or add an additive note to `ADR-025`
+  narrowing its claim to "documented, not built."
+
+- **`ADR-050`'s `x-required-claims` JSON Schema extension (the
+  entity-level spec-extension half of that ADR, distinct from
+  `RequiredClaims` itself, which IS genuinely implemented and correctly
+  documented) appears nowhere in code — zero hits for that exact
+  string anywhere in `src/`.** Separately, the ADR's static
+  `[LoggerMessage]`-attribute log-redaction half (as opposed to the
+  dynamic, payload-derived `IRedactorProvider` path, which IS built and
+  tested) also has no real call site anywhere in this codebase. Found
+  by a design-compliance audit (ADR-039–057 range). Fix: either build
+  both halves, or add an additive note to `ADR-050` narrowing its own
+  claim to what actually shipped.
+
+- **`ADR-057`'s Decision names five `IErasureKeyStore` backends
+  (Local, HashiCorp Vault, Azure Key Vault, AWS KMS, Google Cloud KMS);
+  only `LocalErasureKeyStore` and `HashiCorpVaultErasureKeyStore` exist
+  in `src/EventStore.Erasure`.** `docs/libraries/dotnet/azure-key-vault.md`
+  and its AWS/GCP siblings present those three as adopted, with no
+  corresponding implementation or SDK package reference in
+  `EventStore.Erasure.csproj` — the docs overclaim relative to the
+  actual build. Found by a design-compliance audit (ADR-039–057 range).
+  Fix: either build the three missing backends, or correct
+  `docs/libraries/dotnet/{azure-key-vault,aws-kms,gcp-kms}.md` (whichever
+  filenames apply) from "adopted" to "considered, not yet built,"
+  per `docs/references.md`'s own adopted-vs-rejected discipline.
+
+- **`ADR-062`'s Decision that `client-web` ships as one or more
+  installable npm packages (e.g. `@eventstore/mvvm-client`), with the
+  existing Vue app becoming a reference implementation consuming its
+  own published package, was never built** — `client-web/package.json`
+  is still the one, only app (`"name": "duplex-client-web"`), not split
+  into a library + reference app. Unlike every other unfinished piece in
+  this design, this gap wasn't named anywhere: not in `ADR-062`'s own
+  Consequences, not in build-plan item 39's "Status: Done," not
+  previously here. (The NuGet-packaging half of the same ADR IS
+  genuinely built — `Directory.Build.props`, `EventStore.Abstractions`
+  — this gap is npm-specific.) Found by a design-compliance audit
+  (ADR-058–076 range). Fix: either split `client-web` into a published
+  library + thin reference app, or add an additive note to `ADR-062`
+  narrowing its own claim to the NuGet half only.
+
+- **`ADR-063`'s Decision to adopt FsCheck (property-based tests for the
+  hash chain/conflict resolution) and Polly+Simmy (fault-injection tests
+  for outbox/inbox crash recovery), "alongside `ADR-055`'s
+  `EventStore.UnitTests`," was never built.** There is no
+  `EventStore.UnitTests` project at all (only `tests/
+  EventStore.IntegrationTests`, confirmed via `EventStore.slnx`), and no
+  `.csproj` anywhere references `FsCheck`, `Polly`, or `Simmy`.
+  `docs/08-build-plan.md`'s "Cross-cutting, every item" testing section
+  explicitly asserts "both adopted now, cheaply, alongside the existing
+  MSTest suite" — a factual claim not backed by any code in the repo.
+  (`ADR-055`'s own `EventStore.E2ETests`/Playwright gap is a related but
+  separate, already-honestly-tracked absence — `08-build-plan.md` and
+  this file both already say "no browser E2E harness yet"; this item is
+  specifically about the FsCheck/Polly/Simmy half, which wasn't
+  previously tracked as missing.) Found by a design-compliance audit
+  (ADR-058–076 range). Fix: either build `EventStore.UnitTests` with
+  real FsCheck/Polly+Simmy coverage, or correct
+  `docs/08-build-plan.md`'s claim from "adopted" to "decided, not yet
+  built."
+
+- **`ADR-084`'s readiness-probe Decision — readiness should fail when
+  the instance's own primary database is unreachable, while tolerating
+  peer degradation — is only half-built: the database-reachability half
+  was never implemented.** `EventStore.ServiceDefaults/Extensions.cs`'s
+  `AddDefaultHealthChecks`/`MapDefaultEndpoints` only registers one
+  always-healthy `"self"` check tagged `"live"`; no
+  `Host.<Provider>`/`Program.cs` uses Aspire's health-check-integrated
+  DB client APIs (each just calls plain `AddDbContext`). "Tolerates peer
+  degradation" reads as true only because nothing is actually checked.
+  Health endpoints are also only mapped `if
+  (app.Environment.IsDevelopment())`, so even the trivial check isn't
+  exposed outside dev. No corrective note anywhere flags this gap.
+  Found by a design-compliance audit (ADR-077–094 range). Fix: add a
+  real DB-reachability health check per provider, and decide whether
+  health endpoints should be exposed (behind auth, presumably) outside
+  Development.
+
+- **`ADR-085`'s "Adopt now: BenchmarkDotNet" was never built.**
+  `docs/08-build-plan.md`'s "Cross-cutting, every item" section and
+  `docs/libraries/dotnet/benchmarkdotnet.md` (which names a specific
+  project, `EventStore.Benchmarks`, and a runnable `dotnet run` command)
+  both describe it as already wired in — no such project exists, and a
+  full scan of every `.csproj` in the repo shows zero `BenchmarkDotNet`
+  package references. `docs/libraries/dotnet/benchmarkdotnet.md`'s own
+  runnable command would fail today. Found by a design-compliance audit
+  (ADR-077–094 range). Fix: either build `EventStore.Benchmarks` with
+  real BenchmarkDotNet coverage of the hash chain/conflict resolution
+  paths this ADR names, or correct both docs from "adopted" to
+  "decided, not yet built."
+
+- **`client-web`'s `typescript` and `jsdom` devDependencies are
+  deliberately held back one major version each, not yet at "latest."**
+  Found while updating every dependency this session (commit `6716c27`):
+  `typescript` is capped at `6.0.3`, not the current `7.0.2` — that's
+  TypeScript's new native (non-JS) compiler rewrite, and `vue-tsc`'s
+  current release reaches into a `typescript/lib/tsc` subpath that
+  `7.x`'s restructured package no longer exports, breaking type-checking
+  outright (`vue-tsc -b` throws `ERR_PACKAGE_PATH_NOT_EXPORTED`,
+  confirmed directly). `jsdom` is capped at `25.0.1`, not the current
+  `30.0.1` — `client-web/src/deviceInput/NativeBridgeInputSource.spec.ts`'s
+  real (non-mocked) `WebSocket` round-trip test fails with `TypeError:
+  The "event" argument must be an instance of Event. Received an
+  instance of Event`, a cross-realm identity mismatch between Node's
+  global `WebSocket` (undici) and jsdom's own `Event` class that `30.x`'s
+  internal changes introduced. Revisit both: `npm outdated` in
+  `client-web/` will show them again once either upstream issue is
+  fixed (a new `vue-tsc` release supporting TS 7's native compiler; a
+  jsdom release restoring cross-realm `Event`/`WebSocket` compatibility,
+  or Node/undici accepting jsdom's `Event` instances again) — bump then,
+  not before, and re-run the full `vitest`/`vue-tsc -b`/build sequence
+  again before trusting either bump.
