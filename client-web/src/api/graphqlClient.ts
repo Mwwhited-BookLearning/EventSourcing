@@ -1,3 +1,5 @@
+import { createDpopProof } from './dpop'
+
 // ADR-037/012 -- GraphQL travels over the HTTP QUERY method, never GET/POST
 // (PII-safety: a request body, never a URL/access-log-visible query
 // string). `fetch` supports an arbitrary method string directly, so no
@@ -5,11 +7,13 @@
 const QUERY_METHOD = 'QUERY'
 
 export async function graphqlQuery<T>(hostBaseUrl: string, token: string, query: string, variables?: Record<string, unknown>): Promise<T> {
-  const response = await fetch(`${hostBaseUrl}/graphql`, {
+  const url = `${hostBaseUrl}/graphql`
+  const response = await fetch(url, {
     method: QUERY_METHOD,
     headers: {
       'Content-Type': 'application/json',
       Authorization: `Bearer ${token}`,
+      DPoP: await createDpopProof(QUERY_METHOD, url, token), // ADR-017 -- DpopValidationMiddleware gates every eventstore endpoint, not just token issuance
     },
     body: JSON.stringify({ query, variables }),
   })
@@ -37,11 +41,13 @@ export function graphqlSubscribe<T>(
 
   void (async () => {
     try {
-      const response = await fetch(`${hostBaseUrl}/graphql`, {
+      const url = `${hostBaseUrl}/graphql`
+      const response = await fetch(url, {
         method: QUERY_METHOD,
         headers: {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${token}`,
+          DPoP: await createDpopProof(QUERY_METHOD, url, token), // ADR-017 -- same gate as graphqlQuery above
         },
         body: JSON.stringify({ query }),
         signal: controller.signal,

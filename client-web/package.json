@@ -5,6 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "dev:vitals": "vite --mode vitals",
+    "dev:meridian": "vite --mode meridian",
     "build": "vue-tsc -b && vite build",
     "build:offline-player": "vite build --config vite.offline-player.config.ts",
     "embed:offline-bundle": "node scripts/embed-bundle.mjs",

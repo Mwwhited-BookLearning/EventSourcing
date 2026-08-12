@@ -1,4 +1,5 @@
 import type { ClientOutboxEntry } from '../types'
+import { createDpopProof } from './dpop'
 
 export interface PublishResult {
   ok: boolean
@@ -14,11 +15,13 @@ export interface PublishResult {
 // entire reason redelivering the same queued command after a reconnect
 // never applies it twice; no second dedup mechanism exists on the client.
 export async function publishCommand(hostBaseUrl: string, token: string, entry: ClientOutboxEntry): Promise<PublishResult> {
-  const response = await fetch(`${hostBaseUrl}/publish/${entry.eventType}`, {
+  const url = `${hostBaseUrl}/publish/${entry.eventType}`
+  const response = await fetch(url, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       Authorization: `Bearer ${token}`,
+      DPoP: await createDpopProof('POST', url, token), // ADR-017
     },
     body: JSON.stringify({
       appId: entry.appId,
