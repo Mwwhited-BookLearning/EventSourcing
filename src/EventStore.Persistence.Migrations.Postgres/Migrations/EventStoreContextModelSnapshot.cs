@@ -190,6 +190,10 @@ namespace EventStore.Persistence.Migrations.Postgres.Migrations
                     b.Property<bool>("LateArrivalFlag")
                         .HasColumnType("boolean");
 
+                    b.Property<string>("PropertyLogicalTimes")
+                        .IsRequired()
+                        .HasColumnType("text");
+
                     b.Property<string>("PropertyVersions")
                         .IsRequired()
                         .HasColumnType("text");

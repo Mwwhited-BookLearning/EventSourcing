@@ -266,6 +266,49 @@ internal static class EntityScenarioAssertions
         StringAssert.Contains(row.Data, "B. Jones");
     }
 
+    // ADR-029's late-arrival guard, made per-property alongside ADR-024's
+    // conflict check above (TODO.md's own named gap, closed 2026-08-12):
+    // an event that's chronologically "late" relative to the WHOLE row
+    // (because some OTHER property changed more recently) must still fold
+    // its own, genuinely-never-touched-before property normally. Before
+    // this item, `RouterWorker.FoldAsync` compared `OccurredAt` against
+    // the row's single `LastAppliedLogicalTime`, so `renamed` below would
+    // have been wrongly rejected in full, purely because `shipped`
+    // happened to fold Carrier two hours later -- CustomerName itself was
+    // never touched at all before this event.
+    public static async Task AnEventLateRelativeToTheWholeRowStillFoldsAPropertyItsOwnPreviousTouchNeverSaw(
+        SchemaRegistryService registry, PublishService publish, EventStoreContext db, UpcastChain upcastChain)
+    {
+        const string appId = "entity-demo-11";
+        await RegisterOrderPlaced(registry, appId);
+        await RegisterOrderShipped(registry, appId);
+        await RegisterOrderCustomerNameUpdated(registry, appId);
+
+        var baseline = DateTimeOffset.UtcNow;
+        await Publish(publish, appId, "OrderPlaced", """{ "OrderId": "o-11", "CustomerName": "A. Smith", "Amount": 42.00 }""");
+        await RouterWorker.RunOnceAsync(db, registry, upcastChain); // CustomerName's own PropertyLogicalTimes entry: baseline
+
+        var shipped = await Publish(publish, appId, "OrderShipped", """{ "OrderId": "o-11", "Carrier": "UPS" }""");
+        await SetOccurredAtAsync(db, shipped.CorrelationId, baseline.AddHours(2));
+        await RouterWorker.RunOnceAsync(db, registry, upcastChain); // row.LastAppliedLogicalTime now baseline+2h; Carrier's own entry: baseline+2h; CustomerName's own entry UNCHANGED at baseline
+
+        // Chronologically "late" relative to the ROW (baseline+1h <=
+        // baseline+2h) but NOT relative to CustomerName's own last touch
+        // (baseline+1h > baseline) -- CustomerName was never touched by
+        // the OrderShipped fold above at all.
+        var renamed = await Publish(publish, appId, "OrderCustomerNameUpdated", """{ "OrderId": "o-11", "CustomerName": "B. Jones" }""");
+        await SetOccurredAtAsync(db, renamed.CorrelationId, baseline.AddHours(1));
+        await RouterWorker.RunOnceAsync(db, registry, upcastChain);
+
+        var renamedEvent = await db.Events.AsNoTracking().SingleAsync(e => e.EventId == renamed.CorrelationId);
+        Assert.IsFalse(renamedEvent.LateArrivalFlag, "CustomerName itself was never touched before -- not late on THIS event's own account");
+
+        var row = await db.EntityStore.AsNoTracking().SingleAsync(r => r.EntityId == $"{appId}:order:o-11");
+        Assert.IsFalse(row.LateArrivalFlag, "every touched property (just CustomerName) applied -- none were late");
+        StringAssert.Contains(row.Data, "B. Jones", "CustomerName's own catch-up merges in despite being chronologically 'late' relative to a DIFFERENT property");
+        StringAssert.Contains(row.Data, "UPS", "Carrier is untouched by this fold at all, and stays whatever OrderShipped already set");
+    }
+
     public static async Task PublishingWithoutExpectedVersionAppliesUnconditionallyWithNoConflictDetection(
         SchemaRegistryService registry, PublishService publish, EventStoreContext db, UpcastChain upcastChain)
     {

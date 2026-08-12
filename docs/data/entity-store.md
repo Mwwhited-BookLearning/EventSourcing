@@ -30,7 +30,8 @@ public class EntityStoreRow
     public int SchemaVersion { get; set; }                // current shape, post-upcast (best effort — ADR-018)
     public string AuthorityStatus { get; set; } = "accepted"; // rolled up from contributing events — advisory (ADR-035)
     public long LastAppliedSequenceNumber { get; set; }   // REPLAY CHECKPOINT — always advances past every event processed, including a rejected late arrival (ADR-029); distinct from Version above
-    public DateTimeOffset LastAppliedLogicalTime { get; set; } // high-water mark for fold ordering — compared against OccurredAt, not SequenceNumber (ADR-029)
+    public DateTimeOffset LastAppliedLogicalTime { get; set; } // ROW-LEVEL rollup high-water mark, for display/audit — the per-PROPERTY marker below is what actually gates correctness (ADR-029)
+    public string PropertyLogicalTimes { get; set; } = "{}"; // property name -> the OccurredAt of whatever event most recently actually changed it — ADR-029's per-property late-arrival comparison, the same shape as PropertyVersions above
     public bool LateArrivalFlag { get; set; }             // rolled up from contributing events (ADR-029)
     public string? LastAppliedOriginId { get; set; }      // which site/peer's event this Entity Store row last folded (ADR-033) -- same "Origin" terminology collision as StoredEvent.OriginId; see that field's note in docs/data/event-log.md, not related to TelemetryChannel.Origin
     public DateTimeOffset UpdatedAt { get; set; }
@@ -115,12 +116,28 @@ stale per-property marker from before a rebuild must never survive it.
 
 ## Fold ordering (`ADR-029`)
 
-`LastAppliedLogicalTime` is compared against each incoming event's
-`OccurredAt` (`event-log.md`) — not `SequenceNumber` — specifically so a
-late-arriving event that logically happened *before* something already
-folded can't silently overwrite newer data with stale values. See
-`ADR-029` and `patterns/README.md`'s watermarks/event-time entry for the
-general pattern this implements.
+Each touched property's own entry in `PropertyLogicalTimes` is compared
+against the incoming event's `OccurredAt` (`event-log.md`) — not
+`SequenceNumber`, and not `LastAppliedLogicalTime` (that field is now a
+row-level ROLLUP for display/audit only, updated whenever any property
+applies, never itself the gate) — specifically so a late-arriving event
+that logically happened *before* something already folded can't silently
+overwrite newer data with stale values, WITHOUT also blocking that same
+event's OTHER, genuinely-never-touched-before properties from folding at
+all. `ADR-029`'s own Decision text named per-property tracking as the
+documented upgrade path from day one ("per-entity is an acceptable v1
+default; per-property is the documented upgrade path") — built,
+2026-08-12, once a real scenario (a deliberately-delayed non-authoritative
+capture's catch-up racing an ordinary, immediately-accepted follow-up
+patch on a different property, `docs/domains/clinical-trials-device-
+telemetry`'s Workflow D) surfaced exactly the case per-entity tracking
+gets wrong. Same false-positive risk as `PropertyVersions` above applies
+here too, and is guarded the same way: a property only advances its own
+`PropertyLogicalTimes` entry when its OWN value actually differs, never
+merely because an event re-declared it unchanged (e.g. the entity's own
+identifying field, present in every payload). See `ADR-029` and
+`patterns/README.md`'s watermarks/event-time entry for the general
+pattern this implements.
 
 ## Erasure key store (`ADR-057`)
 

@@ -190,6 +190,10 @@ namespace EventStore.Persistence.Migrations.SqlServer.Migrations
                     b.Property<bool>("LateArrivalFlag")
                         .HasColumnType("bit");
 
+                    b.Property<string>("PropertyLogicalTimes")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
                     b.Property<string>("PropertyVersions")
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");

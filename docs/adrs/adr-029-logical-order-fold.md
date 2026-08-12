@@ -74,6 +74,28 @@ Decision:
   documented upgrade path, escalated only where it's actually needed,
   the same trade `ADR-024` already makes.
 
+**Built, 2026-08-12**: the per-property upgrade path named above is now
+the real default, not just documented — a real, deterministic gap
+surfaced it (`TODO.md`, found building the Vitals proving-ground
+sample's Workflow D): a deliberately-delayed non-authoritative capture's
+own catch-up fold (`ADR-042`) was being rejected in FULL by an unrelated,
+ordinary, immediately-accepted follow-up patch on a DIFFERENT property
+of the same entity, purely because that follow-up happened to fold with
+a later `OccurredAt`. `EntityStoreRow.PropertyLogicalTimes` (see
+`docs/data/entity-store.md`) tracks the high-water mark per property;
+`RouterWorker.FoldAsync` excludes only the individually-late properties
+from a merge rather than rejecting the whole event, and a Full-changeKind
+event now retains the OLD value of any property excluded this way rather
+than dropping it via its own "replace wholesale" semantics.
+`RouterWorker.RebuildEntityFromAcceptedEventsAsync` (`ADR-035`'s targeted
+rebuild) now calls `FoldAsync` directly for each contributing event
+instead of duplicating this logic a second time, so both paths can never
+drift apart again. New tests: `AnEventLateRelativeToTheWholeRowStill
+FoldsAPropertyItsOwnPreviousTouchNeverSaw` (`EntityScenarioAssertions.cs`,
+all three providers); `VitalsWorkflowDScenarioAssertions.
+TheNeurologistSignsOffAcceptedAfterSteppingUpAndTheAuthoritativeEntityStoreCatchesUp`
+updated from documenting the gap to asserting the fix.
+
 Consequences:
 - Directly complements `ADR-033` (multi-origin replication): `OccurredAt`
   alone is a single-origin logical clock; once multiple independent

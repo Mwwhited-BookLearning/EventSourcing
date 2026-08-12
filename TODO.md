@@ -315,40 +315,6 @@ here instead of inlining.
   `docs/features/ticket-exchange.md` and `ADR-040`/`ADR-093` all need a
   follow-up pass once a real mechanism is designed and built.
 
-- **`ADR-029`'s late-arrival guard is per-EVENT, not per-FIELD, and this
-  can silently drop a delayed catch-up fold's own genuinely-new fields
-  even when they don't conflict with anything.** Found building the
-  Vitals proving-ground sample's Workflow D (`docs/domains/clinical-
-  trials-device-telemetry/features/intraoperative-monitoring-and-alert-
-  response.md`): `IonmAlertRaised` is deliberately non-authoritative
-  (`ADR-035`/`042`, pending the neurologist's signed `authorityDecision`)
-  while `IonmAlertAcknowledged` (a Partial fold onto the SAME entity) is
-  an ORDINARY, immediately-accepted publish that always has a LATER
-  `OccurredAt` (it can only ever be published after the alert it
-  acknowledges) — so it always folds into the authoritative Entity Store
-  FIRST, setting `LastAppliedLogicalTime` ahead of the alert's own. When
-  the neurologist's decision finally triggers `IonmAlertRaised`'s own
-  delayed catch-up fold, `RouterWorker.FoldAsync`'s late-arrival check
-  (`storedEvent.OccurredAt <= row.LastAppliedLogicalTime`) rejects the
-  ENTIRE fold as "late" — even though `IonmAlertRaised`'s own fields
-  (`Finding`/`Severity`) don't actually conflict with the already-folded
-  `AckedBy`. Confirmed by actually running the scenario
-  (`VitalsWorkflowDScenarioAssertions.TheNeurologistSignsOffAcceptedAfterSteppingUpAndTheAuthoritativeEntityStoreCatchesUp`),
-  not assumed: `AuthorityStatus` correctly reaches `"accepted"`, but the
-  Entity Store's own `Data` never gains `Finding`/`Severity`, only
-  `AckedBy`. Not a one-off race — deterministic, every time, for any
-  workflow shaped like this one (a deliberately-delayed non-authoritative
-  capture composing with an ordinary, immediately-accepted Partial
-  follow-up on the same entity). Investigate: whether `FoldAsync`'s
-  late-arrival check should compare per-property (only skip fields the
-  incoming event actually redeclares older data for) rather than
-  rejecting the whole merge, or whether `AuthorityDecisionResolver`'s own
-  catch-up path specifically needs a different ordering rule than
-  ordinary `RouterWorker.ProcessEventAsync` folds — a real design
-  question, not yet decided, so left here rather than in `docs/10-open-
-  questions.md` (this is "something to investigate," not yet a clearly
-  posed fork with named options).
-
 - **`ADR-013`'s RFC 9457 Problem Details decision was never actually
   implemented.** No `AddProblemDetails()`/`UseExceptionHandler`/
   `UseStatusCodePages` registration exists anywhere in `src/` (confirmed

@@ -427,6 +427,7 @@ public class RouterWorker(IServiceScopeFactory scopeFactory, ILogger<RouterWorke
                 Data = "{}",
                 Extensions = "{}",
                 PropertyVersions = "{}",
+                PropertyLogicalTimes = "{}",
                 LastAppliedLogicalTime = DateTimeOffset.MinValue,
             };
             db.EntityStore.Add(row);
@@ -448,57 +449,111 @@ public class RouterWorker(IServiceScopeFactory scopeFactory, ILogger<RouterWorke
             storedEvent.ConflictFlag = touchedProperties.Any(name => propertyVersions.TryGetValue(name, out var lastChangedAt) && lastChangedAt > expected);
 
         // ADR-029 -- LateArrivalFlag: unlike ConflictFlag, this DOES gate
-        // whether the change is applied -- applying a chronologically-stale
-        // value would silently revert already-folded newer state.
-        var isLateArrival = storedEvent.OccurredAt <= row.LastAppliedLogicalTime;
-        storedEvent.LateArrivalFlag = isLateArrival;
+        // whether a change is applied -- applying a chronologically-stale
+        // value would silently revert already-folded newer state. Made
+        // per-PROPERTY, not per-event (TODO.md's own named gap, closed
+        // 2026-08-12): PropertyLogicalTimes tracks, per property, the
+        // OccurredAt of whatever event most recently actually applied to
+        // it. A property this fold doesn't touch, or has never touched
+        // before, is never late on THIS fold's account -- only a property
+        // that was itself already advanced past this event's own
+        // OccurredAt is excluded. This is exactly what a delayed non-
+        // authoritative catch-up fold (ADR-042) needs: an ordinary,
+        // immediately-accepted follow-up patch on a DIFFERENT property of
+        // the same entity (e.g. an acknowledgment) must never block a
+        // later-arriving original event's OWN, otherwise-non-conflicting
+        // fields from ever folding at all.
+        var propertyLogicalTimes = ParsePropertyLogicalTimes(row.PropertyLogicalTimes);
+        var lateProperties = touchedProperties
+            .Where(name => storedEvent.OccurredAt <= propertyLogicalTimes.GetValueOrDefault(name, DateTimeOffset.MinValue))
+            .ToHashSet();
+        // Fully late (every touched property already advanced past this
+        // event) is the row-rollup case existing callers/tests already
+        // know as "LateArrivalFlag" -- for a single-property patch (the
+        // overwhelming common case) this is identical to the old
+        // whole-event check; a multi-property patch that's PARTLY late
+        // still applies its non-late properties below.
+        var isFullyLate = touchedProperties.Count > 0 && lateProperties.Count == touchedProperties.Count;
+        storedEvent.LateArrivalFlag = lateProperties.Count > 0; // ANY touched property rejected as stale is worth flagging, even if others still applied
 
         row.LastAppliedSequenceNumber = storedEvent.SequenceNumber; // always advances, even past a rejected late arrival
 
-        if (!isLateArrival)
+        if (!isFullyLate)
         {
             var oldData = JsonNode.Parse(row.Data) as JsonObject ?? new JsonObject();
             var oldExtensions = JsonNode.Parse(row.Extensions) as JsonObject ?? new JsonObject();
+
+            var filteredKnown = new JsonObject();
+            foreach (var (name, value) in known)
+                if (!lateProperties.Contains(name))
+                    filteredKnown[name] = value?.DeepClone();
+            var filteredUnknown = new JsonObject();
+            foreach (var (name, value) in unknownProperties)
+                if (!lateProperties.Contains(name))
+                    filteredUnknown[name] = value?.DeepClone();
+
             var mergedData = changeKind == ChangeKind.Full
-                ? (JsonObject)known.DeepClone()
-                : EntityDataMerger.MergePatch(oldData, known);
-            var mergedExtensions = EntityDataMerger.MergePatch(oldExtensions, unknownProperties);
+                ? (JsonObject)filteredKnown.DeepClone()
+                : EntityDataMerger.MergePatch(oldData, filteredKnown);
+            // A Full event's own "replace wholesale" intent applies only to
+            // this event's non-late contribution -- a property excluded
+            // above because it was individually late must still keep its
+            // OLD value, never silently disappear just because this event
+            // otherwise declares itself Full.
+            if (changeKind == ChangeKind.Full)
+                foreach (var name in lateProperties)
+                    if (oldData.TryGetPropertyValue(name, out var oldValue))
+                        mergedData[name] = oldValue?.DeepClone();
+            var mergedExtensions = EntityDataMerger.MergePatch(oldExtensions, filteredUnknown);
 
             var newDataJson = mergedData.ToJsonString();
+            var appliedProperties = touchedProperties.Except(lateProperties).ToList();
+            // A property's OWN PropertyVersions/PropertyLogicalTimes entry
+            // only advances when ITS OWN value actually differs from
+            // before -- NOT merely because it was present in this patch's
+            // payload (applied, non-late) at all. Every event necessarily
+            // re-declares the entity's own identifying field (e.g.
+            // OrderId) alongside whatever it actually changes, and that
+            // field's VALUE never differs patch to patch -- bumping either
+            // marker anyway on every fold would make it look permanently
+            // "just changed," manufacturing a false conflict (ADR-024) for
+            // the next unrelated patch that happens to touch the same
+            // identifying field, or a false late-arrival rejection
+            // (ADR-029) for a later, genuinely-unrelated one (found only
+            // by running this, not assumed -- `TwoPatchesBasedOnTheSame
+            // VersionTouchingDifferentPropertiesBothFoldCleanlyWithNoConflict`
+            // and `AnEventLateRelativeToTheWholeRowStillFoldsAProperty
+            // ItsOwnPreviousTouchNeverSaw` both failed on OrderId's own
+            // re-declared-but-unchanged value until this comparison
+            // covered PropertyLogicalTimes too, not just PropertyVersions).
+            var changedProperties = appliedProperties
+                .Where(name => PropertyValueOrNull(oldData, oldExtensions, name) != PropertyValueOrNull(mergedData, mergedExtensions, name))
+                .ToList();
+
             if (newDataJson != row.Data)
             {
                 row.Version += 1; // ADR-021/029 -- only bumps when Data actually changes
-                // A property's OWN PropertyVersions entry only advances
-                // when ITS OWN value actually differs from before -- NOT
-                // merely because it was present in this patch's payload.
-                // Every event necessarily re-declares the entity's own
-                // identifying field (e.g. OrderId) alongside whatever it
-                // actually changes, and that field's VALUE never differs
-                // patch to patch -- bumping it anyway on every fold would
-                // make it look permanently "just changed" and manufacture
-                // a false conflict for the next unrelated patch that
-                // happens to touch the same identifying field (found only
-                // by running this, not assumed: `TwoPatchesBasedOnThe
-                // SameVersionTouchingDifferentPropertiesBothFoldCleanly
-                // WithNoConflict` failed until this comparison was added).
-                foreach (var name in touchedProperties)
-                {
-                    var oldValue = PropertyValueOrNull(oldData, oldExtensions, name);
-                    var newValue = PropertyValueOrNull(mergedData, mergedExtensions, name);
-                    if (oldValue != newValue)
-                        propertyVersions[name] = row.Version;
-                }
+                foreach (var name in changedProperties)
+                    propertyVersions[name] = row.Version;
                 row.PropertyVersions = JsonSerializer.Serialize(propertyVersions);
             }
             row.Data = newDataJson;
             row.Extensions = mergedExtensions.ToJsonString();
             row.SchemaVersion = storedEvent.SchemaVersion;
             row.Hash = ComputeHash(newDataJson);
-            row.LastAppliedLogicalTime = storedEvent.OccurredAt;
+            if (storedEvent.OccurredAt > row.LastAppliedLogicalTime)
+                row.LastAppliedLogicalTime = storedEvent.OccurredAt; // row-level rollup -- the MOST RECENT OccurredAt of any event that applied at least one property, for display/audit; per-property enforcement above is what actually gates correctness now
             row.LastAppliedOriginId = storedEvent.OriginId; // ADR-033 -- which site's event most recently won this fold
+
+            if (changedProperties.Count > 0)
+            {
+                foreach (var name in changedProperties)
+                    propertyLogicalTimes[name] = storedEvent.OccurredAt;
+                row.PropertyLogicalTimes = JsonSerializer.Serialize(propertyLogicalTimes);
+            }
         }
 
-        row.LateArrivalFlag = isLateArrival;
+        row.LateArrivalFlag = isFullyLate;
         row.UpdatedAt = DateTimeOffset.UtcNow;
     }
 
@@ -517,6 +572,14 @@ public class RouterWorker(IServiceScopeFactory scopeFactory, ILogger<RouterWorke
         string.IsNullOrEmpty(propertyVersionsJson)
             ? new Dictionary<string, long>()
             : JsonSerializer.Deserialize<Dictionary<string, long>>(propertyVersionsJson)!;
+
+    // ADR-029's per-property late-arrival comparison needs the same kind
+    // of property-name -> marker map ParsePropertyVersions above provides
+    // for ADR-024, keyed by OccurredAt instead of Version.
+    private static Dictionary<string, DateTimeOffset> ParsePropertyLogicalTimes(string? propertyLogicalTimesJson) =>
+        string.IsNullOrEmpty(propertyLogicalTimesJson)
+            ? new Dictionary<string, DateTimeOffset>()
+            : JsonSerializer.Deserialize<Dictionary<string, DateTimeOffset>>(propertyLogicalTimesJson)!;
 
     // A property can live in either Data (declared/known) or Extensions
     // (ADR-022's overflow bag) depending on the schema at fold time --
@@ -538,15 +601,23 @@ public class RouterWorker(IServiceScopeFactory scopeFactory, ILogger<RouterWorke
     // blank slate, including only events whose CURRENT AuthorityStatus is
     // "accepted" -- re-evaluated fresh here, not the status each event held
     // at its own original processing time, since that's exactly what may
-    // have just changed. The Event Log itself is never touched (AsNoTracking,
-    // and ConflictFlag/LateArrivalFlag on each source StoredEvent are
-    // deliberately never reassigned here -- they remain the permanent record
-    // of what happened at that event's own original processing time, not
-    // overwritten by a later rebuild's own internal late-arrival bookkeeping,
-    // which is why isLateArrival below is a local, not a field write). Only
-    // the DERIVED Entity Store cache is recomputed -- consistent with
-    // README.md's "never lose or corrupt data": the immutable history is
-    // what makes this replay possible and correct in the first place.
+    // have just changed. Reuses FoldAsync itself for each contributing
+    // event (2026-08-12 -- originally a hand-duplicated copy of FoldAsync's
+    // own conflict/late-arrival/merge logic, which is exactly the kind of
+    // duplication that let ADR-024/029's own per-property fixes drift
+    // between this method and FoldAsync the first time either was
+    // written): the row this method resets below stays the SAME tracked
+    // EntityStoreRow instance FoldAsync's own `db.EntityStore.Local.
+    // FirstOrDefault` lookup finds and continues folding onto, so there is
+    // only ever one place this fold logic lives. The Event Log itself is
+    // never touched -- events are loaded AsNoTracking, so FoldAsync's own
+    // ConflictFlag/LateArrivalFlag mutations on each source StoredEvent
+    // are entirely in-memory and never reach SaveChangesAsync; the
+    // permanent record of what happened at that event's own ORIGINAL
+    // processing time is untouched. Only the DERIVED Entity Store cache is
+    // recomputed -- consistent with README.md's "never lose or corrupt
+    // data": the immutable history is what makes this replay possible and
+    // correct in the first place.
     internal static async Task RebuildEntityFromAcceptedEventsAsync(
         EventStoreContext db, SchemaRegistryService schemaRegistry, string entityId, CancellationToken ct)
     {
@@ -556,12 +627,13 @@ public class RouterWorker(IServiceScopeFactory scopeFactory, ILogger<RouterWorke
             .ToListAsync(ct);
 
         var row = await db.EntityStore.SingleAsync(r => r.EntityId == entityId, ct);
+        var entityType = row.EntityType;
         row.Data = "{}";
         row.Extensions = "{}";
         row.PropertyVersions = "{}"; // recomputed fresh below, same reasoning as Data/Version -- a stale per-property marker from before the rebuild must never survive it
+        row.PropertyLogicalTimes = "{}"; // same reasoning, for ADR-029's per-property late-arrival marker
         row.Version = 0;
         row.LastAppliedLogicalTime = DateTimeOffset.MinValue;
-        var propertyVersions = new Dictionary<string, long>();
 
         var anyAccepted = false;
         foreach (var storedEvent in events.Where(e => e.AuthorityStatus == "accepted"))
@@ -574,52 +646,8 @@ public class RouterWorker(IServiceScopeFactory scopeFactory, ILogger<RouterWorke
             var payloadNode = JsonNode.Parse(storedEvent.Payload) as JsonObject ?? new JsonObject();
             var (known, unknown) = SplitByConformance(JsonNode.Parse(definition.JsonSchema), payloadNode);
 
-            // Same late-arrival guard FoldAsync uses (ADR-029) -- re-evaluated
-            // against THIS replay's own accumulating LastAppliedLogicalTime,
-            // never written back to the source StoredEvent. row.LateArrivalFlag
-            // (unlike the per-event flag) IS a rolled-up field on the row
-            // itself (ADR-029's own comment: "rolled up from contributing
-            // events") -- FoldAsync always reassigns it per fold, so this
-            // rebuild does too, for the same "reflects the most recently
-            // processed contribution" semantics.
-            var isLateArrival = storedEvent.OccurredAt <= row.LastAppliedLogicalTime;
-            row.LateArrivalFlag = isLateArrival;
-            row.LastAppliedSequenceNumber = storedEvent.SequenceNumber;
-            if (isLateArrival)
-                continue;
-
-            var oldData = JsonNode.Parse(row.Data) as JsonObject ?? new JsonObject();
-            var oldExtensions = JsonNode.Parse(row.Extensions) as JsonObject ?? new JsonObject();
-            var mergedData = definition.ChangeKind == ChangeKind.Full
-                ? (JsonObject)known.DeepClone()
-                : EntityDataMerger.MergePatch(oldData, known);
-            var mergedExtensions = EntityDataMerger.MergePatch(oldExtensions, unknown);
-
-            var newDataJson = mergedData.ToJsonString();
-            if (newDataJson != row.Data)
-            {
-                row.Version += 1;
-                // Same "only the properties whose OWN value actually
-                // changed" comparison FoldAsync uses (see its own comment)
-                // -- otherwise a rebuild would re-derive the exact false-
-                // conflict-prone PropertyVersions shape this item fixed in
-                // the first place.
-                foreach (var name in known.Select(kv => kv.Key).Concat(unknown.Select(kv => kv.Key)))
-                {
-                    var oldValue = PropertyValueOrNull(oldData, oldExtensions, name);
-                    var newValue = PropertyValueOrNull(mergedData, mergedExtensions, name);
-                    if (oldValue != newValue)
-                        propertyVersions[name] = row.Version;
-                }
-            }
-            row.Data = newDataJson;
-            row.Extensions = mergedExtensions.ToJsonString();
-            row.SchemaVersion = storedEvent.SchemaVersion;
-            row.Hash = ComputeHash(newDataJson);
-            row.LastAppliedLogicalTime = storedEvent.OccurredAt;
-            row.LastAppliedOriginId = storedEvent.OriginId;
+            await FoldAsync(db, entityId, storedEvent, entityType, definition.ChangeKind, known, unknown, ct);
         }
-        row.PropertyVersions = JsonSerializer.Serialize(propertyVersions);
 
         // Zero surviving contributions -- the entity never existed from the
         // remaining, trustworthy history's point of view. Removing the row

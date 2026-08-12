@@ -220,22 +220,22 @@ internal static class VitalsWorkflowDScenarioAssertions
         // (step above) with an OccurredAt LATER than IonmAlertRaised's own
         // (published first, chronologically) -- so by the time the
         // neurologist's decision finally catches IonmAlertRaised UP,
-        // ADR-029's late-arrival guard (`storedEvent.OccurredAt <=
-        // row.LastAppliedLogicalTime`) rejects this catch-up fold as
-        // "late," even though nothing it contributes (Finding/Severity)
-        // actually conflicts with AckedBy. That guard is coarse -- per
-        // EVENT, not per FIELD -- a real, load-bearing limitation this
-        // domain's own ordering (a fast, always-immediately-accepted Ack
-        // racing ahead of a deliberately-delayed non-authoritative
-        // capture's own catch-up) surfaces deterministically, every time,
-        // not as a rare race. Tracked in TODO.md, not silently smoothed
-        // over. AuthorityStatus itself still correctly reaches "accepted"
-        // (checked above) -- only the Entity Store's own Data field is
-        // affected.
+        // ADR-029's late-arrival guard used to compare
+        // `storedEvent.OccurredAt <= row.LastAppliedLogicalTime` for the
+        // WHOLE row, rejecting this catch-up fold entirely even though
+        // nothing it contributes (Finding/Severity) actually conflicts
+        // with AckedBy. Fixed (2026-08-12, TODO.md): the guard is now
+        // per-PROPERTY (EntityStoreRow.PropertyLogicalTimes) -- Finding/
+        // Severity were never touched by anything before this catch-up,
+        // so they're not late on THIS fold's account, and merge in
+        // correctly; AckedBy is untouched by this fold at all (IonmAlertRaised's
+        // own payload never declares it), so it simply stays whatever the
+        // acknowledgment already set. AuthorityStatus itself still
+        // correctly reaches "accepted" (checked above).
         var row = await db.EntityStore.AsNoTracking().SingleAsync(r => r.EntityId == $"{AppId}:ionmalert:alert-77g");
-        Assert.IsTrue(row.LateArrivalFlag, "documents the real, deterministic late-arrival rejection described above");
-        Assert.IsTrue(row.Data.Contains("tech-4"), "AckedBy was already folded, authoritatively, before the catch-up ran");
-        Assert.IsFalse(row.Data.Contains("Urgent"), "Finding/Severity's own catch-up fold is skipped entirely once flagged late -- a real, open gap, not asserted as correct behavior");
+        Assert.IsFalse(row.LateArrivalFlag, "Finding/Severity were never touched before -- not late on this fold's own account, so nothing about this fold is rejected");
+        Assert.IsTrue(row.Data.Contains("tech-4"), "AckedBy was already folded, authoritatively, before the catch-up ran, and is untouched by it");
+        Assert.IsTrue(row.Data.Contains("Urgent"), "Finding/Severity's own catch-up fold now merges in -- ADR-029's guard no longer rejects the whole entity just because a DIFFERENT property changed more recently");
     }
 
     public static async Task TheNeurologistSignsOffRejectedInsteadAndTheRecordNeverReachesTheAuthoritativeEntityStore(
