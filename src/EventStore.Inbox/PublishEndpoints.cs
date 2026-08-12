@@ -175,6 +175,7 @@ public static class PublishEndpoints
             entityId = string.IsNullOrEmpty(a.EntityId) ? null : a.EntityId,
             schemaStatus = a.SchemaStatus, authorityStatus = a.AuthorityStatus,
             conflictFlag = a.ConflictFlag, reason = a.Reason, sequenceNumber = a.SequenceNumber,
+            originId = (string?)null, // ADR-033/090 -- same single-site-deployment null as the single-publish envelope above; found missing from this shape by a compliance audit
         },
         PublishResult.Conflict => new { eventType, httpStatus = 409, error = "eventId already used with different content" },
         PublishResult.UnregisteredEventType => new { eventType, httpStatus = 404, error = $"event type '{eventType}' is not registered" },

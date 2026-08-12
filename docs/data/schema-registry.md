@@ -375,7 +375,7 @@ model concern, so it isn't specified further here.
 ```csharp
 public class LeaderLease
 {
-    public string WorkerRole { get; set; } = default!;  // "Router" | "UpcastMaterializer" | "PeerSyncOutboxPump" | "WebhookOutboxPump" | "ExpectedResponseWatcher" (ADR-094) — primary key
+    public string WorkerRole { get; set; } = default!;  // "Router" | "PeerSyncOutboxPump" | "WebhookOutboxPump" | "ExpectedResponseWatcher" (ADR-094) — primary key. No independent "UpcastMaterializer" row: ADR-078's own "Corrected, later pass" note established it runs inline under Router's own lease, never its own; a design-compliance audit found that correction hadn't been carried into this list.
     public string LeaseHolderId { get; set; } = default!; // this instance's own identity (host name + process id, or similar)
     public DateTimeOffset LeaseExpiresAt { get; set; }
 }

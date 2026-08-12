@@ -45,3 +45,21 @@ Consequences:
 - A fresh deployment with nothing configured is CORS-closed to every
   browser origin — safe-by-default, but means "why can't my browser client
   connect" is the first thing to check `Cors:AllowedOrigins` for.
+
+**Corrected, later pass**: `EventStore.DevIdp` — a fourth deployable
+this Decision's own text didn't name (it only lists "all three
+`EventStore.Host.<Provider>` deployables") — independently carries its
+own copy of this identical policy shape (same `Cors:AllowedOrigins`
+config key, same deny-by-default posture, same header allow-list plus
+`DPoP`), added once `client-web`'s browser calls to `DevIdp`'s own
+`/connect/token` needed it (found only by actually driving a real
+browser against it, this codebase's own repeated discipline). Not
+duplicated by oversight — `DevIdp`'s CORS wiring also needs a
+`CorsBeforeOpenIddictStartupFilter` (`src/EventStore.DevIdp/Program.cs`)
+that `EventStore.Host.Core`'s three deployables never needed, since
+OpenIddict's own token-endpoint middleware intercepts a request before
+ASP.NET Core's ordinary `UseCors()` placement would ever run for it —
+genuinely different enough plumbing that sharing `HostCoreExtensions`'
+implementation outright wasn't a good fit, even though the *policy*
+itself is identical. Found missing from this ADR's own closed
+enumeration by a design-compliance audit.

@@ -98,9 +98,15 @@ Consequences:
   protect with its own lease; it only ever runs as part of `RouterWorker`'s
   execution, under `RouterWorker`'s own `"Router"` lease. A second lease
   row would protect nothing. Only 3 independent `LeaderLease` rows
-  actually exist today: `"Router"`, `"PeerSyncOutboxPump"`, and (once
-  `docs/08-build-plan.md`'s Outbound Webhooks item wired it in)
-  `"WebhookOutboxPump"` — not the 4 the code sample above lists.
+  existed at the time this note was written: `"Router"`,
+  `"PeerSyncOutboxPump"`, and (once `docs/08-build-plan.md`'s Outbound
+  Webhooks item wired it in) `"WebhookOutboxPump"` — not the 4 the code
+  sample above lists. **A 4th, genuinely independent role has since
+  joined this list organically** (`ADR-094`'s `"ExpectedResponseWatcher"`,
+  its own separate `BackgroundService`, not a revision of this ADR's own
+  decision) — found stale by a design-compliance audit; this note's own
+  "only 3" count is a snapshot of when it was written, not a current
+  count.
 - Clarifies `ADR-024`'s actual scope (write-time conflict flagging only)
   — worth a cross-reference wherever `ADR-024`/`ADR-029` could otherwise
   be misread as already covering concurrent-fold safety.
