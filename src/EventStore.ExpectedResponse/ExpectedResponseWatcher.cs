@@ -5,6 +5,7 @@ using EventStore.Inbox;
 using EventStore.LeaderElection;
 using EventStore.Persistence;
 using EventStore.SchemaRegistry;
+using EventStore.WorkerWakeSignal;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -25,6 +26,10 @@ namespace EventStore.ExpectedResponse;
 public class ExpectedResponseWatcher(IServiceScopeFactory scopeFactory, ILogger<ExpectedResponseWatcher> logger) : BackgroundService
 {
     private static readonly TimeSpan PollInterval = TimeSpan.FromSeconds(1);
+
+    // ADR-095 -- shared with PublishService's own NotifyAsync call via
+    // WakeSignalTopics (see WakeSignalTopics.cs's own comment for why).
+    public const string Topic = WakeSignalTopics.ExpectedResponse;
 
     private const string WorkerRole = "ExpectedResponseWatcher";
     private static readonly TimeSpan LeaseDuration = TimeSpan.FromSeconds(5);
@@ -78,7 +83,17 @@ public class ExpectedResponseWatcher(IServiceScopeFactory scopeFactory, ILogger<
                 logger.LogError(ex, "Expected-response watcher tick failed");
             }
 
-            await Task.Delay(PollInterval, stoppingToken);
+            // ADR-095 -- same shape RouterWorker established first.
+            try
+            {
+                using var wakeScope = scopeFactory.CreateScope();
+                var wakeSignal = wakeScope.ServiceProvider.GetRequiredService<IWorkerWakeSignal>();
+                await wakeSignal.WaitForWakeAsync(Topic, PollInterval, stoppingToken);
+            }
+            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+            {
+                break;
+            }
         }
     }
 

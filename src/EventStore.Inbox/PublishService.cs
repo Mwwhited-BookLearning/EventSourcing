@@ -200,13 +200,24 @@ public class PublishService(
         }
 
         // ADR-095 -- best-effort, AFTER the durable append above genuinely
-        // succeeded, never before: Router's own poll loop is what actually
-        // finds and processes this event regardless, so a signal failure
-        // here must never fail the publish itself. null wakeSignal (every
-        // pre-existing 3-6-arg test construction site) is simply a no-op --
-        // this ADR's own worker-side change is unaffected either way.
+        // succeeded, never before: each worker's own poll loop is what
+        // actually finds and processes this event regardless, so a signal
+        // failure here must never fail the publish itself. null wakeSignal
+        // (every pre-existing 3-6-arg test construction site) is simply a
+        // no-op -- this ADR's own worker-side change is unaffected either
+        // way. Every new event is a candidate for all four of these topics
+        // (an arbitrary derivation source, peer-sync push, or tracked
+        // request/response) -- unlike WebhookOutboxPump's own topic
+        // (notified narrowly by RouterWorker, once its fold actually
+        // enqueues something), there is no cheaper-to-check condition here
+        // than "a new event exists at all," so all four fire together.
         if (wakeSignal is not null)
+        {
             await wakeSignal.NotifyAsync(RouterWorker.Topic, ct);
+            await wakeSignal.NotifyAsync(WakeSignalTopics.Derivation, ct);
+            await wakeSignal.NotifyAsync(WakeSignalTopics.ExpectedResponse, ct);
+            await wakeSignal.NotifyAsync(WakeSignalTopics.PeerSync, ct);
+        }
 
         // ADR-086 -- opt-in per event type (RequiredSignature.EnableRfc3161Timestamp),
         // never global. Necessarily AFTER EventAppender.AppendAsync: ChainHash isn't

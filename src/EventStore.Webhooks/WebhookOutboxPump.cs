@@ -9,6 +9,7 @@ using EventStore.LeaderElection;
 using EventStore.Masking;
 using EventStore.Persistence;
 using EventStore.SchemaRegistry;
+using EventStore.WorkerWakeSignal;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -29,6 +30,12 @@ public class WebhookOutboxPump(
     : BackgroundService
 {
     private static readonly TimeSpan PollInterval = TimeSpan.FromMilliseconds(500);
+
+    // ADR-095 -- RouterWorker notifies this topic right after
+    // WebhookEnqueueResolver actually adds a WebhookOutbox row (no cycle
+    // risk: EventStore.Webhooks has no dependency back on EventStore.Router,
+    // so RouterWorker can reference this constant directly).
+    public const string Topic = "webhookoutbox";
 
     private const string WorkerRole = "WebhookOutboxPump";
     private static readonly TimeSpan LeaseDuration = TimeSpan.FromSeconds(5);
@@ -75,7 +82,17 @@ public class WebhookOutboxPump(
                 logger.LogError(ex, "Webhook outbox pump tick failed");
             }
 
-            await Task.Delay(PollInterval, stoppingToken);
+            // ADR-095 -- same shape RouterWorker established first.
+            try
+            {
+                using var wakeScope = scopeFactory.CreateScope();
+                var wakeSignal = wakeScope.ServiceProvider.GetRequiredService<IWorkerWakeSignal>();
+                await wakeSignal.WaitForWakeAsync(Topic, PollInterval, stoppingToken);
+            }
+            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+            {
+                break;
+            }
         }
     }
 

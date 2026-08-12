@@ -95,19 +95,42 @@ Decision:
 
 Consequences:
 - **Resolves `docs/10-open-questions.md`'s row** on this exact fork.
-- **Scoped to `RouterWorker` only, a deliberate staged rollout, not the
+- ~~**Scoped to `RouterWorker` only, a deliberate staged rollout, not the
   finished job.** `DerivationWorker`, `WebhookOutboxPump`,
   `PeerSyncWorker`, `ChannelDerivationWorker`, and `ExpectedResponseWatcher`
   still poll on a fixed interval alone — extending each to call
   `WaitForWakeAsync` (and wiring the matching `NotifyAsync` call at
   whichever write path feeds it) is mechanical once a topic name is picked
   per worker, not a new design. Tracked as real, named follow-up work, not
-  swept under this ADR's own exit criteria.
-- **The SQL Server Service Broker queue/service is scoped to ONE topic
+  swept under this ADR's own exit criteria.~~ — **extended, 2026-08-12,
+  same session's own named follow-up**: all five now wired the identical
+  way, each on its own topic (`WakeSignalTopics.Derivation`/
+  `.ExpectedResponse`/`.PeerSync`, plus `WebhookOutboxPump.Topic`/
+  `ChannelDerivationWorker.Topic` declared on the worker itself where no
+  cross-project-cycle risk exists). `PublishService.PublishAsync` notifies
+  `derivation`/`expectedresponse`/`peersync` together (every new event is
+  a candidate for all three); `RouterWorker.RunOnceAsync` notifies
+  `webhookoutbox` once its own tick folds anything, given a non-null
+  `payloadMasker`; `TelemetrySampleWriter.IngestAsync` notifies
+  `channelderivation` from ADR-031's own separate telemetry data plane.
+- ~~**The SQL Server Service Broker queue/service is scoped to ONE topic
   ("router") for this pass** — one shared queue, no per-topic message
   routing or `message_body` filtering. Extending to more workers needs
   either per-topic queues or a topic check on `RECEIVE`, neither built
-  here since there was only one topic to receive.
+  here since there was only one topic to receive.~~ — **extended,
+  2026-08-12**: `ExtendWorkerWakeSignalPerTopic` (the migration right
+  after `AddWorkerWakeSignal`) creates a full queue/service/contract/
+  message-type SET PER NEW TOPIC, because `WAITFOR`/`RECEIVE` has no
+  `WHERE` clause and Service Broker's `RECEIVE` has no "peek without
+  removing" — the only way for 6 concurrently-waiting topics to each
+  reliably see only their own messages is separate queues, not a shared
+  one with a body check that would still have to dequeue (and thus lose,
+  for its real intended waiter) a wrong-topic message. `"router"` keeps
+  its original, un-suffixed objects; every other topic gets a
+  `_{topic}`-suffixed set. `SqlServerWorkerWakeSignal`'s own topic-to-name
+  mapping special-cases `"router"` for exactly this reason, and validates
+  every topic against a plain-lowercase-letters allow-list before ever
+  interpolating it into a raw SQL object name.
 - **Two real bugs found only by actually running this, not by design
   review alone**: (1) `SqliteWorkerWakeSignal`'s static in-process state,
   keyed by topic alone, let unrelated `WebApplicationFactory`-hosted test
@@ -134,4 +157,13 @@ Consequences:
   (`WorkerWakeSignalSqliteTests.cs`) — each proving both halves: a
   `NotifyAsync` during an active wait wakes it well before its own
   timeout, and a wait with no signal at all still runs out its full
-  timeout as the correctness backstop.
+  timeout as the correctness backstop. Extended, 2026-08-12:
+  `WorkerWakeSignalSqlServerTests.cs` now also proves a non-`"router"`
+  topic's own per-topic queue wakes correctly, AND proves the actual
+  isolation the per-topic migration exists for — two different topics
+  waiting concurrently, only one notified, and only that one wakes early
+  while the other genuinely runs out its own timeout (a real regression
+  test for the exact failure mode the single-shared-queue design would
+  have had). `WakeSignalExtendedWorkersSqliteTests.cs` proves each of the
+  5 new call sites (`PublishService`, `RouterWorker`,
+  `TelemetrySampleWriter`) actually signals its own topic.

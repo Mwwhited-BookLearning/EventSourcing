@@ -88,5 +88,39 @@ public class WorkerWakeSignalSqlServerTests
         await waiter.WaitForWakeAsync("router", TimeSpan.FromMilliseconds(500), CancellationToken.None);
         secondStopwatch.Stop();
         Assert.IsTrue(secondStopwatch.Elapsed >= TimeSpan.FromMilliseconds(400), $"expected the wait to run out its own timeout with no message, took only {secondStopwatch.Elapsed}");
+
+        // ExtendWorkerWakeSignalPerTopic -- a non-"router" topic gets its
+        // OWN queue/service/contract/message-type set, exercised here for
+        // real against the same container, not assumed from "router"'s own
+        // scenario above.
+        var derivationStopwatch = Stopwatch.StartNew();
+        var derivationWait = waiter.WaitForWakeAsync("derivation", TimeSpan.FromSeconds(10), CancellationToken.None);
+        await Task.Delay(300);
+        await notifier.NotifyAsync("derivation", CancellationToken.None);
+        await derivationWait;
+        derivationStopwatch.Stop();
+        Assert.IsTrue(derivationStopwatch.Elapsed < TimeSpan.FromSeconds(3), $"expected derivation's own per-topic queue to wake near-immediately, took {derivationStopwatch.Elapsed}");
+
+        // The real bug ADR-095's own Consequences named as the reason this
+        // migration exists: before per-topic queues, ANY message on the one
+        // shared queue satisfied whichever topic happened to be waiting,
+        // regardless of which topic actually notified. Two DIFFERENT topics
+        // waiting concurrently, only one notified -- only that one may wake;
+        // the other must still run out its own full timeout. Two separate
+        // DbContexts/connections for the two concurrent waits -- one
+        // connection running two concurrent WAITFOR (RECEIVE ...) calls
+        // needs MultipleActiveResultSets, which this test's own connection
+        // string doesn't enable (found only by running this).
+        using var peerSyncWaiterDb = CreateContext();
+        var peerSyncWaiter = new SqlServerWorkerWakeSignal(peerSyncWaiterDb);
+        var isolationStopwatch = Stopwatch.StartNew();
+        var peerSyncWait = peerSyncWaiter.WaitForWakeAsync("peersync", TimeSpan.FromMilliseconds(800), CancellationToken.None);
+        var expectedResponseWait = waiter.WaitForWakeAsync("expectedresponse", TimeSpan.FromSeconds(10), CancellationToken.None);
+        await Task.Delay(300);
+        await notifier.NotifyAsync("expectedresponse", CancellationToken.None);
+        await Task.WhenAll(peerSyncWait, expectedResponseWait);
+        isolationStopwatch.Stop();
+        Assert.IsTrue(isolationStopwatch.Elapsed >= TimeSpan.FromMilliseconds(700),
+            $"expected peersync's own wait to run out its full timeout, unaffected by expectedresponse's own notify on a DIFFERENT topic's queue, took only {isolationStopwatch.Elapsed}");
     }
 }

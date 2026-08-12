@@ -4,6 +4,7 @@ using EventStore.Domain.Replication;
 using EventStore.Inbox;
 using EventStore.LeaderElection;
 using EventStore.Persistence;
+using EventStore.WorkerWakeSignal;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -28,6 +29,10 @@ public class PeerSyncWorker(
     IServiceScopeFactory scopeFactory, PeerAddressBook addressBook, ILogger<PeerSyncWorker> logger) : BackgroundService
 {
     private static readonly TimeSpan PollInterval = TimeSpan.FromMilliseconds(500);
+
+    // ADR-095 -- shared with PublishService's own NotifyAsync call via
+    // WakeSignalTopics (see WakeSignalTopics.cs's own comment for why).
+    public const string Topic = WakeSignalTopics.PeerSync;
 
     // ADR-078 -- one of the 4 named worker roles, independent of "Router"'s
     // own lease; either can be held/lost without affecting the other.
@@ -78,7 +83,17 @@ public class PeerSyncWorker(
                 logger.LogError(ex, "Peer sync tick failed");
             }
 
-            await Task.Delay(PollInterval, stoppingToken);
+            // ADR-095 -- same shape RouterWorker established first.
+            try
+            {
+                using var wakeScope = scopeFactory.CreateScope();
+                var wakeSignal = wakeScope.ServiceProvider.GetRequiredService<IWorkerWakeSignal>();
+                await wakeSignal.WaitForWakeAsync(Topic, PollInterval, stoppingToken);
+            }
+            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+            {
+                break;
+            }
         }
     }
 

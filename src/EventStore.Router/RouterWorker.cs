@@ -96,7 +96,8 @@ public class RouterWorker(IServiceScopeFactory scopeFactory, ILogger<RouterWorke
                     var upcastChain = scope.ServiceProvider.GetRequiredService<UpcastChain>();
                     var erasureKeyService = scope.ServiceProvider.GetRequiredService<ErasureKeyService>();
                     var payloadMasker = scope.ServiceProvider.GetRequiredService<IPayloadMasker>();
-                    await RunOnceAsync(db, schemaRegistry, upcastChain, erasureKeyService, payloadMasker, stoppingToken);
+                    var tickWakeSignal = scope.ServiceProvider.GetRequiredService<IWorkerWakeSignal>();
+                    await RunOnceAsync(db, schemaRegistry, upcastChain, erasureKeyService, payloadMasker, tickWakeSignal, stoppingToken);
                 }
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
@@ -144,7 +145,7 @@ public class RouterWorker(IServiceScopeFactory scopeFactory, ILogger<RouterWorke
     // here since it's not driven by "received" events at all).
     public static async Task<int> RunOnceAsync(
         EventStoreContext db, SchemaRegistryService schemaRegistry, UpcastChain upcastChain, ErasureKeyService? erasureKeyService = null,
-        IPayloadMasker? payloadMasker = null, CancellationToken ct = default)
+        IPayloadMasker? payloadMasker = null, IWorkerWakeSignal? wakeSignal = null, CancellationToken ct = default)
     {
         var received = await db.Events
             .Where(e => e.Status == "received")
@@ -156,6 +157,18 @@ public class RouterWorker(IServiceScopeFactory scopeFactory, ILogger<RouterWorke
 
         if (received.Count > 0)
             await db.SaveChangesAsync(ct);
+
+        // ADR-095 -- best-effort, after this tick's own fold genuinely
+        // committed above. Fires once per tick that processed anything,
+        // not once per enqueued row -- a spurious wake for a tick that
+        // folded events but matched no Active WebhookSubscription is
+        // harmless (WebhookOutboxPump's own poll loop remains the
+        // correctness backstop, same reasoning as every other topic this
+        // ADR wires). payloadMasker is null only for call sites that never
+        // wire webhooks at all, the same guard WebhookEnqueueResolver's own
+        // call above already uses.
+        if (received.Count > 0 && payloadMasker is not null && wakeSignal is not null)
+            await wakeSignal.NotifyAsync(EventStore.Webhooks.WebhookOutboxPump.Topic, ct);
 
         // ADR-027 Trigger 2 -- catches up any backlog left by a mapping that
         // didn't exist yet when its events originally folded.

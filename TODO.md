@@ -25,18 +25,6 @@ here instead of inlining.
 
 ## Active
 
-- **`ADR-095`'s push-notification wake-up layer is proven end-to-end but
-  wired into `RouterWorker` only, a deliberate staged rollout, not the
-  finished job.** `DerivationWorker`, `WebhookOutboxPump`,
-  `PeerSyncWorker`, `ChannelDerivationWorker`, and `ExpectedResponseWatcher`
-  still poll on a fixed interval alone, with no `NotifyAsync`/
-  `WaitForWakeAsync` wiring at all. Mechanical once a topic name is picked
-  per worker and the matching write path (whatever feeds that worker) gets
-  a `NotifyAsync` call after its own durable write succeeds — the same
-  pattern `RouterWorker`/`PublishService` already establish, no new
-  design needed. Pick up if/when the added latency-vs-poll-interval gap
-  for any of these five specifically becomes a real, felt problem.
-
 - **`ADR-073`/build-plan item 45's own exit criterion asks for a manual
   screen-reader pass (a real NVDA/JAWS/VoiceOver session) confirming
   `GenericFallbackView` is fully navigable — not performed.** No screen-

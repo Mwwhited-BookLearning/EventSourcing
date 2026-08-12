@@ -111,7 +111,7 @@ provider they apply to — not "code written."
 | 50 | [Proving-Ground Application UX](#proving-ground-application-ux) | MVVM Client | Done |
 | 51 | [Domain Decision Queues](#domain-decision-queues) | Proving-Ground Application UX, Digital Sign-Off for Regulated Actions, Non-Authoritative Capture | Done |
 | 52 | [Generic Entity/Live-View Query](#generic-entitylive-view-query) | GraphQL-Only Query Layer, Non-Authoritative Capture, Property-Level Masking, Delegated Grants/RBAC/Read Audit Logging | Done |
-| 53 | [Push-Notification Wake-Up Layer](#push-notification-wake-up-layer) | Publish API, Entity-Centric Core Rebuild | Done (`RouterWorker` only — the other 5 background workers are a named follow-up, see `TODO.md`) |
+| 53 | [Push-Notification Wake-Up Layer](#push-notification-wake-up-layer) | Publish API, Entity-Centric Core Rebuild | Done (all 6 background workers) |
 
 Two groups worth naming up front, since they explain most of the
 ordering below:
@@ -4911,49 +4911,86 @@ noticeably faster than the old fixed poll interval — all verified against
 real infrastructure (Testcontainers for Postgres/SQL Server, direct for
 SQLite), never mocked.
 
-**Status: Done (`RouterWorker` only)** — 2026-08-12, same session. Built:
-`EventStore.WorkerWakeSignal` (interface + `SqliteWorkerWakeSignal`),
-`PostgresWorkerWakeSignal`/`SqlServerWorkerWakeSignal` (in their own
-provider migrations projects, matching `PostgresUniqueConstraintViolationDetector`'s
-own precedent for provider-specific runtime code), a new `WakeSignal`
-entity migrated across all three providers, SQL Server's own
-`AddWorkerWakeSignal` migration additionally creating real Service Broker
-objects (`ENABLE_BROKER`, message type, contract, queue, service).
+**Status: Done (all 6 background workers)** — 2026-08-12, same session,
+two passes. First pass built: `EventStore.WorkerWakeSignal` (interface +
+`SqliteWorkerWakeSignal`), `PostgresWorkerWakeSignal`/
+`SqlServerWorkerWakeSignal` (in their own provider migrations projects,
+matching `PostgresUniqueConstraintViolationDetector`'s own precedent for
+provider-specific runtime code), a new `WakeSignal` entity migrated
+across all three providers, SQL Server's own `AddWorkerWakeSignal`
+migration additionally creating real Service Broker objects
+(`ENABLE_BROKER`, message type, contract, queue, service).
 `RouterWorker`/`PublishService` wired; every `Add*WorkerWakeSignal()`
 registered in each `EventStore.Host.<Provider>/Program.cs`.
 
 Three real bugs found only by actually running this, not by design
-review — full detail in `docs/changes/2026-08-12.md` and `ADR-095`'s own
-Consequences: (1) `SqliteWorkerWakeSignal`'s static state, keyed by topic
-alone, let unrelated `WebApplicationFactory`-hosted test processes
-cross-talk through the same in-process `Channel` — fixed by keying on
-`(connection string, topic)`; (2) one existing SQLite test's own timing
-assumption (`Status == "received"` immediately after publish) broke once
-`RouterWorker` got faster — fixed by polling for the real condition
-instead of an implicit race; (3) `ALTER DATABASE ... SET ENABLE_BROKER`
-cannot target the `master` system database, which broke roughly two
-dozen pre-existing `*SqlServerTests.cs` files that all migrate against
-Testcontainers' own default `master` connection — fixed by gating Service
-Broker object creation on `is_broker_enabled` actually being true, so a
-`master`-connected migration just skips them.
+review, in the first pass — full detail in `docs/changes/2026-08-12.md`
+and `ADR-095`'s own Consequences: (1) `SqliteWorkerWakeSignal`'s static
+state, keyed by topic alone, let unrelated `WebApplicationFactory`-hosted
+test processes cross-talk through the same in-process `Channel` — fixed
+by keying on `(connection string, topic)`; (2) one existing SQLite test's
+own timing assumption (`Status == "received"` immediately after publish)
+broke once `RouterWorker` got faster — fixed by polling for the real
+condition instead of an implicit race; (3) `ALTER DATABASE ... SET
+ENABLE_BROKER` cannot target the `master` system database, which broke
+roughly two dozen pre-existing `*SqlServerTests.cs` files that all
+migrate against Testcontainers' own default `master` connection — fixed
+by gating Service Broker object creation on `is_broker_enabled` actually
+being true, so a `master`-connected migration just skips them.
+
+Second pass (same session) closed the "not built this pass" gap this
+section used to name: `DerivationWorker`, `WebhookOutboxPump`,
+`PeerSyncWorker`, `ChannelDerivationWorker`, and `ExpectedResponseWatcher`
+all now call `WaitForWakeAsync` in place of their own unconditional
+`Task.Delay`, each on its own topic (`WakeSignalTopics.Derivation`/
+`.ExpectedResponse`/`.PeerSync`, `WebhookOutboxPump.Topic`,
+`ChannelDerivationWorker.Topic`). Notify call sites: `PublishService.
+PublishAsync` (derivation/expectedresponse/peersync, together — every new
+event is a candidate for all three); `RouterWorker.RunOnceAsync`
+(webhookoutbox, once its own tick folds anything with a non-null
+`payloadMasker`); `TelemetrySampleWriter.IngestAsync` (channelderivation,
+a completely separate write path from `PublishService`/`RouterWorker`,
+per ADR-031's own separate telemetry data plane). A new shared
+`WakeSignalTopics` class (`EventStore.WorkerWakeSignal`) centralizes the
+three topic constants that would otherwise need a circular project
+reference to share (`EventStore.Derivation`/`Replication`/
+`ExpectedResponse` each already depend on `EventStore.Inbox` for
+`PublishService` itself); `WebhookOutboxPump.Topic`/
+`ChannelDerivationWorker.Topic` stay declared on the worker directly,
+since their own notify call sites have no such cycle.
+
+This pass also closed a gap `ADR-095`'s own Consequences had already
+named as the trigger for needing it: SQL Server's Service Broker
+`WAITFOR`/`RECEIVE` has no `WHERE` clause and no "peek without removing,"
+so a single shared queue across 6 topics would let any message wake
+whichever topic happened to be waiting, regardless of which topic
+actually notified. Fixed with a new migration, `ExtendWorkerWakeSignalPerTopic`,
+creating a full queue/service/contract/message-type SET PER new topic
+(`"router"` keeps its original, un-suffixed objects from
+`AddWorkerWakeSignal`); `SqlServerWorkerWakeSignal`'s own topic-to-name
+mapping special-cases `"router"` and validates every topic against a
+plain-lowercase-letters allow-list before it's ever interpolated into a
+raw SQL object name.
 
 New tests: `WorkerWakeSignalSqliteTests.cs` (3, direct),
-`WorkerWakeSignalPostgresTests.cs`/`WorkerWakeSignalSqlServerTests.cs` (2
-and 1, Testcontainers-backed). Verified: full `dotnet build` clean; full
-Postgres suite (25 tests) clean; SQL Server suite verified in batches
-(this host's own already-documented `fs.aio-max-nr` container-exhaustion
-ceiling under many back-to-back `MsSqlContainer` starts, not a code
-issue — confirmed by every batch passing cleanly once run at a size that
-doesn't exhaust it); SQLite regression suite re-run repeatedly at this
-project's own established 0-2-failures-per-run baseline, every failure
-confirmed pre-existing/unrelated on isolated re-run.
-
-**Not built this pass, a real, named follow-up (`TODO.md`)**:
-`DerivationWorker`, `WebhookOutboxPump`, `PeerSyncWorker`,
-`ChannelDerivationWorker`, and `ExpectedResponseWatcher` still poll on a
-fixed interval alone. Extending each is mechanical, not a new design —
-pick a topic name, call `WaitForWakeAsync` in its own loop, and add a
-`NotifyAsync` call at whichever write path feeds it.
+`WorkerWakeSignalPostgresTests.cs` (2, Testcontainers-backed),
+`WorkerWakeSignalSqlServerTests.cs` (1 combined method, Testcontainers-
+backed, extended in the second pass to also prove a non-`"router"`
+topic's own per-topic queue wakes correctly AND prove real topic
+isolation — two different topics waiting concurrently, only one
+notified, only that one wakes early while the other genuinely runs out
+its own timeout, a regression test for the exact failure mode the
+single-shared-queue design would have had), plus a new
+`WakeSignalExtendedWorkersSqliteTests.cs` (1 combined method) proving
+each of the second pass's 5 new call sites actually signals its own
+topic. Verified: full `dotnet build` clean; full Postgres suite clean;
+full SQL Server suite verified in batches (this host's own already-
+documented `fs.aio-max-nr` container-exhaustion ceiling under many
+back-to-back `MsSqlContainer` starts, not a code issue — confirmed by
+every batch passing cleanly once run at a size that doesn't exhaust it);
+SQLite regression suite re-run repeatedly at this project's own
+established 0-2-failures-per-run baseline, every failure confirmed
+pre-existing/unrelated on isolated re-run.
 
 ## Cross-cutting, every item
 
