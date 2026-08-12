@@ -29,6 +29,15 @@ Decision:
   validates a signed package's certificate against the author's
   registered one at submission time and rejects self-issued
   certificates, so this isn't optional theater once registered.
+  **Corrected, 2026-08-12, found by an independent design-compliance
+  audit**: no certificate has ever actually been registered or applied —
+  confirmed directly, no `.csproj` in this repo sets a package-signing
+  property, and there is no NuGet.org account/publish step anywhere in
+  `.github/workflows/ci.yml` or `scripts/generate-sbom.sh` for one to
+  sign against. This project has never published a NuGet package at all
+  (`ADR-091`'s own "no code and no pipeline yet" framing, still true),
+  so there has been nothing to sign — the mechanism is correctly chosen
+  for whenever publishing starts, but not yet built.
 - **npm build provenance: `npm publish --provenance`, Sigstore-backed,
   SLSA-shaped.** Verified: this generates a signed attestation (source
   repo URI, commit hash, build instructions) logged to Sigstore's public
@@ -36,7 +45,17 @@ Decision:
   provider — **currently GitHub Actions or GitLab CI/CD only**, not an
   arbitrary CI platform. This is a real, narrowing consequence for
   `docs/10-open-questions.md` row 5's still-deferred CI-platform choice
-  — noted there, not resolved by this ADR.
+  — noted there, not resolved by this ADR. **Corrected, 2026-08-12, found
+  by an independent design-compliance audit**: `client-web` has never
+  been published to npm either, and no `npm publish` step (with or
+  without `--provenance`) exists anywhere in this repo — confirmed
+  directly against `.github/workflows/ci.yml`, whose own comment states
+  build-provenance attestation was deliberately left out of CI "at
+  direct user request," and `scripts/generate-sbom.sh`, whose last line
+  admits outright: "Build provenance attestation... not attempted by
+  this local script." Same shape as the NuGet bullet above — the right
+  mechanism, named and verified, but nothing to attest yet because
+  nothing is actually published.
 - **SLSA target: Level 2 now, Level 3 as a named future escalation, not
   decided yet — the same staged-adoption shape `ADR-063` already applies
   to distributed-correctness testing.** Verified SLSA's own level

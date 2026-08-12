@@ -80,3 +80,52 @@ Consequences:
   implementations/quickstart templates demonstrating how to compose the
   published packages — a new domain is free to structure its own host
   project differently as long as it references the same packages.
+
+**Implementation note, added 2026-08-12**: the npm half of this
+Decision was never built — `client-web/package.json` was still the one,
+only app, not split into a library + reference app. Built: `client-web`
+is now an npm workspaces root (`packages/mvvm-client`, `packages/
+reference-app`), matching the NuGet half's own "single root manifest,
+not N per-project copies" shape (`Directory.Build.props`, this ADR's
+own earlier correction above). `@eventstore/mvvm-client` carries every
+composable, API client, IndexedDB-backed store/outbox, device-input
+source, i18n, and playback/bundle-verification module — everything with
+no Vue-template/DOM dependency of its own; `packages/reference-app`
+keeps the actual `.vue` components, `App.vue`/`main.ts`, the offline-
+player build target, the native-bridge reference server, and every
+build script, consuming the library via a real npm workspace symlink
+(`"@eventstore/mvvm-client": "*"` — npm's own local-workspace resolution,
+no publish to a real registry attempted this pass). `main`/`types` point
+directly at the library's own TypeScript source (`./src/index.ts`), not
+a compiled `dist/` — correct for in-monorepo consumption via Vite's own
+esbuild transform, but a real future publish to an external registry
+would need an actual build step first (the library's own `build` script,
+`vue-tsc --emitDeclarationOnly`, already exists and was verified to emit
+real `.d.ts` files, but nothing consumes that `dist/` output yet).
+
+**A real bug found while restructuring, not assumed from the original
+single-app layout**: `outbox/bundle.ts` and `playback/bundle.ts` both
+declare a `parseNdjson` function with different signatures — under the
+original single-app layout every consumer imported directly from
+whichever file it needed, so this collision was invisible. The new
+library's own barrel (`index.ts`) initially used a blanket `export *`
+for both, which ES module semantics resolve by silently DROPPING an
+ambiguously-named binding from the merged namespace entirely (never an
+error, never a merge) — `OfflineBundleViewer.vue`'s own test failed with
+"bundle.events is not iterable" because it silently received the wrong
+shape. Fixed by aliasing the outbox side's export
+(`parseOutboxBundleNdjson`) rather than leaving both under the same bare
+name.
+
+Verified: `npm test` (both workspaces) passes 139/139 (29 test files),
+an exact match for the pre-restructure baseline; `npm run build`
+(`vue-tsc -b && vite build`) and `npm run build:offline-player` both
+succeed; `@eventstore/mvvm-client`'s own declaration build emits real
+`.d.ts` files. One unrelated fix needed along the way:
+`packages/reference-app/tsconfig.json` needed `"node"` added to its
+`types` array — `global.fetch` (used by two pre-existing spec files) is
+a Node.js ambient global that resolved under the original flat
+`node_modules` layout but stopped resolving once `@types/node` moved two
+directory levels further from the app's own `tsconfig.json` under the
+new workspace layout (confirmed via a side-by-side `git worktree`
+comparison against the pre-restructure commit, not assumed).

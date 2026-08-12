@@ -67,5 +67,6 @@ public class PublishSqlServerTests
 
         await OpenApiScenarioAssertions.OpenApiDocumentIncludesRegisteredPublishPaths(registry, specBuilder);
         await OpenApiScenarioAssertions.RegisteringANewTypeInvalidatesTheCachedDocument(registry, specBuilder);
+        await OpenApiScenarioAssertions.ARegisteredPublishDirectionClaimAppearsAsAnXRequiredClaimsExtension(registry, specBuilder);
     }
 }

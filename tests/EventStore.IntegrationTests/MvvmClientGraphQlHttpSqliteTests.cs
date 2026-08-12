@@ -161,7 +161,7 @@ public class MvvmClientGraphQlHttpSqliteTests
         const string appId = "mvvm-http-demo-1";
 
         var (token, key) = await AuthScenarioAssertions.GetTokenAsync(_devIdpClient, "follower-client", "follower-client-secret", "events:follow");
-        var subscriptionQuery = $$"""subscription { on_{{appId.Replace("-", "_")}}_orderplaced(mode: TAIL) { orderId amount conflictFlag lateArrivalFlag authorityStatus schemaVersion } }""";
+        var subscriptionQuery = $$"""subscription { on_{{appId.Replace("-", "_")}}_orderplaced(mode: TAIL) { eventId orderId amount conflictFlag lateArrivalFlag authorityStatus schemaVersion } }""";
 
         using var request = new HttpRequestMessage(Query, "/graphql")
         {
@@ -172,7 +172,7 @@ public class MvvmClientGraphQlHttpSqliteTests
         using var subscriptionReader = new StreamReader(await subscriptionResponse.Content.ReadAsStreamAsync());
         Assert.AreEqual(HttpStatusCode.OK, subscriptionResponse.StatusCode);
 
-        await PublishAsync(appId, "OrderPlaced", """{ "OrderId": "mvvm-sub-1", "Amount": 42.5 }""");
+        var publishedEventId = await PublishAsync(appId, "OrderPlaced", """{ "OrderId": "mvvm-sub-1", "Amount": 42.5 }""");
 
         using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(15));
         string? dataLine = null;
@@ -192,6 +192,7 @@ public class MvvmClientGraphQlHttpSqliteTests
         var payload = JsonDocument.Parse(dataLine!["data: ".Length..]).RootElement;
         Assert.IsFalse(payload.TryGetProperty("errors", out _), payload.ToString());
         var orderPlaced = payload.GetProperty("data").GetProperty($"on_{appId.Replace("-", "_")}_orderplaced");
+        Assert.AreEqual(publishedEventId.ToString(), orderPlaced.GetProperty("eventId").GetString());
         Assert.AreEqual("mvvm-sub-1", orderPlaced.GetProperty("orderId").GetString());
         Assert.AreEqual(42.5, orderPlaced.GetProperty("amount").GetDouble());
         Assert.IsFalse(orderPlaced.GetProperty("conflictFlag").GetBoolean());

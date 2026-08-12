@@ -1,6 +1,7 @@
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using EventStore.Domain.SchemaRegistry;
 using EventStore.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Caching.Memory;
@@ -62,11 +63,21 @@ public class AsyncApiDocumentBuilder(EventStoreContext db, EventSchemaConverter 
                 },
             };
 
-            operations[$"follow{type.Name}"] = new JsonObject
+            var followOperation = new JsonObject
             {
                 ["action"] = "receive",
                 ["channel"] = new JsonObject { ["$ref"] = $"#/channels/{type.Name}" },
             };
+            // ADR-050 -- "x-required-claims at the schema/operation level,"
+            // the AsyncAPI counterpart to OpenApiDocumentBuilder's own
+            // Publish-direction extension: Read-direction here, since this
+            // operation is the Follow (consume) side. Absent entirely when
+            // this type declares no Read-direction RequiredClaims, same
+            // "present only when it applies" convention x-masking uses.
+            var readClaims = type.RequiredClaims.Where(c => c.Direction == ClaimDirection.Read).ToList();
+            if (readClaims.Count > 0)
+                followOperation["x-required-claims"] = new JsonArray(readClaims.Select(c => (JsonNode)c.Claim).ToArray());
+            operations[$"follow{type.Name}"] = followOperation;
         }
 
         var document = new JsonObject

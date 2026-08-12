@@ -165,6 +165,58 @@ Consequences:
   (Art. 20), and processing-purpose limitation remain entirely outside
   this design's scope, same as before.
 
+**Implementation note, added 2026-08-12**: a design-compliance audit
+found only `LocalErasureKeyStore`/`HashiCorpVaultErasureKeyStore` existed
+of the five `IErasureKeyStore` backends this ADR names — the three cloud
+backends were documented (`docs/libraries/dotnet/{azure-key-vault,
+aws-kms,google-cloud-kms}.md`) but never built. Built to match: `Azure
+KeyVaultErasureKeyStore`, `AwsKmsErasureKeyStore`,
+`GoogleCloudKmsErasureKeyStore`, all real, verified against their actual
+installed SDKs (each library doc's own general-usage sketch turned out
+to need a real correction once actually built against the SDK — see
+each doc's own "Corrected/Built and verified, 2026-08-12" note). All
+three use envelope encryption (a local AES-256 Data-Encryption Key,
+wrapped once via the cloud KMS's own wrap/encrypt, then used directly
+for the actual field-value encryption via a new shared primitive,
+`EnvelopeAesGcm`) rather than each cloud KMS's own native per-value
+encrypt — every native cloud encrypt operation checked turned out to be
+either size-limited, non-deterministic, or both, either of which would
+break this ADR's own "idempotent retry hashes identically" requirement
+(`ADR-011`) the same way a naive random-nonce scheme would.
+`LocalErasureKeyStore` itself was refactored to use the same
+`EnvelopeAesGcm` primitive it originally defined inline, so there is
+only one place this convergent-encryption logic lives across all four
+backends.
+
+**A real, accepted trade-off found while building the AWS backend
+specifically, not assumed from the library doc's own sketch**: AWS KMS's
+own idiomatic pattern is one shared CMK per `AppId` generating many data
+keys — but that CANNOT support this ADR's own per-entity crypto-
+shredding requirement (destroying one shared CMK to erase one entity
+would erase every OTHER entity still wrapped under it too). `AwsKmsErasureKeyStore`
+creates one CMK per entity instead, a real cost specific to this backend
+(AWS account-level CMK quotas) that Vault/Azure/GCP's own cheaper named-
+key-per-entity model doesn't face the same way — accepted as the only
+way `DestroyKeyAsync` means the same thing across every backend.
+AWS KMS and Google Cloud KMS also both refuse IMMEDIATE key destruction
+by design (7-day and 24-hour minimum windows respectively) — "irreversible"
+still holds, just not instant, unlike Vault/Azure/Local.
+
+**Honestly scoped, not integration-tested against a live cloud
+account**: unlike `HashiCorpVaultErasureKeyStore` (proven end-to-end
+against a real Testcontainers-backed Vault server) and
+`LocalErasureKeyStore` (a real database), this environment has no Azure/
+AWS/GCP credentials to test any of the three cloud backends against a
+live service. Each compiles cleanly against its real, installed SDK
+(catching several real API-surface mistakes along the way — not
+verified from memory) and the shared `EnvelopeAesGcm` primitive every
+one of them depends on has real, passing tests
+(`EnvelopeAesGcmTests.cs`) proving the exact property that matters
+(convergent encryption), but the cloud-specific wrap/unwrap/destroy
+calls themselves are unexercised against a live account. A deployment
+adopting any of these three should treat this the same way it would any
+newly-written cloud-integration code it hasn't yet run for real.
+
 **Compliance note, with an honest caveat rather than an assumed
 equivalence**: this ADR's legal grounding (GDPR Art. 17(3) exemptions,
 `ADR-066`'s amendment) is verified specifically against GDPR. **CCPA/

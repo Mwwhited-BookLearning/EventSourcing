@@ -55,6 +55,9 @@ builder.Services.AddScoped<IEventLineageQueryProvider, PostgresEventLineageQuery
 builder.Services.AddUpcasting();
 builder.Services.AddSchemaRegistry();
 builder.Services.AddFeatureFlags();
+// ADR-095 -- Postgres LISTEN/NOTIFY, notify-to-wake/poll-to-confirm on top
+// of RouterWorker's existing poll loop.
+builder.Services.AddPostgresWorkerWakeSignal();
 builder.Services.AddInbox();
 builder.Services.AddRouter();
 builder.Services.AddDerivation();

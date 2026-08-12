@@ -105,21 +105,6 @@ here instead of inlining.
   environment specifically when many `MsSqlContainer`s start back-to-back
   with no other work between them, not a regression to chase per-item.
 
-- **`StoredEvent.AppId` now exists (added by "Entity-Centric Core Rebuild",
-  `ADR-021` — the dedicated fix `docs/10-open-questions.md`'s former row 1
-  named as one resolution path, now closed and deleted), but only
-  `EventStore.Router`'s own schema/entity resolution was rewired to use it
-  directly.** `SchemaRegistryService.GetActiveClaimsByNameAsync`/
-  `GetActiveClaimsByNamesAsync`/`GetActiveChangeKindByNameAsync` (used by
-  Follow's connect-time claim gate, Follow's per-parent visibility check,
-  and Lineage's own claim checks — all bare-`EventType`-name, tie-broken by
-  `AppId` ordering on a genuine collision) could now resolve unambiguously
-  by reading each `StoredEvent.AppId` directly instead, for every call
-  site that already has the `StoredEvent` in hand (Follow/Lineage both
-  do). Not done in the same pass as adding the column — a real, scoped
-  follow-up, not a fresh design question (the fix is already decided: use
-  `StoredEvent.AppId`; only the doing is left across those specific call
-  sites).
 - **`EventStore.AppHost`'s Postgres database resource doesn't reliably
   finish auto-creating before `EventStore.Host.Postgres`'s first
   connection attempt.** `Aspire.Hosting.PostgreSql` 13.4.6's `AddDatabase
@@ -142,23 +127,6 @@ here instead of inlining.
   (OIDC/OpenIddict) + Orchestration" section's own note for the full
   list of *other* real orchestration bugs this same pass found and
   fixed.
-- **`EventUpcastFailed`/`ChannelLagDetectedEventType`/`EntityErasureRequestedEventType`
-  (reserved, platform-owned event types) are NOT excluded from
-  `SchemaRegistryService.ListAsync`'s own per-AppId listing, unlike
-  `SchemaRegisteredEventType` (excluded while building "Control-Plane
-  Actions as Reserved Events," item 30, after `ListingSupportsTopAndSkip
-  Pagination`'s own count assertion broke the moment any AppId's first
-  registration also triggered `SchemaRegistered`'s bootstrap).** The three
-  older reserved types happen not to have surfaced this same bug only
-  because no existing test both (a) registers one of them and (b) asserts
-  an exact count via `ListAsync`/`QUERY /registry` against the SAME AppId
-  — the underlying gap (a caller's own type listing can be silently padded
-  by ANY reserved type that happened to bootstrap under their AppId) is
-  real and pre-existing, just not yet observed. Investigate: either widen
-  `ListAsync`'s exclusion to a real `IsReserved`/`IsPlatformOwned` column
-  on `EventTypeDefinition` (checked at registration time, not a hardcoded
-  name list) or accept the current per-name exclusion approach and add
-  each reserved type's own lowercased name to it explicitly.
 - **`RbacProjectionWorker`'s own live, cross-process Follow subscription
   (item 30, "Control-Plane Actions as Reserved Events") is not exercised
   end-to-end by any test.** `DelegatedGrantsRbacFederationHttpSqliteTests.cs`
@@ -265,23 +233,6 @@ here instead of inlining.
   If this needs closing later: attempt the vitest 4.x upgrade in its own
   isolated pass, run the full client-web test suite before/after to
   isolate any breakage from the version bump itself.
-- **`ADR-076`'s deploy-time migration-bundle-apply step is NOT wired
-  into `docker-compose.yml`** — narrowed, 2026-08-11: `EventStore.AppHost`
-  now DOES apply migrations automatically (a new `EventStore.Migrator`
-  project — a one-shot `Database.MigrateAsync()` runner, added as a real
-  Aspire resource; `eventstore`'s own `.WaitForCompletion(migrator)`
-  guarantees exactly one execution before it starts accepting traffic,
-  verified by actually running `dotnet run` against `EventStore.AppHost`
-  end to end against a real Docker Postgres container, not assumed —
-  `/health` returned 200 only after the migrator resource had already
-  exited). `docker-compose.yml` (the OTHER orchestration path `ADR-076`
-  names) still has no equivalent init step — a human running `docker
-  compose up` against a brand-new database must still run
-  `scripts/generate-migration-bundle.sh`/`apply-migration-bundle.sh` by
-  hand first. Investigate: an init container (or a `depends_on` +
-  healthcheck-gated one-shot service, Compose's own closest equivalent to
-  Aspire's `WaitForCompletion`) running the same bundle-apply script
-  ahead of the `Host` services.
 - **`.github/workflows/ci.yml`/`.github/dependabot.yml` have never
   actually been run by GitHub Actions** (item 39) — this environment has
   no push access to trigger a real run, an explicit, deliberate scope
@@ -319,14 +270,6 @@ here instead of inlining.
     deployment-time switch" rather than overclaiming. Build a real
     config-driven registration switch if this ever needs to be genuinely
     swappable without a rebuild.
-  - **`src/EventStore.SchemaRegistry/RegisterEventTypeRequest.cs`'s own
-    code comment is stale**: it calls the required `AppId` body field
-    "temporary... removed once Auth + Orchestration lands," but both
-    Auth + Orchestration (item 6) and Multi-Tenancy (item 13) have long
-    since shipped and the field is still required, still never resolved
-    from the caller's scope. Update or remove that comment — a small,
-    low-risk fix, just not done this pass since it's source code, not a
-    doc.
   - **`revealField`'s `ADR-066` step-up-authentication gap did not close
     when "Digital Sign-Off for Regulated Actions" (item 29) landed** —
     item 29 only wired RFC 9470 step-up into publish-time
@@ -372,155 +315,6 @@ here instead of inlining.
   `docs/features/ticket-exchange.md` and `ADR-040`/`ADR-093` all need a
   follow-up pass once a real mechanism is designed and built.
 
-- **`ADR-029`'s late-arrival guard is per-EVENT, not per-FIELD, and this
-  can silently drop a delayed catch-up fold's own genuinely-new fields
-  even when they don't conflict with anything.** Found building the
-  Vitals proving-ground sample's Workflow D (`docs/domains/clinical-
-  trials-device-telemetry/features/intraoperative-monitoring-and-alert-
-  response.md`): `IonmAlertRaised` is deliberately non-authoritative
-  (`ADR-035`/`042`, pending the neurologist's signed `authorityDecision`)
-  while `IonmAlertAcknowledged` (a Partial fold onto the SAME entity) is
-  an ORDINARY, immediately-accepted publish that always has a LATER
-  `OccurredAt` (it can only ever be published after the alert it
-  acknowledges) — so it always folds into the authoritative Entity Store
-  FIRST, setting `LastAppliedLogicalTime` ahead of the alert's own. When
-  the neurologist's decision finally triggers `IonmAlertRaised`'s own
-  delayed catch-up fold, `RouterWorker.FoldAsync`'s late-arrival check
-  (`storedEvent.OccurredAt <= row.LastAppliedLogicalTime`) rejects the
-  ENTIRE fold as "late" — even though `IonmAlertRaised`'s own fields
-  (`Finding`/`Severity`) don't actually conflict with the already-folded
-  `AckedBy`. Confirmed by actually running the scenario
-  (`VitalsWorkflowDScenarioAssertions.TheNeurologistSignsOffAcceptedAfterSteppingUpAndTheAuthoritativeEntityStoreCatchesUp`),
-  not assumed: `AuthorityStatus` correctly reaches `"accepted"`, but the
-  Entity Store's own `Data` never gains `Finding`/`Severity`, only
-  `AckedBy`. Not a one-off race — deterministic, every time, for any
-  workflow shaped like this one (a deliberately-delayed non-authoritative
-  capture composing with an ordinary, immediately-accepted Partial
-  follow-up on the same entity). Investigate: whether `FoldAsync`'s
-  late-arrival check should compare per-property (only skip fields the
-  incoming event actually redeclares older data for) rather than
-  rejecting the whole merge, or whether `AuthorityDecisionResolver`'s own
-  catch-up path specifically needs a different ordering rule than
-  ordinary `RouterWorker.ProcessEventAsync` folds — a real design
-  question, not yet decided, so left here rather than in `docs/10-open-
-  questions.md` (this is "something to investigate," not yet a clearly
-  posed fork with named options).
-
-- **`ADR-013`'s RFC 9457 Problem Details decision was never actually
-  implemented.** No `AddProblemDetails()`/`UseExceptionHandler`/
-  `UseStatusCodePages` registration exists anywhere in `src/` (confirmed
-  by grep across the whole repo). 16+ endpoint files
-  (`PublishEndpoints.cs`, `SchemaRegistryEndpoints.cs`,
-  `LineageEndpoints.cs`, `StreamingEndpoints.cs`, `RbacEndpoints.cs`,
-  `LineageExportEndpoints.cs`, `DerivationEndpoints.cs`,
-  `InterchangeEndpoints.cs`, and others) return ad hoc anonymous objects
-  (`Results.BadRequest(new { error = "..." })`) instead — exactly the
-  shape this ADR explicitly rejected. `DpopValidationMiddleware.cs`'s own
-  `Results.Problem(...)` call is the one real, correct usage, which only
-  highlights how isolated compliance is. `docs/03-api-contracts.md`
-  still asserts Problem Details is used everywhere — that claim is
-  false against the current code, not just aspirational. Found by a
-  full design-compliance audit (ADR-001–019 range). Fix: either wire
-  `AddProblemDetails()`/`UseExceptionHandler` globally and migrate every
-  ad hoc error response to it, or add an honest additive note to
-  `ADR-013` narrowing its own claim and correct `docs/03-api-contracts.md`
-  to match reality — a real decision the user should make, not a call
-  for a review pass to make silently.
-
-- **`ADR-024`'s conflict-detection Decision explicitly narrows to
-  same-property comparison** ("If another patch touching the **same
-  property** was already applied since `ExpectedVersion`, set
-  `ConflictFlag`... two patches based on the same version touching
-  **different** properties both fold cleanly... that is not a
-  conflict") **but `RouterWorker.cs` (~line 393-396) only ever compares
-  whole-entity `ExpectedVersion != row.Version`, with no property-level
-  check at all** — any stale version on any property patch is flagged,
-  exactly the false-positive case the ADR calls out as *not* a real
-  conflict. `docs/data/event-log.md`'s own comment matches the coarser
-  code, not the ADR's decided nuance. No test exercises "different
-  properties, same stale version → no conflict." Unlike `ADR-029`'s
-  analogous per-entity/per-property tradeoff (explicitly named an
-  "acceptable v1 default" with per-property as a documented upgrade
-  path, and already tracked above in this file), `ADR-024` states the
-  narrow per-property check as the actual default design — this gap was
-  untracked anywhere until a design-compliance audit found it. Fix:
-  either implement real per-property conflict comparison in
-  `RouterWorker.FoldAsync`, or add an additive note to `ADR-024`
-  acknowledging the coarser default actually shipped (matching how
-  `ADR-029` already handles the same class of tradeoff honestly).
-
-- **`ADR-025`'s Decision (Scalar UI at `/scalar`, a static AsyncAPI UI
-  page via `@asyncapi/react-component`) was never built.** No `Scalar`
-  package reference anywhere in `src/`, no `/scalar` or `/asyncapi-ui`
-  route. `docs/06-solution-structure.md` still shows this only as an
-  unverified code *sketch*, never confirmed built. Not its own
-  build-plan item, and not previously tracked here or in
-  `docs/10-open-questions.md` — an Accepted ADR with no implementation
-  and no acknowledgment of the gap, found by a design-compliance audit.
-  Fix: either build it (add `Scalar.AspNetCore`, map `/scalar`, add the
-  static AsyncAPI viewer page) or add an additive note to `ADR-025`
-  narrowing its claim to "documented, not built."
-
-- **`ADR-050`'s `x-required-claims` JSON Schema extension (the
-  entity-level spec-extension half of that ADR, distinct from
-  `RequiredClaims` itself, which IS genuinely implemented and correctly
-  documented) appears nowhere in code — zero hits for that exact
-  string anywhere in `src/`.** Separately, the ADR's static
-  `[LoggerMessage]`-attribute log-redaction half (as opposed to the
-  dynamic, payload-derived `IRedactorProvider` path, which IS built and
-  tested) also has no real call site anywhere in this codebase. Found
-  by a design-compliance audit (ADR-039–057 range). Fix: either build
-  both halves, or add an additive note to `ADR-050` narrowing its own
-  claim to what actually shipped.
-
-- **`ADR-057`'s Decision names five `IErasureKeyStore` backends
-  (Local, HashiCorp Vault, Azure Key Vault, AWS KMS, Google Cloud KMS);
-  only `LocalErasureKeyStore` and `HashiCorpVaultErasureKeyStore` exist
-  in `src/EventStore.Erasure`.** `docs/libraries/dotnet/azure-key-vault.md`
-  and its AWS/GCP siblings present those three as adopted, with no
-  corresponding implementation or SDK package reference in
-  `EventStore.Erasure.csproj` — the docs overclaim relative to the
-  actual build. Found by a design-compliance audit (ADR-039–057 range).
-  Fix: either build the three missing backends, or correct
-  `docs/libraries/dotnet/{azure-key-vault,aws-kms,gcp-kms}.md` (whichever
-  filenames apply) from "adopted" to "considered, not yet built,"
-  per `docs/references.md`'s own adopted-vs-rejected discipline.
-
-- **`ADR-062`'s Decision that `client-web` ships as one or more
-  installable npm packages (e.g. `@eventstore/mvvm-client`), with the
-  existing Vue app becoming a reference implementation consuming its
-  own published package, was never built** — `client-web/package.json`
-  is still the one, only app (`"name": "duplex-client-web"`), not split
-  into a library + reference app. Unlike every other unfinished piece in
-  this design, this gap wasn't named anywhere: not in `ADR-062`'s own
-  Consequences, not in build-plan item 39's "Status: Done," not
-  previously here. (The NuGet-packaging half of the same ADR IS
-  genuinely built — `Directory.Build.props`, `EventStore.Abstractions`
-  — this gap is npm-specific.) Found by a design-compliance audit
-  (ADR-058–076 range). Fix: either split `client-web` into a published
-  library + thin reference app, or add an additive note to `ADR-062`
-  narrowing its own claim to the NuGet half only.
-
-- **`ADR-063`'s Decision to adopt FsCheck (property-based tests for the
-  hash chain/conflict resolution) and Polly+Simmy (fault-injection tests
-  for outbox/inbox crash recovery), "alongside `ADR-055`'s
-  `EventStore.UnitTests`," was never built.** There is no
-  `EventStore.UnitTests` project at all (only `tests/
-  EventStore.IntegrationTests`, confirmed via `EventStore.slnx`), and no
-  `.csproj` anywhere references `FsCheck`, `Polly`, or `Simmy`.
-  `docs/08-build-plan.md`'s "Cross-cutting, every item" testing section
-  explicitly asserts "both adopted now, cheaply, alongside the existing
-  MSTest suite" — a factual claim not backed by any code in the repo.
-  (`ADR-055`'s own `EventStore.E2ETests`/Playwright gap is a related but
-  separate, already-honestly-tracked absence — `08-build-plan.md` and
-  this file both already say "no browser E2E harness yet"; this item is
-  specifically about the FsCheck/Polly/Simmy half, which wasn't
-  previously tracked as missing.) Found by a design-compliance audit
-  (ADR-058–076 range). Fix: either build `EventStore.UnitTests` with
-  real FsCheck/Polly+Simmy coverage, or correct
-  `docs/08-build-plan.md`'s claim from "adopted" to "decided, not yet
-  built."
-
 - **`ADR-084`'s readiness-probe Decision — readiness should fail when
   the instance's own primary database is unreachable, while tolerating
   peer degradation — is only half-built: the database-reachability half
@@ -537,19 +331,6 @@ here instead of inlining.
   real DB-reachability health check per provider, and decide whether
   health endpoints should be exposed (behind auth, presumably) outside
   Development.
-
-- **`ADR-085`'s "Adopt now: BenchmarkDotNet" was never built.**
-  `docs/08-build-plan.md`'s "Cross-cutting, every item" section and
-  `docs/libraries/dotnet/benchmarkdotnet.md` (which names a specific
-  project, `EventStore.Benchmarks`, and a runnable `dotnet run` command)
-  both describe it as already wired in — no such project exists, and a
-  full scan of every `.csproj` in the repo shows zero `BenchmarkDotNet`
-  package references. `docs/libraries/dotnet/benchmarkdotnet.md`'s own
-  runnable command would fail today. Found by a design-compliance audit
-  (ADR-077–094 range). Fix: either build `EventStore.Benchmarks` with
-  real BenchmarkDotNet coverage of the hash chain/conflict resolution
-  paths this ADR names, or correct both docs from "adopted" to
-  "decided, not yet built."
 
 - **`client-web`'s `typescript` and `jsdom` devDependencies are
   deliberately held back one major version each, not yet at "latest."**

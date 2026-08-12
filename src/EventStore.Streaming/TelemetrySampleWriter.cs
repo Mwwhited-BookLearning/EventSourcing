@@ -4,6 +4,7 @@ using EventStore.Domain.Streaming;
 using EventStore.Inbox;
 using EventStore.Persistence;
 using EventStore.SchemaRegistry;
+using EventStore.WorkerWakeSignal;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 
@@ -18,7 +19,8 @@ namespace EventStore.Streaming;
 // there is no claims-bypass concern here, since ChannelLagDetected carries
 // no RequiredClaims of its own.
 public class TelemetrySampleWriter(
-    EventStoreContext db, SchemaRegistryService schemaRegistry, PublishService publish, IOptions<TelemetryIngestOptions> options)
+    EventStoreContext db, SchemaRegistryService schemaRegistry, PublishService publish, IOptions<TelemetryIngestOptions> options,
+    IWorkerWakeSignal? wakeSignal = null)
 {
     // No caller identity is meaningful for a system-generated lag event --
     // ChannelLagDetected declares no RequiredClaims, so an empty principal
@@ -73,6 +75,13 @@ public class TelemetrySampleWriter(
         channel.LastSampleTimestampReceived = maxTimestampThisBatch;
 
         await db.SaveChangesAsync(ct);
+
+        // ADR-095 -- best-effort, after the durable append above genuinely
+        // succeeded; a spurious wake for a channel with no Derived
+        // downstream is harmless, the same reasoning PublishService's own
+        // notify calls already establish.
+        if (wakeSignal is not null)
+            await wakeSignal.NotifyAsync(ChannelDerivationWorker.Topic, ct);
 
         return new IngestSamplesResult.Accepted(channelId, parsed.Count, lateArrivalCount);
     }

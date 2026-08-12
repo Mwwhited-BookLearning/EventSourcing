@@ -10,10 +10,10 @@
 *.userosscache
 *.sln.docstates
 *.env
-# client-web's own checked-in dev defaults -- no secrets, just localhost
-# URLs matching AppHost.cs's own pinned dev ports; see that file's env
-# entries for the full reasoning.
-!client-web/.env
+# client-web/packages/reference-app's own checked-in dev defaults -- no
+# secrets, just localhost URLs matching AppHost.cs's own pinned dev ports;
+# see that file's env entries for the full reasoning.
+!client-web/packages/reference-app/.env
 
 # User-specific files (MonoDevelop/Xamarin Studio)
 *.userprefs
@@ -432,11 +432,13 @@ FodyWeavers.xsd
 *.msm
 *.msp
 
-# client-web/ (ADR-039, "MVVM Client") -- npm workspace, not a .NET project
-client-web/dist/
-client-web/dist-offline-player/
-client-web/.vite/
-client-web/*.tsbuildinfo
+# client-web/ (ADR-039, "MVVM Client"; ADR-062, npm workspaces) -- not a
+# .NET project. Two workspace packages, packages/mvvm-client (library) and
+# packages/reference-app (the Vue app) -- each gets its own build output.
+client-web/packages/*/dist/
+client-web/packages/reference-app/dist-offline-player/
+client-web/packages/*/.vite/
+client-web/packages/*/*.tsbuildinfo
 
 # ADR-076 -- scripts/generate-migration-bundle.sh's own output: a real,
 # large (tens of MB), self-contained executable per provider, regenerated

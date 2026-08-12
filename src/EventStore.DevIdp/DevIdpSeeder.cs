@@ -26,6 +26,23 @@ public static class DevIdpSeeder
         ("clinician-spa-client", "clinician-spa-client-secret", ["telemetry:read", "attachments:read"]), // "Ticket Exchange for Header-Incapable Clients" (ADR-040) -- the header-CAPABLE caller (an SPA/backend) that exchanges its own bearer token for a ticket on behalf of a <video src>/<img src> element it doesn't control the request internals of; named after the ADR/feature-doc's own running example, not a generic reuse of telemetry-client/attachments-client
         ("colleague-client", "colleague-client-secret", []), // "Delegated Grants, RBAC, Federated Claims" (ADR-043) -- the grantee of a "secondary opinion" delegation; holds no scopes/claims of its own at all, everything it can do comes from what clinician-spa-client (the granter) delegates
         ("devidp-rbac-follower-client", "devidp-rbac-follower-client-secret", ["events:follow"]), // "Control-Plane Actions as Reserved Events" (ADR-067) -- RbacProjectionWorker's own identity when it tails the Host's RoleGranted/RoleRevoked/PermissionGranted/AppTrustRootRegistered events; distinct from follower-client/projections-client so this fold's own access is independently auditable/revocable
+        ("composer-client", "composer-client-secret", ["events:publish", "registry:admin"]), // "Proving-Ground Application UX" -- client-web's generic Event Composer tab needs registry:admin to list registered event types/schemas (RegistryQueries.eventTypes/eventType) AND events:publish to actually submit one, the same both-roles-in-one-caller posture telemetry-client/attachments-client/peer-sync-client already establish; deliberately its own identity rather than widening follower-client (a read-only browsing identity) with admin rights
+        // "Domain Decision Queues" -- a Principal Investigator/analyst is a
+        // distinct real-world actor from the generic Composer tool, so this
+        // gets its OWN identity rather than widening composer-client's
+        // claims (which would let every Composer user impersonate clinical/
+        // compliance authority) -- the same "one identity per real
+        // capability need" reasoning composer-client itself was added
+        // under. events:publish only, no registry:admin -- these callers
+        // only ever publish an already-known "authorityDecision", never
+        // list/introspect the schema registry. review:ae/review:ionm/
+        // consent:approve is the union of every decision claim
+        // VitalsSharedTypes.EnsureAuthorityDecisionRegisteredAsync's three
+        // callers each register -- "a PrincipalInvestigator's real role
+        // bundle already carries every decision claim this domain names"
+        // (ADR-043's own comment on this exact union).
+        ("vitals-pi-client", "vitals-pi-client-secret", ["events:publish"]),
+        ("meridian-analyst-client", "meridian-analyst-client-secret", ["events:publish"]),
     ];
 
     // ADR-040/043 -- only a caller that legitimately constructs header-
@@ -66,6 +83,11 @@ public static class DevIdpSeeder
         // same as it already plays the header-capable requesting party
         // for ADR-040's ticket exchange.
         ["clinician-spa-client"] = [("clearance", "phi")],
+        // "Domain Decision Queues" -- see this file's own Clients-array
+        // comment on vitals-pi-client/meridian-analyst-client for the full
+        // reasoning on why these are separate identities.
+        ["vitals-pi-client"] = [("review", "ae"), ("review", "ionm"), ("consent", "approve")],
+        ["meridian-analyst-client"] = [("identity", "aml-review")],
     };
 
     public static IReadOnlyList<(string Type, string Value)> GetExtraClaims(string clientId) =>

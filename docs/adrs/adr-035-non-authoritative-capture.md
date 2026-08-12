@@ -44,6 +44,23 @@ Decision:
   for the full comparison. `RejectionBehavior` (`Annotate` | `Compensate`)
   becomes a field on `EventTypeDefinition`
   (`docs/data/schema-registry.md`), alongside `ChangeKind`.
+  ~~Annotate-only means the target event's `AuthorityStatus` is flagged
+  `rejected` and nothing else changes — the authoritative Entity Store
+  keeps showing whatever the rejected event contributed, exactly as it
+  did before rejection.~~ **Corrected, 2026-08-12, direct decision**: the
+  comparison doc's own targeted-rebuild refinement is adopted as
+  `Annotate`'s real default, not just a documented-but-unbuilt idea — a
+  rejection of an already-accepted, already-folded event now triggers an
+  immediate, single-entity re-fold of the authoritative Entity Store,
+  replaying that entity's full history while including only events whose
+  *current* `AuthorityStatus` is `accepted`. The rejected event's own
+  `Payload` is still never mutated, and the Event Log itself is never
+  touched — only the *derived* Entity Store cache is recomputed, which is
+  exactly why this is safe: the immutable event history is what makes the
+  replay possible and correct at all. `RejectionBehavior.Compensate`
+  is completely unaffected by this correction — it still emits an
+  explicit, visible compensating-patch event for domains that want that
+  shape instead of a quietly-excluded one.
 - **`AttestedClaims` gets its own lightweight schema-registry entry**
   (an `attestation` entity type, `AppId`-scoped like everything else,
   `ADR-030`) rather than remaining an untyped blob forever — claims

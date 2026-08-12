@@ -52,11 +52,27 @@ Decision:
   already-delivered webhook payload — bounded by keeping the *scope*
   narrow (only active data, never full history), not by avoiding local
   plaintext entirely.
-- **Falling out of active scope evicts the local copy** — when an
+- ~~**Falling out of active scope evicts the local copy** — when an
   entity no longer matches the subscription's filter (closed, completed,
   reassigned), the client purges its local cached copy proactively, not
   on some unrelated TTL — the subscription's own filter *is* the
-  retention policy.
+  retention policy.~~ **Corrected, 2026-08-12, found by an independent
+  design-compliance audit**: this proactive-eviction half was never
+  built — confirmed directly against `client-web/packages/mvvm-client/src/composables/
+  useEntityViewActions.ts`'s own `subscribeToEntity`, whose comment
+  states the real behavior plainly: because `config.scopeFilter` is
+  enforced server-side per event, an entity that stops matching "simply
+  stops receiving further updates through this connection — there is no
+  push-based 'you fell out of scope, evict now' signal, so an
+  already-cached copy is not proactively purged the moment that
+  happens. It goes stale rather than being actively wrong (no further
+  writes reach it), and a fresh reconnect with the same filter never
+  re-delivers it." So the subscription filter bounds what the cache
+  *receives* going forward, but does not evict what it already holds —
+  a stale-but-inert copy remains locally until some other event (an
+  explicit erasure, a page reload with a narrower filter) removes it.
+  The mandatory erasure-triggered purge below (`subscribeToErasure`) is
+  genuinely built as designed; only this scope-exit bullet overclaimed.
 - **An erasure event reaches subscribed local clients the same way any
   other event does, and purging on receipt is mandatory, not optional.**
   `ADR-057`'s `EntityErasureRequested` is an ordinary `StoredEvent` — a

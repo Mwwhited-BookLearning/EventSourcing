@@ -283,43 +283,37 @@ public class SchemaRegistryService(
             .AsNoTracking()
             .SingleOrDefaultAsync(e => e.AppId == appId && e.Name == eventTypeName.ToLowerInvariant() && e.Version == version, ct);
 
-    // Read-time RequiredClaims lookup with no AppId available -- Follow/Lineage
-    // callers only ever have a bare EventType name/StoredEvent, not the AppId a
-    // Publish request always supplies. Resolves by (Name, IsActive) alone. Per
-    // docs/10-open-questions.md row 1, this is a documented, deliberate
-    // simplification: ADR-030 allows two different AppIds to register the same
-    // type name independently, and nothing yet disambiguates which one's
-    // RequiredClaims governs a bare stored event (EntityId's embedded AppId
-    // prefix, ADR-021, isn't populated until "Entity-Centric Core Rebuild").
-    // Deterministic-but-arbitrary tie-break on a genuine collision: ordered by
-    // AppId, first wins. No matching active definition at all defaults to
-    // "unrestricted" rather than failing closed, so a data inconsistency can't
-    // accidentally lock out an otherwise-valid stored event.
-    public async Task<IReadOnlyList<RequiredClaim>> GetActiveClaimsByNameAsync(string eventTypeName, CancellationToken ct = default)
+    // Read-time RequiredClaims lookup, keyed by (AppId, EventType) -- resolves
+    // exactly, no tie-break needed. `StoredEvent.AppId` (added by "Entity-Centric
+    // Core Rebuild") made this possible; TODO.md tracked the gap between that
+    // column existing and Follow/Lineage's own call sites (which always have the
+    // StoredEvent in hand) actually reading it, rather than the bare-EventType-
+    // name/AppId-ordering-tie-break simplification this replaced.
+    public async Task<IReadOnlyList<RequiredClaim>> GetActiveClaimsByAppAndNameAsync(string appId, string eventTypeName, CancellationToken ct = default)
     {
         var definition = await db.EventTypeDefinitions
             .AsNoTracking()
-            .Where(e => e.Name == eventTypeName.ToLowerInvariant() && e.IsActive)
-            .OrderBy(e => e.AppId)
-            .FirstOrDefaultAsync(ct);
+            .SingleOrDefaultAsync(e => e.AppId == appId && e.Name == eventTypeName.ToLowerInvariant() && e.IsActive, ct);
         return definition?.RequiredClaims ?? [];
     }
 
-    // Batch form of GetActiveClaimsByNameAsync, for Lineage's ancestor/descendant
-    // traversal -- one query for every distinct EventType name discovered in the
-    // reachable set, instead of one round trip per node.
-    public async Task<IReadOnlyDictionary<string, IReadOnlyList<RequiredClaim>>> GetActiveClaimsByNamesAsync(
-        IReadOnlyCollection<string> eventTypeNames, CancellationToken ct = default)
+    // Batch form of GetActiveClaimsByAppAndNameAsync, for Lineage's ancestor/
+    // descendant traversal and Follow's per-parent visibility check -- one query
+    // for every distinct (AppId, EventType) pair discovered in the reachable set,
+    // instead of one round trip per node. No matching active definition at all
+    // defaults to "unrestricted" rather than failing closed, so a data
+    // inconsistency can't accidentally lock out an otherwise-valid stored event.
+    public async Task<IReadOnlyDictionary<(string AppId, string EventType), IReadOnlyList<RequiredClaim>>> GetActiveClaimsByAppAndNamesAsync(
+        IReadOnlyCollection<(string AppId, string EventType)> keys, CancellationToken ct = default)
     {
-        var normalizedNames = eventTypeNames.Select(n => n.ToLowerInvariant()).Distinct().ToList();
+        var normalizedKeys = keys.Select(k => (k.AppId, EventType: k.EventType.ToLowerInvariant())).Distinct().ToList();
+        var appIds = normalizedKeys.Select(k => k.AppId).Distinct().ToList();
+        var names = normalizedKeys.Select(k => k.EventType).Distinct().ToList();
         var definitions = await db.EventTypeDefinitions
             .AsNoTracking()
-            .Where(e => normalizedNames.Contains(e.Name) && e.IsActive)
-            .OrderBy(e => e.AppId)
+            .Where(e => appIds.Contains(e.AppId) && names.Contains(e.Name) && e.IsActive)
             .ToListAsync(ct);
-        return definitions
-            .GroupBy(e => e.Name)
-            .ToDictionary(g => g.Key, g => (IReadOnlyList<RequiredClaim>)g.First().RequiredClaims);
+        return definitions.ToDictionary(e => (e.AppId, e.Name), e => (IReadOnlyList<RequiredClaim>)e.RequiredClaims);
     }
 
     // "Hardening & Evolution" -- UpcastChain needs the event type's own
@@ -338,9 +332,10 @@ public class SchemaRegistryService(
     // but has no direct service/DB reference at all (docs/06-solution-
     // structure.md: "its only dependency on the write side is an HTTP client"),
     // so this must be reachable over HTTP -- see SchemaRegistryEndpoints'
-    // new GET /registry/{eventType}/change-kind. Same bare-name,
-    // tie-break-by-AppId simplification as GetActiveClaimsByNameAsync
-    // (docs/10-open-questions.md row 1).
+    // new GET /registry/{eventType}/change-kind. Unlike Lineage/Follow's own
+    // claims lookups above, this caller genuinely has no AppId to give (a bare
+    // eventType path segment, nothing else) -- keeps the deterministic-but-
+    // arbitrary AppId-ordering tie-break on a genuine collision.
     public async Task<ChangeKind?> GetActiveChangeKindByNameAsync(string eventTypeName, CancellationToken ct = default)
     {
         var definition = await db.EventTypeDefinitions
@@ -351,13 +346,15 @@ public class SchemaRegistryService(
         return definition?.ChangeKind;
     }
 
-    // Batch, bare-name-and-version lookup for Follow's per-event masking
-    // (docs/10-open-questions.md row 1's same AppId-ambiguity simplification as
-    // GetActiveClaimsByNamesAsync above: resolve by (Name, Version) alone,
-    // deterministic-but-arbitrary tie-break ordered by AppId on a genuine
-    // collision). Masking must use each event's own SchemaVersion, not
-    // whichever version is currently active -- a payload's shape always
-    // matches the version it was originally validated against.
+    // Batch, bare-name-and-version lookup for Follow's per-event masking --
+    // EventTailReader's poll loop only carries eventTypeName forward, not an
+    // AppId, so this keeps the same deterministic-but-arbitrary AppId-ordering
+    // tie-break on a genuine collision GetActiveChangeKindByNameAsync above
+    // does, for the same reason (out of scope for the AppId-aware rewire the
+    // claims lookups above got -- TailAsync's own signature would need to grow
+    // an AppId parameter first). Masking must use each event's own
+    // SchemaVersion, not whichever version is currently active -- a payload's
+    // shape always matches the version it was originally validated against.
     public async Task<IReadOnlyDictionary<int, EventTypeDefinition>> GetVersionsByNameAsync(
         string eventTypeName, IReadOnlyCollection<int> versions, CancellationToken ct = default)
     {
@@ -396,20 +393,38 @@ public class SchemaRegistryService(
         // ADR-067 -- SchemaRegistered is a reserved, platform-owned type
         // (never registered via PUT /registry, only ever via
         // EnsureRegisteredAsync's own bootstrap), the same "not something an
-        // operator manages" posture EventUpcastFailed/ChannelLagDetected/
-        // EntityErasureRequested already have -- excluded here so it never
-        // silently pads a caller's own listing/pagination of the TYPES THEY
-        // registered. Found while testing this item's own new behavior
-        // (ListingSupportsTopAndSkipPagination's count assertion broke the
-        // moment any AppId's first-ever registration also became this
-        // type's own bootstrap trigger) -- the other three reserved types
-        // above aren't retroactively excluded here too, tracked as a
-        // follow-up in TODO.md rather than silently widened beyond this
-        // item's own new regression.
-        var reservedTypeName = SchemaRegisteredEventType.Name.ToLowerInvariant();
+        // operator manages" posture ChannelLagDetected/EntityErasureRequested
+        // already have -- excluded here so it never silently pads a caller's
+        // own listing/pagination of the TYPES THEY registered. Found while
+        // testing this item's own new behavior (ListingSupportsTopAndSkip
+        // Pagination's count assertion broke the moment any AppId's first-ever
+        // registration also became this type's own bootstrap trigger).
+        // ChannelLagDetected/EntityErasureRequested are widened in here too,
+        // TODO.md's own tracked follow-up -- literal lowercased names, not a
+        // reference to ChannelLagDetectedEventType.Name/
+        // EntityErasureRequestedEventType.Name: EventStore.Streaming and
+        // EventStore.Erasure both already depend on EventStore.SchemaRegistry
+        // (their own EnsureRegisteredAsync bootstrap needs it), so referencing
+        // either type's own class from here would be a circular project
+        // reference. (EventUpcastFailed, TODO.md's third named type, is moot --
+        // retired entirely in "Entity-Centric Core Rebuild" per ADR-020's own
+        // corrected Consequences; no such class exists anymore to bootstrap-
+        // register itself into any AppId's listing in the first place.)
+        var reservedTypeNames = new[]
+        {
+            SchemaRegisteredEventType.Name.ToLowerInvariant(),
+            "channellagdetected",
+            "entityerasurerequested",
+            // ADR-094 -- "never registered via PUT /registry/{event-type},
+            // the same treatment EventUpcastFailed gets" -- missed when this
+            // list was widened for ChannelLagDetected/EntityErasureRequested;
+            // found while building the Event Composer, whose dropdown
+            // otherwise lists it as if an operator could hand-register it.
+            "expectedresponsemissing",
+        };
         var query = db.EventTypeDefinitions
             .AsNoTracking()
-            .Where(e => e.AppId == appId && e.Name != reservedTypeName)
+            .Where(e => e.AppId == appId && !reservedTypeNames.Contains(e.Name))
             .OrderBy(e => e.Name).ThenBy(e => e.Version);
 
         IQueryable<EventTypeDefinition> paged = query;

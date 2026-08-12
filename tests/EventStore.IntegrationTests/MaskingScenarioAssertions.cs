@@ -76,6 +76,42 @@ internal static class MaskingScenarioAssertions
         Assert.IsNull(withClaim["Diagnosis"]!["masked"]);
     }
 
+    // ADR-009's revealOnDemand -- found unimplemented by a design-
+    // compliance audit and built directly (PayloadMasker.MaskLeafAsync).
+    // Zero fields in this codebase used revealOnDemand before this test,
+    // so this is genuinely new coverage, not a regression check.
+    public static async Task ARevealOnDemandFieldStaysDisplayMaskedForAClaimHolderUntilRevealFieldIsCalled(
+        SchemaRegistryService registry, PublishService publish, FollowService follow)
+    {
+        const string appId = "masking-demo-reveal-on-demand";
+        const string typeName = "ApplicantRecorded1";
+        await registry.RegisterAsync(typeName, new RegisterEventTypeRequest(
+            AppId: appId,
+            JsonSchema: """
+                { "type": "object", "properties": {
+                    "NationalId": { "type": "string", "x-masking": {
+                        "strategy": "FixedValue", "requiredClaim": "identity:pii-read", "maskedValue": "***",
+                        "revealOnDemand": { "showFirst": 0, "showLast": 4, "maskChar": "X" } } }
+                  }, "required": ["NationalId"] }
+                """,
+            FilterableFields: [], ChangeKind: "Full", EntityIdField: "$.Id", ParentValidationMode: "Permissive",
+            RequiredClaims: null, UpcastFromPrevious: null, DowncastToPrevious: null));
+        await publish.PublishAsync(typeName, new PublishEventRequest(
+            appId, 1, """{ "NationalId": "123456789" }""", null, null), TestClaimsPrincipal.None);
+
+        // Without the claim: the field's own ordinary (FixedValue) mask, unaffected.
+        var withoutClaim = await FollowOneEvent(follow, appId, typeName, TestClaimsPrincipal.None);
+        Assert.AreEqual("***", withoutClaim["NationalId"]!["masked"]!.GetValue<string>());
+
+        // WITH the claim: still masked, not the real value -- revealOnDemand's
+        // own display shape (last 4 digits only), never a bare {"value": ...}.
+        // This is the exact case the audit found broken: before this fix, a
+        // claim holder saw the real "123456789" directly in this response.
+        var withClaim = await FollowOneEvent(follow, appId, typeName, TestClaimsPrincipal.With("identity:pii-read"));
+        Assert.IsNull(withClaim["NationalId"]!["value"]);
+        Assert.AreEqual("XXXXX6789", withClaim["NationalId"]!["masked"]!.GetValue<string>());
+    }
+
     public static async Task MaskingAppliesEvenWhenTheEventTypeHasNoRequiredReadClaimAtAll(
         SchemaRegistryService registry, PublishService publish, FollowService follow)
     {

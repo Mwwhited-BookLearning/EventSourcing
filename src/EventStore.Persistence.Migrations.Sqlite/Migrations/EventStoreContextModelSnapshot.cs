@@ -15,7 +15,7 @@ namespace EventStore.Persistence.Migrations.Sqlite.Migrations
         protected override void BuildModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
-            modelBuilder.HasAnnotation("ProductVersion", "10.0.10");
+            modelBuilder.HasAnnotation("ProductVersion", "10.0.11");
 
             modelBuilder.Entity("AccessLogChainCheckpoints", b =>
                 {
@@ -178,6 +178,14 @@ namespace EventStore.Persistence.Migrations.Sqlite.Migrations
 
                     b.Property<bool>("LateArrivalFlag")
                         .HasColumnType("INTEGER");
+
+                    b.Property<string>("PropertyLogicalTimes")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("PropertyVersions")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
 
                     b.Property<int>("SchemaVersion")
                         .HasColumnType("INTEGER");
@@ -1000,6 +1008,19 @@ namespace EventStore.Persistence.Migrations.Sqlite.Migrations
                     b.HasKey("SubscriptionId");
 
                     b.ToTable("WebhookSubscriptions");
+                });
+
+            modelBuilder.Entity("EventStore.Domain.WorkerWakeSignal.WakeSignal", b =>
+                {
+                    b.Property<string>("Topic")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTimeOffset>("LastSignaledAt")
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Topic");
+
+                    b.ToTable("WakeSignals");
                 });
 
             modelBuilder.Entity("EventStore.Domain.SchemaRegistry.FilterableField", b =>

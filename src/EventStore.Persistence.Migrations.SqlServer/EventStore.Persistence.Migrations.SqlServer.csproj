@@ -2,6 +2,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\EventStore.Persistence\EventStore.Persistence.csproj" />
+    <ProjectReference Include="..\EventStore.WorkerWakeSignal\EventStore.WorkerWakeSignal.csproj" />
   </ItemGroup>
 
   <ItemGroup>

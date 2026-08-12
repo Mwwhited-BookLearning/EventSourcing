@@ -60,9 +60,25 @@ Consequences:
   questions.md` row 5 eventually settles) needs an explicit migration-
   bundle-generation-and-apply step sequenced before any `Host` container
   starts — not yet built.
-- `docker-compose.yml` (`ADR-026`'s production path) needs a migration/
+- ~~`docker-compose.yml` (`ADR-026`'s production path) needs a migration/
   bundle-apply step (or an init container running one) sequenced ahead
-  of the `Host` services — flagged as propagation work, not yet done.
+  of the `Host` services — flagged as propagation work, not yet done.~~
+  **Corrected, 2026-08-12**: closed. `docker-compose.yml` now has a
+  `migrate` one-shot service (`mcr.microsoft.com/dotnet/runtime-deps:10.0`,
+  no SDK/runtime install needed since the bundle is self-contained) running
+  `apply-migration-bundle.sh`'s same underlying command against a bundle
+  bind-mounted from `scripts/bundles/postgres/`; `eventstore`'s own
+  `depends_on: migrate: condition: service_completed_successfully` is
+  Compose's own closest equivalent to Aspire's `WaitForCompletion`, the
+  same single-execution-before-any-replica-starts guarantee the Aspire
+  path already has. `generate-migration-bundle.sh` gained
+  `--self-contained --target-runtime linux-x64` so the bundle it produces
+  actually runs inside that Linux container regardless of which OS
+  generated it. The bundle must still be generated as its own step, ahead
+  of `docker compose up` (a deploy pipeline's own build step, needing the
+  .NET SDK) — this compose file applies an already-built bundle, it
+  doesn't build one itself, consistent with this ADR's own "self-contained
+  executable needing no .NET SDK" framing for the apply step specifically.
 - Resolves the design fork logged in `docs/changes/2026-07-31.md`
   (formerly `docs/10-open-questions.md` row 12).
 

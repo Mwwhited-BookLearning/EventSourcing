@@ -2,10 +2,12 @@
 
 # Authority Rejection Behavior: Annotate-Only vs. Compensating-Patch
 
-**Decided in:** `ADR-035` (annotate-only default). **Raised by:** the
-second design (`docs/design-docs/`, now absorbed and removed — see
-`CLAUDE.md`), which left this explicitly open ("needs input from domains
-with legal/evidentiary requirements").
+**Decided in:** `ADR-035` (annotate-only default, corrected 2026-08-12 to
+adopt this doc's own targeted-rebuild refinement below as the real
+default — previously only recommended here, now actually built and
+tested). **Raised by:** the second design (`docs/design-docs/`, now
+absorbed and removed — see `CLAUDE.md`), which left this explicitly open
+("needs input from domains with legal/evidentiary requirements").
 
 **Stated requirement driving this comparison:** this design's strongest
 recurring principle, stated in `README.md`'s opening section — never
@@ -39,7 +41,26 @@ can grey out. Nothing is un-applied.
 | **Pros** | Consistent with this design's strongest recurring principle — never mutate or delete (`README.md`'s "never lose or corrupt data," `ADR-009`'s closing note, `ConflictFlag`'s "flagged, not reversed" treatment). No replay-order complexity: rejecting an event doesn't require recomputing every later fold that happened after it. |
 | **Cons** | Plain annotate-only, as first written here, left a real gap: the *current*, materialized view of an entity could keep showing data everyone agrees is untrustworthy indefinitely, unless every consumer remembered to check `AuthorityStatus`. **Refined below, not superseded** — a targeted rebuild closes this gap without inheriting Option B's problems. |
 
-**Refinement (this session, prompted by an independent cross-reference finding — Jason McCann's "a compromised-but-still-valid edge signer's events are indelible and replayed on every rebuild" needs a retraction model, `AR5`/`Q27`):** Annotate-only doesn't have to mean "stale until some indeterminate future rebuild." A post-hoc `authorityDecision: rejected` event triggers an immediate **single-entity rebuild** — re-fold just that `EntityId`'s event history from `SequenceNumber 0`, via `ADR-021`'s `QUERY /entities/{entityId}/events` path (added directly in response to this refinement, after a buildability review confirmed no such query existed — the whole-store "replay is cheap" property `ADR-015`/`ADR-021` already had is per-event-type, not per-entity, so this needed a real, new, narrow query surface rather than being automatically implied), scoped to one entity rather than the whole store. The fold rule is simply "apply this event only if its current `AuthorityStatus` is `accepted`" — checked fresh at fold time, not baked in at original-publish time. This gets Option A's exact guarantee (no compensating patch, no ambiguous "pre-rejection state" computation — the fold algorithm never has to reason about undoing a specific contribution, it just excludes it) **and** Option B's exact benefit (current state is clean by default, not merely filterable-to-clean) — with no known correctness edge case, unlike Option B. The one new, real cost: a rejection now costs one full re-fold of that entity's history (`O(that entity's event count)`, not `O(1)`) — cheap for almost every entity, worth naming explicitly for a pathologically long-lived, high-volume one. The rejected event itself is never deleted — it's excluded from the *fold*, not from the Event Log.
+**Refinement (raised this session, prompted by an independent cross-reference finding — Jason McCann's "a compromised-but-still-valid edge signer's events are indelible and replayed on every rebuild" needs a retraction model, `AR5`/`Q27`; adopted as the real default and built 2026-08-12, correcting an earlier, inaccurate claim in this same paragraph — see below):** Annotate-only doesn't have to mean "stale until some indeterminate future rebuild." A post-hoc `authorityDecision: rejected` event triggers an immediate **single-entity rebuild** — re-fold just that `EntityId`'s event history from `SequenceNumber 0`, scoped to one entity rather than the whole store. The fold rule is simply "apply this event only if its current `AuthorityStatus` is `accepted`" — checked fresh at fold time, not baked in at original-publish time. This gets Option A's exact guarantee (no compensating patch, no ambiguous "pre-rejection state" computation — the fold algorithm never has to reason about undoing a specific contribution, it just excludes it) **and** Option B's exact benefit (current state is clean by default, not merely filterable-to-clean) — with no known correctness edge case, unlike Option B. The one new, real cost: a rejection now costs one full re-fold of that entity's history (`O(that entity's event count)`, not `O(1)`) — cheap for almost every entity, worth naming explicitly for a pathologically long-lived, high-volume one. The rejected event itself is never deleted — it's excluded from the *fold*, not from the Event Log.
+~~via `ADR-021`'s `QUERY /entities/{entityId}/events` path (added directly
+in response to this refinement, after a buildability review confirmed no
+such query existed — the whole-store "replay is cheap" property
+`ADR-015`/`ADR-021` already had is per-event-type, not per-entity, so
+this needed a real, new, narrow query surface rather than being
+automatically implied)~~ **Corrected, 2026-08-12**: no such HTTP query
+endpoint was ever needed or built — the actual rebuild
+(`RouterWorker.RebuildEntityFromAcceptedEventsAsync`, called from
+`AuthorityDecisionResolver`) is a purely internal, server-side mechanism
+querying `EventStoreContext.Events` directly by `EntityId`, the same way
+every other reactor in this design already reads the database it's
+already inside. This paragraph's own earlier claim that a new query
+surface was "added directly in response to this refinement" was never
+actually verified against the code before being written down — this
+project's own standing "verify before citing" rule, violated once here
+and now fixed. Whether a *client-facing* single-entity query should exist
+is a separate, genuinely open question (`docs/10-open-questions.md`'s row
+on the generic entity/Live-View GraphQL query ADR-042/045 assumed), not
+something this refinement itself ever required.
 
 ### Option B — Compensating patch
 
@@ -52,7 +73,7 @@ event reverting the affected properties to their pre-rejected-event state
 | **Pros** | The *current* materialized state is clean by default — a consumer that never checks `AuthorityStatus` still sees a trustworthy answer, not a footgun waiting for whoever forgets to filter. Fits domains where "current state must reflect only authorized data" is a hard requirement, not a nice-to-have (the doc's own example: anything with legal/evidentiary weight). |
 | **Cons** | Requires replaying to the point immediately before the rejected event to compute what "pre-rejection state" even was — real replay-order complexity, especially once `ADR-029`'s logical-order fold and `ADR-024`'s conflict flagging are both already in play for the same entity. The compensating patch is itself a new event with its own `ExpectedVersion`/conflict semantics to get right — a second write generated automatically by the system, not a client, which this design hasn't needed anywhere else. If *other*, legitimate events touched the same properties *after* the now-rejected one, "revert to pre-rejection state" is ambiguous — does it revert past those too, or only undo the rejected event's specific contribution? Genuinely hard to define correctly in the general case. |
 
-## Recommendation
+## Recommendation — adopted 2026-08-12
 
 **Annotate-only-plus-targeted-rebuild (the refinement above) as the
 system-wide default, with `RejectionBehavior` staying a genuine

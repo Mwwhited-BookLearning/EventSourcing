@@ -72,5 +72,6 @@ public class FollowSqliteTests
         await AsyncApiScenarioAssertions.AsyncApiDocumentIncludesTheFollowChannelForARegisteredType(registry, specBuilder);
         await AsyncApiScenarioAssertions.RegisteringANewTypeInvalidatesTheCachedAsyncApiDocument(registry, specBuilder);
         await AsyncApiScenarioAssertions.AMaskablePropertyAppearsWrappedAsOneOfValueMaskedErasedInTheGeneratedDocument(registry, specBuilder);
+        await AsyncApiScenarioAssertions.ARegisteredReadDirectionClaimAppearsAsAnXRequiredClaimsExtension(registry, specBuilder);
     }
 }

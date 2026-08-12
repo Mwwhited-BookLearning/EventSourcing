@@ -43,7 +43,7 @@ Studio build tools on Windows).
 
 ## Where this project uses it
 
-`ADR-073` — `client-web/src/a11y.spec.ts` runs axe-core against the
+`ADR-073` — `client-web/packages/reference-app/src/a11y.spec.ts` runs axe-core against the
 MVVM client's own actually-rendered DOM (`GenericFallbackView`,
 `TemplateRenderer`-backed screens, the shared `FlagRow` convention),
 asserting zero critical/serious violations across every scenario, plus a

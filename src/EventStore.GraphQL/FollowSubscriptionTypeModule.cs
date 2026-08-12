@@ -184,6 +184,20 @@ public class FollowSubscriptionTypeModule : ITypeModule, ISchemaChangeNotifier
     // underlying StoredEvent), never from the masked/JSON payload.
     private static IEnumerable<ObjectFieldConfiguration> BuildEnvelopeFlagFields()
     {
+        // Added 2026-08-12, "Domain Decision Queues" -- the one envelope
+        // field every OTHER Subscription consumer had never needed: a
+        // caller that wants to correlate a LATER event back to this one
+        // (an authorityDecision's own targetEventId, RespondsToEventId,
+        // ADR-094) had no way to discover this event's own EventId at all
+        // before this field existed, confirmed by grepping this whole file
+        // for "EventId" and finding zero hits. String, not the raw Guid --
+        // every other scalar field on this dynamic type already returns a
+        // JSON-friendly primitive, never a .NET type GraphQL would need a
+        // custom scalar for.
+        yield return new ObjectFieldConfiguration("eventId", type: TypeReference.Parse("String"))
+        {
+            PureResolver = ctx => ctx.Parent<FollowedEvent>().Event.EventId.ToString(),
+        };
         yield return new ObjectFieldConfiguration("conflictFlag", type: TypeReference.Parse("Boolean"))
         {
             PureResolver = ctx => ctx.Parent<FollowedEvent>().Event.ConflictFlag,

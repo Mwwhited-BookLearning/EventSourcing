@@ -22,7 +22,11 @@ public static class DerivationEndpoints
             return result switch
             {
                 RegisterDerivationResult.Success => Results.Created($"/create/{eventType}", new { }),
-                RegisterDerivationResult.ValidationFailed failed => Results.BadRequest(new { errors = failed.Errors }),
+                RegisterDerivationResult.ValidationFailed failed => Results.Problem(
+                    type: "https://eventstore.example/problems/derivation-validation-failed",
+                    title: "derivation definition failed validation",
+                    statusCode: StatusCodes.Status400BadRequest,
+                    extensions: new Dictionary<string, object?> { ["errors"] = failed.Errors }),
                 _ => Results.Problem(statusCode: 500),
             };
         }).RequireAuthorization("registry:admin");

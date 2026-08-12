@@ -73,7 +73,23 @@ public class PayloadMasker(
 
         var requiredClaim = maskingConfig["requiredClaim"]?.GetValue<string>();
         if (requiredClaim is not null && hasClaim(requiredClaim))
+        {
+            // ADR-009's `revealOnDemand` -- "a claim-holder's ordinary
+            // query/stream response is ALWAYS the masked/display
+            // representation... `displayMask` is computed the same way
+            // `PartialRevealMaskingStrategy` already computes its output...
+            // independent of whatever `strategy` a non-claim-holder would
+            // otherwise see." A field with no `revealOnDemand` object is
+            // completely unaffected -- "the general masking wrapper is
+            // unchanged," per the ADR's own explicit text -- so this branch
+            // only ever changes behavior for a field that opts in.
+            if (maskingConfig["revealOnDemand"] is JsonObject revealOnDemandConfig)
+            {
+                var displayStrategy = serviceProvider.GetRequiredKeyedService<IMaskingStrategy>("PartialReveal");
+                return new JsonObject { ["masked"] = displayStrategy.Mask(realValue, revealOnDemandConfig) };
+            }
             return await RevealAsync(realValue, maskingConfig, rootPayload, entityId, classification, ct);
+        }
 
         var strategyName = maskingConfig["strategy"]!.GetValue<string>();
         var strategy = serviceProvider.GetRequiredKeyedService<IMaskingStrategy>(strategyName);

@@ -96,7 +96,12 @@ public static class RbacEndpoints
         PublishResult.Conflict => Results.Conflict(),
         PublishResult.UnregisteredEventType => Results.Problem(statusCode: 500, detail: "the reserved event type was not registered before publishing -- this is an EnsureRegisteredAsync bug, not a caller error"),
         PublishResult.Forbidden => Results.Forbid(),
-        PublishResult.UnresolvedParent p => Results.BadRequest(new { error = "parent event not found", missingParentEventIds = p.MissingParentEventIds }),
+        PublishResult.UnresolvedParent p => Results.Problem(
+            type: "https://eventstore.example/problems/parent-not-found",
+            title: "One or more parent events do not exist",
+            detail: "parentEventIds referenced an event that has not been published.",
+            statusCode: StatusCodes.Status400BadRequest,
+            extensions: new Dictionary<string, object?> { ["missingParentEventIds"] = p.MissingParentEventIds }),
         _ => Results.Problem(statusCode: 500),
     };
 }

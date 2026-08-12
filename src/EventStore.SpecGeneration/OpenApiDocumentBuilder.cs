@@ -1,6 +1,7 @@
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using EventStore.Domain.SchemaRegistry;
 using EventStore.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Caching.Memory;
@@ -46,6 +47,7 @@ public class OpenApiDocumentBuilder(EventStoreContext db, EventSchemaConverter c
             var operation = new OpenApiOperation
             {
                 Summary = $"Publish a {type.Name} event",
+                Extensions = BuildRequiredClaimsExtension(type.RequiredClaims, ClaimDirection.Publish),
                 RequestBody = new OpenApiRequestBody
                 {
                     Required = true,
@@ -88,6 +90,27 @@ public class OpenApiDocumentBuilder(EventStoreContext db, EventSchemaConverter c
             document.SerializeAsV31(writer);
         }
         return Encoding.UTF8.GetString(stream.ToArray());
+    }
+
+    // ADR-050 -- "x-required-claims at the schema/operation level," the
+    // entity-level counterpart to ADR-009's already-emitted property-level
+    // "x-masking": a reader of the generated spec (Scalar, ADR-025) can
+    // see directly which claim this operation requires, without registry
+    // access. RequiredClaims itself (the internal enforcement mechanism,
+    // RequiredClaimEvaluator) is unaffected -- this only guarantees the
+    // SAME already-computed list also reaches the rendered document, per
+    // this ADR's own "guarantee it's emitted, not just tracked internally"
+    // framing. Absent entirely when a type declares no RequiredClaims at
+    // all, rather than an empty array -- consistent with x-masking's own
+    // "extension key present only when it's actually maskable" convention.
+    internal static Dictionary<string, IOpenApiExtension>? BuildRequiredClaimsExtension(List<RequiredClaim> requiredClaims, ClaimDirection direction)
+    {
+        var matching = requiredClaims.Where(c => c.Direction == direction).ToList();
+        if (matching.Count == 0)
+            return null;
+
+        var claims = new JsonArray(matching.Select(c => (JsonNode)c.Claim).ToArray());
+        return new Dictionary<string, IOpenApiExtension> { ["x-required-claims"] = new JsonNodeExtension(claims) };
     }
 
     private OpenApiSchema BuildEnvelopeSchema(string payloadSchemaText)

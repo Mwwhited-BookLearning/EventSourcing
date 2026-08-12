@@ -108,6 +108,10 @@ provider they apply to — not "code written."
 | 47 | [Mechanism-Level OpenTelemetry Instrumentation](#mechanism-level-opentelemetry-instrumentation) | Hardening & Evolution, Sharding & Replication, Entity-Centric Core Rebuild, Outbound Webhooks | Done |
 | 48 | [Event Log/AccessLog Archival Segment Detachment](#event-logaccesslog-archival-segment-detachment) | Binary Attachments, Delegated Grants/RBAC/Read Audit Logging, Hardening & Evolution, Lineage Export & Bitemporal Playback | Done |
 | 49 | [Expected-Response Tracking](#expected-response-tracking) | CQRS Read-Model Projections (worked example), Streaming Channels, Outbound Webhooks, Leader Election via Database-Backed Lease | Done |
+| 50 | [Proving-Ground Application UX](#proving-ground-application-ux) | MVVM Client | Done |
+| 51 | [Domain Decision Queues](#domain-decision-queues) | Proving-Ground Application UX, Digital Sign-Off for Regulated Actions, Non-Authoritative Capture | Done |
+| 52 | [Generic Entity/Live-View Query](#generic-entitylive-view-query) | GraphQL-Only Query Layer, Non-Authoritative Capture, Property-Level Masking, Delegated Grants/RBAC/Read Audit Logging | Done |
+| 53 | [Push-Notification Wake-Up Layer](#push-notification-wake-up-layer) | Publish API, Entity-Centric Core Rebuild | Done (all 6 background workers) |
 
 Two groups worth naming up front, since they explain most of the
 ordering below:
@@ -245,6 +249,10 @@ state "UI" as tierUi {
   state "Device Input Integration" as a20 #palegreen
   state "Accessibility Standard" as a21 #palegreen
   state "i18n/l10n Scope" as a22 #palegreen
+  state "Proving-Ground\nApplication UX" as a27 #palegreen
+  state "Domain Decision Queues" as a28 #palegreen
+  state "Generic Entity/\nLive-View Query" as a29 #palegreen
+  state "Push-Notification\nWake-Up Layer" as a30 #palegreen
 }
 
 ' Hidden edges between the 4 tier containers themselves -- not a real
@@ -365,6 +373,16 @@ p9 --> a26
 p14 --> a26
 a10 --> a26
 a8 --> a26
+p20 --> a27
+a27 --> a28
+a5 --> a28
+p17 --> a28
+p18 --> a29
+p17 --> a29
+p8 --> a29
+p22 --> a29
+p2 --> a30
+p11 --> a30
 @enduml
 ```
 
@@ -463,11 +481,11 @@ here as prose:
   from item 6) so it reads as resolved, not as an open dependency edge
   the way a same-level sibling node would.
 - **Expected-Response Tracking** (`ADR-094`, merged in from the
-  `design/service-level-agreement` branch — not yet implemented, queued
-  as this file's own next item) depends on **CQRS Read-Model Projections
-  (worked example)**, **Streaming Channels**, **Outbound Webhooks**, and
-  **Leader Election via Database-Backed Lease** — see that item's own
-  full section below for the reasoning behind each.
+  `design/service-level-agreement` branch, implemented and Done as of
+  2026-08-11) depends on **CQRS Read-Model Projections (worked example)**,
+  **Streaming Channels**, **Outbound Webhooks**, and **Leader Election via
+  Database-Backed Lease** — see that item's own full section below for the
+  reasoning behind each.
 - **GDPR/CCPA Erasure** depends on **Property-Level Masking** and
   **Entity-Centric Core Rebuild**.
 - **PCI-DSS SAD Boundary** depends on **Schema Registry** and
@@ -1635,13 +1653,14 @@ honestly flagged rather than silently dropped:
   uses `after` or a Connection shape, so building the fuller cursor
   machinery would have produced a response shape the doc itself never
   shows. Narrower than a full Relay cursor implementation.
-- **No generic "get current entity" query field, and no `extensions: JSON`
-  field anywhere.** `ADR-037`'s Consequences describe `extensions: JSON`
-  as "a generic field on every GraphQL type, exposing the Entity Store's
-  `Extensions` bag," but none of Follow/Lineage/Registry listing — the
-  only read surfaces this item's own exit criteria actually name — ever
-  queries current Entity Store state directly; there is currently no
-  GraphQL type it would attach to.
+- ~~No generic "get current entity" query field, and no `extensions: JSON`
+  field anywhere.~~ **Corrected, 2026-08-12, direct decision — see
+  "Generic Entity/Live-View Query" below**: this gap was left open long
+  enough that `ADR-042`/`ADR-045` (both written assuming such a field
+  would exist) drifted from reality, tracked as `docs/10-open-questions.md`'s
+  own row on it. Now built as its own item. `extensions: JSON` is still
+  not built — narrower than the query itself, no caller has needed the
+  overflow bag through this surface yet.
 - **DataLoader batching and cross-shard/cross-replica fan-out are not
   exercised, honestly, because there's no concrete case to exercise.**
   Every resolver this item builds already reads its data in one batched
@@ -3694,7 +3713,7 @@ VCR-style control, calling `playbackAsOf`) and `OfflineBundleViewer.vue`
 (the verification-result + event-list screen, reading either a
 downloaded bundle or the offline build's embedded one) — one shared
 component pair mounted from two entry points, per `ADR-068 §3`.
-`client-web/src/playback/verifyBundle.ts` recomputes the manifest hash
+`client-web/packages/mvvm-client/src/playback/verifyBundle.ts` recomputes the manifest hash
 (cross-checked this session against a real C# `ManifestHash.Compute`
 run, including the `DateTimeOffset`-fractional-second-trimming edge case
 `System.Text.Json` applies) and counts masked/erased fields — see
@@ -3871,7 +3890,7 @@ principle.
 (`useEntityViewActions.flush()`, called by `GenericFallbackView`'s
 "Retry sync" button since item 21) — genuinely nothing new needed for
 the ordinary case. The **air-gapped sneakernet** half is new:
-`client-web/src/outbox/{bundle,exportImport}.ts` reuse `ADR-068`'s
+`client-web/packages/mvvm-client/src/outbox/{bundle,exportImport}.ts` reuse `ADR-068`'s
 NDJSON-plus-manifest SHAPE directly (via `playback/verifyBundle.ts`'s
 own `computeManifestHash`, exported and shared rather than
 duplicated), adapted for a queued *command* rather than a stored
@@ -3967,7 +3986,7 @@ side lets a downstream analysis flag a sample whose claimed wall-clock
 delta diverges sharply from its actual monotonic delta as a suspiciously
 inconsistent wall clock.
 
-**Status: Done.** Built inside `client-web/src/deviceInput/`, not a
+**Status: Done.** Built inside `client-web/packages/mvvm-client/src/deviceInput/`, not a
 separate `EventStore.Client.DeviceInput` project — the four browser
 Hardware APIs only make sense inside an actual browser context, which
 `client-web` already is (loaded in a real tab or, if `EventStore.Client.
@@ -4090,7 +4109,7 @@ fallback view conform to WCAG 2.1 AA — a manual screen-reader pass
 specifically confirms the fallback is fully navigable, not merely
 visually present.
 
-**Status: Done.** `client-web/src/a11y.spec.ts` runs the real,
+**Status: Done.** `client-web/packages/reference-app/src/a11y.spec.ts` runs the real,
 published `axe-core` ruleset (`wcag2a`/`wcag2aa`/`wcag21a`/`wcag21aa`
 tags specifically, matching this ADR's own cited legal baseline, not
 the newer 2.2 tags) against the ACTUALLY rendered DOM of
@@ -4211,11 +4230,11 @@ pre-existing test fixture (`ViewDefinitionScenarioAssertions.cs`) was
 found still hardcoding literal `<div>v1</div>`-style text once this
 check went live, fixed to reference translation keys instead.
 
-Client-side: `client-web/src/i18n/locale.ts` (`resolveLocale`,
-`isRtlLocale`), `client-web/src/i18n/translations.ts`
+Client-side: `client-web/packages/mvvm-client/src/i18n/locale.ts` (`resolveLocale`,
+`isRtlLocale`), `client-web/packages/mvvm-client/src/i18n/translations.ts`
 (`resolveTranslations` + `placeholderTranslations` — en-US/fr-FR/ar-SA,
 domain-owned real content explicitly out of scope per this item's own
-Scope text), `client-web/src/api/localeClient.ts` (`negotiateLocale`,
+Scope text), `client-web/packages/mvvm-client/src/api/localeClient.ts` (`negotiateLocale`,
 reading the server's own negotiated `Content-Language` back rather than
 trusting `navigator.language` directly). `TemplateRenderer.vue` extends
 its existing `{{ field }}` interpolation regex with `{{ t:key }}`
@@ -4562,6 +4581,418 @@ SubscribingOverRealHttpStreamsAMatchingEventAsSse` and
 confirmed pre-existing, not caused by this item: `TimestampingHttpSqliteTests`
 passed cleanly 3/3 when run in isolation, and neither failing test touches
 Expected-Response Tracking code.
+
+## Proving-Ground Application UX
+
+**Scope**: direct request, 2026-08-12 — the Vitals/Meridian proving-ground
+samples (seeded, browsable in the MVVM client per the prior pass) still
+render through `client-web`'s single generic screen: one hardcoded event
+type per instance, a `mode: Tail` subscription with no history, and no way
+to publish a *new* event except the one leftover generic "Amount" command
+box. This item adds the pieces needed for both to work and look like real,
+demoable application prototypes, not a debug harness: (1) a generic,
+JSON-schema-driven **Event Composer** — pick any registered `AppId`+
+`EventType`, get a form generated from its schema, publish it, reusing the
+existing outbox path unchanged (no new persisted shape; pure client + the
+already-real `SchemaRegistryService`/`PublishService` surface); (2) a
+generic **Entity Browser** tab showing multiple recent entities of the
+configured type, not just whatever the live subscription happens to
+deliver; (3) a **background Simulator** worker per domain
+(`Samples.Vitals.Simulator`/`Samples.Meridian.Simulator`) — long-running,
+config-driven-interval `BackgroundService`s (the same shape `RouterWorker`/
+`DerivationWorker` already establish, minus the leader-election gate, since
+running the simulator twice is harmless demo noise, not a correctness
+risk) that periodically publish new, plausible domain events so the
+running app shows continuous activity instead of static seed data; (4) a
+real fix for the subscription defaulting to `mode: Tail` with no replay —
+`EventTailReader`'s single poll loop keeps running past its own starting
+cursor regardless of which mode it started in (confirmed by reading the
+class directly, not assumed), so switching the client's default to
+`mode: Replay, fromSequenceNumber: 0` gives history *and* ongoing live
+updates in the exact same stream, closing the substance of the gap
+`TODO.md` already tracked (`useEntityViewActions.subscribe()`'s hardcoded
+`Tail`) without needing that entry's own larger persisted-cursor mechanism
+to get a working demo.
+
+**Depends on**: MVVM Client — every piece here extends `client-web`'s
+existing outbox/subscription/`ViewDefinition` machinery, not a parallel
+mechanism.
+
+**Exit criteria**: opening a freshly-seeded Vitals or Meridian client-web
+instance shows the seeded continuity entity immediately (no "waiting for
+the first event," `mode: Replay` delivering the backlog); the Entity
+Browser tab lists more than one entity once the Simulator has been running
+for a few cycles; the Event Composer successfully publishes at least one
+event of a type neither the seed worker nor the simulator ever published,
+proving it's genuinely schema-driven and not hardcoded to the two demo
+event types; killing and restarting a Simulator loses no state beyond the
+in-flight publish (no duplicate-publish storm on restart, matching every
+other worker's own idempotent-retry posture); all of the above verified
+by actually running `EventStore.AppHost` and checking the live pages, not
+by reading the code back.
+
+**Status: Done** — 2026-08-12, same session, immediately following a full
+independent 94-ADR re-audit that (among other findings) reproduced the
+`mode: Tail` gap concretely for the first time. Built: `client-web/
+packages/mvvm-client/src/composables/useEventComposer.ts` +
+`client-web/packages/reference-app/src/components/composer/
+EventComposer.vue` (schema-driven form generation, a second
+`composer-client` identity holding
+`registry:admin`+`events:publish`, `EventStore.DevIdp/DevIdpSeeder.cs`);
+`components/entity/EntityBrowser.vue` (a pure new VIEW over the entity
+cache store's own existing per-entityId map — no new server surface);
+`Samples.Vitals.Simulator`/`Samples.Meridian.Simulator` (long-running
+`BackgroundService`-shaped loops, config-driven interval via
+`EventStore.AppHost/appsettings.json`'s new `Simulator` section, wired into
+`AppHost.cs` after both Seed workers). `useEntityViewActions.ts`'s
+subscription switched from hardcoded `mode: Tail` to `mode: Replay,
+fromSequenceNumber: 0` — confirmed live: a freshly-opened instance now
+shows already-published history immediately, no "waiting for the first
+event."
+
+**Extended, 2026-08-12, same session, direct request**: the Composer
+gained its first envelope-metadata support — `ADR-066`'s RFC 9470
+step-up + `Signature`/`Meaning`, the prerequisite named for the still-
+deferred bespoke Vitals PI-queue/Meridian analyst-queue screens (neither
+built yet; this is the shared groundwork both would need). Selecting a
+`RequiredSignature`-configured event type (`authorityDecision`, already
+registered by `Samples.Vitals`/`Samples.Meridian`'s own workflows) now
+shows a required "Reason for sign-off (Meaning)" field, and a first
+publish attempt that receives RFC 9470's real 401 challenge
+(`PublishEndpoints.BuildStepUpChallenge`) is caught and retried once with
+a freshly-fetched, stepped-up token (`EventStore.DevIdp`'s dev-only `acr`
+form parameter) — see `docs/features/mvvm-client.md`'s new "Digital
+sign-off and RFC 9470 step-up" subsection for the full mechanism. No
+server-side change needed — `RequiredSignature`/`Signature`/the 401
+challenge shape were already fully built (`ADR-066`, build-plan item 29);
+this was purely wiring `client-web` up to a contract that already
+existed. Verified via `useEventComposer.spec.ts`/`EventComposer.spec.ts`
+(new tests covering RequiredSignature detection, Meaning gating, and a
+mocked 401-then-retry round trip) plus the full client-web suite (134
+tests) and `vue-tsc -b`, all clean.
+
+Two real bugs found only by actually running this, not by reading the code
+back: (1) two long-running Simulators writing concurrently, forever, hit
+the same Postgres `Serializable`-transaction conflict the one-shot Seed
+workers hit earlier (`EventAppender.cs`) — fixed with a retry loop in each
+Simulator, since `WaitForCompletion` can't order two infinite loops the
+way it ordered two one-shot workers; (2) the Meridian Simulator originally
+published `IdentityDocumentUploaded`, but `client-web-meridian`'s own
+configured `VITE_EVENT_TYPE` watches `IdentityClaimSubmitted` — a type
+mismatch that left its Entity Browser permanently empty regardless of how
+much simulator activity existed, only visible by actually checking the
+running app's Browse tab. Also found and fixed while building: the
+Composer's `eventTypes` query returns every historical schema version
+(`SchemaRegistryService.ListAsync`'s own, unrelated original design for
+browsing version history), which floods the dropdown after repeated
+dev-iteration re-registrations — filtered client-side to `isActive` only;
+`graphqlClient.ts`'s `graphqlSubscribe` silently discarded a plain-JSON
+rejection response that never entered SSE framing (no `onMessage`, no
+`onError` — a real Forbidden response was indistinguishable from "nothing
+to deliver yet") — fixed to detect a non-`text/event-stream` response and
+surface it via `onError`; `SchemaRegistryService.ListAsync`'s reserved-type
+exclusion list was missing `expectedresponsemissing` (`ADR-094`'s own
+"never registered via PUT /registry" type) — added alongside the other two
+reserved names.
+
+All four exit criteria verified against a real `dotnet run` of
+`EventStore.AppHost`, not assumed: a freshly-opened Vitals instance showed
+S-0091 immediately (no wait); the Entity Browser grew to 30+ distinct
+Vitals entities and 6 distinct Meridian entities over a live run; the
+Composer successfully published a brand-new `ConsentWithdrawn` event
+(a type neither Seed nor Simulator ever publishes) end-to-end, confirmed
+`Status: applied` in the database; both Simulators' idempotent-retry
+design (fixed `EventId` per publish, DB-count-derived starting offset)
+means a restart loses no state beyond whatever publish was in flight.
+Verified visually too, via a disposable Playwright container (`mcr.
+microsoft.com/playwright`) run against the live app — no local browser
+install needed, screenshots captured for both domains across all three
+tabs.
+
+Client-web test suite: 129 passing (up from 118 at the start of this
+item) — new coverage for `useEventComposer.ts` (5 tests), `EntityBrowser.
+vue` (2 tests), `graphqlClient.ts`'s new non-SSE-error-response handling
+(2 tests), and `entityCache.ts`'s `listForInstance` getter (1 test).
+`.NET` side: full solution build clean; `EventStore.SchemaRegistry`'s
+reserved-exclusion change covered by existing `ListAsync` tests (no new
+test added for the one-line addition, given time constraints — flagged
+here rather than silently assumed covered).
+
+Captured as `docs/10-open-questions.md` row 3, not built here: every
+background worker in this design (`RouterWorker`, `DerivationWorker`,
+`WebhookOutboxPump`, `PeerSyncWorker`, `ChannelDerivationWorker`,
+`ExpectedResponseWatcher`) still advances by fixed-interval polling, never
+a push notification — raised while building this item's own Simulators,
+genuinely open, not decided.
+
+## Domain Decision Queues
+
+**Scope**: direct request, 2026-08-12 — a working demonstration of the
+"stretch" screens flagged (but deliberately deferred) when "Proving-Ground
+Application UX" landed: a Vitals **Principal Investigator queue** and a
+Meridian **KYC analyst queue**, each a real, bespoke per-domain screen (not
+the generic Composer/Browser) showing items genuinely awaiting a human
+decision and letting the reviewer accept/reject them through the shared
+`authorityDecision` reactor (`EventStore.Router.AuthorityDecisionResolver`,
+"Non-Authoritative Capture"), reusing "Proving-Ground Application UX"'s
+own step-up/Meaning mechanism unchanged. Investigating what this actually
+needed surfaced two real, previously-undiscovered gaps, both closed as
+part of this item rather than deferred: (1) `composer-client` holds no
+domain review claim (`review:ae`/`review:ionm`/`consent:approve`/
+`identity:aml-review`) and, by design, never should — a Principal
+Investigator or KYC analyst is a distinct real-world actor from the
+generic Composer tool, so this item adds **two new seeded identities**
+(`vitals-pi-client`, `meridian-analyst-client`), never widening
+`composer-client`'s own claims; (2) no Subscription payload anywhere
+exposed an event's own `EventId` — required to correlate a raiser event
+(the alert/screening-hit) with its eventual `authorityDecision.
+targetEventId` — so `FollowSubscriptionTypeModule` gains a new, generic
+`eventId` envelope field (`EventStore.GraphQL`), useful to any future
+Subscription consumer needing the same correlation, not just this item.
+
+**Deliberately generic core, domain-thin wrappers** — the same discipline
+the Composer itself established: `usePendingAuthorityQueue.ts` (a
+composable) and `AuthorityQueue.vue` (a component) never hardcode a
+Vitals or Meridian field/event-type name; `VitalsPiQueue.vue`/
+`MeridianAnalystQueue.vue` are the only two files that know either
+domain's specifics (which event type raises a pending item, which
+identity decides, what "pending" means). The two domains' own "pending"
+signals are deliberately asymmetric, a real finding rather than an
+oversight: Vitals' `IonmAlertRaised` is a genuine non-authoritative
+capture (`AuthorityStatus: "pending_review"`, `ADR-042`), while Meridian's
+`SanctionsScreeningPerformed` is an ordinary, immediately-"accepted"
+publish whose "needs review" signal is pure business data (`MatchFound`)
+— `PendingAuthorityQueueConfig.isPending` is a caller-supplied predicate
+specifically so this composable never has to assume one universal rule
+fits both.
+
+**Depends on**: Proving-Ground Application UX (the Composer's step-up/
+Meaning mechanism, reused as-is via `useEventComposer.publish()`), Digital
+Sign-Off for Regulated Actions (`RequiredSignature`/RFC 9470, already
+configured on the shared `authorityDecision` type), Non-Authoritative
+Capture (`AuthorityDecisionResolver`, the reactor this item's own "decide"
+action publishes against).
+
+**Exit criteria**: `Samples.Vitals.Simulator`/`Samples.Meridian.Simulator`
+each periodically publish a genuinely pending item (a `ReviewPending`
+`IonmAlertRaised`; a `MatchFound` `SanctionsScreeningPerformed`); opening
+the Vitals or Meridian client-web instance's new Queue tab shows that item
+without a page reload (`mode: REPLAY` from 0, the same fix "Proving-Ground
+Application UX" already applied elsewhere); accepting or rejecting an item
+publishes a real `authorityDecision` through `vitals-pi-client`/
+`meridian-analyst-client`, satisfies RFC 9470 step-up automatically, and
+the item disappears from the queue once the resulting decision event is
+received back over the same live subscription — all verified by
+automated test, not just by reading the code back.
+
+**Status: Done** — 2026-08-12, same session immediately following
+"Proving-Ground Application UX." Built: `FollowSubscriptionTypeModule.cs`
+gains the `eventId` envelope field (`EventStore.GraphQL`), covered by an
+extended `MvvmClientGraphQlHttpSqliteTests` assertion and documented in
+`docs/03-api-contracts.md`; `DevIdpSeeder.cs` gains `vitals-pi-client`
+(`review:ae`/`review:ionm`/`consent:approve`) and
+`meridian-analyst-client` (`identity:aml-review`), both `events:publish`
+only, documented in `docs/features/auth.md`'s seeded-clients table
+(which also gained the previously-missing `composer-client` row, found
+while already editing this table); `Samples.Vitals.Simulator`/`Samples.
+Meridian.Simulator` each gained a second periodic publish producing a
+real pending item. Client-web: `usePendingAuthorityQueue.ts` (generic,
+dual introspect-then-subscribe to the raiser type and the shared
+`authorityDecision` type, resolving a queued item the moment a matching
+decision arrives), `useEventComposer.ts` gained an optional `scope`
+override (so a decision identity never needs `registry:admin`),
+`components/queue/AuthorityQueue.vue` (generic UI) plus
+`VitalsPiQueue.vue`/`MeridianAnalystQueue.vue` (thin domain wrappers),
+wired into `App.vue` as a `config.appId`-gated fourth tab. Verified:
+full `dotnet build`/targeted SQLite+MvvmClient+Auth test subset (two
+unrelated, already-documented load-induced flakes reproduced once each,
+both confirmed passing cleanly in isolation and on re-run — not caused by
+this item); full client-web suite (139 passing, up from 134) and
+`vue-tsc -b`, both clean; new tests cover `eventId` introspection/
+delivery, `usePendingAuthorityQueue`'s subscribe/pending-filter/resolve-
+on-decision/decide flow, and `AuthorityQueue.vue`'s Meaning-gated Accept/
+Reject rendering.
+
+## Generic Entity/Live-View Query
+
+**Scope**: direct decision, 2026-08-12, resolving `docs/10-open-questions.md`'s
+row on which "GraphQL-Only Query Layer" itself left open: `ADR-042`'s own
+headline caller-facing requirement (every Live View response carrying
+`isAuthoritative`) and `ADR-045`'s most-cited surface ("every GraphQL
+query against the authoritative Entity Store or Live View" gets an
+`AccessLogEntry`) both assumed a generic entity-by-id query would exist —
+"GraphQL-Only Query Layer" explicitly scoped it out ("nothing built here
+ever needs one"). Built now: `entity_{appId}_{entityType}(id)`, one field
+per registered `(AppId, EntityType)` pair (the same dynamic-per-registered-
+type schema composition `FollowSubscriptionTypeModule` already establishes
+for Subscriptions, `ADR-037`'s own "a client cannot construct a query
+referencing an undeclared field" guarantee applied here too), reading
+whichever of the authoritative Entity Store or the always-populated Live
+View actually has the entity, masking (`ADR-009`/`057`) and Read-claim
+gating (`ADR-008`/`050`) enforced identically to Follow, and writing an
+`AccessLogEntry` (`ADR-045`) on every call.
+
+**A real, found nuance, not assumed going in**: an `EntityType` can be
+folded from SEVERAL distinct event types (Vitals' `IonmAlert` entity:
+`IonmAlertRaised` + `IonmAlertAcknowledged`) — the dynamic type's own
+fields and masking rules are therefore a UNION across every event type
+sharing that `EntityType`, not one type's own schema alone. A synthesized,
+merged JSON Schema (first contributing definition wins a name collision)
+lets `IPayloadMasker.MaskAsync` — built for a single event's own payload
+walk — mask a multi-source, already-merged Entity Store `Data` blob
+correctly regardless of which contributing type originally supplied a
+given field.
+
+**Depends on**: GraphQL-Only Query Layer (the schema/masking/claims
+machinery this item extends), Non-Authoritative Capture (`isAuthoritative`/
+the Live View fallback this item's entire reason to exist), Property-Level
+Masking, Delegated Grants/RBAC/Read Audit Logging (`ADR-045`'s
+`AccessLogEntry`).
+
+**Exit criteria**: an authoritative (accepted) entity is queryable with
+masking enforced per caller exactly as Follow already enforces it; an
+`unattested`/`pending_review` entity (never yet accepted) is still
+queryable via the Live View fallback, `isAuthoritative: false`; two
+distinct event types folding the same `EntityType` both contribute fields
+visible on the one query; a caller lacking a type's own Read claim is
+Forbidden; querying a nonexistent entity returns `null`, never an error;
+every call writes an `AccessLogEntry` — all verified by real HTTP
+integration test, not by reading the code back.
+
+**Status: Done** — 2026-08-12, same session. Built: `EntityQueryTypeModule`
+(`EventStore.GraphQL`, a new `ITypeModule` mirroring
+`FollowSubscriptionTypeModule`'s own structure), registered alongside it in
+`GraphQlServiceCollectionExtensions.cs`. One real bug found only by
+running this, not by reading HotChocolate's docs: a field typed
+`DateTimeOffset!` failed schema build ("Unable to resolve type reference
+`DateTimeOffset!`") the one time nothing else in the schema had already
+caused that scalar to be bound — worked around by returning `updatedAt`
+as a plain ISO-8601 `String` instead, avoiding the scalar-registration
+ordering quirk entirely (every other envelope field already matched
+`FollowSubscriptionTypeModule`'s own no-`!`-suffix convention and needed
+no such workaround). `docs/03-api-contracts.md` documents the new query
+shape; `ADR-042`/`ADR-045` both gain a forward-pointer note confirming
+this closes the gap their own text assumed. `docs/10-open-questions.md`'s
+row deleted. New test file `EntityQueryHttpSqliteTests.cs` (6 tests, real
+HTTP against a live Host): masking enforced per caller, Live View fallback
+with `isAuthoritative: false`, cross-event-type field merge, Read-claim
+Forbidden, null-for-nonexistent, and `AccessLogEntry` verified directly
+against the database. Verified: full `dotnet build` clean; full SQLite
+regression suite re-run twice (two unrelated, already-documented
+load-induced flakes reproduced once each across the two runs — an
+OpenTelemetry fold-lag assertion and a Projections catch-up 499 — both
+confirmed passing cleanly in isolation, neither touching
+`EntityQueryTypeModule`/`GraphQlServiceCollectionExtensions.cs`).
+
+## Push-Notification Wake-Up Layer
+
+**Scope**: `ADR-095`, resolving `docs/10-open-questions.md`'s last
+remaining row — every background worker in this design advanced via a
+fixed-interval poll loop, never a push notification. Direct decision to
+prove the mechanism on `RouterWorker` first, the most central worker,
+before extending to the other five, rather than a single larger pass
+across all six at once. A new shared abstraction, `IWorkerWakeSignal`
+(`EventStore.WorkerWakeSignal`), plus one real, provider-native
+implementation each: Postgres `LISTEN`/`NOTIFY`, SQL Server Service
+Broker (message type/contract/queue/service, `WAITFOR`/`RECEIVE`), SQLite
+an in-process `Channel<T>` backed by a durable `WakeSignal` marker row.
+`RouterWorker.ExecuteAsync` calls `WaitForWakeAsync` in place of an
+unconditional `Task.Delay` between empty ticks; `PublishService.
+PublishAsync` calls `NotifyAsync` immediately after its own durable
+append succeeds.
+
+**Depends on**: Publish API (`PublishService`, the notify call site),
+Entity-Centric Core Rebuild (`RouterWorker`, the wait call site).
+
+**Exit criteria**: on every provider, a `NotifyAsync` call during an
+active `WaitForWakeAsync` wakes it well before its own timeout elapses;
+a wait with genuinely nothing to receive still runs out its full timeout
+(the poll loop's own correctness guarantee, provably unchanged); a real
+publish through the live HTTP path gets folded by `RouterWorker`
+noticeably faster than the old fixed poll interval — all verified against
+real infrastructure (Testcontainers for Postgres/SQL Server, direct for
+SQLite), never mocked.
+
+**Status: Done (all 6 background workers)** — 2026-08-12, same session,
+two passes. First pass built: `EventStore.WorkerWakeSignal` (interface +
+`SqliteWorkerWakeSignal`), `PostgresWorkerWakeSignal`/
+`SqlServerWorkerWakeSignal` (in their own provider migrations projects,
+matching `PostgresUniqueConstraintViolationDetector`'s own precedent for
+provider-specific runtime code), a new `WakeSignal` entity migrated
+across all three providers, SQL Server's own `AddWorkerWakeSignal`
+migration additionally creating real Service Broker objects
+(`ENABLE_BROKER`, message type, contract, queue, service).
+`RouterWorker`/`PublishService` wired; every `Add*WorkerWakeSignal()`
+registered in each `EventStore.Host.<Provider>/Program.cs`.
+
+Three real bugs found only by actually running this, not by design
+review, in the first pass — full detail in `docs/changes/2026-08-12.md`
+and `ADR-095`'s own Consequences: (1) `SqliteWorkerWakeSignal`'s static
+state, keyed by topic alone, let unrelated `WebApplicationFactory`-hosted
+test processes cross-talk through the same in-process `Channel` — fixed
+by keying on `(connection string, topic)`; (2) one existing SQLite test's
+own timing assumption (`Status == "received"` immediately after publish)
+broke once `RouterWorker` got faster — fixed by polling for the real
+condition instead of an implicit race; (3) `ALTER DATABASE ... SET
+ENABLE_BROKER` cannot target the `master` system database, which broke
+roughly two dozen pre-existing `*SqlServerTests.cs` files that all
+migrate against Testcontainers' own default `master` connection — fixed
+by gating Service Broker object creation on `is_broker_enabled` actually
+being true, so a `master`-connected migration just skips them.
+
+Second pass (same session) closed the "not built this pass" gap this
+section used to name: `DerivationWorker`, `WebhookOutboxPump`,
+`PeerSyncWorker`, `ChannelDerivationWorker`, and `ExpectedResponseWatcher`
+all now call `WaitForWakeAsync` in place of their own unconditional
+`Task.Delay`, each on its own topic (`WakeSignalTopics.Derivation`/
+`.ExpectedResponse`/`.PeerSync`, `WebhookOutboxPump.Topic`,
+`ChannelDerivationWorker.Topic`). Notify call sites: `PublishService.
+PublishAsync` (derivation/expectedresponse/peersync, together — every new
+event is a candidate for all three); `RouterWorker.RunOnceAsync`
+(webhookoutbox, once its own tick folds anything with a non-null
+`payloadMasker`); `TelemetrySampleWriter.IngestAsync` (channelderivation,
+a completely separate write path from `PublishService`/`RouterWorker`,
+per ADR-031's own separate telemetry data plane). A new shared
+`WakeSignalTopics` class (`EventStore.WorkerWakeSignal`) centralizes the
+three topic constants that would otherwise need a circular project
+reference to share (`EventStore.Derivation`/`Replication`/
+`ExpectedResponse` each already depend on `EventStore.Inbox` for
+`PublishService` itself); `WebhookOutboxPump.Topic`/
+`ChannelDerivationWorker.Topic` stay declared on the worker directly,
+since their own notify call sites have no such cycle.
+
+This pass also closed a gap `ADR-095`'s own Consequences had already
+named as the trigger for needing it: SQL Server's Service Broker
+`WAITFOR`/`RECEIVE` has no `WHERE` clause and no "peek without removing,"
+so a single shared queue across 6 topics would let any message wake
+whichever topic happened to be waiting, regardless of which topic
+actually notified. Fixed with a new migration, `ExtendWorkerWakeSignalPerTopic`,
+creating a full queue/service/contract/message-type SET PER new topic
+(`"router"` keeps its original, un-suffixed objects from
+`AddWorkerWakeSignal`); `SqlServerWorkerWakeSignal`'s own topic-to-name
+mapping special-cases `"router"` and validates every topic against a
+plain-lowercase-letters allow-list before it's ever interpolated into a
+raw SQL object name.
+
+New tests: `WorkerWakeSignalSqliteTests.cs` (3, direct),
+`WorkerWakeSignalPostgresTests.cs` (2, Testcontainers-backed),
+`WorkerWakeSignalSqlServerTests.cs` (1 combined method, Testcontainers-
+backed, extended in the second pass to also prove a non-`"router"`
+topic's own per-topic queue wakes correctly AND prove real topic
+isolation — two different topics waiting concurrently, only one
+notified, only that one wakes early while the other genuinely runs out
+its own timeout, a regression test for the exact failure mode the
+single-shared-queue design would have had), plus a new
+`WakeSignalExtendedWorkersSqliteTests.cs` (1 combined method) proving
+each of the second pass's 5 new call sites actually signals its own
+topic. Verified: full `dotnet build` clean; full Postgres suite clean;
+full SQL Server suite verified in batches (this host's own already-
+documented `fs.aio-max-nr` container-exhaustion ceiling under many
+back-to-back `MsSqlContainer` starts, not a code issue — confirmed by
+every batch passing cleanly once run at a size that doesn't exhaust it);
+SQLite regression suite re-run repeatedly at this project's own
+established 0-2-failures-per-run baseline, every failure confirmed
+pre-existing/unrelated on isolated re-run.
 
 ## Cross-cutting, every item
 

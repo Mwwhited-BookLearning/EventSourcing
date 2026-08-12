@@ -35,6 +35,25 @@ services:
     # (Entra ID, Auth0, Keycloak, ...), config-only on the eventstore
     # service below (Authentication__Authority), per that ADR's own story.
 
+  # ADR-076 -- the single deploy-time schema-apply step, run once ahead of
+  # `eventstore` (Compose's own closest equivalent to Aspire's
+  # WaitForCompletion: a one-shot service another service's `depends_on`
+  # gates on via `service_completed_successfully`). Runs a bundle that must
+  # already exist at scripts/bundles/postgres/efbundle -- generate one first
+  # with `scripts/generate-migration-bundle.sh postgres` (needs the .NET
+  # SDK; this image deliberately doesn't carry it, since the bundle is
+  # self-contained and needs no SDK/runtime install to execute).
+  migrate:
+    image: mcr.microsoft.com/dotnet/runtime-deps:10.0
+    volumes:
+      - ./scripts/bundles/postgres:/bundle:ro
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - chmod +x /bundle/efbundle && /bundle/efbundle --connection "Host=postgres;Port=5432;Database=eventstore;Username=eventstore;Password=${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
   eventstore:
     build:
       context: .
@@ -56,6 +75,8 @@ services:
         condition: service_healthy
       devidp:
         condition: service_started
+      migrate:
+        condition: service_completed_successfully
 
 volumes:
   postgres-data:

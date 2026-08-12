@@ -6,6 +6,7 @@ using EventStore.Domain.SchemaRegistry;
 using EventStore.Inbox;
 using EventStore.Persistence;
 using EventStore.SchemaRegistry;
+using EventStore.WorkerWakeSignal;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -22,6 +23,12 @@ public class DerivationWorker(IServiceScopeFactory scopeFactory, ILogger<Derivat
 {
     private static readonly TimeSpan PollInterval = TimeSpan.FromSeconds(2);
     private const int SourceBatchSize = 200;
+
+    // ADR-095 -- shared with PublishService's own NotifyAsync call via
+    // WakeSignalTopics (see that class's own comment for why: this project
+    // already depends on EventStore.Inbox, so Inbox referencing this class
+    // back for the constant would cycle).
+    public const string Topic = WakeSignalTopics.Derivation;
 
     // The worker is a server-side process producing new data, not exposing
     // existing data to an external caller, so RequiredClaims' Read direction
@@ -58,7 +65,20 @@ public class DerivationWorker(IServiceScopeFactory scopeFactory, ILogger<Derivat
                 logger.LogError(ex, "Derivation worker tick failed");
             }
 
-            await Task.Delay(PollInterval, stoppingToken);
+            // ADR-095 -- same "wait up to PollInterval, wake early on signal,
+            // never the sole correctness mechanism" shape RouterWorker
+            // established first; extended here as a named follow-up rather
+            // than left polling-only.
+            try
+            {
+                using var wakeScope = scopeFactory.CreateScope();
+                var wakeSignal = wakeScope.ServiceProvider.GetRequiredService<IWorkerWakeSignal>();
+                await wakeSignal.WaitForWakeAsync(Topic, PollInterval, stoppingToken);
+            }
+            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+            {
+                break;
+            }
         }
     }
 

@@ -4,7 +4,9 @@
     <ProjectReference Include="..\EventStore.Abstractions\EventStore.Abstractions.csproj" />
     <ProjectReference Include="..\EventStore.SchemaRegistry\EventStore.SchemaRegistry.csproj" />
     <ProjectReference Include="..\EventStore.Erasure\EventStore.Erasure.csproj" />
+    <ProjectReference Include="..\EventStore.Masking\EventStore.Masking.csproj" />
     <ProjectReference Include="..\EventStore.Router\EventStore.Router.csproj" />
+    <ProjectReference Include="..\EventStore.WorkerWakeSignal\EventStore.WorkerWakeSignal.csproj" />
   </ItemGroup>
 
   <ItemGroup>

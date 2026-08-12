@@ -17,7 +17,7 @@ namespace EventStore.Persistence.Migrations.Postgres.Migrations
         {
 #pragma warning disable 612, 618
             modelBuilder
-                .HasAnnotation("ProductVersion", "10.0.10")
+                .HasAnnotation("ProductVersion", "10.0.11")
                 .HasAnnotation("Relational:MaxIdentifierLength", 63);
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
@@ -189,6 +189,14 @@ namespace EventStore.Persistence.Migrations.Postgres.Migrations
 
                     b.Property<bool>("LateArrivalFlag")
                         .HasColumnType("boolean");
+
+                    b.Property<string>("PropertyLogicalTimes")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("PropertyVersions")
+                        .IsRequired()
+                        .HasColumnType("text");
 
                     b.Property<int>("SchemaVersion")
                         .HasColumnType("integer");
@@ -1019,6 +1027,19 @@ namespace EventStore.Persistence.Migrations.Postgres.Migrations
                     b.HasKey("SubscriptionId");
 
                     b.ToTable("WebhookSubscriptions");
+                });
+
+            modelBuilder.Entity("EventStore.Domain.WorkerWakeSignal.WakeSignal", b =>
+                {
+                    b.Property<string>("Topic")
+                        .HasColumnType("text");
+
+                    b.Property<DateTimeOffset>("LastSignaledAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Topic");
+
+                    b.ToTable("WakeSignals");
                 });
 
             modelBuilder.Entity("EventStore.Domain.SchemaRegistry.FilterableField", b =>

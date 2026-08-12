@@ -21,6 +21,21 @@ whole-payload JSON Merge Patch semantics do.
 Decision:
 - **`Optional<T>` becomes the real per-property patch representation**,
   superseding `ADR-016`'s whole-payload-merge description of `Partial`.
+  ~~As a strongly-typed C# DTO~~ **corrected, 2026-08-12, found by an
+  independent design-compliance audit**: no `Optional<T>` type exists
+  anywhere in `src/`. The fold rule below IS correctly implemented,
+  exactly as decided — `EventStore.Router/EntityDataMerger.cs` (and its
+  independently-duplicated read-side twin, `EventStore.Projections.Host/
+  SnapshotMerger.cs`) apply this same three-state rule directly against
+  `System.Text.Json.Nodes.JsonNode` structures instead: a key absent from
+  a `JsonObject` is never enumerated (`Unspecified`), a key present with
+  a JSON `null` enumerates with a null CLR reference (`Specified(null)`,
+  Clear), a key present with a value enumerates with that value
+  (`Specified(value)`, overwrite) — the same semantics this Decision's
+  own table names, just never wrapped in a generic type. Both source
+  files' own comments already document this choice explicitly. Behavior-
+  correct; only the described *mechanism* (a DTO wrapper) was never
+  built.
   Three states per property, not two: **unspecified** (omitted from the
   payload — leave current value), **specified as `null`** (explicit
   clear), **specified with a value** (overwrite). `System.Text.Json`

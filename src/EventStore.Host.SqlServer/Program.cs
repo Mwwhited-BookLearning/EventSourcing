@@ -55,6 +55,9 @@ builder.Services.AddScoped<IEventLineageQueryProvider, SqlServerEventLineageQuer
 builder.Services.AddUpcasting();
 builder.Services.AddSchemaRegistry();
 builder.Services.AddFeatureFlags();
+// ADR-095 -- SQL Server Service Broker, notify-to-wake/poll-to-confirm on
+// top of RouterWorker's existing poll loop.
+builder.Services.AddSqlServerWorkerWakeSignal();
 builder.Services.AddInbox();
 builder.Services.AddRouter();
 builder.Services.AddDerivation();

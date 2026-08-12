@@ -69,10 +69,25 @@ Decision:
   not a per-field wrapper. This is a different granularity from `ADR-009`'s
   masking wrapper (which redacts individual field *values*) — worth
   disambiguating explicitly, per this project's own convention, rather
-  than treating both as "the same wrapper idea." A caller reading the
+  than treating both as "the same wrapper idea." ~~A caller reading the
   authoritative Entity Store never sees this marker at all — only the
   Live View surface carries it, so there's no ambiguous middle ground
-  where a caller has to check a flag to know which view it's looking at.
+  where a caller has to check a flag to know which view it's looking
+  at.~~ **Corrected, 2026-08-12, "Generic Entity/Live-View Query"
+  (build-plan item 52), the first real caller-facing surface this marker
+  ever reached**: the actual built query is ONE field
+  (`entity_{appId}_{entityType}(id)`), not two separate
+  authoritative/Live-View surfaces — it reads the authoritative row when
+  one exists, falls back to the Live View otherwise, and `isAuthoritative`
+  is present on EVERY response either way (`true` for the authoritative
+  case, `false` for the fallback), rather than being a marker the
+  authoritative path never carries at all. This is a deliberate,
+  arguably better shape than the one originally specified here (one field
+  a caller always checks, instead of two surfaces a caller must know to
+  call differently depending on whether an entity might still be
+  pending) — recorded as a correction because the actual shape built
+  genuinely differs from this bullet's literal text, not because the
+  substance (a caller can always tell which view answered) changed.
 - **Once approved, the authoritative Entity Store catches up** — a
   background reconciliation applies the now-`accepted` event to the
   authoritative Entity Store, the same "apply once, on the triggering

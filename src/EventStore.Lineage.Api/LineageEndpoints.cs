@@ -31,7 +31,10 @@ public static class LineageEndpoints
             switch (rootCheck)
             {
                 case LineageRootCheck.NotFound:
-                    return Results.NotFound(new { error = $"event {id} not found" });
+                    return Results.Problem(
+                        type: "https://eventstore.example/problems/not-found",
+                        title: $"event {id} not found",
+                        statusCode: StatusCodes.Status404NotFound);
                 case LineageRootCheck.Forbidden:
                     return Results.Forbid();
             }

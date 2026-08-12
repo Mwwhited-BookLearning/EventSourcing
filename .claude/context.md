@@ -19,10 +19,10 @@ event-sourcing store ("Duplex," `docs/naming.md`), built as a **worked
 teaching example**: append-only write side (schema registry, publish/
 follow/lineage APIs), a CQRS read side, and two fully worked proving-ground
 domains (clinical trials + device telemetry — "Vitals"; digital identity/
-KYC — "Meridian"). Governing principle: never lose or corrupt data. All 93
-ADRs (`docs/adrs/adr-001` through `adr-093`) are Accepted — the *decisions*
-are done. **All 48 `docs/08-build-plan.md` items are now Done, as of
-2026-08-11** — the real `src/`/`tests/` tree exists in full, in that
+KYC — "Meridian"). Governing principle: never lose or corrupt data. All 95
+ADRs (`docs/adrs/adr-001` through `adr-095`) are Accepted — the *decisions*
+are done. **All 52 `docs/08-build-plan.md` items are now Done, as of
+2026-08-12** — the real `src/`/`tests/` tree exists in full, in that
 file's own dependency order. Remaining work going forward is (a) keeping
 ~150 docs internally consistent with no compiler to catch drift, and (b)
 whatever new capability/hardening/domain-depth work gets decided next —
@@ -2108,11 +2108,105 @@ stale numbers here are worse than none)*
   load-induced flake, confirmed still passing alone) and targeted
   Postgres/real-HTTP runs against every bumped package's own consuming
   tests. Commit `6716c27`.
-- **Next up**: nothing currently queued — the user's own request queue
-  from this session (proving-ground seed workers/browser verification
-  → dependency updates) is now fully worked through. A fresh session
-  resuming here should check with the user for the next task rather
-  than assume one.
+- **A separate session completed the above (item 49, dependency updates,
+  a design-compliance audit, an SDK bump, TODO.md cleanup) while THIS
+  session was independently blocked chasing the same seed-worker/browser-
+  verification work, unaware the other session existed until both were
+  editing `AppHost.cs` concurrently.** Resolved by killing this session's
+  own redundant AppHost instance and confirming the working tree clean at
+  the other session's latest commit (`cd58fad`) before continuing.
+  **Lesson for a fresh session**: if `AppHost.cs`/ports/state keep
+  changing under you mid-verification with no edits of your own, check
+  `git log`/`docker ps`/running `dcp.exe` processes for a second live
+  session before assuming you found a new bug — this cost real time
+  before being diagnosed.
+- **Direct request, "Review everything again," scoped via
+  `AskUserQuestion` to a full independent re-audit** (not just re-checking
+  the prior session's own audit conclusions): 9 parallel background
+  agents across all 94 ADRs (5 ranges), the build-plan table, both
+  domains, and dependency-version consistency, plus a personal build/
+  test/live-run baseline. Found 12 genuinely new gaps beyond what `TODO.
+  md`/`docs/10-open-questions.md` already tracked — most notably `ADR-009`'s
+  `revealOnDemand` half (never reveal the real value to a bulk response,
+  even for a claim holder) isn't implemented at all, and `ADR-043`'s
+  `accessGrant`/`accessGrantRevoked` durable-event trail was never built.
+  None fixed yet — reported to the user for a decision on which to
+  promote into a tracker. Full findings list only in that turn's own
+  chat response, not duplicated into a doc — recover from conversation
+  history if needed, or re-run the same 9-agent pattern (`docs/changes/
+  2026-08-12.md` narrates the dispatch shape). Also, live verification
+  during this pass reproduced a real, concrete instance of `client-web`'s
+  already-tracked `mode: Tail`-only subscription gap (seed data published
+  before any browser connects can never appear under `Tail`) — this
+  became the seed for the next item.
+- **Same session, direct request: "We need a ui that allows for dropping
+  in events. A background worker would be cool too... I want working
+  prototypes."** Build-plan item 50, "Proving-Ground Application UX,"
+  built and verified Done — a generic Event Composer + Entity Browser in
+  `client-web`, `Samples.{Vitals,Meridian}.Simulator` background
+  publishers, and the `mode: Tail`→`Replay` fix. Full narrative in
+  `docs/08-build-plan.md`'s own item section and `docs/changes/
+  2026-08-12.md` — not repeated here. `client-web` now at 129 passing
+  tests (up from 118). `AppHost.cs`'s hardcoded ports/dev-password moved
+  into `appsettings.json` config, per direct request ("all static
+  settings in the aspire setup should be managed with config settings").
+- **All 12 findings from the 9-agent audit above resolved, same session**:
+  5 built directly (`ADR-002`'s `SpecEndpoints:Enabled` gate, three
+  doc-only corrections, `ADR-009`'s `revealOnDemand` half); the remaining
+  7 (`ADR-036/043/048/055/057/065/080`) narrowed with honest "Corrected,
+  2026-08-12" notes rather than built, per direct decision — each
+  documents what's actually built vs. what its own Decision originally
+  overclaimed. Full narrative in `docs/changes/2026-08-12.md`.
+- **Direct request: build step-up/envelope-field support for the
+  Composer, then both deferred "stretch" screens (Vitals PI queue,
+  Meridian analyst queue) at full depth.** `EventComposer.vue` gained
+  `ADR-066` RFC 9470 step-up + Meaning support (build-plan item 50's own
+  "Extended" note). Build-plan item 51, "Domain Decision Queues": two new
+  seeded identities (`vitals-pi-client`, `meridian-analyst-client`, never
+  widening `composer-client`), a generic `usePendingAuthorityQueue.ts` +
+  `AuthorityQueue.vue`, two thin domain wrappers, both Simulators now
+  also publish genuinely pending items. Found and fixed along the way: no
+  Subscription payload exposed an event's own `EventId` at all — added
+  generically (`FollowSubscriptionTypeModule`), not just for this feature.
+- **Direct decision, three follow-on efforts, each fully built and
+  verified this same session**:
+  1. **Rejection behavior** (`docs/10-open-questions.md`'s row on which
+     doc was authoritative) — adopted the "targeted-rebuild" refinement
+     as `RejectionBehavior.Annotate`'s real default: a rejection of an
+     already-accepted event now triggers `RouterWorker.
+     RebuildEntityFromAcceptedEventsAsync`, re-folding that one entity
+     from scratch excluding non-accepted events, never touching the
+     Event Log. Reasoning: the Event Log is immutable; the Entity Store
+     is an explicitly derived, recomputable cache, so a real rebuild is
+     correct, not a "never mutate" violation.
+  2. **Generic entity/Live-View query** (`docs/10-open-questions.md`'s row
+     on a gap `ADR-042`/`ADR-045` both assumed but "GraphQL-Only Query
+     Layer" scoped out) — build-plan item 52: `EntityQueryTypeModule`,
+     `entity_{appId}_{entityType}(id)`, one field per registered
+     `(AppId, EntityType)`, masking/claims/`isAuthoritative`/`AccessLogEntry`
+     all wired for real.
+  3. **Push-notification wake-up layer** (`docs/10-open-questions.md`'s
+     row on polling vs. push) — `ADR-095`: Postgres `LISTEN`/`NOTIFY`, SQL
+     Server Service Broker, SQLite an in-process signal + durable marker
+     row, proven end-to-end on `RouterWorker` only (direct scope decision
+     — the other 5 workers are a named, mechanical follow-up, not built).
+     Two real bugs found only by running the full suite, not by review: a
+     cross-`WebApplicationFactory`-host channel-key collision in the
+     SQLite implementation, and `ENABLE_BROKER` flatly failing against
+     Testcontainers' own default `master` connection, which broke every
+     pre-existing `*SqlServerTests.cs` file until gated on
+     `is_broker_enabled` — see `ADR-095`'s own Consequences for both.
+  `docs/10-open-questions.md` is now fully empty again (all 3 remaining
+  rows resolved this session). All 95 ADRs Accepted, all 52 build-plan
+  items Done.
+- **Next up**: `docs/10-open-questions.md` is empty and `TODO.md`'s own
+  remaining items are unchanged by this batch of work — nothing is
+  currently queued. A fresh session resuming here should ask the user
+  rather than assume a next priority; real candidates if asked: extend
+  the push-notification wake signal to the other 5 background workers
+  (`ADR-095`'s own named follow-up), or pick up one of `TODO.md`'s
+  existing "build vs. narrow" items (e.g. `ADR-013`'s Problem Details,
+  `ADR-062`'s npm package split, `ADR-063`'s FsCheck/Polly+Simmy).
 
 ## How to resume cold
 
@@ -2151,7 +2245,7 @@ stale numbers here are worse than none)*
    Don't mistake any of these for a real regression — confirm by checking
    whether any failing test name actually touches the feature just built,
    and by re-running that specific class alone, before assuming otherwise.
-6. `client-web/`: `npm test` (108 tests, `vitest`), `npm run build`, and
+6. `client-web/`: `npm test` (129 tests, `vitest`), `npm run build`, and
    `npm run build:offline-player` — the last of these is easy to assume
    works from a clean `vite build` exit code alone; it isn't a full
    check (see item 41's own note above about a bug only an actual

@@ -38,8 +38,9 @@ public class LineageExportService(
         if (rootEvents.Count == 0)
             return LineageExportRootCheck.NotFound;
 
-        var claimsByType = await schemaRegistry.GetActiveClaimsByNamesAsync(rootEvents.Select(e => e.EventType).Distinct().ToList(), ct);
-        var anyVisible = rootEvents.Any(e => IsVisible(e.EventType, claimsByType, user));
+        var claimsByKey = await schemaRegistry.GetActiveClaimsByAppAndNamesAsync(
+            rootEvents.Select(e => (e.AppId, e.EventType)).Distinct().ToList(), ct);
+        var anyVisible = rootEvents.Any(e => IsVisible(e.AppId, e.EventType, claimsByKey, user));
         return anyVisible ? LineageExportRootCheck.Ok : LineageExportRootCheck.Forbidden;
     }
 
@@ -63,14 +64,15 @@ public class LineageExportService(
             .Where(e => closureIds.Contains(e.EventId))
             .OrderBy(e => e.SequenceNumber)
             .ToListAsync(ct);
-        var claimsByType = await schemaRegistry.GetActiveClaimsByNamesAsync(candidates.Select(e => e.EventType).Distinct().ToList(), ct);
+        var claimsByKey = await schemaRegistry.GetActiveClaimsByAppAndNamesAsync(
+            candidates.Select(e => (e.AppId, e.EventType)).Distinct().ToList(), ct);
 
         // A node the caller can't see is dropped from the export set entirely
         // -- the same "never expand past a restricted node" rule event-chains.md's
         // own Lineage API already applies (ADR-008); here it also means the
         // restricted event's OWN payload never appears in the bundle at all,
         // not merely masked.
-        var visibleEvents = candidates.Where(e => IsVisible(e.EventType, claimsByType, user)).ToList();
+        var visibleEvents = candidates.Where(e => IsVisible(e.AppId, e.EventType, claimsByKey, user)).ToList();
 
         var exportedLines = new List<ExportedEventLine>();
         var referencedDefinitions = new SortedSet<string>();
@@ -146,8 +148,9 @@ public class LineageExportService(
         return ordered.Count;
     }
 
-    private static bool IsVisible(string eventType, IReadOnlyDictionary<string, IReadOnlyList<RequiredClaim>> claimsByType, ClaimsPrincipal user) =>
-        !claimsByType.TryGetValue(eventType, out var claims) || RequiredClaimEvaluator.HasAny(claims, ClaimDirection.Read, user);
+    private static bool IsVisible(
+        string appId, string eventType, IReadOnlyDictionary<(string AppId, string EventType), IReadOnlyList<RequiredClaim>> claimsByKey, ClaimsPrincipal user) =>
+        !claimsByKey.TryGetValue((appId, eventType), out var claims) || RequiredClaimEvaluator.HasAny(claims, ClaimDirection.Read, user);
 
     private async Task<string> MaskPayloadAsync(StoredEvent ev, ClaimsPrincipal user, CancellationToken ct)
     {

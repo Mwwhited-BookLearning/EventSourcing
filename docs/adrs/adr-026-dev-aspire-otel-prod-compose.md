@@ -20,9 +20,18 @@ rather than left as a vague aspiration.
 Decision:
 - **Local development: .NET Aspire, with all three OpenTelemetry signals
   configured, not just mentioned.** `EventStore.ServiceDefaults`'
-  `ConfigureOpenTelemetry` (called from every `EventStore.Host.<Provider>`,
-  `EventStore.DevIdp`, and `EventStore.Projections.Host` — `ADR-001`,
-  `ADR-006`, `ADR-015`) wires:
+  `ConfigureOpenTelemetry` is called from every `EventStore.Host.<Provider>`
+  and `EventStore.DevIdp` (`ADR-001`, `ADR-006`) —
+  ~~and `EventStore.Projections.Host`~~ **corrected, 2026-08-12, found by
+  an independent design-compliance audit**: `EventStore.Projections.Host`
+  is a plain class library with no `Program.cs`, so it can't call
+  `ConfigureOpenTelemetry` itself, and its actual worked-example entry
+  point, `Samples.Orders.Projections/Program.cs`, doesn't call it either
+  (confirmed directly — no `ConfigureOpenTelemetry`/`AddServiceDefaults`
+  reference anywhere in that project). "Every service in the solution"
+  therefore isn't quite accurate as originally written — the Projections
+  pathway specifically (`ADR-015`) has no OTel wiring at all today. It
+  wires:
   ```csharp
   public static void ConfigureOpenTelemetry(this IHostApplicationBuilder builder)
   {
@@ -58,9 +67,17 @@ Decision:
   workflows, not a production container orchestrator), while
   `docker-compose.yml` builds the same ordinary app images
   (`EventStore.Host.<Provider>`, `EventStore.DevIdp` — or its production
-  IdP replacement — and now `EventStore.Projections.Host`) and runs them
+  IdP replacement) ~~and now `EventStore.Projections.Host`~~ and runs them
   without any Aspire-specific machinery. Both paths deploy the identical
   container images; only what launches/wires them differs by environment.
+  **Corrected, 2026-08-12, found by an independent design-compliance
+  audit**: `EventStore.Projections.Host` is a plain class library with no
+  `Program.cs` — it structurally cannot be built as a container image at
+  all. The real, worked-example Projections deployable is `Samples.
+  Orders.Projections`, which *could* become a third compose image the
+  same way, but the actual `docker-compose.yml` in this repo today only
+  defines `postgres`/`devidp`/`migrate`/`eventstore` — two ordinary app
+  images, not three.
 - `OTEL_EXPORTER_OTLP_ENDPOINT` in production points at whatever
   OTLP-compatible collector the deployment target has (unspecified here —
   an environment-level choice, not fixed by this design) rather than the

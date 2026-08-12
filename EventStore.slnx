@@ -4,6 +4,7 @@
     <Project Path="src/EventStore.Archival/EventStore.Archival.csproj" />
     <Project Path="src/EventStore.AppHost/EventStore.AppHost.csproj" />
     <Project Path="src/EventStore.Attachments/EventStore.Attachments.csproj" />
+    <Project Path="src/EventStore.Benchmarks/EventStore.Benchmarks.csproj" />
     <Project Path="src/EventStore.DevIdp/EventStore.DevIdp.csproj" />
     <Project Path="src/EventStore.Derivation/EventStore.Derivation.csproj" />
     <Project Path="src/EventStore.Domain/EventStore.Domain.csproj" />
@@ -46,15 +47,19 @@
     <Project Path="src/EventStore.SpecGeneration/EventStore.SpecGeneration.csproj" />
     <Project Path="src/EventStore.ViewRegistry/EventStore.ViewRegistry.csproj" />
     <Project Path="src/EventStore.Webhooks/EventStore.Webhooks.csproj" />
+    <Project Path="src/EventStore.WorkerWakeSignal/EventStore.WorkerWakeSignal.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/EventStore.IntegrationTests/EventStore.IntegrationTests.csproj" />
+    <Project Path="tests/EventStore.UnitTests/EventStore.UnitTests.csproj" />
   </Folder>
   <Folder Name="/samples/">
     <Project Path="src/Samples.Meridian/Samples.Meridian.csproj" />
     <Project Path="src/Samples.Meridian.Seed/Samples.Meridian.Seed.csproj" />
+    <Project Path="src/Samples.Meridian.Simulator/Samples.Meridian.Simulator.csproj" />
     <Project Path="src/Samples.Orders.Projections/Samples.Orders.Projections.csproj" />
     <Project Path="src/Samples.Vitals/Samples.Vitals.csproj" />
     <Project Path="src/Samples.Vitals.Seed/Samples.Vitals.Seed.csproj" />
+    <Project Path="src/Samples.Vitals.Simulator/Samples.Vitals.Simulator.csproj" />
   </Folder>
 </Solution>

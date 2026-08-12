@@ -3,6 +3,7 @@ extern alias DevIdpAssembly;
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
+using EventStore.Domain.EventLog;
 using EventStore.Persistence;
 using EventStore.Persistence.Migrations.Sqlite;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
@@ -151,9 +152,24 @@ public class BatchPublishHttpSqliteTests
         var results = (await response.Content.ReadFromJsonAsync<JsonElement>()).EnumerateArray().ToList();
         Assert.AreEqual(202, results[0].GetProperty("httpStatus").GetInt32(), "schema-invalid content is never rejected, only advisory");
 
+        // ADR-095 -- RouterWorker now wakes almost immediately after a
+        // publish rather than waiting out a fixed poll interval, which
+        // only shrank this test's own race window rather than closing it:
+        // SchemaStatus isn't set until Router's own tick actually runs,
+        // and asserting immediately after the publish response returns is
+        // inherently racy regardless of how fast or slow that tick
+        // happens to be. Waiting explicitly, the same margin
+        // AccessLogHttpSqliteTests/others already rely on, replaces a
+        // timing assumption with an actual wait for the real condition.
         await using var db = OpenDb();
-        var stored = await db.Events.SingleAsync(e => e.AppId == appId && e.EventType == "orderplaced");
-        Assert.AreEqual("received", stored.Status, "durably persisted regardless of schema conformance");
+        StoredEvent? stored = null;
+        for (var attempt = 0; attempt < 20 && stored?.SchemaStatus is null; attempt++)
+        {
+            await Task.Delay(50);
+            stored = await db.Events.SingleAsync(e => e.AppId == appId && e.EventType == "orderplaced");
+        }
+        Assert.IsTrue(stored!.Status is "received" or "applied", "durably persisted regardless of schema conformance");
+        Assert.AreEqual("invalid", stored.SchemaStatus, "schema non-conformance is advisory, never blocking persistence");
     }
 
     private static EventStoreContext OpenDb() => new(

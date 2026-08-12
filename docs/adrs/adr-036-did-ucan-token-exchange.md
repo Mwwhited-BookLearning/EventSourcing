@@ -13,6 +13,25 @@ actor capturing data while disconnected, whose authority can't be
 verified until connectivity returns, is now a real scenario this design
 supports.
 
+**Corrected, 2026-08-12, found by an independent design-compliance
+audit**: the server-initiated token-exchange mechanism this Decision
+describes below (a disconnected client submits a raw UCAN alongside its
+event; a server-side exchange step later validates it and mints an
+ordinary bearer JWT carrying `delegation_chain_ref`) was never built —
+confirmed directly, zero hits for a `/oauth/token` exchange call or
+`delegation_chain_ref` handling anywhere in `EventStore.Router`/
+`EventStore.Inbox`. What IS built (`EventStore.Ucan/UcanValidator.cs`) is
+a different, correctly-cross-referenced mechanism serving `ADR-043`/`044`
+instead: a client-signed `UcanDelegation` JWT, self-verified (signature +
+proof-chain/trust-root check), never submitted as a raw UCAN alongside a
+non-authoritative capture event the way this ADR's own scenario
+describes. `ADR-035`'s own `AttestedClaims`/self-attestation half is
+genuinely built (`ADR-035`'s own Decision, unaffected) — it's this ADR's
+*specific* DID/UCAN self-attestation issuance flow, not the general
+non-authoritative-capture mechanism, that has no real implementation.
+This was honestly narrated as a gap in `docs/08-build-plan.md`'s own
+text already, but never carried this correction note here until now.
+
 Decision:
 - **DID (Decentralized Identifier)** proves cryptographic control of an
   identifier — "the holder of this key says they are `did:key:z6Mk...`"

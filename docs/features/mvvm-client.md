@@ -333,6 +333,319 @@ filled/exclaimed here only because it's `true` in this example,
 `LateArrivalFlag` shown unset, `AuthorityStatus` shown with its current
 value) — not three bespoke indicators.
 
+## Event Composer (generic, schema-driven publish UI)
+
+**Added 2026-08-12, build-plan item "Proving-Ground Application UX"** —
+the piece `ADR-039`'s original scope never named: every mechanism above
+covers *reading* an entity (a `ViewDefinition` template or the generic
+fallback) and *patching* one already on screen (the offline-command
+diagram's Amount box). Nothing let a user publish a brand-new event of an
+arbitrary registered type without a bespoke, hand-built form for it —
+which is exactly what a proving-ground domain still needed even after
+seeding: a way to keep driving the story forward live, on demand, for any
+of that domain's own event types, not just the one the client instance
+happens to be watching.
+
+**Deliberately generic, not domain-specific**: the Composer discovers
+which event types exist and what shape each one takes entirely from the
+same `SchemaRegistryService` data every other read surface already uses
+— it never hardcodes a Vitals or Meridian field name. A JSON Schema
+`{type, properties, required}` shape drives a plain form generator (text
+input for `string`, number input for `number`/`integer`, checkbox for
+`boolean`, a repeatable text-row list for `array` of `string`) — deep
+`object`-typed properties and `x-masking`/`x-enum-fallback` annotated
+fields are rendered as a disabled, informational row rather than a nested
+sub-form, an honest, named scope limit rather than a silently incomplete
+render (mirrors the generic fallback view's own "never fail to render,
+degrade instead" posture above). Submission reuses the same underlying
+`POST /publish/{eventType}` call and `ADR-011` client-supplied-`eventId`
+idempotency `publishCommand`/the Amount box's outbox flush already use —
+**not** the shared durable outbox queue itself, a deliberate, named
+narrowing found while building this: `ClientOutboxEntry`'s single stored
+token is scoped to the instance's *one* configured identity, and the
+Composer authenticates as a second, different identity (`composer-client`,
+below) specifically because listing/introspecting schemas needs
+`registry:admin`, a scope no ordinary browsing identity should hold. A
+durably-queued, replayed-under-a-different-identity entry is a real
+mechanism this doc doesn't claim to have built — the Composer requires
+connectivity to publish, the same online-only posture as any ordinary form
+that isn't wired through `ADR-039`'s outbox, and surfaces a publish
+failure directly rather than silently queuing it for later.
+
+**A new seeded identity, not a widened existing one**: listing registered
+event types calls the same GraphQL `eventTypes`/`eventType` queries
+`docs/03-api-contracts.md`'s Registry-listing surface already exposes,
+gated by `registry:admin` (`ADR-030`) — a materially different trust
+level than the `events:follow` a read-only browsing instance holds.
+`composer-client` (`EventStore.DevIdp/DevIdpSeeder.cs`) holds both
+`registry:admin` (to list/introspect) and `events:publish` (to actually
+submit), the same both-scopes-in-one-caller posture `telemetry-client`/
+`attachments-client`/`peer-sync-client` already establish — deliberately
+its own identity rather than granting admin rights to `follower-client`,
+which every read-only instance already trusts with nothing more than
+`events:follow`.
+
+### Sequence diagram — composing and publishing an arbitrary registered event
+
+```plantuml
+@startuml MvvmClient_EventComposer_Sequence
+autonumber
+actor User
+participant "Composer tab\n(ViewModel)" as vm
+participant "GraphQL\n(eventTypes/eventType, registry:admin)" as registry
+participant "Entity Store API\n(server, ADR-021)" as server
+
+User -> vm: open Composer tab
+vm -> vm: fetch a token as \"composer-client\"\n(events:publish + registry:admin -- a SECOND\nidentity, distinct from this instance's own\nread-only config.clientId, ADR-030)
+vm -> registry: query eventTypes(appId)
+registry --> vm: [{ name, version, entityType }, ...]
+User -> vm: select an EventType
+vm -> registry: query eventType(appId, name, version)
+registry --> vm: JsonSchema { properties, required }
+vm -> vm: generate a form from the schema\n(string/number/boolean/array-of-string fields;\nobject/masked/enum-fallback fields shown\ninformational-only, ADR-009/ADR-038)
+vm --> User: rendered form
+User -> vm: fill fields, click Publish
+vm -> server: POST /publish/{EventType}\n{ appId, eventId: <client-generated, ADR-011>, payload }
+alt online
+  server --> vm: 202 { status, entityId, authorityStatus }
+  vm --> User: confirmed -- new/updated entity now resolvable by its own EntityId
+else offline / request fails
+  vm --> User: publish failed -- shown directly, never silently queued\n(deliberately NOT the durable ClientOutbox below --\nsee this doc's own prose for why)
+end
+@enduml
+```
+
+### Salt (UI mockup) — Event Composer tab
+
+```plantuml
+@startsalt
+{
+  { "Event Composer" }
+  ..
+  { "Event type" | ^PatientScreened^ }
+  ..
+  { "SubjectId *"        | "S-0099"        }
+  { "SiteId *"           | "site-1"        }
+  { "ProtocolId"         | "proto-1"       }
+  { "ScreeningDate"      | "2026-08-12"    }
+  { "EligibilityStatus *"| "Eligible"      }
+  { "LegalName (masked field -- publish only, not shown here)" | [ ] }
+  ..
+  [ Publish PatientScreened ]
+  "Status: queued in outbox -- will publish when online"
+}
+@endsalt
+```
+
+Required properties (`*`) come straight from the schema's own `required`
+array — the same information `MaskingSchemaValidator`/
+`EnumFallbackSchemaValidator` already enforce at registration time, now
+surfaced to a human filling the form instead of only ever validated
+server-side after the fact.
+
+### Gherkin (Event Composer)
+
+```gherkin
+  Scenario: The Composer lists every active event type for the configured AppId
+    Given AppId "trial1" has 5 active registered event types
+    When a user opens the Composer tab
+    Then all 5 event type names should be listed, discovered via the eventTypes GraphQL query
+    And no event type name should be hardcoded in the client
+
+  Scenario: Selecting an event type renders a form generated from its JSON Schema
+    Given "PatientScreened" version 1 requires SubjectId, SiteId, and EligibilityStatus
+    When a user selects "PatientScreened" in the Composer
+    Then the rendered form should have an input for every schema property
+    And SubjectId, SiteId, and EligibilityStatus should be marked required
+
+  Scenario: Publishing a composed event calls the same idempotent publish path as any other command, online-only
+    Given a user has filled a valid "PatientScreened" form for a brand-new SubjectId "S-0099"
+    When the user clicks Publish
+    Then the client should POST /publish/PatientScreened with a client-supplied eventId (ADR-011)
+    And a 202 response should confirm the new entity's own resolved EntityId
+    # Deliberately NOT queued through the shared ClientOutboxEntry store --
+    # see this doc's own Event Composer section for why (a second identity,
+    # composer-client, authenticates this call). Publishing while offline
+    # surfaces a failure directly rather than silently queuing it.
+
+  Scenario: A masked or object-typed property renders informational-only, never silently dropped
+    Given "PatientScreened"'s LegalName property carries x-masking
+    When a user opens the Composer form for "PatientScreened"
+    Then LegalName should render as a visibly disabled/informational field
+    And the form should not fail to render or silently omit the property
+```
+
+### Digital sign-off and RFC 9470 step-up (ADR-066)
+
+**Added 2026-08-12, this Composer's first envelope-metadata support** —
+until now the Composer only ever populated `Payload`; `RequiredSignature`
+is envelope metadata (`Signature`), not a schema property, so it needed
+its own surface rather than falling out of the existing form generator.
+Selecting an event type that carries `RequiredSignature`
+(`EventTypeDefinition.RequiredSignature`, exposed by the same `eventType`
+GraphQL query already used for `JsonSchema`, no new resolver) shows one
+extra, always-required "Reason for sign-off (Meaning)" field alongside
+the ordinary schema-driven form — `Meaning` is envelope metadata
+(`PublishEventRequest.Meaning`), never a schema property, the same
+"kept out of `Payload`" treatment `ParentEventIds`/`AttestedClaims`
+already get.
+
+**The step-up retry is real, not simulated away**: `composer-client`'s
+ordinary token carries no `acr` claim, so a first publish attempt against
+a `RequiredSignature`-configured type gets RFC 9470's actual 401
+challenge (`PublishEndpoints.BuildStepUpChallenge`) — the Composer
+catches it, requests a *second* token naming the challenge's own
+`acr_values` (`EventStore.DevIdp`'s dev-only `acr` form parameter, which
+has no interactive re-authentication behind it since this IdP has none
+for a machine caller to step up through — see `authClient.ts`'s own
+comment), and retries the same publish exactly once with the new token.
+A real IdP would take the human caller through an actual password/OTP/
+WebAuthn challenge at this point instead; the Composer's own retry logic
+is identical either way, since RFC 9470's client-side contract doesn't
+care how the IdP satisfied the challenge.
+
+```gherkin
+  Scenario: Selecting a RequiredSignature-configured event type shows the Meaning field
+    Given "authorityDecision" is registered with RequiredSignature acrValues ["urn:trial:step-up"]
+    When a user selects "authorityDecision" in the Composer
+    Then a "Reason for sign-off (Meaning)" field should render alongside the schema-driven form
+    And Publish should stay disabled until Meaning is filled, alongside every other required field
+
+  Scenario: Publishing against a RequiredSignature type steps up and retries automatically
+    Given the Composer's current token carries no acr claim
+    When a user fills the form and Meaning, then clicks Publish
+    Then the first POST /publish/authorityDecision should receive RFC 9470's 401 challenge
+    And the Composer should fetch a new token naming the challenge's own acr_values
+    And the SAME publish should be retried once with the new token
+    And a 202 response should confirm the signed event was accepted
+```
+
+## Domain Decision Queues (bespoke per-domain screens)
+
+**Added 2026-08-12, build-plan item "Domain Decision Queues"** — the two
+"stretch" screens flagged and deliberately deferred when "Proving-Ground
+Application UX" landed, now built: a Vitals **Principal Investigator
+queue** and a Meridian **KYC analyst queue**. Unlike every other tab in
+this doc, these are genuinely bespoke, not generic — the Composer/Browser
+tabs above never hardcode a Vitals or Meridian field name, but a real
+"what does a PI need to review" screen inescapably does. The generic
+core (`usePendingAuthorityQueue.ts`/`AuthorityQueue.vue`) stays as
+domain-agnostic as this shape allows; `VitalsPiQueue.vue`/
+`MeridianAnalystQueue.vue` are the only two files carrying either
+domain's actual specifics.
+
+**A new identity per real reviewer role, not a widened Composer** —
+`composer-client` deliberately holds no domain review claim
+(`review:ae`/`review:ionm`/`consent:approve`/`identity:aml-review`); a
+Principal Investigator or KYC analyst is a distinct real-world actor from
+the generic Composer tool, so `vitals-pi-client`/`meridian-analyst-client`
+are new, separate, `events:publish`-only identities (`EventStore.DevIdp/
+DevIdpSeeder.cs`) — the same "one identity per real capability need"
+reasoning `composer-client` itself was added under.
+
+**Two asymmetric "pending" signals, by design, not oversight**: Vitals'
+`IonmAlertRaised` is published `ReviewPending: true` (a genuine
+non-authoritative capture, `ADR-042`) — its `AuthorityStatus` reaching
+`"pending_review"` is the actual queue signal. Meridian's
+`SanctionsScreeningPerformed` is an ordinary, immediately-`"accepted"`
+publish — its own `MatchFound` payload field, plain business data, is the
+signal instead. `usePendingAuthorityQueue`'s `isPending` predicate is
+caller-supplied specifically so this composable never assumes one
+universal rule covers both.
+
+**Resolution reuses the existing `authorityDecision` reactor as-is** —
+the exact same `EventStore.Router.AuthorityDecisionResolver` mechanism
+Vitals' Workflows A/B/D already established, never a new one. A queue
+item disappears the moment a matching `authorityDecision` (its own
+`targetEventId` naming the pending item's `eventId`) arrives back over
+the same live subscription — `AuthorityDecisionResolver` mutates the
+TARGET event's `AuthorityStatus` in place rather than emitting a new
+event for the raiser itself, so watching for the `authorityDecision`
+event is the only way a live subscriber learns an item was actually
+decided.
+
+**A new, small, generic Subscription field this item needed and no prior
+consumer did**: correlating a pending item's own `EventId` with a later
+`authorityDecision.targetEventId` needed a way to read that `EventId`
+off a Subscription payload at all — nothing exposed it before this item
+(confirmed by grep). `FollowSubscriptionTypeModule` gains an `eventId`
+envelope field, the same generic, always-present shape `conflictFlag`/
+`authorityStatus`/`schemaVersion` already have — useful to any future
+correlation need, not special-cased to this screen.
+
+### Sequence diagram — a Principal Investigator resolves a pending IONM alert
+
+```plantuml
+@startuml MvvmClient_AuthorityQueue_Sequence
+autonumber
+actor "Principal\nInvestigator" as PI
+participant "Queue tab\n(ViewModel)" as vm
+participant "GraphQL Subscription\n(IonmAlertRaised, authorityDecision)" as sub
+participant "Entity Store API\n(server)" as server
+
+PI -> vm: open Queue tab
+vm -> sub: subscribe(authorityDecision, mode: REPLAY)
+vm -> sub: subscribe(IonmAlertRaised, mode: REPLAY)
+sub --> vm: IonmAlertRaised { eventId, ..., authorityStatus: "pending_review" }
+vm -> vm: isPending(payload) == true -> add to queue
+vm --> PI: rendered queue item
+PI -> vm: fill Reason + Meaning, click Accept
+vm -> vm: fetch vitals-pi-client token\n(events:publish only)
+vm -> server: POST /publish/authorityDecision\n{ targetEventId, decision: "accepted", decidingActorId, reason }
+alt RequiredSignature not yet satisfied
+  server --> vm: 401 insufficient_user_authentication\n(acr_values, RFC 9470)
+  vm -> vm: fetch a stepped-up token (acr)
+  vm -> server: retry POST /publish/authorityDecision
+end
+server --> vm: 202 { status, entityId }
+sub --> vm: authorityDecision { targetEventId }
+vm -> vm: remove matching item from the queue
+vm --> PI: queue updated -- item resolved
+@enduml
+```
+
+### Salt (UI mockup) — Queue tab
+
+```plantuml
+@startsalt
+{
+  { "Principal Investigator Queue" }
+  ..
+  { "Reviewing as (PI)" | "pi-1" }
+  ..
+  { "alertId: alert-sim-00042, subjectId: S-SIM-00042, finding: SSEP amplitude decrease, severity: High" }
+  { "Reason"                     | "confirmed real finding" }
+  { "Reason for sign-off (Meaning) *" | "reviewed"           }
+  [ Accept ] | [ Reject ]
+  "Recorded -- accepted"
+}
+@endsalt
+```
+
+### Gherkin (Domain Decision Queues)
+
+```gherkin
+  Scenario: A genuinely pending Vitals alert appears in the PI queue
+    Given "IonmAlertRaised" was published with ReviewPending: true
+    When a user opens the Vitals client-web instance's Queue tab
+    Then the alert should appear in the queue, discovered via mode: REPLAY
+    And an ordinary, already-"accepted" IonmAlertRaised should NOT appear
+
+  Scenario: A Meridian sanctions hit appears in the analyst queue on business data alone
+    Given "SanctionsScreeningPerformed" was published with MatchFound: true
+    When a user opens the Meridian client-web instance's Queue tab
+    Then the hit should appear in the queue
+    And a screening published with MatchFound: false should NOT appear
+
+  Scenario: Accepting a queued item steps up authentication and resolves it
+    Given a Principal Investigator has filled Reason and Meaning for a queued alert
+    When they click Accept
+    Then the client should publish authorityDecision as vitals-pi-client
+    And satisfy RFC 9470 step-up automatically if the first attempt is challenged
+    And the item should disappear from the queue once the resulting
+      authorityDecision is received back over the live subscription
+```
+
 ## Accessibility standard (ADR-073)
 
 Both the `ViewDefinition`-rendered template above and the generic
@@ -351,8 +664,9 @@ the mockup above) or a template-backed `ViewDefinition`'s own markup is
 exempt merely for being a fallback or being content-addressed — both are
 screens a real user reads.
 
-**Implementation note (added once built, 2026-08-11):** `client-web/src/
-a11y.spec.ts` runs the real, published `axe-core` ruleset (`wcag2a`/
+**Implementation note (added once built, 2026-08-11):** `client-web/
+packages/reference-app/src/a11y.spec.ts` runs the real, published
+`axe-core` ruleset (`wcag2a`/
 `wcag2aa`/`wcag21a`/`wcag21aa` tags specifically, matching this ADR's own
 cited legal baseline, not the newer 2.2 tags) against the ACTUALLY
 rendered DOM of `GenericFallbackView` (plain and with an Extensions-
@@ -417,9 +731,9 @@ sequence diagram (above) shows, and to the client generally:
   format's own "small injected binding runtime" style rather than adding
   an HTML-parser dependency; any non-whitespace text left over is a
   hardcoded literal and rejected), and resolved client-side by
-  `client-web/src/components/entity/TemplateRenderer.vue` against
-  `client-web/src/i18n/translations.ts`'s resource map for the locale
-  `client-web/src/api/localeClient.ts` negotiated. An unresolved key
+  `client-web/packages/reference-app/src/components/entity/TemplateRenderer.vue` against
+  `client-web/packages/mvvm-client/src/i18n/translations.ts`'s resource map for the locale
+  `client-web/packages/mvvm-client/src/api/localeClient.ts` negotiated. An unresolved key
   renders visibly as `[key]` rather than silently blanking, matching this
   doc's own "never a blank/failed render" framing for the generic
   fallback.

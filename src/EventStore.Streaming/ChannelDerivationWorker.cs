@@ -1,5 +1,6 @@
 using EventStore.Domain.Streaming;
 using EventStore.Persistence;
+using EventStore.WorkerWakeSignal;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -20,6 +21,10 @@ public class ChannelDerivationWorker(IServiceScopeFactory scopeFactory, ILogger<
 {
     private static readonly TimeSpan PollInterval = TimeSpan.FromMilliseconds(500);
 
+    // ADR-095 -- notified by TelemetrySampleWriter, same project, right
+    // after a source channel's own ingest commits.
+    public const string Topic = "channelderivation";
+
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         while (!stoppingToken.IsCancellationRequested)
@@ -39,7 +44,17 @@ public class ChannelDerivationWorker(IServiceScopeFactory scopeFactory, ILogger<
                 logger.LogError(ex, "Channel derivation tick failed");
             }
 
-            await Task.Delay(PollInterval, stoppingToken);
+            // ADR-095 -- same shape RouterWorker established first.
+            try
+            {
+                using var wakeScope = scopeFactory.CreateScope();
+                var wakeSignal = wakeScope.ServiceProvider.GetRequiredService<IWorkerWakeSignal>();
+                await wakeSignal.WaitForWakeAsync(Topic, PollInterval, stoppingToken);
+            }
+            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+            {
+                break;
+            }
         }
     }
 

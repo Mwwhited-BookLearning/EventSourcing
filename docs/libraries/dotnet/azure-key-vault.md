@@ -45,6 +45,19 @@ never as a framework-wide hard-coded choice. `PurgeDeletedKey`'s
 irreversible key destruction is the concrete mechanism behind an
 `EntityErasureRequested` event's crypto-shredding.
 
+**Built and verified against the real SDK, 2026-08-12**
+(`AzureKeyVaultErasureKeyStore`) — this sketch's own `WrapKeyAsync(dekBytes)`
+call was already the right shape; the one thing it doesn't show is what
+happens to `dekBytes` next: `EnvelopeAesGcm`'s own deterministic-nonce
+AES-256-GCM encrypts the actual field value locally, never Key Vault's
+own RSA-OAEP directly (that's size-limited and, more importantly, not
+deterministic — encrypting the same plaintext twice produces different
+ciphertext, which would break `ADR-011`'s publish-idempotency
+comparison). `dek-{appId}-{entityId}:{base64WrappedDek}` is the real
+`IErasureKeyStore.CreateKeyAsync` return value — the wrapped DEK travels
+inside the opaque reference itself, so no extra persistence is needed
+beyond what `EntityErasureKey.KeyReference` already stores.
+
 ## Links
 
 - [learn.microsoft.com/dotnet/api/overview/azure/security.keyvault.keys-readme](https://learn.microsoft.com/en-us/dotnet/api/overview/azure/security.keyvault.keys-readme)

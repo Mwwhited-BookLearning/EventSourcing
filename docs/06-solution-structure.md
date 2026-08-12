@@ -142,36 +142,42 @@ EventStore.sln
                                            -- base types, ICommandDispatcher, a client-local durable outbox/inbox), but
                                            -- the actual implementation put all of that directly into client-web/'s own
                                            -- TypeScript layer instead, as Pinia stores/composables, not a class library
-                                           -- one layer down (client-web/src/stores/outbox.ts, entityCache.ts,
+                                           -- one layer down (client-web/packages/mvvm-client/src/stores/outbox.ts, entityCache.ts,
                                            -- viewDefinitions.ts). useOutboxStore owns the durable, IndexedDB-backed
                                            -- outbox (same fault-tolerance bar this sketch described); useEntityCacheStore
                                            -- is the read-side "last-known-good" cache, updated only from a confirmed
                                            -- Subscription event, never by a local write; useEntityViewActions
-                                           -- (client-web/src/composables/) is the closest thing to the sketched
+                                           -- (client-web/packages/mvvm-client/src/composables/) is the closest thing to the sketched
                                            -- ICommandDispatcher -- a composable function that enqueues onto the outbox
                                            -- store, not an interface/DI abstraction. See docs/patterns/mvvm-client-
                                            -- architecture.md for the real shape.
     EventStore.Client.WebViewBridge/      -- NEVER BUILT, same "sketch assumed a class library, the actual build put it
                                            -- straight into client-web/'s own TypeScript layer" gap as Client.Core above. No
                                            -- native (.NET/WebView2/WKWebView/CEF) shell project exists anywhere in src/ --
-                                           -- the closest real artifact is client-web/native-bridge-reference/server.mjs, a
+                                           -- the closest real artifact is client-web/packages/reference-app/native-bridge-reference/server.mjs, a
                                            -- small Node reference server for NativeBridgeInputSource's own WebSocket protocol,
                                            -- explicitly NOT the shipped production bridge (real OS-level hardware access is
                                            -- separate software this framework doesn't build, ADR-070's own scoping)
     EventStore.Client.DeviceInput/        -- NEVER BUILT AS A SEPARATE PROJECT, same gap -- IDeviceInputSource
                                            -- (docs/extensibility-points.md) and all five adapters (WebUsbInputSource/
                                            -- WebHidInputSource/WebSerialInputSource/WebBluetoothInputSource/
-                                           -- NativeBridgeInputSource) live directly in client-web/src/deviceInput/*.ts
+                                           -- NativeBridgeInputSource) live directly in client-web/packages/mvvm-client/src/deviceInput/*.ts
                                            -- instead (ADR-070); captured readings feed the SAME durable outbox
-                                           -- client-web/src/stores/outbox.ts already owns, not a second mechanism
-    client-web/                           -- npm workspace, NOT a .NET project: Vue 3 + Pinia + Naive UI application shell
-                                           -- (docs/patterns/mvvm-client-architecture.md, docs/libraries/web/*.md); built to
-                                           -- static assets, loaded by WebViewBridge for the native shell and served directly
-                                           -- for the browser/PWA target -- one build artifact, two hosts
-                                           -- also hosts WebUsbInputSource/WebHidInputSource/WebSerialInputSource/WebBluetoothInputSource
-                                           -- (ADR-070) -- WebUSB/WebHID/Web Serial/Web Bluetooth are browser-only APIs, reachable
-                                           -- only from this open page/window context, Chromium-only for 3 of the 4 (ADR-070)
-    client-web/offline-player/            -- NOT a separate app -- an alternate Vite build target of client-web's own
+                                           -- client-web/packages/mvvm-client/src/stores/outbox.ts already owns, not a second mechanism
+    client-web/                           -- npm workspaces root, NOT a .NET project (ADR-062): Vue 3 + Pinia application
+                                           -- (docs/patterns/mvvm-client-architecture.md, docs/libraries/web/*.md), split
+                                           -- into two workspace packages --
+                                           -- client-web/packages/mvvm-client/ (the published-package half: composables/
+                                           -- stores/api-clients/deviceInput/i18n/playback, no Vue-template dependency of
+                                           -- its own) and client-web/packages/reference-app/ (the actual .vue components,
+                                           -- App.vue/main.ts, and every build script, consuming mvvm-client via a real npm
+                                           -- workspace link) -- built to static assets, loaded by WebViewBridge for the
+                                           -- native shell and served directly for the browser/PWA target -- one build
+                                           -- artifact, two hosts. reference-app also hosts WebUsbInputSource/
+                                           -- WebHidInputSource/WebSerialInputSource/WebBluetoothInputSource (ADR-070) --
+                                           -- WebUSB/WebHID/Web Serial/Web Bluetooth are browser-only APIs, reachable only
+                                           -- from this open page/window context, Chromium-only for 3 of the 4 (ADR-070)
+    client-web/packages/reference-app/offline-player/  -- NOT a separate app -- an alternate Vite build target of client-web's own
                                            -- lineage/playback Vue component (ADR-068), configured with vite-plugin-singlefile
                                            -- (docs/libraries/web/vite-plugin-singlefile.md) to inline all JS/CSS into one
                                            -- self-contained .html file: data + playback UI both embedded, zero external
@@ -200,10 +206,12 @@ EventStore.sln
 ```
 
 Frontend unit tests (`Vitest` + `Vue Test Utils`, `ADR-055`) live inside
-`client-web/src/` itself, alongside the components/composables/stores they
-test (a `*.spec.ts` next to its subject, e.g. `stores/outbox.spec.ts`,
+each npm workspace package's own `src/` (`client-web/packages/mvvm-client/
+src/` and `client-web/packages/reference-app/src/`, `ADR-062`), alongside
+the composables/stores/components they test (a `*.spec.ts` next to its
+subject, e.g. `stores/outbox.spec.ts`,
 `composables/useEntityViewActions.spec.ts`), not under `tests/` — matching
-how that npm workspace is already its own top-level solution area, not a
+how `client-web` is already its own top-level solution area, not a
 subfolder of the write-side .NET services above. There is no
 `EventStore.Client.Vue/` directory; that name never matched anything built.
 
@@ -404,8 +412,18 @@ There's no mature .NET library for this half — a unit test that parses
 each generated `asyncapi.json` back against the published AsyncAPI 3.0
 JSON Schema is the safety net a type system would otherwise provide.
 
-Both endpoints are thin routes mapped by `MapEventStoreCommonEndpoints`
-(`EventStore.Host.Core`, shared by all three provider deployables):
+**Built and verified, 2026-08-12** (previously an unconfirmed sketch,
+`TODO.md`) — real HTTP tests (`ScalarUiServesAnHtmlPageAtScalar`,
+`AsyncApiUiServesTheStandaloneRendererPointedAtAsyncApiJson`,
+`AuthSqliteTests.cs`) confirm both UI routes actually come back. One
+correction from the sketch below: both are mapped by
+`MapSpecGenerationEndpoints` (`EventStore.SpecGeneration`, right
+alongside `/openapi.json`/`/asyncapi.json` themselves, gated by the same
+`SpecEndpoints:Enabled` check), not `MapEventStoreCommonEndpoints`.
+
+Both endpoints are thin routes mapped alongside `/openapi.json`/
+`/asyncapi.json` themselves (`EventStore.SpecGeneration`, one
+registration shared by all three provider deployables):
 
 ```csharp
 app.MapGet("/openapi.json", async (OpenApiDocumentBuilder b) =>
@@ -936,9 +954,14 @@ builder.Build().Run();
 ```
 
 `EventStore.ServiceDefaults` wires the standard Aspire cross-cutting
-concerns into whichever `EventStore.Host.<Provider>` is running (and
-`EventStore.DevIdp`, `EventStore.Projections.Host`) via a single
-`builder.AddServiceDefaults()` call — no lineage/auth logic lives there.
+concerns into whichever `EventStore.Host.<Provider>` is running, and into
+`EventStore.DevIdp`, via a single `builder.AddServiceDefaults()` call — no
+lineage/auth logic lives there. **Corrected, 2026-08-12, found by an
+independent design-compliance audit**: `EventStore.Projections.Host` was
+listed here too, but it's a plain class library with no `Program.cs` — it
+can't call `AddServiceDefaults()` itself, and its real worked-example
+entry point, `Samples.Orders.Projections/Program.cs`, doesn't call it
+either. The Projections pathway has no `ServiceDefaults` wiring today.
 Per `ADR-026`, this is where all three OpenTelemetry signals — logging,
 tracing, metrics — get configured, identically for every service in the
 solution; see `ADR-026` for the full `ConfigureOpenTelemetry` code and

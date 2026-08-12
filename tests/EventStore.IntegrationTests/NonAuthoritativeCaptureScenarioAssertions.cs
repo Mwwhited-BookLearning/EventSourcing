@@ -143,7 +143,13 @@ internal static class NonAuthoritativeCaptureScenarioAssertions
         Assert.AreEqual("unattested", stored.AuthorityStatus);
     }
 
-    public static async Task AnAuthorityDecisionRejectedEventOnAnAnnotateTypeEventFlagsWithoutTouchingPayload(
+    // Corrected, 2026-08-12: comparisons/authority-rejection-behavior.md's
+    // targeted-rebuild refinement is now the real Annotate default (was
+    // previously "leave the Entity Store exactly as it was" -- see that
+    // doc's own history). reading-2 is the ONLY event ever published for
+    // sensor-42, so once it's rejected, zero accepted contributions survive
+    // the rebuild -- the row is removed entirely, not merely flagged.
+    public static async Task AnAuthorityDecisionRejectedEventOnAnAnnotateTypeEventNeverMutatesPayloadAndRebuildsTheEntityStore(
         SchemaRegistryService registry, PublishService publish, EventStoreContext db)
     {
         const string appId = "authority-demo-5";
@@ -165,13 +171,50 @@ internal static class NonAuthoritativeCaptureScenarioAssertions
 
         var target = await db.Events.AsNoTracking().SingleAsync(e => e.EventId == reading.CorrelationId);
         Assert.AreEqual("rejected", target.AuthorityStatus);
-        Assert.IsTrue(target.Payload.Contains("99.9"), "Payload is never mutated, only flagged");
+        Assert.IsTrue(target.Payload.Contains("99.9"), "the Event Log's own Payload is never mutated -- only the derived cache is recomputed");
 
-        var row = await db.EntityStore.AsNoTracking().SingleAsync(r => r.EntityId == $"{appId}:sensorreading:sensor-42");
-        Assert.IsTrue(row.Data.Contains("99.9"), "Annotate leaves the already-folded authoritative state exactly as it was");
+        var row = await db.EntityStore.AsNoTracking().SingleOrDefaultAsync(r => r.EntityId == $"{appId}:sensorreading:sensor-42");
+        Assert.IsNull(row, "zero accepted contributions survive the rebuild -- the row is removed, not left showing rejected data under a flag");
 
         var decisionEntityCount = await db.Events.AsNoTracking().CountAsync(e => e.EventType == "sensorreading" && e.EntityId == $"{appId}:sensorreading:sensor-42");
         Assert.AreEqual(1, decisionEntityCount, "no compensating patch event was appended for an Annotate-type rejection");
+    }
+
+    // The more interesting case the single-event scenario above can't show:
+    // a rebuild reverts to an EARLIER accepted event's own full state, not
+    // just to empty. sensor-43 gets two Full-type SensorReading publishes;
+    // rejecting the second (later) one should bring back the first's data.
+    public static async Task RejectingTheMostRecentOfTwoAcceptedReadingsRebuildsBackToTheEarlierOnesData(
+        SchemaRegistryService registry, PublishService publish, EventStoreContext db)
+    {
+        const string appId = "authority-demo-5b";
+        await RegisterSensorReading(registry, appId, rejectionBehavior: "Annotate");
+        await RegisterAuthorityDecision(registry, appId);
+        var upcastChain = UpcastingTestSupport.CreateChain();
+
+        var first = (PublishResult.Accepted)await publish.PublishAsync(
+            "SensorReading", new PublishEventRequest(appId, 1, """{ "SensorId": "sensor-43", "Reading": 10.0 }""", null, null), TestClaimsPrincipal.None);
+        await RouterWorker.RunOnceAsync(db, registry, upcastChain);
+
+        var second = (PublishResult.Accepted)await publish.PublishAsync(
+            "SensorReading", new PublishEventRequest(appId, 1, """{ "SensorId": "sensor-43", "Reading": 99.9 }""", null, null), TestClaimsPrincipal.None);
+        await RouterWorker.RunOnceAsync(db, registry, upcastChain);
+
+        var rowBeforeReject = await db.EntityStore.AsNoTracking().SingleAsync(r => r.EntityId == $"{appId}:sensorreading:sensor-43");
+        Assert.IsTrue(rowBeforeReject.Data.Contains("99.9"), "Full ChangeKind -- the second accepted reading replaced the first's Data entirely");
+
+        await publish.PublishAsync(
+            "authorityDecision",
+            new PublishEventRequest(appId, 1, $$"""{ "targetEventId": "{{second.CorrelationId}}", "decision": "rejected", "decidingActorId": "reviewer-1", "reason": "sensor miscalibrated" }""", null, null),
+            TestClaimsPrincipal.None);
+        await RouterWorker.RunOnceAsync(db, registry, upcastChain);
+
+        var firstTarget = await db.Events.AsNoTracking().SingleAsync(e => e.EventId == first.CorrelationId);
+        Assert.AreEqual("accepted", firstTarget.AuthorityStatus, "the earlier, still-accepted reading is untouched by the later one's rejection");
+
+        var rowAfterReject = await db.EntityStore.AsNoTracking().SingleAsync(r => r.EntityId == $"{appId}:sensorreading:sensor-43");
+        Assert.IsTrue(rowAfterReject.Data.Contains("10"), "the rebuild reverts to the earlier accepted reading's own full state");
+        Assert.IsFalse(rowAfterReject.Data.Contains("99.9"), "the rejected reading's contribution is excluded from the rebuild");
     }
 
     public static async Task AnAuthorityDecisionRejectedEventOnACompensateTypeEventTriggersACompensatingPatch(

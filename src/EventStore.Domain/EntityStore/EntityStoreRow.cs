@@ -18,6 +18,8 @@ public class EntityStoreRow
     public long Version { get; set; }                  // DATA-CHANGE counter -- only bumps when Data actually changes (ADR-029)
     public string Data { get; set; } = default!;        // current materialized snapshot (typed properties)
     public string Extensions { get; set; } = default!;  // overflow bag for properties not in the current known schema (ADR-022)
+    public string PropertyVersions { get; set; } = "{}"; // property name -> the Version at which it was last actually changed -- ADR-024's per-property conflict comparison
+    public string PropertyLogicalTimes { get; set; } = "{}"; // property name -> the OccurredAt of whatever event most recently applied to it -- ADR-029's per-property late-arrival comparison
     public string Hash { get; set; } = default!;        // SHA-256 of canonicalized Data (ADR-019's hash primitive, a per-entity application)
     public int SchemaVersion { get; set; }               // current shape, post-upcast (best effort -- ADR-018)
     public string AuthorityStatus { get; set; } = "accepted"; // rolled up from contributing events -- advisory (ADR-035)

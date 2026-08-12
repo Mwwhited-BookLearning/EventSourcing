@@ -122,6 +122,18 @@ public static class HostCoreExtensions
             options.ApplyCurrentCultureToResponseHeaders = true;
         });
 
+        // ADR-013 -- registers IProblemDetailsService; combined with
+        // UseExceptionHandler() below, ASP.NET Core's own hosting layer
+        // automatically writes an RFC 9457 Problem Details body for any
+        // client/server error response that doesn't already carry one
+        // (an unhandled exception, or a minimal-API result like
+        // Results.Forbid()/NotFound()/Conflict() that sets a status code
+        // with no body) -- no per-endpoint code needed for those. An
+        // endpoint that needs to carry occurrence-specific detail (e.g.
+        // `missingParentEventIds`) still calls Results.Problem(...)
+        // explicitly, the one case this registration alone can't cover.
+        builder.Services.AddProblemDetails();
+
         return builder;
     }
 
@@ -167,6 +179,22 @@ public static class HostCoreExtensions
 
     public static WebApplication MapEventStoreCommonEndpoints(this WebApplication app)
     {
+        // ADR-013 -- outermost middleware, so it can catch an unhandled
+        // exception from anything downstream (CORS/auth/DPoP/routing/the
+        // endpoint itself) and, via AddProblemDetails() above, write a
+        // real RFC 9457 body for it rather than an empty 500.
+        app.UseExceptionHandler();
+        // UseExceptionHandler alone only covers unhandled EXCEPTIONS --
+        // a response that reaches an error status code with no body some
+        // OTHER way (the authorization middleware's own ForbidAsync/
+        // ChallengeAsync for a policy failure, a bare Results.Forbid()/
+        // NotFound()/Conflict()) needs UseStatusCodePages() specifically;
+        // AddProblemDetails() alone does not retrofit those (found only by
+        // running this: a policy-rejected request came back with NO body
+        // and a null Content-Type until this line was added, not the
+        // Problem Details response the reasoning above assumed).
+        app.UseStatusCodePages();
+
         // ADR-087 -- must run before anything that could read CultureInfo.
         // CurrentCulture or write the Content-Language response header;
         // first in the pipeline, ahead of CORS/auth, matches Microsoft's
