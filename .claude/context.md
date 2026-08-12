@@ -19,9 +19,9 @@ event-sourcing store ("Duplex," `docs/naming.md`), built as a **worked
 teaching example**: append-only write side (schema registry, publish/
 follow/lineage APIs), a CQRS read side, and two fully worked proving-ground
 domains (clinical trials + device telemetry — "Vitals"; digital identity/
-KYC — "Meridian"). Governing principle: never lose or corrupt data. All 94
-ADRs (`docs/adrs/adr-001` through `adr-094`) are Accepted — the *decisions*
-are done. **All 50 `docs/08-build-plan.md` items are now Done, as of
+KYC — "Meridian"). Governing principle: never lose or corrupt data. All 95
+ADRs (`docs/adrs/adr-001` through `adr-095`) are Accepted — the *decisions*
+are done. **All 52 `docs/08-build-plan.md` items are now Done, as of
 2026-08-12** — the real `src/`/`tests/` tree exists in full, in that
 file's own dependency order. Remaining work going forward is (a) keeping
 ~150 docs internally consistent with no compiler to catch drift, and (b)
@@ -2150,23 +2150,63 @@ stale numbers here are worse than none)*
   tests (up from 118). `AppHost.cs`'s hardcoded ports/dev-password moved
   into `appsettings.json` config, per direct request ("all static
   settings in the aspire setup should be managed with config settings").
-- **Raised, not resolved, while building the Simulators — direct
-  request, worth a fresh session's attention**: every background worker
-  in this design (`RouterWorker`, `DerivationWorker`, `WebhookOutboxPump`,
-  `PeerSyncWorker`, `ChannelDerivationWorker`, `ExpectedResponseWatcher`)
-  polls on a fixed interval, never reacting to a push notification.
-  Captured as `docs/10-open-questions.md` row 3 — a genuine, undecided,
-  multi-way fork (Postgres `LISTEN`/`NOTIFY`'s notify-to-wake pattern,
-  SQL Server Service Broker's internal/external activation model,
-  RabbitMQ, or an in-process signal), not yet designed against or built.
-- **Next up**: (a) the 12 new audit findings above need a user decision
-  on which to promote into `TODO.md`/`docs/10-open-questions.md` and
-  which (if any) to fix outright; (b) the polling-vs-push-notification
-  question is a real, sizeable design decision if the user wants to
-  pursue it — would touch every background worker in the framework;
-  (c) `TODO.md`'s own remaining items (unchanged by this session's work)
-  are still open. A fresh session resuming here should check with the
-  user rather than assume any of these is the next priority.
+- **All 12 findings from the 9-agent audit above resolved, same session**:
+  5 built directly (`ADR-002`'s `SpecEndpoints:Enabled` gate, three
+  doc-only corrections, `ADR-009`'s `revealOnDemand` half); the remaining
+  7 (`ADR-036/043/048/055/057/065/080`) narrowed with honest "Corrected,
+  2026-08-12" notes rather than built, per direct decision — each
+  documents what's actually built vs. what its own Decision originally
+  overclaimed. Full narrative in `docs/changes/2026-08-12.md`.
+- **Direct request: build step-up/envelope-field support for the
+  Composer, then both deferred "stretch" screens (Vitals PI queue,
+  Meridian analyst queue) at full depth.** `EventComposer.vue` gained
+  `ADR-066` RFC 9470 step-up + Meaning support (build-plan item 50's own
+  "Extended" note). Build-plan item 51, "Domain Decision Queues": two new
+  seeded identities (`vitals-pi-client`, `meridian-analyst-client`, never
+  widening `composer-client`), a generic `usePendingAuthorityQueue.ts` +
+  `AuthorityQueue.vue`, two thin domain wrappers, both Simulators now
+  also publish genuinely pending items. Found and fixed along the way: no
+  Subscription payload exposed an event's own `EventId` at all — added
+  generically (`FollowSubscriptionTypeModule`), not just for this feature.
+- **Direct decision, three follow-on efforts, each fully built and
+  verified this same session**:
+  1. **Rejection behavior** (`docs/10-open-questions.md`'s row on which
+     doc was authoritative) — adopted the "targeted-rebuild" refinement
+     as `RejectionBehavior.Annotate`'s real default: a rejection of an
+     already-accepted event now triggers `RouterWorker.
+     RebuildEntityFromAcceptedEventsAsync`, re-folding that one entity
+     from scratch excluding non-accepted events, never touching the
+     Event Log. Reasoning: the Event Log is immutable; the Entity Store
+     is an explicitly derived, recomputable cache, so a real rebuild is
+     correct, not a "never mutate" violation.
+  2. **Generic entity/Live-View query** (`docs/10-open-questions.md`'s row
+     on a gap `ADR-042`/`ADR-045` both assumed but "GraphQL-Only Query
+     Layer" scoped out) — build-plan item 52: `EntityQueryTypeModule`,
+     `entity_{appId}_{entityType}(id)`, one field per registered
+     `(AppId, EntityType)`, masking/claims/`isAuthoritative`/`AccessLogEntry`
+     all wired for real.
+  3. **Push-notification wake-up layer** (`docs/10-open-questions.md`'s
+     row on polling vs. push) — `ADR-095`: Postgres `LISTEN`/`NOTIFY`, SQL
+     Server Service Broker, SQLite an in-process signal + durable marker
+     row, proven end-to-end on `RouterWorker` only (direct scope decision
+     — the other 5 workers are a named, mechanical follow-up, not built).
+     Two real bugs found only by running the full suite, not by review: a
+     cross-`WebApplicationFactory`-host channel-key collision in the
+     SQLite implementation, and `ENABLE_BROKER` flatly failing against
+     Testcontainers' own default `master` connection, which broke every
+     pre-existing `*SqlServerTests.cs` file until gated on
+     `is_broker_enabled` — see `ADR-095`'s own Consequences for both.
+  `docs/10-open-questions.md` is now fully empty again (all 3 remaining
+  rows resolved this session). All 95 ADRs Accepted, all 52 build-plan
+  items Done.
+- **Next up**: `docs/10-open-questions.md` is empty and `TODO.md`'s own
+  remaining items are unchanged by this batch of work — nothing is
+  currently queued. A fresh session resuming here should ask the user
+  rather than assume a next priority; real candidates if asked: extend
+  the push-notification wake signal to the other 5 background workers
+  (`ADR-095`'s own named follow-up), or pick up one of `TODO.md`'s
+  existing "build vs. narrow" items (e.g. `ADR-013`'s Problem Details,
+  `ADR-062`'s npm package split, `ADR-063`'s FsCheck/Polly+Simmy).
 
 ## How to resume cold
 

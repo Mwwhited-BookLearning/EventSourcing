@@ -111,6 +111,7 @@ provider they apply to — not "code written."
 | 50 | [Proving-Ground Application UX](#proving-ground-application-ux) | MVVM Client | Done |
 | 51 | [Domain Decision Queues](#domain-decision-queues) | Proving-Ground Application UX, Digital Sign-Off for Regulated Actions, Non-Authoritative Capture | Done |
 | 52 | [Generic Entity/Live-View Query](#generic-entitylive-view-query) | GraphQL-Only Query Layer, Non-Authoritative Capture, Property-Level Masking, Delegated Grants/RBAC/Read Audit Logging | Done |
+| 53 | [Push-Notification Wake-Up Layer](#push-notification-wake-up-layer) | Publish API, Entity-Centric Core Rebuild | Done (`RouterWorker` only — the other 5 background workers are a named follow-up, see `TODO.md`) |
 
 Two groups worth naming up front, since they explain most of the
 ordering below:
@@ -251,6 +252,7 @@ state "UI" as tierUi {
   state "Proving-Ground\nApplication UX" as a27 #palegreen
   state "Domain Decision Queues" as a28 #palegreen
   state "Generic Entity/\nLive-View Query" as a29 #palegreen
+  state "Push-Notification\nWake-Up Layer" as a30 #palegreen
 }
 
 ' Hidden edges between the 4 tier containers themselves -- not a real
@@ -379,6 +381,8 @@ p18 --> a29
 p17 --> a29
 p8 --> a29
 p22 --> a29
+p2 --> a30
+p11 --> a30
 @enduml
 ```
 
@@ -4877,6 +4881,79 @@ load-induced flakes reproduced once each across the two runs — an
 OpenTelemetry fold-lag assertion and a Projections catch-up 499 — both
 confirmed passing cleanly in isolation, neither touching
 `EntityQueryTypeModule`/`GraphQlServiceCollectionExtensions.cs`).
+
+## Push-Notification Wake-Up Layer
+
+**Scope**: `ADR-095`, resolving `docs/10-open-questions.md`'s last
+remaining row — every background worker in this design advanced via a
+fixed-interval poll loop, never a push notification. Direct decision to
+prove the mechanism on `RouterWorker` first, the most central worker,
+before extending to the other five, rather than a single larger pass
+across all six at once. A new shared abstraction, `IWorkerWakeSignal`
+(`EventStore.WorkerWakeSignal`), plus one real, provider-native
+implementation each: Postgres `LISTEN`/`NOTIFY`, SQL Server Service
+Broker (message type/contract/queue/service, `WAITFOR`/`RECEIVE`), SQLite
+an in-process `Channel<T>` backed by a durable `WakeSignal` marker row.
+`RouterWorker.ExecuteAsync` calls `WaitForWakeAsync` in place of an
+unconditional `Task.Delay` between empty ticks; `PublishService.
+PublishAsync` calls `NotifyAsync` immediately after its own durable
+append succeeds.
+
+**Depends on**: Publish API (`PublishService`, the notify call site),
+Entity-Centric Core Rebuild (`RouterWorker`, the wait call site).
+
+**Exit criteria**: on every provider, a `NotifyAsync` call during an
+active `WaitForWakeAsync` wakes it well before its own timeout elapses;
+a wait with genuinely nothing to receive still runs out its full timeout
+(the poll loop's own correctness guarantee, provably unchanged); a real
+publish through the live HTTP path gets folded by `RouterWorker`
+noticeably faster than the old fixed poll interval — all verified against
+real infrastructure (Testcontainers for Postgres/SQL Server, direct for
+SQLite), never mocked.
+
+**Status: Done (`RouterWorker` only)** — 2026-08-12, same session. Built:
+`EventStore.WorkerWakeSignal` (interface + `SqliteWorkerWakeSignal`),
+`PostgresWorkerWakeSignal`/`SqlServerWorkerWakeSignal` (in their own
+provider migrations projects, matching `PostgresUniqueConstraintViolationDetector`'s
+own precedent for provider-specific runtime code), a new `WakeSignal`
+entity migrated across all three providers, SQL Server's own
+`AddWorkerWakeSignal` migration additionally creating real Service Broker
+objects (`ENABLE_BROKER`, message type, contract, queue, service).
+`RouterWorker`/`PublishService` wired; every `Add*WorkerWakeSignal()`
+registered in each `EventStore.Host.<Provider>/Program.cs`.
+
+Three real bugs found only by actually running this, not by design
+review — full detail in `docs/changes/2026-08-12.md` and `ADR-095`'s own
+Consequences: (1) `SqliteWorkerWakeSignal`'s static state, keyed by topic
+alone, let unrelated `WebApplicationFactory`-hosted test processes
+cross-talk through the same in-process `Channel` — fixed by keying on
+`(connection string, topic)`; (2) one existing SQLite test's own timing
+assumption (`Status == "received"` immediately after publish) broke once
+`RouterWorker` got faster — fixed by polling for the real condition
+instead of an implicit race; (3) `ALTER DATABASE ... SET ENABLE_BROKER`
+cannot target the `master` system database, which broke roughly two
+dozen pre-existing `*SqlServerTests.cs` files that all migrate against
+Testcontainers' own default `master` connection — fixed by gating Service
+Broker object creation on `is_broker_enabled` actually being true, so a
+`master`-connected migration just skips them.
+
+New tests: `WorkerWakeSignalSqliteTests.cs` (3, direct),
+`WorkerWakeSignalPostgresTests.cs`/`WorkerWakeSignalSqlServerTests.cs` (2
+and 1, Testcontainers-backed). Verified: full `dotnet build` clean; full
+Postgres suite (25 tests) clean; SQL Server suite verified in batches
+(this host's own already-documented `fs.aio-max-nr` container-exhaustion
+ceiling under many back-to-back `MsSqlContainer` starts, not a code
+issue — confirmed by every batch passing cleanly once run at a size that
+doesn't exhaust it); SQLite regression suite re-run repeatedly at this
+project's own established 0-2-failures-per-run baseline, every failure
+confirmed pre-existing/unrelated on isolated re-run.
+
+**Not built this pass, a real, named follow-up (`TODO.md`)**:
+`DerivationWorker`, `WebhookOutboxPump`, `PeerSyncWorker`,
+`ChannelDerivationWorker`, and `ExpectedResponseWatcher` still poll on a
+fixed interval alone. Extending each is mechanical, not a new design —
+pick a topic name, call `WaitForWakeAsync` in its own loop, and add a
+`NotifyAsync` call at whichever write path feeds it.
 
 ## Cross-cutting, every item
 

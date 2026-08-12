@@ -23,6 +23,7 @@ using EventStore.Replication;
 using EventStore.Streaming;
 using EventStore.Upcasting;
 using EventStore.Webhooks;
+using EventStore.WorkerWakeSignal;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
@@ -55,6 +56,9 @@ builder.Services.AddScoped<IEventLineageQueryProvider, SqliteEventLineageQueryPr
 builder.Services.AddUpcasting();
 builder.Services.AddSchemaRegistry();
 builder.Services.AddFeatureFlags();
+// ADR-095 -- SQLite has no cross-process notification primitive at all;
+// see SqliteWorkerWakeSignal's own header comment for the full reasoning.
+builder.Services.AddSqliteWorkerWakeSignal();
 builder.Services.AddInbox();
 builder.Services.AddRouter();
 builder.Services.AddDerivation();

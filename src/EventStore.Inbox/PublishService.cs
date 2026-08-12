@@ -12,6 +12,7 @@ using EventStore.Erasure;
 using EventStore.Persistence;
 using EventStore.Router;
 using EventStore.SchemaRegistry;
+using EventStore.WorkerWakeSignal;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 
@@ -37,7 +38,8 @@ public class PublishService(
     IUniqueConstraintViolationDetector uniqueConstraintViolationDetector,
     PayloadEncryptor? payloadEncryptor = null,
     IOptions<OriginIdOptions>? originIdOptions = null,
-    ITimestampAuthorityClient? timestampAuthorityClient = null)
+    ITimestampAuthorityClient? timestampAuthorityClient = null,
+    IWorkerWakeSignal? wakeSignal = null)
 {
     // ADR-033 -- defaults every existing 3-arg construction site (every
     // pre-"Sharding & Replication" test file, ~26 of them) to a single-
@@ -196,6 +198,15 @@ public class PublishService(
             var winner = await db.Events.AsNoTracking().SingleAsync(e => e.EventId == eventId, ct);
             return ReplayOrConflict(winner, payloadHash);
         }
+
+        // ADR-095 -- best-effort, AFTER the durable append above genuinely
+        // succeeded, never before: Router's own poll loop is what actually
+        // finds and processes this event regardless, so a signal failure
+        // here must never fail the publish itself. null wakeSignal (every
+        // pre-existing 3-6-arg test construction site) is simply a no-op --
+        // this ADR's own worker-side change is unaffected either way.
+        if (wakeSignal is not null)
+            await wakeSignal.NotifyAsync(RouterWorker.Topic, ct);
 
         // ADR-086 -- opt-in per event type (RequiredSignature.EnableRfc3161Timestamp),
         // never global. Necessarily AFTER EventAppender.AppendAsync: ChainHash isn't

@@ -8,6 +8,7 @@ using EventStore.Domain.SchemaRegistry;
 using EventStore.Domain.Streaming;
 using EventStore.Domain.Views;
 using EventStore.Domain.Webhooks;
+using EventStore.Domain.WorkerWakeSignal;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Query.SqlExpressions;
@@ -51,6 +52,7 @@ public class EventStoreContext(DbContextOptions<EventStoreContext> options, IJso
     public DbSet<WebhookOutbox> WebhookOutbox => Set<WebhookOutbox>();
     public DbSet<WebhookDeliveryCursor> WebhookDeliveryCursors => Set<WebhookDeliveryCursor>();
     public DbSet<ExpectedResponseTracker> ExpectedResponseTrackers => Set<ExpectedResponseTracker>(); // ADR-094
+    public DbSet<WakeSignal> WakeSignals => Set<WakeSignal>(); // ADR-095
 
     // ADR-089 -- ONE CLR type (ChainCheckpoint), TWO genuinely distinct
     // tables via EF Core's "shared-type entity" feature, so the Event
@@ -282,6 +284,11 @@ public class EventStoreContext(DbContextOptions<EventStoreContext> options, IJso
         {
             e.HasKey(x => x.RequestEventId); // ADR-094
             e.HasIndex(x => x.DeadlineAt); // ExpectedResponseWatcher's own past-deadline sweep
+        });
+
+        modelBuilder.Entity<WakeSignal>(e =>
+        {
+            e.HasKey(x => x.Topic); // ADR-095 -- deployment-wide, not AppId-scoped, same shape as LeaderLease
         });
 
         modelBuilder.SharedTypeEntity<ChainCheckpoint>("EventLogChainCheckpoints", e =>

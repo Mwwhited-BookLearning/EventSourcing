@@ -8,6 +8,7 @@
     <ProjectReference Include="..\EventStore.SchemaRegistry\EventStore.SchemaRegistry.csproj" />
     <ProjectReference Include="..\EventStore.Upcasting\EventStore.Upcasting.csproj" />
     <ProjectReference Include="..\EventStore.Webhooks\EventStore.Webhooks.csproj" />
+    <ProjectReference Include="..\EventStore.WorkerWakeSignal\EventStore.WorkerWakeSignal.csproj" />
   </ItemGroup>
 
   <ItemGroup>

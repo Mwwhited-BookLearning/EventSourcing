@@ -12,6 +12,7 @@ using EventStore.Persistence;
 using EventStore.SchemaRegistry;
 using EventStore.Upcasting;
 using EventStore.Webhooks;
+using EventStore.WorkerWakeSignal;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -34,6 +35,11 @@ namespace EventStore.Router;
 public class RouterWorker(IServiceScopeFactory scopeFactory, ILogger<RouterWorker> logger) : BackgroundService
 {
     private static readonly TimeSpan PollInterval = TimeSpan.FromMilliseconds(200);
+
+    // ADR-095 -- the one topic name PublishService's own NotifyAsync call
+    // targets; shared here as a constant so the two ends of this wake
+    // signal can never drift apart by a typo.
+    public const string Topic = "router";
 
     // ADR-078 -- "Router" is one of the 4 named worker roles. Its own
     // UpcastMaterializer calls (below, inline in RunOnceAsync) run ONLY as
@@ -105,7 +111,28 @@ public class RouterWorker(IServiceScopeFactory scopeFactory, ILogger<RouterWorke
                 logger.LogError(ex, "Router tick failed");
             }
 
-            await Task.Delay(PollInterval, stoppingToken);
+            // ADR-095 -- waits up to PollInterval, but returns early the
+            // moment PublishService signals new work exists. Never the sole
+            // correctness mechanism: a missed/lost signal (the Sqlite
+            // implementation's own brief restart window; a genuinely
+            // dropped Postgres NOTIFY; a Service Broker message this
+            // instance wasn't listening for) just means this wait runs the
+            // full PollInterval, exactly the behavior this worker already
+            // had before this signal existed. A fresh, short-lived scope,
+            // same reasoning the tick's own scope above already follows --
+            // IWorkerWakeSignal (scoped) can't be a constructor dependency
+            // of this singleton BackgroundService at all (confirmed by
+            // DI's own build-time validation refusing to start otherwise).
+            try
+            {
+                using var wakeScope = scopeFactory.CreateScope();
+                var wakeSignal = wakeScope.ServiceProvider.GetRequiredService<IWorkerWakeSignal>();
+                await wakeSignal.WaitForWakeAsync(Topic, PollInterval, stoppingToken);
+            }
+            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+            {
+                break;
+            }
         }
     }
 

@@ -17,7 +17,7 @@ namespace EventStore.Persistence.Migrations.SqlServer.Migrations
         {
 #pragma warning disable 612, 618
             modelBuilder
-                .HasAnnotation("ProductVersion", "10.0.10")
+                .HasAnnotation("ProductVersion", "10.0.11")
                 .HasAnnotation("Relational:MaxIdentifierLength", 128);
 
             SqlServerModelBuilderExtensions.UseIdentityColumns(modelBuilder);
@@ -1019,6 +1019,19 @@ namespace EventStore.Persistence.Migrations.SqlServer.Migrations
                     b.HasKey("SubscriptionId");
 
                     b.ToTable("WebhookSubscriptions");
+                });
+
+            modelBuilder.Entity("EventStore.Domain.WorkerWakeSignal.WakeSignal", b =>
+                {
+                    b.Property<string>("Topic")
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<DateTimeOffset>("LastSignaledAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.HasKey("Topic");
+
+                    b.ToTable("WakeSignals");
                 });
 
             modelBuilder.Entity("EventStore.Domain.SchemaRegistry.FilterableField", b =>
