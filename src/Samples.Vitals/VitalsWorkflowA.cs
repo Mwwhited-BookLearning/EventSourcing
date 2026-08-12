@@ -15,6 +15,14 @@ public static class VitalsWorkflowA
 {
     public const string AppId = "trial1";
 
+    // LegalName/DateOfBirth are optional -- neither Workflow A's own nor
+    // Workflow B's own scenarios ever set them, so PatientScreened's
+    // existing behavior there is completely unaffected; only Workflow C's
+    // own erasure scenarios (trial-data-export-and-subject-rights.md)
+    // publish them, for a different, non-continuity subject. Classified
+    // under "clearance:phi" (the same claim ErasureScenarioAssertions'
+    // own PHI demo and this repo's seeded "clinician-spa-client" already
+    // use), never a domain-invented claim name.
     private const string PatientScreenedSchema = """
         {
           "type": "object",
@@ -23,7 +31,9 @@ public static class VitalsWorkflowA
             "SiteId": { "type": "string" },
             "ProtocolId": { "type": "string" },
             "ScreeningDate": { "type": "string" },
-            "EligibilityStatus": { "type": "string" }
+            "EligibilityStatus": { "type": "string" },
+            "LegalName": { "type": "string", "x-masking": { "strategy": "FixedValue", "requiredClaim": "clearance:phi", "maskedValue": "REDACTED", "regulatoryClassification": "PHI" } },
+            "DateOfBirth": { "type": "string", "x-masking": { "strategy": "FixedValue", "requiredClaim": "clearance:phi", "maskedValue": "REDACTED", "regulatoryClassification": "PHI" } }
           },
           "required": ["SubjectId", "SiteId", "EligibilityStatus"]
         }

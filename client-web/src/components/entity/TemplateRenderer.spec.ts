@@ -115,4 +115,77 @@ describe('TemplateRenderer (ADR-039\'s "small injected binding runtime")', () =>
       expect(wrapper.get('[data-testid="template-container"]').attributes('dir')).toBe('ltr')
     })
   })
+
+  // A masked field (x-masking, ADR-009), reached over the live subscription
+  // path once subscriptionBuilder.ts's own masked-aware selection resolves
+  // it, arrives here as the same { value, masked, erased } wrapper server-
+  // side masking already produces everywhere else -- never a raw scalar.
+  // Before this, String(value) on that object would have rendered the
+  // literal text "[object Object]"; found while building the Vitals/
+  // Meridian proving-ground samples, since neither domain's own PHI/PII
+  // fields had ever been rendered through this path before.
+  describe('masked fields (ADR-009)', () => {
+    it('renders the real value when a claim holder receives it unmasked', () => {
+      const wrapper = mount(TemplateRenderer, {
+        props: {
+          templateContent: '<div class="name">{{ legalName }}</div>',
+          entry: makeEntry({ data: { legalName: { value: 'Jane Smith', masked: null, erased: null } } }),
+        },
+      })
+      expect(wrapper.get('.name').text()).toBe('Jane Smith')
+    })
+
+    it('renders the masked placeholder when the caller lacks the required claim', () => {
+      const wrapper = mount(TemplateRenderer, {
+        props: {
+          templateContent: '<div class="name">{{ legalName }}</div>',
+          entry: makeEntry({ data: { legalName: { value: null, masked: '***', erased: null } } }),
+        },
+      })
+      expect(wrapper.get('.name').text()).toBe('***')
+    })
+
+    it('renders an erased indicator once the field\'s own encryption key has been destroyed (ADR-057), regardless of a stale masked/value branch', () => {
+      const wrapper = mount(TemplateRenderer, {
+        props: {
+          templateContent: '<div class="name">{{ legalName }}</div>',
+          entry: makeEntry({ data: { legalName: { value: null, masked: null, erased: true } } }),
+        },
+      })
+      expect(wrapper.get('.name').text()).toBe('(erased)')
+    })
+
+    it('prefers a translated erased indicator when one is supplied', () => {
+      const wrapper = mount(TemplateRenderer, {
+        props: {
+          templateContent: '<div class="name">{{ legalName }}</div>',
+          entry: makeEntry({ data: { legalName: { value: null, masked: null, erased: true } } }),
+          translations: { field_erased: 'Erased' },
+        },
+      })
+      expect(wrapper.get('.name').text()).toBe('Erased')
+    })
+
+    it('formats a masked field\'s real, unmasked value with a :date/:number modifier exactly like an ordinary scalar field', () => {
+      const wrapper = mount(TemplateRenderer, {
+        props: {
+          templateContent: '<div class="dob">{{ dateOfBirth:date }}</div>',
+          entry: makeEntry({ data: { dateOfBirth: { value: '1990-03-01T00:00:00.000Z', masked: null, erased: null } } }),
+          locale: 'en-US',
+        },
+      })
+      expect(wrapper.get('.dob').text()).toBe(new Intl.DateTimeFormat('en-US', { dateStyle: 'medium' }).format(new Date('1990-03-01T00:00:00.000Z')))
+    })
+
+    it('renders a masked (not revealed) field\'s placeholder text as-is with a :date/:number modifier, never attempting to format it', () => {
+      const wrapper = mount(TemplateRenderer, {
+        props: {
+          templateContent: '<div class="dob">{{ dateOfBirth:date }}</div>',
+          entry: makeEntry({ data: { dateOfBirth: { value: null, masked: 'REDACTED', erased: null } } }),
+          locale: 'en-US',
+        },
+      })
+      expect(wrapper.get('.dob').text()).toBe('REDACTED')
+    })
+  })
 })

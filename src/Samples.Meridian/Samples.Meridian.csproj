@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <ProjectReference Include="..\EventStore.SchemaRegistry\EventStore.SchemaRegistry.csproj" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <!-- Worked proving-ground example, explicitly NOT part of the
+         framework (ADR-030), never a published package, same posture
+         Samples.Orders.Projections/Samples.Vitals already established. -->
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+</Project>

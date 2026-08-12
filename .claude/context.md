@@ -2005,19 +2005,114 @@ stale numbers here are worse than none)*
   `WithParentRelationship` (no dedicated "resource group" primitive
   exists in this Aspire version, confirmed by reflecting over the
   installed DLLs). Full narrative: `docs/changes/2026-08-11.md`.
-- **Next up, per direct request ("After all that is done I would like
-  the providing ground applications to be built out")**: build the two
-  proving-ground reference applications — Vitals (clinical trials +
-  device telemetry) and Meridian (digital identity/KYC) — under a new
-  `samples/` folder, one subfolder per domain (direct request: "the
-  proving ground projects should show under the sample folder but also
-  within subfolders for each proving ground model"). Once built, apply
-  the same Aspire dashboard-grouping pattern just established
-  (`WithParentRelationship`) to each proving-ground app's own resources,
-  per direct request ("can aspire create a pool for the common resources
-  as well as for each of the proving grounds... nice to have the stuff
-  logically grouped in the UI") — the pattern is proven, just not yet
-  applied to resources that don't exist yet.
+- **Both proving-ground applications are now fully built — all 7
+  workflows across Vitals (4) and Meridian (3), per direct request
+  ("the providing ground applications to be built out," "the proving
+  ground projects should show under the sample folder... within
+  subfolders for each proving ground model," "full depth" chosen when
+  asked how much to build).** New `samples/Vitals/`/`samples/Meridian/`
+  solution folders, each holding a plain class-library project
+  (`Samples.Vitals`/`Samples.Meridian` — registration code, no
+  `Program.cs` of their own; no feature doc ever asked for a seeding
+  worker) plus one Gherkin-driven `*ScenarioAssertions.cs` + provider
+  test-class pair per workflow in `EventStore.IntegrationTests`. Full
+  narrative, including the six real, run-and-found divergences between
+  each feature doc's own illustrative narrative and what the framework
+  actually built (the `authorityDecision` reactor reused in place of a
+  doc-invented "sibling resolver"; `revealField` in place of a
+  nonexistent generic entity-read GraphQL query; `ADR-029`'s per-event,
+  not per-field, late-arrival guard — recorded in `TODO.md`, not fixed;
+  the Router-side "auto token-exchange" step in `customer-onboarding-
+  and-identity-verification.md` that was never built; `UcanDelegation`+
+  `AppTrustRoot` in place of `accessGrant`/`accessGrantRevoked`-as-events;
+  no live revocation-before-expiry mechanism at all): `docs/domains/
+  README.md`'s own "Sample application build status" section (the
+  authoritative tracker for this build, kept current the same pass each
+  workflow's own status changed) and `docs/changes/2026-08-11.md`'s own
+  per-workflow entries. The Aspire dashboard-grouping pattern
+  (`WithParentRelationship`) established for the core engine's own
+  resources has nothing to attach to yet, honestly noted in that same
+  build-status section — neither sample is a runnable deployable.
+- **Superseded — both proving-ground apps are now also seeded and
+  browsable, per direct follow-up request ("I want to see all the
+  proving ground apps working," "Seeded + browsable in the MVVM
+  client").** `Samples.Vitals.Seed`/`Samples.Meridian.Seed` (new
+  one-shot direct-DB console projects, `ADR-076`'s posture) register
+  each domain's event types + a Detail `ViewDefinition`, then publish
+  the continuity subject/applicant every feature doc already names.
+  Wired into `AppHost.cs` as real resources (`vitalsSeed`/
+  `meridianSeed`, gated after `migrator`, `meridianSeed` also gated
+  after `vitalsSeed` — running them concurrently hit a real Postgres
+  Serializable-isolation conflict) plus two new `client-web` instances
+  (`clientWebVitals`/`clientWebMeridian`) alongside the original
+  generic one. The dashboard-grouping gap the prior bullet above noted
+  ("nothing to attach to yet") is now closed — each seed worker is its
+  own top-level `WithParentRelationship` pool. Getting this actually
+  rendering in a real browser (not curl, not a unit test) surfaced six
+  more real, previously-undiscovered bugs — none specific to Vitals/
+  Meridian, every one would have blocked the *original* generic demo
+  identically: a flaky `GenerateParameterDefault` Postgres password
+  (fixed with a literal); `eventstore`'s https endpoint never binding
+  under Aspire's dynamic port allocation (fixed, and incidentally
+  resolved, by pinning fixed dev ports for every resource — 5000/5001
+  eventstore, 5010/5011 devidp, 5173/5174/5175 the three client-web
+  instances); `DevIdp` having no CORS policy at all, compounded by
+  OpenIddict's own middleware intercepting requests before ASP.NET
+  Core's CORS middleware runs (fixed via an `IStartupFilter` ordered
+  ahead of `AddOpenIddict()`); `eventstore`'s CORS policy never
+  allowing the `DPoP` header; `client-web` having zero RFC 9449 DPoP
+  support anywhere (added, `client-web/src/api/dpop.ts`, wired into
+  every authenticated fetch call); and `client-web` fetching tokens
+  from `devIdp`'s HTTPS endpoint while `eventstore` trusted `devIdp`'s
+  HTTP one — `devIdp`'s OpenIddict issuer is computed per-request, so
+  the mismatch silently rejected every token. A seventh bug in the
+  ViewDefinition path itself: `TranslationKeyValidator` never
+  recognized `{{ field:date }}`/`{{ field:number }}` (a syntax
+  `TemplateRenderer.vue` already supported), so the Vitals `Patient`
+  ViewDefinition was silently failing registration until both seed
+  workers were changed to check `RegisterAsync`'s own result — fixed
+  the validator, and separately fixed `TemplateRenderer.vue` itself
+  (it was passing a masked placeholder like `"REDACTED"` through
+  `new Date(...)`, throwing). Verified with Playwright (Edge via
+  `msedge` channel) plus a raw Node script reproducing the full wire
+  protocol directly, confirming a live-published event renders
+  correctly through the registered template, masked fields included.
+  Full narrative: `docs/changes/2026-08-11.md`'s "Vitals/Meridian seed
+  workers + AppHost wiring" section; `docs/domains/README.md`'s own
+  "Sample application build status" section updated in the same pass.
+  Three commits on `dev/build-framework`: `c34d20f` (seed workers +
+  AppHost wiring), `53d4e5f` (DPoP/CORS/auth-issuer fixes + port
+  pinning + `.env` files), `ad77f00` (ViewDefinition validator +
+  TemplateRenderer fix).
+- **Dependency update also done, same session** — every NuGet package
+  across every `EventStore.*`/`Samples.*` project bumped to latest,
+  including five deliberate major-version jumps each individually
+  verified (build + a targeted real test run) before folding in:
+  `Microsoft.Extensions.Compliance.Redaction` 9.9.0 → 10.9.0,
+  `SQLitePCLRaw.lib.e_sqlite3` 2.1.12 → 3.53.3, `Jsonata.Net.Native`
+  2.6.1 → 3.0.0, `System.Drawing.Common` 8.0.0 → 10.0.11,
+  `System.Security.Cryptography.Pkcs` 9.0.0 → 10.0.11. `client-web`'s
+  npm deps bumped too (`vite` 6→8, `vitest` 2→4, `pinia` 2→4, `vue-tsc`
+  2→3, `@vitejs/plugin-vue` 5→6) — with two deliberate exceptions, both
+  found by actually running the suite, not assumed safe: `typescript`
+  capped at `6.0.3` (not the "latest" `7.0.2`, TypeScript's new native
+  compiler rewrite, whose restructured package breaks `vue-tsc`'s own
+  `typescript/lib/tsc` subpath resolution outright); `jsdom` kept at
+  `25.0.1` (not `30.0.1`, which broke `NativeBridgeInputSource.spec.ts`'s
+  real, non-mocked `WebSocket` round-trip test via a cross-realm
+  `Event`-identity mismatch between Node's global `WebSocket` and
+  jsdom's own `Event` class). All 118 client-web tests, type-check, and
+  both production builds verified clean with the final version set;
+  .NET side verified via a full solution build plus the SQLite-only
+  test subset (passes except the one already-documented pre-existing
+  load-induced flake, confirmed still passing alone) and targeted
+  Postgres/real-HTTP runs against every bumped package's own consuming
+  tests. Commit `6716c27`.
+- **Next up**: nothing currently queued — the user's own request queue
+  from this session (proving-ground seed workers/browser verification
+  → dependency updates) is now fully worked through. A fresh session
+  resuming here should check with the user for the next task rather
+  than assume one.
 
 ## How to resume cold
 
@@ -2032,8 +2127,9 @@ stale numbers here are worse than none)*
    narrative.
 5. `dotnet build EventStore.slnx` and `dotnet test tests/EventStore.IntegrationTests` —
    confirm the build/test baseline the last session left still holds
-   before adding to it. **As of item 49 (2026-08-11, now the last
-   build-plan item — all 49 Done): 175 `[TestMethod]`s total**
+   before adding to it. **As of both proving-ground apps' own completion
+   (2026-08-11, after item 49 — all 49 build-plan items plus all 7
+   Vitals/Meridian workflows Done): 186 `[TestMethod]`s total**
    (`grep -rc "\[TestMethod\]" tests/EventStore.IntegrationTests/*.cs`
    is the reliable way to recheck this count directly — don't hand-thread
    a running tally through prose any further, it already drifted

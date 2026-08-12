@@ -85,11 +85,20 @@ public static class HostCoreExtensions
         // no cross-origin browser call ever succeeds (server-to-server traffic,
         // which never sends Origin, is unaffected). AllowCredentials() is
         // deliberately never set -- bearer-only auth, never cookies.
+        //
+        // "DPoP" added to the allow-list this session -- ADR-017's resource-
+        // server requirement (DpopValidationMiddleware, below) predates this
+        // policy's own header list, which never accounted for it: any
+        // browser client sending a real DPoP proof (client-web, once it
+        // started sending one) had every request rejected at the CORS
+        // preflight stage before DpopValidationMiddleware ever got a chance
+        // to see it. Found only by actually driving client-web against a
+        // live eventstore in a real browser.
         var allowedOrigins = builder.Configuration.GetSection("Cors:AllowedOrigins").Get<string[]>() ?? [];
         builder.Services.AddCors(options => options.AddPolicy(CorsPolicyName, policy => policy
             .WithOrigins(allowedOrigins)
             .AllowAnyMethod() // includes QUERY (ADR-012), which always preflights
-            .WithHeaders("Authorization", "Content-Type")));
+            .WithHeaders("Authorization", "Content-Type", "DPoP")));
 
         // ADR-087 -- RFC 9110 §12 Accept-Language negotiation via ASP.NET
         // Core's own first-party RequestLocalizationMiddleware, never

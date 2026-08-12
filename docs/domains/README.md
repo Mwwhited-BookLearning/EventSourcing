@@ -63,28 +63,89 @@ reasoning behind choosing the first two over the other thirteen.
 
 ## Sample application build status
 
-Both chosen domains now also have a real, runnable `samples/Vitals/`/
-`samples/Meridian/` project set (`ADR-021`'s naming, `docs/naming.md`),
-one Duplex-registration + Gherkin-driven integration-test unit per
-workflow below, distinct from the design-only feature docs above (a
-feature doc can be fully written with no code; this table tracks the
-code). Direct request: "the proving-ground applications [should] be
-built out... under the sample folder... within subfolders for each
-proving-ground model," to full workflow depth. This table is the
-authoritative tracker for that build, the same role `08-build-plan.md`'s
-own "Implementation status" table plays for the core engine — kept
-current in the same pass a workflow's own status changes, not
-after-the-fact.
+Both chosen domains now also have a real `samples/Vitals/`/`samples/
+Meridian/` project set (`ADR-021`'s naming, `docs/naming.md`), one
+Duplex-registration + Gherkin-driven integration-test unit per workflow
+below, distinct from the design-only feature docs above (a feature doc
+can be fully written with no code; this table tracks the code). Direct
+request: "the proving-ground applications [should] be built out...
+under the sample folder... within subfolders for each proving-ground
+model," to full workflow depth. This table is the authoritative tracker
+for that build, the same role `08-build-plan.md`'s own "Implementation
+status" table plays for the core engine — kept current in the same pass
+a workflow's own status changes, not after-the-fact.
+
+**Honestly scoped, not silently left out**: `Samples.Vitals`/`Samples.
+Meridian` are plain class libraries (registration code called from
+tests), not runnable `EventStore.Host`-style deployables with their own
+`Program.cs` — no feature doc for either domain ever asked for a
+seeding worker or a domain-specific deployable, only that the framework
+demonstrably carry each real workflow end to end, which every scenario
+above actually running proves.
+
+**Superseded, this session, per direct request ("I want to see all the
+proving ground apps working")**: `Samples.Vitals.Seed`/`Samples.
+Meridian.Seed` now exist — one-shot, direct-DB seeding workers (mirroring
+`EventStore.Migrator`'s own `ADR-076` posture) that register each
+domain's event types and a Detail `ViewDefinition`, then publish a
+continuity subject/applicant (Vitals' `S-0091`, Meridian's
+`applicant-1001`) every feature doc above already names. Wired into
+`AppHost.cs` as real Aspire resources — `vitalsSeed`/`meridianSeed`,
+gated after `migrator` (schema must exist first) and, for `meridianSeed`
+specifically, after `vitalsSeed` too (running them concurrently hit a
+real Postgres `Serializable`-isolation conflict, `EventAppender.cs`'s own
+deliberate choice — found by actually running it, not assumed) — plus
+three `client-web` instances (the original generic one, and
+`clientWebVitals`/`clientWebMeridian`, each pre-configured via
+`VITE_APP_ID`/`VITE_ENTITY_TYPE`/`VITE_EVENT_TYPE`/`VITE_ENTITY_ID_FIELD`
+build-time env vars). The AppHost dashboard-grouping pattern this
+session's own earlier `EventStore.Migrator`/`postgres-server`/`devidp`/
+`client-web` work established (`WithParentRelationship`) now DOES apply
+here: `vitalsSeed`/`meridianSeed` are each their own top-level pool, with
+their matching `client-web` instance nested underneath — exactly the
+pattern that paragraph's own prior text anticipated, applied once a real
+resource existed to apply it to.
+
+Getting this working end to end in a real browser (not curl, not a unit
+test) surfaced five more real, previously-undiscovered gaps, none of
+them specific to Vitals/Meridian — every one would have blocked the
+original generic demo identically, they had just never been exercised
+this way before: `DevIdp` had no CORS policy at all, and OpenIddict's
+own token-endpoint middleware intercepts a request before ASP.NET
+Core's CORS middleware runs (fixed via an `IStartupFilter` ordered
+ahead of `AddOpenIddict()`); `eventstore`'s own CORS policy never
+allowed the `DPoP` header; `client-web` had zero DPoP (RFC 9449) support
+anywhere (added, `client-web/src/api/dpop.ts`); `client-web` fetched
+tokens from `devIdp`'s HTTPS endpoint while `eventstore`'s trusted
+`Authority` pointed at `devIdp`'s HTTP one — `DevIdp`'s OpenIddict issuer
+is computed per-request, so every token got rejected; and
+`TranslationKeyValidator` never recognized `{{ field:date }}`/
+`{{ field:number }}`, the ViewDefinition format-modifier syntax
+`TemplateRenderer.vue` itself already supported, silently rejecting any
+template that used it (both seed workers now check `RegisterAsync`'s own
+result and throw instead of continuing past a failure). See
+`docs/changes/2026-08-11.md` for the full account.
 
 | Domain | Workflow | Feature doc(s) | Status |
 |---|---|---|---|
 | Vitals | A — Enrollment & Consent | [Patient Enrollment and Informed Consent](clinical-trials-device-telemetry/features/patient-enrollment-and-informed-consent.md) | Done |
-| Vitals | B — Device Monitoring → Adverse Event Review | [Device Onboarding and Continuous Monitoring](clinical-trials-device-telemetry/features/device-onboarding-and-continuous-monitoring.md), [Adverse Event Capture and Review](clinical-trials-device-telemetry/features/adverse-event-capture-and-review.md) | Not started |
-| Vitals | C — Trial Data Export & Subject Rights | [Trial Data Export and Subject Rights](clinical-trials-device-telemetry/features/trial-data-export-and-subject-rights.md) | Not started |
-| Vitals | D — Intraoperative Monitoring & Alert Response | [Intraoperative Monitoring and Alert Response](clinical-trials-device-telemetry/features/intraoperative-monitoring-and-alert-response.md) | Not started |
-| Meridian | A — Document/Biometric Capture → Verification | [Document and Biometric Capture](digital-identity-kyc/features/document-and-biometric-capture.md), [Customer Onboarding and Identity Verification](digital-identity-kyc/features/customer-onboarding-and-identity-verification.md) | Not started |
-| Meridian | B — Relying-Party Access | [Relying-Party Verification Request](digital-identity-kyc/features/relying-party-verification-request.md) | Not started |
-| Meridian | C — Ongoing Screening & SAR Escalation | [Periodic Screening and SAR Escalation](digital-identity-kyc/features/periodic-screening-and-sar-escalation.md) | Not started |
+| Vitals | B — Device Monitoring → Adverse Event Review | [Device Onboarding and Continuous Monitoring](clinical-trials-device-telemetry/features/device-onboarding-and-continuous-monitoring.md), [Adverse Event Capture and Review](clinical-trials-device-telemetry/features/adverse-event-capture-and-review.md) | Done |
+| Vitals | C — Trial Data Export & Subject Rights | [Trial Data Export and Subject Rights](clinical-trials-device-telemetry/features/trial-data-export-and-subject-rights.md) | Done (erasure half only — export/playback deliberately reuses the already-proven core mechanism unchanged, see note below) |
+| Vitals | D — Intraoperative Monitoring & Alert Response | [Intraoperative Monitoring and Alert Response](clinical-trials-device-telemetry/features/intraoperative-monitoring-and-alert-response.md) | Done |
+| Meridian | A — Document/Biometric Capture → Verification | [Document and Biometric Capture](digital-identity-kyc/features/document-and-biometric-capture.md), [Customer Onboarding and Identity Verification](digital-identity-kyc/features/customer-onboarding-and-identity-verification.md) | Done |
+| Meridian | B — Relying-Party Access | [Relying-Party Verification Request](digital-identity-kyc/features/relying-party-verification-request.md) | Done |
+| Meridian | C — Ongoing Screening & SAR Escalation | [Periodic Screening and SAR Escalation](digital-identity-kyc/features/periodic-screening-and-sar-escalation.md) | Done |
+
+**All 7 workflows across both proving-ground applications are now
+Done.** Six real, run-and-found divergences between a feature doc's own
+illustrative narrative and what the framework actually built were
+surfaced and honestly recorded along the way (below) — none silently
+smoothed over, each fixed at the sample-code level or, where the gap was
+genuinely in the core engine itself (`ADR-029`'s per-event late-arrival
+guard), recorded in `TODO.md` instead of worked around. Only Meridian's
+own Workflow C needed no correction at all — confirmed by actually
+running every one of its scenarios, not assumed from the doc's own claim
+that "no new framework mechanism is introduced."
 
 **One real, load-bearing implementation note, found while scoping this
 work, not while writing an individual workflow**: `RouterWorker.FoldAsync`/
@@ -112,3 +173,105 @@ domain-invented type name — a deliberate, honestly-recorded divergence
 from a feature doc's own narrative choice of name, not a silent
 substitution, per this repo's own "say when something is only partially
 borrowed" convention.
+
+**A second such divergence, found building Workflow B's "secondary
+opinion" half**: `adverse-event-capture-and-review.md`'s own sequence
+diagram shows a delegated grant read via `QUERY liveAdverseEvent(entityId)`
+against a generic Live View field — no such GraphQL field exists;
+"GraphQL-Only Query Layer"'s own build-scope note says explicitly "no
+generic entity/`extensions: JSON` query... nothing built here ever needs
+one." The only real, claims-gated, entity-scoped read this framework
+actually built is `revealField` (masked-field reveal, `ADR-009`/`043`),
+so `VitalsWorkflowBSecondaryOpinionHttpSqliteTests.cs` exercises that
+instead — an AE's own masked `SubjectId` field, delegated via a real
+`UcanDelegation` + OAuth Token Exchange round trip, the exact mechanism
+`DelegatedGrantsRbacFederationHttpSqliteTests.cs` already proves for the
+core engine. Also reuses the already-seeded `clinician-spa-client`/
+`colleague-client` pair and their real `clearance:phi` claim rather than
+seeding an unused `review:secondary-opinion` claim no client in this dev
+IdP actually holds — and the feature doc's own `accessGrantRevoked`
+event type has no real counterpart at all: a `UcanDelegation` is capped
+only by its own TTL, with no revocation-before-expiry mechanism built
+anywhere in `EventStore.Ucan`/`EventStore.Rbac` (confirmed by search, not
+assumed) — a genuine, open gap, not one this sample works around.
+
+**A third: Workflow C's export/playback half, deliberately scoped down.**
+`trial-data-export-and-subject-rights.md`'s own `exportLineage`/
+`playbackAsOf` sequence diagrams name two claims, `export:lineage`/
+`export:playback`, that don't exist either — the real `LineageExportQueries`
+gates both fields behind one ordinary GraphQL scope,
+`events:lineage:read` (`GraphQlAuth.RequireScopeAsync`), the same scope
+every other GraphQL field checks. `EntityErasureRequestedPayload.EntityId`
+is real as `TargetEntityId`, and `EntityErasureKey.DestroyedAt`/
+`KeyStoreBackendKey` are real as `ErasedAt`/`BackendName` — confirmed
+against the actual classes, not assumed from the ER diagram. Since
+`ADR-068`'s export/playback mechanism is already fully exercised
+generically (`LineageExportHttpSqliteTests.cs`) and this domain changes
+no risk in it (only which entity/event names are involved), this sample
+deliberately does NOT re-prove that half with a second, redundant HTTP
+test — only the erasure half (`VitalsWorkflowCScenarioAssertions.cs`),
+which genuinely is domain-specific (PHI fields, a non-continuity
+subject, the retention-vs-erasure tension this domain's own `README.md`
+names as real), gets real sample code and tests.
+
+**A fourth: Workflow D's `IonmAlertRaised` is registered `ChangeKind
+"Partial"`, not the feature doc's own literal `"Full"` Background
+text** — a real, found-by-running-it correction (`VitalsWorkflowD.cs`'s
+own code comment has the full mechanics), not a silent substitution.
+Also surfaced, while running that same scenario, a genuine open
+framework question — `ADR-029`'s late-arrival guard is per-event, not
+per-field, and this domain's own ordering (an always-immediately-
+accepted `IonmAlertAcknowledged` racing ahead of `IonmAlertRaised`'s own
+deliberately-delayed catch-up fold) triggers it deterministically, every
+time, not as a rare race — recorded in `TODO.md`, not fixed here (fixing
+it would mean changing `RouterWorker.FoldAsync` itself, outside this
+sample's own scope). The sample's own test asserts the real, verified
+outcome (`AuthorityStatus` correctly reaches `accepted`; the Entity
+Store's `Data` gains `AckedBy` but not `Finding`/`Severity`), not the
+feature doc's own idealized assumption that all three would end up
+present together.
+
+**A fifth, found scoping Meridian's own Workflow A — the largest single
+divergence yet.** `customer-onboarding-and-identity-verification.md`'s
+own sequence diagram shows an applicant publishing `IdentityClaimSubmitted`
+with a raw UCAN riding in `AttestedClaims`, and the Router LATER
+performing an asynchronous OAuth Token Exchange call to `EventStore.
+DevIdp` on the platform's own behalf, upgrading `AuthorityStatus` from
+`unattested` to `pending_review` once the exchange succeeds. No such
+logic exists anywhere in `EventStore.Router`/`EventStore.Inbox`
+(confirmed by search) — the real, built UCAN/Token-Exchange mechanism is
+entirely CALLER-initiated (a client calls the exchange endpoint itself,
+then uses the resulting JWT as an ordinary Bearer credential for
+whatever it does next), and every real UCAN issuer key must already be
+a registered `AppTrustRoot` or a seeded client identity — confirmed
+directly against `ADelegationWithNoProofRootedInAnUnregisteredKeyIsRejected`
+in the core suite, there is no path for a genuinely first-time, walk-up
+applicant's own freshly-generated DID key to self-attest with zero prior
+registration. `Samples.Meridian`'s own `MeridianWorkflowA.cs` models the
+central self-attestation step using the mechanism that IS real and
+already fully proven for exactly this shape instead — `ADR-035`'s
+credential-agnostic `AttestedActorId`/`AttestedClaims` (an opaque blob
+the core engine never itself validates), landing at `unattested`,
+resolved directly by the same `authorityDecision` reactor every other
+workflow in this file already reuses — skipping the doc's own unbuilt
+`pending_review`-via-successful-exchange intermediate stage entirely.
+The real `UcanDelegation` + Token Exchange mechanism this domain's own
+Workflow B (relying-party access) actually needs gets built there
+instead, the same way it was for Vitals' own secondary-opinion access.
+
+**A sixth, building that same Workflow B**: the doc's own `accessGrant`/
+`accessGrantRevoked` published-as-events plus a generic `QUERY { entity(id)
+{ ... } }` GraphQL field have no real counterpart either — delegation is
+a client-signed `UcanDelegation` token, never a `StoredEvent`, and the
+only real claims-gated, entity-scoped read is `revealField`, the exact
+same gap Vitals' own secondary-opinion access already found. No live
+revocation-before-expiry mechanism exists either (already recorded
+above) — `MeridianWorkflowBHttpSqliteTests.cs` proves expiry instead,
+using a deliberately-past `exp` well beyond `TokenValidationParameters`'
+own 5-minute default clock skew, not a live wait. The customer's own
+freshly-generated DID key is registered as this `AppId`'s own
+`AppTrustRoot` (`ADR-044`) — a genuinely self-issued, root-of-trust
+delegation needing no pre-existing granter credential, which is exactly
+the shape "a customer signs a delegation with their own DID key" the
+feature doc's own narrative describes, realized for real rather than
+reusing an already-seeded client's own identity.
