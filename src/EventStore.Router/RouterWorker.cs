@@ -1,5 +1,6 @@
 using System.Security.Cryptography;
 using System.Text;
+using System.Text.Json;
 using System.Text.Json.Nodes;
 using EventStore.Domain.EntityStore;
 using EventStore.Domain.EventLog;
@@ -425,15 +426,26 @@ public class RouterWorker(IServiceScopeFactory scopeFactory, ILogger<RouterWorke
                 Version = 0,
                 Data = "{}",
                 Extensions = "{}",
+                PropertyVersions = "{}",
                 LastAppliedLogicalTime = DateTimeOffset.MinValue,
             };
             db.EntityStore.Add(row);
         }
 
-        // ADR-024 -- ConflictFlag: a stale ExpectedVersion never blocks the
-        // write, it only flags the later-applied event.
-        if (storedEvent.ExpectedVersion is { } expected && expected != row.Version)
-            storedEvent.ConflictFlag = true;
+        // ADR-024 -- ConflictFlag is deliberately narrower than "the whole
+        // entity moved on": "If another patch touching the SAME PROPERTY
+        // was already applied since ExpectedVersion... two patches based
+        // on the same version touching DIFFERENT properties both fold
+        // cleanly regardless of arrival order -- that is not a conflict."
+        // PropertyVersions (property name -> the row.Version at which it
+        // was last actually changed) is what makes that per-property
+        // comparison possible without re-deriving it from full history on
+        // every fold. A stale ExpectedVersion never blocks the write, it
+        // only flags the later-applied event -- unchanged from before.
+        var propertyVersions = ParsePropertyVersions(row.PropertyVersions);
+        var touchedProperties = known.Select(kv => kv.Key).Concat(unknownProperties.Select(kv => kv.Key)).ToList();
+        if (storedEvent.ExpectedVersion is { } expected)
+            storedEvent.ConflictFlag = touchedProperties.Any(name => propertyVersions.TryGetValue(name, out var lastChangedAt) && lastChangedAt > expected);
 
         // ADR-029 -- LateArrivalFlag: unlike ConflictFlag, this DOES gate
         // whether the change is applied -- applying a chronologically-stale
@@ -445,14 +457,39 @@ public class RouterWorker(IServiceScopeFactory scopeFactory, ILogger<RouterWorke
 
         if (!isLateArrival)
         {
+            var oldData = JsonNode.Parse(row.Data) as JsonObject ?? new JsonObject();
+            var oldExtensions = JsonNode.Parse(row.Extensions) as JsonObject ?? new JsonObject();
             var mergedData = changeKind == ChangeKind.Full
                 ? (JsonObject)known.DeepClone()
-                : EntityDataMerger.MergePatch(JsonNode.Parse(row.Data), known);
-            var mergedExtensions = EntityDataMerger.MergePatch(JsonNode.Parse(row.Extensions), unknownProperties);
+                : EntityDataMerger.MergePatch(oldData, known);
+            var mergedExtensions = EntityDataMerger.MergePatch(oldExtensions, unknownProperties);
 
             var newDataJson = mergedData.ToJsonString();
             if (newDataJson != row.Data)
+            {
                 row.Version += 1; // ADR-021/029 -- only bumps when Data actually changes
+                // A property's OWN PropertyVersions entry only advances
+                // when ITS OWN value actually differs from before -- NOT
+                // merely because it was present in this patch's payload.
+                // Every event necessarily re-declares the entity's own
+                // identifying field (e.g. OrderId) alongside whatever it
+                // actually changes, and that field's VALUE never differs
+                // patch to patch -- bumping it anyway on every fold would
+                // make it look permanently "just changed" and manufacture
+                // a false conflict for the next unrelated patch that
+                // happens to touch the same identifying field (found only
+                // by running this, not assumed: `TwoPatchesBasedOnThe
+                // SameVersionTouchingDifferentPropertiesBothFoldCleanly
+                // WithNoConflict` failed until this comparison was added).
+                foreach (var name in touchedProperties)
+                {
+                    var oldValue = PropertyValueOrNull(oldData, oldExtensions, name);
+                    var newValue = PropertyValueOrNull(mergedData, mergedExtensions, name);
+                    if (oldValue != newValue)
+                        propertyVersions[name] = row.Version;
+                }
+                row.PropertyVersions = JsonSerializer.Serialize(propertyVersions);
+            }
             row.Data = newDataJson;
             row.Extensions = mergedExtensions.ToJsonString();
             row.SchemaVersion = storedEvent.SchemaVersion;
@@ -467,6 +504,29 @@ public class RouterWorker(IServiceScopeFactory scopeFactory, ILogger<RouterWorke
 
     private static string ComputeHash(string dataJson) =>
         Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(dataJson))).ToLowerInvariant();
+
+    // ADR-024's per-property conflict comparison needs to know, for each
+    // property name, the row.Version at which it was LAST actually
+    // changed -- a plain property-name -> version-number map, JSON-encoded
+    // onto EntityStoreRow.PropertyVersions the same envelope-column style
+    // Data/Extensions already use. Never null/empty on a real row past its
+    // first fold; the empty-string fallback only covers a pre-this-item
+    // row this codebase never actually created (no prior release to
+    // migrate data for).
+    private static Dictionary<string, long> ParsePropertyVersions(string? propertyVersionsJson) =>
+        string.IsNullOrEmpty(propertyVersionsJson)
+            ? new Dictionary<string, long>()
+            : JsonSerializer.Deserialize<Dictionary<string, long>>(propertyVersionsJson)!;
+
+    // A property can live in either Data (declared/known) or Extensions
+    // (ADR-022's overflow bag) depending on the schema at fold time --
+    // checked in that order, canonicalized to its JSON text so two
+    // structurally-identical values (not just two identical references)
+    // compare equal.
+    private static string? PropertyValueOrNull(JsonObject data, JsonObject extensions, string name) =>
+        data.TryGetPropertyValue(name, out var dataValue) ? dataValue?.ToJsonString()
+        : extensions.TryGetPropertyValue(name, out var extensionValue) ? extensionValue?.ToJsonString()
+        : null;
 
     // "Non-Authoritative Capture", comparisons/authority-rejection-behavior.md's
     // targeted-rebuild refinement -- adopted as RejectionBehavior.Annotate's
@@ -498,8 +558,10 @@ public class RouterWorker(IServiceScopeFactory scopeFactory, ILogger<RouterWorke
         var row = await db.EntityStore.SingleAsync(r => r.EntityId == entityId, ct);
         row.Data = "{}";
         row.Extensions = "{}";
+        row.PropertyVersions = "{}"; // recomputed fresh below, same reasoning as Data/Version -- a stale per-property marker from before the rebuild must never survive it
         row.Version = 0;
         row.LastAppliedLogicalTime = DateTimeOffset.MinValue;
+        var propertyVersions = new Dictionary<string, long>();
 
         var anyAccepted = false;
         foreach (var storedEvent in events.Where(e => e.AuthorityStatus == "accepted"))
@@ -526,14 +588,30 @@ public class RouterWorker(IServiceScopeFactory scopeFactory, ILogger<RouterWorke
             if (isLateArrival)
                 continue;
 
+            var oldData = JsonNode.Parse(row.Data) as JsonObject ?? new JsonObject();
+            var oldExtensions = JsonNode.Parse(row.Extensions) as JsonObject ?? new JsonObject();
             var mergedData = definition.ChangeKind == ChangeKind.Full
                 ? (JsonObject)known.DeepClone()
-                : EntityDataMerger.MergePatch(JsonNode.Parse(row.Data), known);
-            var mergedExtensions = EntityDataMerger.MergePatch(JsonNode.Parse(row.Extensions), unknown);
+                : EntityDataMerger.MergePatch(oldData, known);
+            var mergedExtensions = EntityDataMerger.MergePatch(oldExtensions, unknown);
 
             var newDataJson = mergedData.ToJsonString();
             if (newDataJson != row.Data)
+            {
                 row.Version += 1;
+                // Same "only the properties whose OWN value actually
+                // changed" comparison FoldAsync uses (see its own comment)
+                // -- otherwise a rebuild would re-derive the exact false-
+                // conflict-prone PropertyVersions shape this item fixed in
+                // the first place.
+                foreach (var name in known.Select(kv => kv.Key).Concat(unknown.Select(kv => kv.Key)))
+                {
+                    var oldValue = PropertyValueOrNull(oldData, oldExtensions, name);
+                    var newValue = PropertyValueOrNull(mergedData, mergedExtensions, name);
+                    if (oldValue != newValue)
+                        propertyVersions[name] = row.Version;
+                }
+            }
             row.Data = newDataJson;
             row.Extensions = mergedExtensions.ToJsonString();
             row.SchemaVersion = storedEvent.SchemaVersion;
@@ -541,6 +619,7 @@ public class RouterWorker(IServiceScopeFactory scopeFactory, ILogger<RouterWorke
             row.LastAppliedLogicalTime = storedEvent.OccurredAt;
             row.LastAppliedOriginId = storedEvent.OriginId;
         }
+        row.PropertyVersions = JsonSerializer.Serialize(propertyVersions);
 
         // Zero surviving contributions -- the entity never existed from the
         // remaining, trustworthy history's point of view. Removing the row

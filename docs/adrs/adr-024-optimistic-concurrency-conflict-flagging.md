@@ -76,3 +76,18 @@ Consequences:
   opt-in per publish, not universally enforced — a caller that never
   supplies it gets no detection, the same trade `ADR-011`'s `eventId`
   already makes for idempotency (opt-in, not automatic).
+
+**Implementation note, added 2026-08-12**: a design-compliance audit
+found `RouterWorker.FoldAsync` only ever compared whole-entity
+`ExpectedVersion != row.Version`, with no property-level check at all —
+exactly the coarser default this Decision explicitly rejects ("two
+patches based on the same version touching different properties both
+fold cleanly... that is not a conflict"). Built to match this Decision's
+own text (not a correction of the Decision — the gap was code lagging
+docs): `EntityStoreRow.PropertyVersions` (see `docs/data/entity-store.md`'s
+"Why `PropertyVersions` exists") now tracks, per property, the `Version`
+at which it last actually changed value, and `FoldAsync` compares a
+patch's touched properties against that map instead of the whole row.
+New test: `TwoPatchesBasedOnTheSameVersionTouchingDifferentProperties
+BothFoldCleanlyWithNoConflict` (`EntityScenarioAssertions.cs`, all three
+providers).

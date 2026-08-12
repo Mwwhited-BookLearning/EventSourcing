@@ -24,6 +24,7 @@ public class EntityStoreRow
     public long Version { get; set; }                    // DATA-CHANGE counter — only bumps when Data actually changes (ADR-029); distinct from LastAppliedSequenceNumber below
     public string Data { get; set; } = default!;         // current materialized snapshot (typed properties)
     public string Extensions { get; set; } = default!;   // overflow bag for properties not in the current known schema (ADR-022)
+    public string PropertyVersions { get; set; } = "{}"; // property name -> the Version at which ITS OWN value last actually differed — ADR-024's per-property conflict comparison; see "Why PropertyVersions exists" below
     public string Hash { get; set; } = default!;         // SHA-256 of canonicalized Data — per-entity integrity/diff, a different
                                                            // application of ADR-019's hash primitive than the event ChainHash
     public int SchemaVersion { get; set; }                // current shape, post-upcast (best effort — ADR-018)
@@ -85,6 +86,32 @@ without touching `Version`, since nothing about the entity's visible
 state changed. See `ADR-029` for the full reasoning and `ADR-024` for the
 conflict-detection mechanism `Version` also supports (`ExpectedVersion`
 on publish, compared against this column at fold time).
+
+## Why `PropertyVersions` exists (`ADR-024`)
+
+`Version` alone answers "has the entity changed since some prior
+version," but `ADR-024`'s actual Decision is narrower: "two patches based
+on the same version touching *different* properties both fold cleanly
+regardless of arrival order — that is not a conflict." Answering that
+needs to know, per property, when it last actually changed — `Version`
+by itself can't distinguish "someone else changed the property I'm also
+touching" from "someone else changed some other property entirely."
+`PropertyVersions` is that per-property answer: a plain
+`{ "propertyName": versionNumber }` map, updated at fold time alongside
+`Version` — but only for a property whose *own value* genuinely differs
+from before, never merely because it was present in the incoming
+payload. That distinction matters concretely: every event re-declares
+the entity's own identifying field (e.g. an `OrderId` an `EntityIdField`
+resolves against) alongside whatever it actually changes, and that
+field's value never differs patch to patch — bumping its entry on every
+fold regardless would make it look permanently "just changed" and
+manufacture a false conflict for the next, genuinely unrelated patch
+that happens to also touch it (found by running
+`TwoPatchesBasedOnTheSameVersionTouchingDifferentPropertiesBothFoldCleanlyWithNoConflict`,
+not assumed). `RebuildEntityFromAcceptedEventsAsync` (the targeted-
+rebuild mechanism, `ADR-035`) recomputes `PropertyVersions` from scratch
+alongside `Data`/`Version`, for the same reason it recomputes those: a
+stale per-property marker from before a rebuild must never survive it.
 
 ## Fold ordering (`ADR-029`)
 

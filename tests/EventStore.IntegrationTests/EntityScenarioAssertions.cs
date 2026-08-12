@@ -38,6 +38,18 @@ internal static class EntityScenarioAssertions
             FilterableFields: [], ChangeKind: "Partial", EntityIdField: "$.OrderId",
             ParentValidationMode: "Permissive", RequiredClaims: null, UpcastFromPrevious: null, DowncastToPrevious: null, EntityType: "Order"));
 
+    // A second Partial patch type touching a DIFFERENT property than
+    // OrderShipped's own Carrier -- ADR-024's own named "not a conflict"
+    // case needs two patches on genuinely different properties to exercise
+    // at all; OrderShipped alone only ever touches Carrier.
+    private static Task RegisterOrderCustomerNameUpdated(SchemaRegistryService registry, string appId) =>
+        registry.RegisterAsync("OrderCustomerNameUpdated", new RegisterEventTypeRequest(
+            AppId: appId, JsonSchema: """
+                { "type": "object", "properties": { "OrderId": { "type": "string" }, "CustomerName": { "type": "string" } }, "required": ["OrderId", "CustomerName"] }
+                """,
+            FilterableFields: [], ChangeKind: "Partial", EntityIdField: "$.OrderId",
+            ParentValidationMode: "Permissive", RequiredClaims: null, UpcastFromPrevious: null, DowncastToPrevious: null, EntityType: "Order"));
+
     private static async Task<PublishResult.Accepted> Publish(
         PublishService publish, string appId, string typeName, string payload, long? expectedVersion = null)
     {
@@ -214,6 +226,44 @@ internal static class EntityScenarioAssertions
         var row = await db.EntityStore.AsNoTracking().SingleAsync(r => r.EntityId == $"{appId}:order:o-7");
         Assert.AreEqual(2, row.Version, "LateArrivalFlag gates the write, so Version never advances to 3 here");
         StringAssert.Contains(row.Data, "UPS");
+    }
+
+    // ADR-024's own Decision, verbatim: "two patches based on the same
+    // version touching DIFFERENT properties both fold cleanly regardless
+    // of arrival order -- that is not a conflict." Before this item, the
+    // fold compared whole-entity ExpectedVersion to row.Version alone, so
+    // OrderCustomerNameUpdated below (anchored at the version right after
+    // OrderPlaced, same as OrderShipped) would have been WRONGLY flagged
+    // once OrderShipped's own fold had already bumped row.Version past 1
+    // -- a real regression this test would have caught.
+    public static async Task TwoPatchesBasedOnTheSameVersionTouchingDifferentPropertiesBothFoldCleanlyWithNoConflict(
+        SchemaRegistryService registry, PublishService publish, EventStoreContext db, UpcastChain upcastChain)
+    {
+        const string appId = "entity-demo-10";
+        await RegisterOrderPlaced(registry, appId);
+        await RegisterOrderShipped(registry, appId);
+        await RegisterOrderCustomerNameUpdated(registry, appId);
+
+        await Publish(publish, appId, "OrderPlaced", """{ "OrderId": "o-10", "CustomerName": "A. Smith", "Amount": 42.00 }""");
+        await RouterWorker.RunOnceAsync(db, registry, upcastChain); // EntityStoreRow now at Version 1
+
+        // Both anchor ExpectedVersion at 1 (right after OrderPlaced), but
+        // touch DIFFERENT properties -- Carrier vs CustomerName.
+        var shipped = await Publish(publish, appId, "OrderShipped", """{ "OrderId": "o-10", "Carrier": "UPS" }""", expectedVersion: 1);
+        await RouterWorker.RunOnceAsync(db, registry, upcastChain); // Version 2 -- only Carrier's own PropertyVersions entry advances
+
+        var renamed = await Publish(publish, appId, "OrderCustomerNameUpdated", """{ "OrderId": "o-10", "CustomerName": "B. Jones" }""", expectedVersion: 1);
+        await RouterWorker.RunOnceAsync(db, registry, upcastChain); // Version 3
+
+        var shippedEvent = await db.Events.AsNoTracking().SingleAsync(e => e.EventId == shipped.CorrelationId);
+        var renamedEvent = await db.Events.AsNoTracking().SingleAsync(e => e.EventId == renamed.CorrelationId);
+        Assert.IsFalse(shippedEvent.ConflictFlag, "touches Carrier only");
+        Assert.IsFalse(renamedEvent.ConflictFlag, "touches CustomerName only, based on the same version OrderShipped was -- not a conflict per ADR-024");
+
+        var row = await db.EntityStore.AsNoTracking().SingleAsync(r => r.EntityId == $"{appId}:order:o-10");
+        Assert.AreEqual(3, row.Version);
+        StringAssert.Contains(row.Data, "UPS");
+        StringAssert.Contains(row.Data, "B. Jones");
     }
 
     public static async Task PublishingWithoutExpectedVersionAppliesUnconditionallyWithNoConflictDetection(

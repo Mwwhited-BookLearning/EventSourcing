@@ -370,28 +370,6 @@ here instead of inlining.
   to match reality — a real decision the user should make, not a call
   for a review pass to make silently.
 
-- **`ADR-024`'s conflict-detection Decision explicitly narrows to
-  same-property comparison** ("If another patch touching the **same
-  property** was already applied since `ExpectedVersion`, set
-  `ConflictFlag`... two patches based on the same version touching
-  **different** properties both fold cleanly... that is not a
-  conflict") **but `RouterWorker.cs` (~line 393-396) only ever compares
-  whole-entity `ExpectedVersion != row.Version`, with no property-level
-  check at all** — any stale version on any property patch is flagged,
-  exactly the false-positive case the ADR calls out as *not* a real
-  conflict. `docs/data/event-log.md`'s own comment matches the coarser
-  code, not the ADR's decided nuance. No test exercises "different
-  properties, same stale version → no conflict." Unlike `ADR-029`'s
-  analogous per-entity/per-property tradeoff (explicitly named an
-  "acceptable v1 default" with per-property as a documented upgrade
-  path, and already tracked above in this file), `ADR-024` states the
-  narrow per-property check as the actual default design — this gap was
-  untracked anywhere until a design-compliance audit found it. Fix:
-  either implement real per-property conflict comparison in
-  `RouterWorker.FoldAsync`, or add an additive note to `ADR-024`
-  acknowledging the coarser default actually shipped (matching how
-  `ADR-029` already handles the same class of tradeoff honestly).
-
 - **`ADR-025`'s Decision (Scalar UI at `/scalar`, a static AsyncAPI UI
   page via `@asyncapi/react-component`) was never built.** No `Scalar`
   package reference anywhere in `src/`, no `/scalar` or `/asyncapi-ui`

@@ -179,6 +179,10 @@ namespace EventStore.Persistence.Migrations.Sqlite.Migrations
                     b.Property<bool>("LateArrivalFlag")
                         .HasColumnType("INTEGER");
 
+                    b.Property<string>("PropertyVersions")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
                     b.Property<int>("SchemaVersion")
                         .HasColumnType("INTEGER");
 
