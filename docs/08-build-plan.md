@@ -4632,6 +4632,27 @@ fromSequenceNumber: 0` — confirmed live: a freshly-opened instance now
 shows already-published history immediately, no "waiting for the first
 event."
 
+**Extended, 2026-08-12, same session, direct request**: the Composer
+gained its first envelope-metadata support — `ADR-066`'s RFC 9470
+step-up + `Signature`/`Meaning`, the prerequisite named for the still-
+deferred bespoke Vitals PI-queue/Meridian analyst-queue screens (neither
+built yet; this is the shared groundwork both would need). Selecting a
+`RequiredSignature`-configured event type (`authorityDecision`, already
+registered by `Samples.Vitals`/`Samples.Meridian`'s own workflows) now
+shows a required "Reason for sign-off (Meaning)" field, and a first
+publish attempt that receives RFC 9470's real 401 challenge
+(`PublishEndpoints.BuildStepUpChallenge`) is caught and retried once with
+a freshly-fetched, stepped-up token (`EventStore.DevIdp`'s dev-only `acr`
+form parameter) — see `docs/features/mvvm-client.md`'s new "Digital
+sign-off and RFC 9470 step-up" subsection for the full mechanism. No
+server-side change needed — `RequiredSignature`/`Signature`/the 401
+challenge shape were already fully built (`ADR-066`, build-plan item 29);
+this was purely wiring `client-web` up to a contract that already
+existed. Verified via `useEventComposer.spec.ts`/`EventComposer.spec.ts`
+(new tests covering RequiredSignature detection, Meaning gating, and a
+mocked 401-then-retry round trip) plus the full client-web suite (134
+tests) and `vue-tsc -b`, all clean.
+
 Two real bugs found only by actually running this, not by reading the code
 back: (1) two long-running Simulators writing concurrently, forever, hit
 the same Postgres `Serializable`-transaction conflict the one-shot Seed

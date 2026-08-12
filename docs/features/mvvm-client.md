@@ -475,6 +475,51 @@ server-side after the fact.
     And the form should not fail to render or silently omit the property
 ```
 
+### Digital sign-off and RFC 9470 step-up (ADR-066)
+
+**Added 2026-08-12, this Composer's first envelope-metadata support** —
+until now the Composer only ever populated `Payload`; `RequiredSignature`
+is envelope metadata (`Signature`), not a schema property, so it needed
+its own surface rather than falling out of the existing form generator.
+Selecting an event type that carries `RequiredSignature`
+(`EventTypeDefinition.RequiredSignature`, exposed by the same `eventType`
+GraphQL query already used for `JsonSchema`, no new resolver) shows one
+extra, always-required "Reason for sign-off (Meaning)" field alongside
+the ordinary schema-driven form — `Meaning` is envelope metadata
+(`PublishEventRequest.Meaning`), never a schema property, the same
+"kept out of `Payload`" treatment `ParentEventIds`/`AttestedClaims`
+already get.
+
+**The step-up retry is real, not simulated away**: `composer-client`'s
+ordinary token carries no `acr` claim, so a first publish attempt against
+a `RequiredSignature`-configured type gets RFC 9470's actual 401
+challenge (`PublishEndpoints.BuildStepUpChallenge`) — the Composer
+catches it, requests a *second* token naming the challenge's own
+`acr_values` (`EventStore.DevIdp`'s dev-only `acr` form parameter, which
+has no interactive re-authentication behind it since this IdP has none
+for a machine caller to step up through — see `authClient.ts`'s own
+comment), and retries the same publish exactly once with the new token.
+A real IdP would take the human caller through an actual password/OTP/
+WebAuthn challenge at this point instead; the Composer's own retry logic
+is identical either way, since RFC 9470's client-side contract doesn't
+care how the IdP satisfied the challenge.
+
+```gherkin
+  Scenario: Selecting a RequiredSignature-configured event type shows the Meaning field
+    Given "authorityDecision" is registered with RequiredSignature acrValues ["urn:trial:step-up"]
+    When a user selects "authorityDecision" in the Composer
+    Then a "Reason for sign-off (Meaning)" field should render alongside the schema-driven form
+    And Publish should stay disabled until Meaning is filled, alongside every other required field
+
+  Scenario: Publishing against a RequiredSignature type steps up and retries automatically
+    Given the Composer's current token carries no acr claim
+    When a user fills the form and Meaning, then clicks Publish
+    Then the first POST /publish/authorityDecision should receive RFC 9470's 401 challenge
+    And the Composer should fetch a new token naming the challenge's own acr_values
+    And the SAME publish should be retried once with the new token
+    And a 202 response should confirm the signed event was accepted
+```
+
 ## Accessibility standard (ADR-073)
 
 Both the `ViewDefinition`-rendered template above and the generic

@@ -47,6 +47,10 @@ export interface ClientOutboxEntry {
   reviewPending?: boolean
   attestedActorId?: string
   attestedClaims?: Record<string, unknown>
+  // ADR-066 -- the signer's stated reason, required only when the target
+  // event type has RequiredSignature configured; ignored entirely
+  // otherwise, same "completely unaffected" posture as the fields above.
+  meaning?: string
 }
 
 export interface ClientEntityCacheEntry {

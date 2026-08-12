@@ -6,6 +6,12 @@ export interface PublishResult {
   status?: string
   entityId?: string
   conflictFlag?: boolean
+  // ADR-066/RFC 9470 -- PublishEndpoints.cs's BuildStepUpChallenge response
+  // (401, error="insufficient_user_authentication"), surfaced here as a
+  // distinguishable outcome rather than collapsed into the bare `ok: false`
+  // every other rejection reason already gets, since a caller (useEventComposer)
+  // needs the acr_values/max_age to actually retry with a stepped-up token.
+  stepUpRequired?: { acrValues: string[]; maxAge: number | null }
 }
 
 // The "round trip through ADR-021's Entity Store" ADR-039 requires -- the
@@ -36,9 +42,18 @@ export async function publishCommand(hostBaseUrl: string, token: string, entry: 
       reviewPending: entry.reviewPending,
       attestedActorId: entry.attestedActorId,
       attestedClaims: entry.attestedClaims,
+      meaning: entry.meaning,
     }),
   })
-  if (!response.ok) return { ok: false }
+  if (!response.ok) {
+    if (response.status === 401) {
+      const body = (await response.json().catch(() => null)) as { error?: string; acrValues?: string[]; maxAge?: number | null } | null
+      if (body?.error === 'insufficient_user_authentication') {
+        return { ok: false, stepUpRequired: { acrValues: body.acrValues ?? [], maxAge: body.maxAge ?? null } }
+      }
+    }
+    return { ok: false }
+  }
   const body = (await response.json()) as { status: string; entityId: string; conflictFlag: boolean }
   return { ok: true, status: body.status, entityId: body.entityId, conflictFlag: body.conflictFlag }
 }

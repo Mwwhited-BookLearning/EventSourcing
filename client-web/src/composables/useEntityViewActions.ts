@@ -66,7 +66,10 @@ export interface ClientConfig {
 }
 
 export interface FetchTokenFn {
-  (authBaseUrl: string, clientId: string, clientSecret: string, scope: string): Promise<string>
+  // `acr` is ADR-066/RFC 9470's dev-simulated step-up parameter (authClient.ts)
+  // -- optional so every existing caller/mock with the original 4-arg shape
+  // is unaffected; only useEventComposer's step-up retry path passes it.
+  (authBaseUrl: string, clientId: string, clientSecret: string, scope: string, acr?: string): Promise<string>
 }
 
 // The ViewModel commands layer (docs/patterns/mvvm-client-architecture.md's

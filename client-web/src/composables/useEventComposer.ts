@@ -38,6 +38,20 @@ export interface ComposerFormField {
   editable: boolean
 }
 
+// ADR-066 -- null when the event type has no RequiredSignature configured
+// (the common, unaffected case); present names the RFC 9470 acr_values/
+// max_age the Composer must satisfy before Publish-time enforcement
+// (PublishService.StepUpSatisfied) will accept the publish.
+export interface ComposerRequiredSignature {
+  acrValues: string[]
+  maxAge: number | null
+}
+
+export interface ComposerEventTypeDetail {
+  fields: ComposerFormField[]
+  requiredSignature: ComposerRequiredSignature | null
+}
+
 export function useEventComposer(config: EventComposerConfig, deps: { fetchToken?: FetchTokenFn } = {}) {
   const tokenFetcher = deps.fetchToken ?? fetchToken
   const clientId = config.composerClientId ?? 'composer-client'
@@ -67,25 +81,32 @@ export function useEventComposer(config: EventComposerConfig, deps: { fetchToken
     return (result.eventTypes ?? []).filter((et) => et.isActive)
   }
 
-  async function getFormFields(name: string, version: number): Promise<ComposerFormField[]> {
+  // `requiredSignature` is EventTypeDefinition.RequiredSignature (ADR-066),
+  // exposed automatically by HotChocolate off the same domain object
+  // RegistryQueries.GetEventTypeAsync already returns -- no new resolver
+  // needed. null for the ordinary, unaffected case (no sign-off configured).
+  async function getEventTypeDetail(name: string, version: number): Promise<ComposerEventTypeDetail> {
     const currentToken = await ensureComposerToken()
-    const result = await graphqlQuery<{ eventType: { jsonSchema: string } | null }>(
+    const result = await graphqlQuery<{
+      eventType: { jsonSchema: string; requiredSignature: { acrValues: string[]; maxAge: number | null } | null } | null
+    }>(
       config.hostBaseUrl,
       currentToken,
-      `query { eventType(appId: "${config.appId}", name: "${name}", version: ${version}) { jsonSchema } }`,
+      `query { eventType(appId: "${config.appId}", name: "${name}", version: ${version}) { jsonSchema requiredSignature { acrValues maxAge } } }`,
     )
-    if (!result.eventType) return []
+    if (!result.eventType) return { fields: [], requiredSignature: null }
     const schema = JSON.parse(result.eventType.jsonSchema) as {
       properties?: Record<string, { type?: string; 'x-masking'?: unknown }>
       required?: string[]
     }
     const required = new Set(schema.required ?? [])
-    return Object.entries(schema.properties ?? {}).map(([fieldName, def]) => ({
+    const fields = Object.entries(schema.properties ?? {}).map(([fieldName, def]) => ({
       name: fieldName,
       type: def.type ?? 'string',
       required: required.has(fieldName),
       editable: !def['x-masking'] && def.type !== 'object',
     }))
+    return { fields, requiredSignature: result.eventType.requiredSignature }
   }
 
   // Deliberately calls the same POST /publish/{eventType} + client-
@@ -94,9 +115,19 @@ export function useEventComposer(config: EventComposerConfig, deps: { fetchToken
   // since that store's one stanza per instance is scoped to config's own
   // identity, not this composer's second one. Online-only: a failure
   // surfaces directly to the caller rather than being durably queued.
-  async function publish(eventType: string, payload: Record<string, unknown>): Promise<{ ok: boolean; status?: string; entityId?: string }> {
-    const currentToken = await ensureComposerToken()
-    return publishCommand(config.hostBaseUrl, currentToken, {
+  //
+  // ADR-066/RFC 9470 -- a first attempt against a RequiredSignature-
+  // configured event type, with the composer's ordinary token (no `acr`
+  // claim), gets the 401 challenge publishClient.ts now surfaces as
+  // `stepUpRequired`. This is where the client "redirects the caller
+  // through the IdP to step up... and retries with the resulting token"
+  // (the ADR's own Decision text) -- dev-simulated (no real interactive
+  // re-auth exists here, see authClient.ts's own comment), one retry only,
+  // never a loop: a second stepUpRequired on the retry is a real, distinct
+  // failure (e.g. the IdP itself would refuse this acr), reported as-is
+  // rather than retried again.
+  async function publish(eventType: string, payload: Record<string, unknown>, meaning?: string): Promise<{ ok: boolean; status?: string; entityId?: string; steppedUp?: boolean }> {
+    const entry = {
       commandId: crypto.randomUUID(),
       instanceId: 'composer',
       appId: config.appId,
@@ -105,11 +136,19 @@ export function useEventComposer(config: EventComposerConfig, deps: { fetchToken
       expectedVersion: null,
       schemaVersion: 1,
       patch: JSON.stringify(payload),
-      status: 'Pending',
+      status: 'Pending' as const,
       enqueuedAt: new Date().toISOString(),
       attempts: 0,
-    })
+      meaning,
+    }
+    const currentToken = await ensureComposerToken()
+    const result = await publishCommand(config.hostBaseUrl, currentToken, entry)
+    if (!result.stepUpRequired) return result
+
+    token = await tokenFetcher(config.authBaseUrl, clientId, clientSecret, 'events:publish registry:admin', result.stepUpRequired.acrValues[0])
+    const retried = await publishCommand(config.hostBaseUrl, token, entry)
+    return { ...retried, steppedUp: !retried.stepUpRequired }
   }
 
-  return { listEventTypes, getFormFields, publish }
+  return { listEventTypes, getEventTypeDetail, publish }
 }
