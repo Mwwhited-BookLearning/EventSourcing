@@ -52,7 +52,9 @@
   </Folder>
   <Folder Name="/samples/">
     <Project Path="src/Samples.Meridian/Samples.Meridian.csproj" />
+    <Project Path="src/Samples.Meridian.Seed/Samples.Meridian.Seed.csproj" />
     <Project Path="src/Samples.Orders.Projections/Samples.Orders.Projections.csproj" />
     <Project Path="src/Samples.Vitals/Samples.Vitals.csproj" />
+    <Project Path="src/Samples.Vitals.Seed/Samples.Vitals.Seed.csproj" />
   </Folder>
 </Solution>
