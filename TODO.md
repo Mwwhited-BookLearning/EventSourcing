@@ -260,16 +260,6 @@ here instead of inlining.
   A handful of the findings were CODE-side gaps the docs now correctly
   describe as open, rather than doc bugs to fix; listed here since they
   represent real remaining work, not narrative to restate elsewhere:
-  - **`revealField`'s `ADR-066` step-up-authentication gap did not close
-    when "Digital Sign-Off for Regulated Actions" (item 29) landed** —
-    item 29 only wired RFC 9470 step-up into publish-time
-    `RequiredSignature` enforcement; `src/EventStore.GraphQL/
-    RevealFieldMutation.cs` never gained it, and `docs/data/
-    schema-registry.md`'s `revealOnDemand` shape has no step-up/Acr
-    field at all. Previously implied closed by cross-referencing item
-    29; docs now say explicitly it's still open. Build it if a masked
-    field with `RequiredSignature`-equivalent step-up protection is ever
-    actually needed.
   - **GraphQL browsing of attachments (`entity(id) { attachments {...} } }`)
     was documented and Gherkin-tested as if built; it isn't** — no
     `entity(id)` field or `attachments` field exists anywhere in

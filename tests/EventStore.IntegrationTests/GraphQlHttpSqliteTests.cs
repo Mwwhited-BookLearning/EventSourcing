@@ -147,9 +147,9 @@ public class GraphQlHttpSqliteTests
         return body.GetProperty("correlationId").GetGuid();
     }
 
-    private static async Task<JsonElement> ExecuteGraphQlAsync(string query, string clientId, string clientSecret, string scope)
+    private static async Task<JsonElement> ExecuteGraphQlAsync(string query, string clientId, string clientSecret, string scope, string? acr = null)
     {
-        var (token, key) = await AuthScenarioAssertions.GetTokenAsync(_devIdpClient, clientId, clientSecret, scope);
+        var (token, key) = await AuthScenarioAssertions.GetTokenAsync(_devIdpClient, clientId, clientSecret, scope, acr: acr);
         using var request = new HttpRequestMessage(Query, "/graphql")
         {
             Content = new StringContent(JsonSerializer.Serialize(new { query }), Encoding.UTF8, "application/json"),
@@ -278,6 +278,39 @@ public class GraphQlHttpSqliteTests
         var withoutClaimResponse = await _hostClient.SendAsync(withoutClaimRequest);
         var withoutClaimBody = await withoutClaimResponse.Content.ReadFromJsonAsync<JsonElement>();
         Assert.IsTrue(withoutClaimBody.TryGetProperty("errors", out _), withoutClaimBody.ToString());
+    }
+
+    // ADR-066's step-up-authentication refinement for a masked field --
+    // TODO.md had flagged this as never actually built (item 29's own
+    // RFC 9470 enforcement only ever reached PublishService, not
+    // RevealFieldMutation). "urn:eventstore:step-up" matches the acr value
+    // DigitalSignOffHttpSqliteTests already uses for the publish-time half
+    // of this same mechanism.
+    [TestMethod]
+    public async Task RevealFieldWithARequiredSignatureRejectsAClaimHolderWithNoStepUpAndSucceedsWithOne()
+    {
+        const string appId = "graphql-http-demo-4-stepup";
+        const string acrValue = "urn:eventstore:step-up";
+        await RegisterAsync(appId, "PatientEnrolledStepUp",
+            $$"""{ "type": "object", "properties": { "PatientId": { "type": "string" }, "Ssn": { "type": "string", "x-masking": { "strategy": "Hash", "requiredClaim": "pii:view", "keyId": "{{MaskingTestSupport.TestHmacKeyId}}", "requiredSignature": { "acrValues": ["{{acrValue}}"] } } } }, "required": ["PatientId", "Ssn"] }""",
+            "$.PatientId");
+        var eventId = await PublishAsync(appId, "PatientEnrolledStepUp", """{ "PatientId": "http-reveal-stepup-1", "Ssn": "987-65-4321" }""");
+        await Task.Delay(500); // RouterWorker's own async fold, same wait GraphqlHttpSqliteTests' other revealField test already uses
+
+        var query = $$"""mutation { revealField(entityId: "{{appId}}:patientenrolledstepup:http-reveal-stepup-1", eventId: "{{eventId}}", fieldPath: "$.Ssn") { value } }""";
+
+        // follower-client holds the requiredClaim ("pii:view") but no acr at
+        // all -- rejected on step-up, distinct from the plain-claim rejection
+        // RevealFieldMutationReturnsTheRealValueWithTheClaimAndIsRejectedWithoutIt
+        // already covers.
+        var withoutStepUp = await ExecuteGraphQlAsync(query, "follower-client", "follower-client-secret", "events:follow");
+        Assert.IsTrue(withoutStepUp.TryGetProperty("errors", out var errors), withoutStepUp.ToString());
+        Assert.Contains("acr_values", errors[0].GetProperty("message").GetString());
+
+        // Same caller, same claim, WITH the configured acr -- succeeds.
+        var withStepUp = await ExecuteGraphQlAsync(query, "follower-client", "follower-client-secret", "events:follow", acr: acrValue);
+        Assert.IsFalse(withStepUp.TryGetProperty("errors", out _), withStepUp.ToString());
+        Assert.AreEqual("987-65-4321", withStepUp.GetProperty("data").GetProperty("revealField").GetProperty("value").GetString());
     }
 
     [TestMethod]

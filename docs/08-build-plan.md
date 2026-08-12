@@ -1699,19 +1699,18 @@ honestly flagged rather than silently dropped:
   built**, along with its own real DID/UCAN offline chain verification —
   neither is named in any later item's own exit criteria yet, so neither
   has an obvious next home. **`revealField`'s own step-up-authentication
-  refinement (`ADR-066`) remains open even now that "Digital Sign-Off for
-  Regulated Actions" (item 29) has landed and is Done** — that item only
-  wired RFC 9470 step-up enforcement into `POST /publish/{event-type}`
-  (`PublishService.PublishAsync`'s `StepUpSatisfied` check); `x-masking`
-  itself has no step-up configuration surface, and `RevealFieldMutation.
+  refinement (`ADR-066`) — built, later pass.** `x-masking` gained an
+  optional `requiredSignature` (same field names as
+  `EventTypeDefinition.RequiredSignature`), and `RevealFieldMutation.
   RevealFieldAsync` (`src/EventStore.GraphQL/RevealFieldMutation.cs`)
-  checks only `requiredClaim`, exactly as this note originally described
-  before item 29 landed. This is a confirmed still-open gap, not
-  something item 29 already closed — see `03-api-contracts.md`,
-  "`revealField`," for the caller-facing statement of the same gap. Its
-  `ADR-045` `AccessLogEntry` audit write is no longer deferred — built in
-  "Delegated Grants, RBAC, Federated Claims & Read Audit Logging," the
-  item that actually built that table.
+  now checks it via `EventStore.Domain.SchemaRegistry.StepUpEvaluator` —
+  the same check `PublishService.PublishAsync` uses for `POST /publish/
+  {event-type}`, extracted into a shared type so neither call site
+  duplicates it. See `03-api-contracts.md`, "`revealField`," for the
+  caller-facing statement. Its `ADR-045` `AccessLogEntry` audit write is
+  no longer deferred either — built in "Delegated Grants, RBAC,
+  Federated Claims & Read Audit Logging," the item that actually built
+  that table.
 
 ## Compatibility & Deployment Discipline
 

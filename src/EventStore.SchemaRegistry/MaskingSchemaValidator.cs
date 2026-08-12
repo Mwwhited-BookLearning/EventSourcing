@@ -92,6 +92,13 @@ internal static class MaskingSchemaValidator
         // depth for `strategy`'s shape (not deeply typed either).
         if (masking.TryGetPropertyValue("revealOnDemand", out var revealOnDemandNode) && revealOnDemandNode is not null and not JsonObject)
             errors.Add("x-masking.revealOnDemand must be an object if present");
+
+        // ADR-066's built-later refinement -- revealField's own step-up
+        // gate, same shape as EventTypeDefinition.RequiredSignature
+        // ({ acrValues: [...], maxAge: ... }). Structural check only,
+        // matching revealOnDemand's own shallow depth just above.
+        if (masking.TryGetPropertyValue("requiredSignature", out var requiredSignatureNode) && requiredSignatureNode is not null and not JsonObject)
+            errors.Add("x-masking.requiredSignature must be an object if present");
     }
 
     private static bool IsTypeValueFormat(string claim)

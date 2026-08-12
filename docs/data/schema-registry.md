@@ -583,6 +583,18 @@ descriptive fields are documentation, not behavior: the masking
 transform never reads them, and they never appear in the runtime
 wrapper.
 
+`x-masking` also carries an optional `requiredSignature`
+(`ADR-066`'s built-later refinement — same field names as
+`EventTypeDefinition.RequiredSignature` below, `{ "acrValues": [...],
+"maxAge": ... }`, camelCase to match every other `x-masking` key's own
+casing): the GraphQL `revealField` mutation checks it via
+`EventStore.Domain.SchemaRegistry.StepUpEvaluator` (the same RFC 9470
+step-up check `PublishService` already uses for publish-time
+enforcement) before returning a masked field's real value, independent
+of `requiredClaim` — a caller can hold the claim and still be rejected
+pending a fresh-enough/strong-enough authentication context. A field
+with no `requiredSignature` is completely unaffected.
+
 **One `regulatoryClassification` value is not merely descriptive:
 `"PCI-SAD"` (`ADR-071`) makes registration itself reject the event
 type (`400`).** PCI-DSS Sensitive Authentication Data (CVV2/CVC2/CID,
