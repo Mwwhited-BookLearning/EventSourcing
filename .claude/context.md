@@ -2084,14 +2084,35 @@ stale numbers here are worse than none)*
   AppHost wiring), `53d4e5f` (DPoP/CORS/auth-issuer fixes + port
   pinning + `.env` files), `ad77f00` (ViewDefinition validator +
   TemplateRenderer fix).
-- **Next up**: the user's own still-pending, separately-queued request
-  from mid-session — "update all dependencies as high as you can"
-  (NuGet packages across every `EventStore.*`/`Samples.*` project, npm
-  packages in `client-web/`) — deliberately deferred until the
-  proving-ground/browser verification above finished, to avoid
-  confounding it with an unrelated change. Not yet started as of this
-  snapshot. A fresh session resuming here should pick this up next
-  unless the user redirects.
+- **Dependency update also done, same session** — every NuGet package
+  across every `EventStore.*`/`Samples.*` project bumped to latest,
+  including five deliberate major-version jumps each individually
+  verified (build + a targeted real test run) before folding in:
+  `Microsoft.Extensions.Compliance.Redaction` 9.9.0 → 10.9.0,
+  `SQLitePCLRaw.lib.e_sqlite3` 2.1.12 → 3.53.3, `Jsonata.Net.Native`
+  2.6.1 → 3.0.0, `System.Drawing.Common` 8.0.0 → 10.0.11,
+  `System.Security.Cryptography.Pkcs` 9.0.0 → 10.0.11. `client-web`'s
+  npm deps bumped too (`vite` 6→8, `vitest` 2→4, `pinia` 2→4, `vue-tsc`
+  2→3, `@vitejs/plugin-vue` 5→6) — with two deliberate exceptions, both
+  found by actually running the suite, not assumed safe: `typescript`
+  capped at `6.0.3` (not the "latest" `7.0.2`, TypeScript's new native
+  compiler rewrite, whose restructured package breaks `vue-tsc`'s own
+  `typescript/lib/tsc` subpath resolution outright); `jsdom` kept at
+  `25.0.1` (not `30.0.1`, which broke `NativeBridgeInputSource.spec.ts`'s
+  real, non-mocked `WebSocket` round-trip test via a cross-realm
+  `Event`-identity mismatch between Node's global `WebSocket` and
+  jsdom's own `Event` class). All 118 client-web tests, type-check, and
+  both production builds verified clean with the final version set;
+  .NET side verified via a full solution build plus the SQLite-only
+  test subset (passes except the one already-documented pre-existing
+  load-induced flake, confirmed still passing alone) and targeted
+  Postgres/real-HTTP runs against every bumped package's own consuming
+  tests. Commit `6716c27`.
+- **Next up**: nothing currently queued — the user's own request queue
+  from this session (proving-ground seed workers/browser verification
+  → dependency updates) is now fully worked through. A fresh session
+  resuming here should check with the user for the next task rather
+  than assume one.
 
 ## How to resume cold
 
