@@ -415,6 +415,12 @@ public class SchemaRegistryService(
             SchemaRegisteredEventType.Name.ToLowerInvariant(),
             "channellagdetected",
             "entityerasurerequested",
+            // ADR-094 -- "never registered via PUT /registry/{event-type},
+            // the same treatment EventUpcastFailed gets" -- missed when this
+            // list was widened for ChannelLagDetected/EntityErasureRequested;
+            // found while building the Event Composer, whose dropdown
+            // otherwise lists it as if an operator could hand-register it.
+            "expectedresponsemissing",
         };
         var query = db.EventTypeDefinitions
             .AsNoTracking()

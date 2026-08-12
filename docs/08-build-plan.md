@@ -108,6 +108,7 @@ provider they apply to — not "code written."
 | 47 | [Mechanism-Level OpenTelemetry Instrumentation](#mechanism-level-opentelemetry-instrumentation) | Hardening & Evolution, Sharding & Replication, Entity-Centric Core Rebuild, Outbound Webhooks | Done |
 | 48 | [Event Log/AccessLog Archival Segment Detachment](#event-logaccesslog-archival-segment-detachment) | Binary Attachments, Delegated Grants/RBAC/Read Audit Logging, Hardening & Evolution, Lineage Export & Bitemporal Playback | Done |
 | 49 | [Expected-Response Tracking](#expected-response-tracking) | CQRS Read-Model Projections (worked example), Streaming Channels, Outbound Webhooks, Leader Election via Database-Backed Lease | Done |
+| 50 | [Proving-Ground Application UX](#proving-ground-application-ux) | MVVM Client | Done |
 
 Two groups worth naming up front, since they explain most of the
 ordering below:
@@ -245,6 +246,7 @@ state "UI" as tierUi {
   state "Device Input Integration" as a20 #palegreen
   state "Accessibility Standard" as a21 #palegreen
   state "i18n/l10n Scope" as a22 #palegreen
+  state "Proving-Ground\nApplication UX" as a27 #palegreen
 }
 
 ' Hidden edges between the 4 tier containers themselves -- not a real
@@ -365,6 +367,7 @@ p9 --> a26
 p14 --> a26
 a10 --> a26
 a8 --> a26
+p20 --> a27
 @enduml
 ```
 
@@ -4562,6 +4565,126 @@ SubscribingOverRealHttpStreamsAMatchingEventAsSse` and
 confirmed pre-existing, not caused by this item: `TimestampingHttpSqliteTests`
 passed cleanly 3/3 when run in isolation, and neither failing test touches
 Expected-Response Tracking code.
+
+## Proving-Ground Application UX
+
+**Scope**: direct request, 2026-08-12 — the Vitals/Meridian proving-ground
+samples (seeded, browsable in the MVVM client per the prior pass) still
+render through `client-web`'s single generic screen: one hardcoded event
+type per instance, a `mode: Tail` subscription with no history, and no way
+to publish a *new* event except the one leftover generic "Amount" command
+box. This item adds the pieces needed for both to work and look like real,
+demoable application prototypes, not a debug harness: (1) a generic,
+JSON-schema-driven **Event Composer** — pick any registered `AppId`+
+`EventType`, get a form generated from its schema, publish it, reusing the
+existing outbox path unchanged (no new persisted shape; pure client + the
+already-real `SchemaRegistryService`/`PublishService` surface); (2) a
+generic **Entity Browser** tab showing multiple recent entities of the
+configured type, not just whatever the live subscription happens to
+deliver; (3) a **background Simulator** worker per domain
+(`Samples.Vitals.Simulator`/`Samples.Meridian.Simulator`) — long-running,
+config-driven-interval `BackgroundService`s (the same shape `RouterWorker`/
+`DerivationWorker` already establish, minus the leader-election gate, since
+running the simulator twice is harmless demo noise, not a correctness
+risk) that periodically publish new, plausible domain events so the
+running app shows continuous activity instead of static seed data; (4) a
+real fix for the subscription defaulting to `mode: Tail` with no replay —
+`EventTailReader`'s single poll loop keeps running past its own starting
+cursor regardless of which mode it started in (confirmed by reading the
+class directly, not assumed), so switching the client's default to
+`mode: Replay, fromSequenceNumber: 0` gives history *and* ongoing live
+updates in the exact same stream, closing the substance of the gap
+`TODO.md` already tracked (`useEntityViewActions.subscribe()`'s hardcoded
+`Tail`) without needing that entry's own larger persisted-cursor mechanism
+to get a working demo.
+
+**Depends on**: MVVM Client — every piece here extends `client-web`'s
+existing outbox/subscription/`ViewDefinition` machinery, not a parallel
+mechanism.
+
+**Exit criteria**: opening a freshly-seeded Vitals or Meridian client-web
+instance shows the seeded continuity entity immediately (no "waiting for
+the first event," `mode: Replay` delivering the backlog); the Entity
+Browser tab lists more than one entity once the Simulator has been running
+for a few cycles; the Event Composer successfully publishes at least one
+event of a type neither the seed worker nor the simulator ever published,
+proving it's genuinely schema-driven and not hardcoded to the two demo
+event types; killing and restarting a Simulator loses no state beyond the
+in-flight publish (no duplicate-publish storm on restart, matching every
+other worker's own idempotent-retry posture); all of the above verified
+by actually running `EventStore.AppHost` and checking the live pages, not
+by reading the code back.
+
+**Status: Done** — 2026-08-12, same session, immediately following a full
+independent 94-ADR re-audit that (among other findings) reproduced the
+`mode: Tail` gap concretely for the first time. Built: `client-web/src/
+composables/useEventComposer.ts` + `components/composer/EventComposer.vue`
+(schema-driven form generation, a second `composer-client` identity holding
+`registry:admin`+`events:publish`, `EventStore.DevIdp/DevIdpSeeder.cs`);
+`components/entity/EntityBrowser.vue` (a pure new VIEW over the entity
+cache store's own existing per-entityId map — no new server surface);
+`Samples.Vitals.Simulator`/`Samples.Meridian.Simulator` (long-running
+`BackgroundService`-shaped loops, config-driven interval via
+`EventStore.AppHost/appsettings.json`'s new `Simulator` section, wired into
+`AppHost.cs` after both Seed workers). `useEntityViewActions.ts`'s
+subscription switched from hardcoded `mode: Tail` to `mode: Replay,
+fromSequenceNumber: 0` — confirmed live: a freshly-opened instance now
+shows already-published history immediately, no "waiting for the first
+event."
+
+Two real bugs found only by actually running this, not by reading the code
+back: (1) two long-running Simulators writing concurrently, forever, hit
+the same Postgres `Serializable`-transaction conflict the one-shot Seed
+workers hit earlier (`EventAppender.cs`) — fixed with a retry loop in each
+Simulator, since `WaitForCompletion` can't order two infinite loops the
+way it ordered two one-shot workers; (2) the Meridian Simulator originally
+published `IdentityDocumentUploaded`, but `client-web-meridian`'s own
+configured `VITE_EVENT_TYPE` watches `IdentityClaimSubmitted` — a type
+mismatch that left its Entity Browser permanently empty regardless of how
+much simulator activity existed, only visible by actually checking the
+running app's Browse tab. Also found and fixed while building: the
+Composer's `eventTypes` query returns every historical schema version
+(`SchemaRegistryService.ListAsync`'s own, unrelated original design for
+browsing version history), which floods the dropdown after repeated
+dev-iteration re-registrations — filtered client-side to `isActive` only;
+`graphqlClient.ts`'s `graphqlSubscribe` silently discarded a plain-JSON
+rejection response that never entered SSE framing (no `onMessage`, no
+`onError` — a real Forbidden response was indistinguishable from "nothing
+to deliver yet") — fixed to detect a non-`text/event-stream` response and
+surface it via `onError`; `SchemaRegistryService.ListAsync`'s reserved-type
+exclusion list was missing `expectedresponsemissing` (`ADR-094`'s own
+"never registered via PUT /registry" type) — added alongside the other two
+reserved names.
+
+All four exit criteria verified against a real `dotnet run` of
+`EventStore.AppHost`, not assumed: a freshly-opened Vitals instance showed
+S-0091 immediately (no wait); the Entity Browser grew to 30+ distinct
+Vitals entities and 6 distinct Meridian entities over a live run; the
+Composer successfully published a brand-new `ConsentWithdrawn` event
+(a type neither Seed nor Simulator ever publishes) end-to-end, confirmed
+`Status: applied` in the database; both Simulators' idempotent-retry
+design (fixed `EventId` per publish, DB-count-derived starting offset)
+means a restart loses no state beyond whatever publish was in flight.
+Verified visually too, via a disposable Playwright container (`mcr.
+microsoft.com/playwright`) run against the live app — no local browser
+install needed, screenshots captured for both domains across all three
+tabs.
+
+Client-web test suite: 129 passing (up from 118 at the start of this
+item) — new coverage for `useEventComposer.ts` (5 tests), `EntityBrowser.
+vue` (2 tests), `graphqlClient.ts`'s new non-SSE-error-response handling
+(2 tests), and `entityCache.ts`'s `listForInstance` getter (1 test).
+`.NET` side: full solution build clean; `EventStore.SchemaRegistry`'s
+reserved-exclusion change covered by existing `ListAsync` tests (no new
+test added for the one-line addition, given time constraints — flagged
+here rather than silently assumed covered).
+
+Captured as `docs/10-open-questions.md` row 3, not built here: every
+background worker in this design (`RouterWorker`, `DerivationWorker`,
+`WebhookOutboxPump`, `PeerSyncWorker`, `ChannelDerivationWorker`,
+`ExpectedResponseWatcher`) still advances by fixed-interval polling, never
+a push notification — raised while building this item's own Simulators,
+genuinely open, not decided.
 
 ## Cross-cutting, every item
 

@@ -19,10 +19,10 @@ event-sourcing store ("Duplex," `docs/naming.md`), built as a **worked
 teaching example**: append-only write side (schema registry, publish/
 follow/lineage APIs), a CQRS read side, and two fully worked proving-ground
 domains (clinical trials + device telemetry — "Vitals"; digital identity/
-KYC — "Meridian"). Governing principle: never lose or corrupt data. All 93
-ADRs (`docs/adrs/adr-001` through `adr-093`) are Accepted — the *decisions*
-are done. **All 48 `docs/08-build-plan.md` items are now Done, as of
-2026-08-11** — the real `src/`/`tests/` tree exists in full, in that
+KYC — "Meridian"). Governing principle: never lose or corrupt data. All 94
+ADRs (`docs/adrs/adr-001` through `adr-094`) are Accepted — the *decisions*
+are done. **All 50 `docs/08-build-plan.md` items are now Done, as of
+2026-08-12** — the real `src/`/`tests/` tree exists in full, in that
 file's own dependency order. Remaining work going forward is (a) keeping
 ~150 docs internally consistent with no compiler to catch drift, and (b)
 whatever new capability/hardening/domain-depth work gets decided next —
@@ -2108,11 +2108,65 @@ stale numbers here are worse than none)*
   load-induced flake, confirmed still passing alone) and targeted
   Postgres/real-HTTP runs against every bumped package's own consuming
   tests. Commit `6716c27`.
-- **Next up**: nothing currently queued — the user's own request queue
-  from this session (proving-ground seed workers/browser verification
-  → dependency updates) is now fully worked through. A fresh session
-  resuming here should check with the user for the next task rather
-  than assume one.
+- **A separate session completed the above (item 49, dependency updates,
+  a design-compliance audit, an SDK bump, TODO.md cleanup) while THIS
+  session was independently blocked chasing the same seed-worker/browser-
+  verification work, unaware the other session existed until both were
+  editing `AppHost.cs` concurrently.** Resolved by killing this session's
+  own redundant AppHost instance and confirming the working tree clean at
+  the other session's latest commit (`cd58fad`) before continuing.
+  **Lesson for a fresh session**: if `AppHost.cs`/ports/state keep
+  changing under you mid-verification with no edits of your own, check
+  `git log`/`docker ps`/running `dcp.exe` processes for a second live
+  session before assuming you found a new bug — this cost real time
+  before being diagnosed.
+- **Direct request, "Review everything again," scoped via
+  `AskUserQuestion` to a full independent re-audit** (not just re-checking
+  the prior session's own audit conclusions): 9 parallel background
+  agents across all 94 ADRs (5 ranges), the build-plan table, both
+  domains, and dependency-version consistency, plus a personal build/
+  test/live-run baseline. Found 12 genuinely new gaps beyond what `TODO.
+  md`/`docs/10-open-questions.md` already tracked — most notably `ADR-009`'s
+  `revealOnDemand` half (never reveal the real value to a bulk response,
+  even for a claim holder) isn't implemented at all, and `ADR-043`'s
+  `accessGrant`/`accessGrantRevoked` durable-event trail was never built.
+  None fixed yet — reported to the user for a decision on which to
+  promote into a tracker. Full findings list only in that turn's own
+  chat response, not duplicated into a doc — recover from conversation
+  history if needed, or re-run the same 9-agent pattern (`docs/changes/
+  2026-08-12.md` narrates the dispatch shape). Also, live verification
+  during this pass reproduced a real, concrete instance of `client-web`'s
+  already-tracked `mode: Tail`-only subscription gap (seed data published
+  before any browser connects can never appear under `Tail`) — this
+  became the seed for the next item.
+- **Same session, direct request: "We need a ui that allows for dropping
+  in events. A background worker would be cool too... I want working
+  prototypes."** Build-plan item 50, "Proving-Ground Application UX,"
+  built and verified Done — a generic Event Composer + Entity Browser in
+  `client-web`, `Samples.{Vitals,Meridian}.Simulator` background
+  publishers, and the `mode: Tail`→`Replay` fix. Full narrative in
+  `docs/08-build-plan.md`'s own item section and `docs/changes/
+  2026-08-12.md` — not repeated here. `client-web` now at 129 passing
+  tests (up from 118). `AppHost.cs`'s hardcoded ports/dev-password moved
+  into `appsettings.json` config, per direct request ("all static
+  settings in the aspire setup should be managed with config settings").
+- **Raised, not resolved, while building the Simulators — direct
+  request, worth a fresh session's attention**: every background worker
+  in this design (`RouterWorker`, `DerivationWorker`, `WebhookOutboxPump`,
+  `PeerSyncWorker`, `ChannelDerivationWorker`, `ExpectedResponseWatcher`)
+  polls on a fixed interval, never reacting to a push notification.
+  Captured as `docs/10-open-questions.md` row 3 — a genuine, undecided,
+  multi-way fork (Postgres `LISTEN`/`NOTIFY`'s notify-to-wake pattern,
+  SQL Server Service Broker's internal/external activation model,
+  RabbitMQ, or an in-process signal), not yet designed against or built.
+- **Next up**: (a) the 12 new audit findings above need a user decision
+  on which to promote into `TODO.md`/`docs/10-open-questions.md` and
+  which (if any) to fix outright; (b) the polling-vs-push-notification
+  question is a real, sizeable design decision if the user wants to
+  pursue it — would touch every background worker in the framework;
+  (c) `TODO.md`'s own remaining items (unchanged by this session's work)
+  are still open. A fresh session resuming here should check with the
+  user rather than assume any of these is the next priority.
 
 ## How to resume cold
 
@@ -2151,7 +2205,7 @@ stale numbers here are worse than none)*
    Don't mistake any of these for a real regression — confirm by checking
    whether any failing test name actually touches the feature just built,
    and by re-running that specific class alone, before assuming otherwise.
-6. `client-web/`: `npm test` (108 tests, `vitest`), `npm run build`, and
+6. `client-web/`: `npm test` (129 tests, `vitest`), `npm run build`, and
    `npm run build:offline-player` — the last of these is easy to assume
    works from a clean `vite build` exit code alone; it isn't a full
    check (see item 41's own note above about a bug only an actual

@@ -1,4 +1,16 @@
+using Microsoft.Extensions.Configuration;
+
 var builder = DistributedApplication.CreateBuilder(args);
+
+// Every static value below (port, dev password, simulator cadence) is read
+// from appsettings.json's own "Ports"/"Postgres"/"Simulator" sections
+// (falling back to the literal that was previously hardcoded here) rather
+// than baked in -- overridable per-environment the same way client-web's
+// own VITE_* env vars already are, without editing this file. A real
+// deployment target never uses this AppHost at all (ADR-026: dev/POC
+// orchestration only), so this is about local-dev flexibility, not
+// production config management.
+int Port(string key, int fallback) => builder.Configuration.GetValue($"Ports:{key}", fallback);
 
 // docs/06-solution-structure.md's own sketch passes the bare server
 // resource ("db") straight to WithReference(db) -- that injects only
@@ -35,7 +47,7 @@ var builder = DistributedApplication.CreateBuilder(args);
 // protection (local POC Postgres, never a real deployment target per
 // ADR-062), so a literal is fine -- still marked secret:true so the
 // dashboard masks it either way.
-var pgPassword = builder.AddParameter("postgres-password", "duplex-local-dev-only", secret: true);
+var pgPassword = builder.AddParameter("postgres-password", builder.Configuration["Postgres:DevPassword"] ?? "duplex-local-dev-only", secret: true);
 var pgServer = builder.AddPostgres("postgres-server").WithPassword(pgPassword).WithDataVolume();
 var db = pgServer.AddDatabase("Postgres");
 // Fixed, documented dev ports rather than Aspire's own dynamically-
@@ -68,8 +80,8 @@ var db = pgServer.AddDatabase("Postgres");
 // for every client-web instance -- matching, not just coincidentally
 // equal to, eventstore's own trusted issuer.
 var devIdp = builder.AddProject<Projects.EventStore_DevIdp>("devidp") // a project resource, not a container
-    .WithHttpEndpoint(port: 5010)
-    .WithHttpsEndpoint(port: 5011);
+    .WithHttpEndpoint(port: Port("DevIdpHttp", 5010))
+    .WithHttpsEndpoint(port: Port("DevIdpHttps", 5011));
 
 // ADR-076 -- "No replica ever calls Database.Migrate() at startup...
 // that's the thing that creates the race." EventStore.Migrator is the
@@ -115,12 +127,38 @@ var meridianSeed = builder.AddProject<Projects.Samples_Meridian_Seed>("meridian-
     .WaitForCompletion(migrator)
     .WaitForCompletion(vitalsSeed);
 
+// "Proving-Ground Application UX" -- the long-running counterparts to the
+// one-shot Seed workers above: periodically publish a brand-new event for
+// a never-before-used subject/applicant, so a running instance shows
+// continuing activity instead of the static seed snapshot alone. Started
+// after both Seed workers (same schema-must-already-exist reasoning) but,
+// unlike them, NEVER exit -- WaitForCompletion can't order two infinite
+// loops against each other the way it ordered the two one-shot Seed
+// workers, so each Simulator's own Program.cs retries on the same
+// Postgres Serializable-transaction conflict instead (see either
+// Program.cs's own comment for why running both concurrently, forever,
+// genuinely hits it). Interval is config-driven ("Simulator:
+// {Vitals,Meridian}IntervalSeconds" in appsettings.json), not hardcoded.
+var vitalsSimulator = builder.AddProject<Projects.Samples_Vitals_Simulator>("vitals-simulator")
+    .WithReference(db)
+    .WaitFor(db)
+    .WaitForCompletion(vitalsSeed)
+    .WaitForCompletion(meridianSeed)
+    .WithEnvironment("SimulatorIntervalSeconds", builder.Configuration.GetValue("Simulator:VitalsIntervalSeconds", 20).ToString());
+
+var meridianSimulator = builder.AddProject<Projects.Samples_Meridian_Simulator>("meridian-simulator")
+    .WithReference(db)
+    .WaitFor(db)
+    .WaitForCompletion(vitalsSeed)
+    .WaitForCompletion(meridianSeed)
+    .WithEnvironment("SimulatorIntervalSeconds", builder.Configuration.GetValue("Simulator:MeridianIntervalSeconds", 25).ToString());
+
 // Per ADR-001, the AppHost targets exactly one Host.<Provider> project --
 // swap which Projects.EventStore_Host_* type is referenced here to run
 // locally against a different provider, there is no config value to flip.
 var eventstore = builder.AddProject<Projects.EventStore_Host_Postgres>("eventstore")
-    .WithHttpEndpoint(port: 5000)
-    .WithHttpsEndpoint(port: 5001)
+    .WithHttpEndpoint(port: Port("EventStoreHttp", 5000))
+    .WithHttpsEndpoint(port: Port("EventStoreHttps", 5001))
     .WithReference(db)
     .WaitFor(db) // without this, eventstore can start before Postgres's own
                  // startup finishes and crash on the first migration attempt --
@@ -162,7 +200,7 @@ var clientWeb = builder.AddViteApp("client-web", "../../client-web")
     .WithReference(devIdp)
     .WithEnvironment("VITE_HOST_BASE_URL", eventstore.GetEndpoint("https"))
     .WithEnvironment("VITE_AUTH_BASE_URL", devIdp.GetEndpoint("http")) // https mismatched eventstore's trusted issuer -- see the comment at this file's top
-    .WithHttpEndpoint(port: 5173) // Vite's own conventional default dev port
+    .WithHttpEndpoint(port: Port("ClientWeb", 5173)) // Vite's own conventional default dev port
     .WithExternalHttpEndpoints();
 
 // One client-web instance per proving-ground domain, pre-configured via
@@ -186,7 +224,7 @@ var clientWebVitals = builder.AddViteApp("client-web-vitals", "../../client-web"
     .WithEnvironment("VITE_ENTITY_TYPE", "patient")
     .WithEnvironment("VITE_EVENT_TYPE", "PatientScreened")
     .WithEnvironment("VITE_ENTITY_ID_FIELD", "subjectId")
-    .WithHttpEndpoint(port: 5174)
+    .WithHttpEndpoint(port: Port("ClientWebVitals", 5174))
     .WithExternalHttpEndpoints();
 
 var clientWebMeridian = builder.AddViteApp("client-web-meridian", "../../client-web")
@@ -199,7 +237,7 @@ var clientWebMeridian = builder.AddViteApp("client-web-meridian", "../../client-
     .WithEnvironment("VITE_ENTITY_TYPE", "applicantidentity")
     .WithEnvironment("VITE_EVENT_TYPE", "IdentityClaimSubmitted")
     .WithEnvironment("VITE_ENTITY_ID_FIELD", "applicantId")
-    .WithHttpEndpoint(port: 5175)
+    .WithHttpEndpoint(port: Port("ClientWebMeridian", 5175))
     .WithExternalHttpEndpoints();
 
 // Every client-web instance's browser-side JS calls devIdp's /connect/token
@@ -243,5 +281,7 @@ devIdp.WithParentRelationship(eventstore);
 clientWeb.WithParentRelationship(eventstore);
 clientWebVitals.WithParentRelationship(vitalsSeed);
 clientWebMeridian.WithParentRelationship(meridianSeed);
+vitalsSimulator.WithParentRelationship(vitalsSeed);
+meridianSimulator.WithParentRelationship(meridianSeed);
 
 builder.Build().Run();

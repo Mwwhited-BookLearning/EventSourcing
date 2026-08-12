@@ -54,6 +54,21 @@ export function graphqlSubscribe<T>(
       })
       if (!response.body) throw new Error('Subscription response carried no body stream.')
 
+      // A rejection at connect time (e.g. the caller's token lacks the
+      // required scope) never enters SSE framing at all -- HotChocolate
+      // returns a single plain JSON body ({"errors":[...]}), not a
+      // "data: "-prefixed line. Found while verifying this exact path
+      // directly (a real GraphQL Forbidden response silently produced no
+      // onMessage AND no onError -- the "Waiting for the first event"
+      // symptom would have shown no diagnostic trace at all for a genuine
+      // rejection, not just for a stream with nothing to deliver yet).
+      const isSse = (response.headers.get('content-type') ?? '').includes('text/event-stream')
+      if (!isSse) {
+        const body = (await response.json()) as { errors?: Array<{ message: string }> }
+        if (body.errors && body.errors.length > 0) onError?.(new Error(body.errors.map((e) => e.message).join('; ')))
+        return
+      }
+
       const reader = response.body.getReader()
       const decoder = new TextDecoder()
       let buffer = ''

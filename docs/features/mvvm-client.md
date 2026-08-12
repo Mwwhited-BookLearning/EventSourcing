@@ -333,6 +333,148 @@ filled/exclaimed here only because it's `true` in this example,
 `LateArrivalFlag` shown unset, `AuthorityStatus` shown with its current
 value) — not three bespoke indicators.
 
+## Event Composer (generic, schema-driven publish UI)
+
+**Added 2026-08-12, build-plan item "Proving-Ground Application UX"** —
+the piece `ADR-039`'s original scope never named: every mechanism above
+covers *reading* an entity (a `ViewDefinition` template or the generic
+fallback) and *patching* one already on screen (the offline-command
+diagram's Amount box). Nothing let a user publish a brand-new event of an
+arbitrary registered type without a bespoke, hand-built form for it —
+which is exactly what a proving-ground domain still needed even after
+seeding: a way to keep driving the story forward live, on demand, for any
+of that domain's own event types, not just the one the client instance
+happens to be watching.
+
+**Deliberately generic, not domain-specific**: the Composer discovers
+which event types exist and what shape each one takes entirely from the
+same `SchemaRegistryService` data every other read surface already uses
+— it never hardcodes a Vitals or Meridian field name. A JSON Schema
+`{type, properties, required}` shape drives a plain form generator (text
+input for `string`, number input for `number`/`integer`, checkbox for
+`boolean`, a repeatable text-row list for `array` of `string`) — deep
+`object`-typed properties and `x-masking`/`x-enum-fallback` annotated
+fields are rendered as a disabled, informational row rather than a nested
+sub-form, an honest, named scope limit rather than a silently incomplete
+render (mirrors the generic fallback view's own "never fail to render,
+degrade instead" posture above). Submission reuses the same underlying
+`POST /publish/{eventType}` call and `ADR-011` client-supplied-`eventId`
+idempotency `publishCommand`/the Amount box's outbox flush already use —
+**not** the shared durable outbox queue itself, a deliberate, named
+narrowing found while building this: `ClientOutboxEntry`'s single stored
+token is scoped to the instance's *one* configured identity, and the
+Composer authenticates as a second, different identity (`composer-client`,
+below) specifically because listing/introspecting schemas needs
+`registry:admin`, a scope no ordinary browsing identity should hold. A
+durably-queued, replayed-under-a-different-identity entry is a real
+mechanism this doc doesn't claim to have built — the Composer requires
+connectivity to publish, the same online-only posture as any ordinary form
+that isn't wired through `ADR-039`'s outbox, and surfaces a publish
+failure directly rather than silently queuing it for later.
+
+**A new seeded identity, not a widened existing one**: listing registered
+event types calls the same GraphQL `eventTypes`/`eventType` queries
+`docs/03-api-contracts.md`'s Registry-listing surface already exposes,
+gated by `registry:admin` (`ADR-030`) — a materially different trust
+level than the `events:follow` a read-only browsing instance holds.
+`composer-client` (`EventStore.DevIdp/DevIdpSeeder.cs`) holds both
+`registry:admin` (to list/introspect) and `events:publish` (to actually
+submit), the same both-scopes-in-one-caller posture `telemetry-client`/
+`attachments-client`/`peer-sync-client` already establish — deliberately
+its own identity rather than granting admin rights to `follower-client`,
+which every read-only instance already trusts with nothing more than
+`events:follow`.
+
+### Sequence diagram — composing and publishing an arbitrary registered event
+
+```plantuml
+@startuml MvvmClient_EventComposer_Sequence
+autonumber
+actor User
+participant "Composer tab\n(ViewModel)" as vm
+participant "GraphQL\n(eventTypes/eventType, registry:admin)" as registry
+participant "Entity Store API\n(server, ADR-021)" as server
+
+User -> vm: open Composer tab
+vm -> vm: fetch a token as \"composer-client\"\n(events:publish + registry:admin -- a SECOND\nidentity, distinct from this instance's own\nread-only config.clientId, ADR-030)
+vm -> registry: query eventTypes(appId)
+registry --> vm: [{ name, version, entityType }, ...]
+User -> vm: select an EventType
+vm -> registry: query eventType(appId, name, version)
+registry --> vm: JsonSchema { properties, required }
+vm -> vm: generate a form from the schema\n(string/number/boolean/array-of-string fields;\nobject/masked/enum-fallback fields shown\ninformational-only, ADR-009/ADR-038)
+vm --> User: rendered form
+User -> vm: fill fields, click Publish
+vm -> server: POST /publish/{EventType}\n{ appId, eventId: <client-generated, ADR-011>, payload }
+alt online
+  server --> vm: 202 { status, entityId, authorityStatus }
+  vm --> User: confirmed -- new/updated entity now resolvable by its own EntityId
+else offline / request fails
+  vm --> User: publish failed -- shown directly, never silently queued\n(deliberately NOT the durable ClientOutbox below --\nsee this doc's own prose for why)
+end
+@enduml
+```
+
+### Salt (UI mockup) — Event Composer tab
+
+```plantuml
+@startsalt
+{
+  { "Event Composer" }
+  ..
+  { "Event type" | ^PatientScreened^ }
+  ..
+  { "SubjectId *"        | "S-0099"        }
+  { "SiteId *"           | "site-1"        }
+  { "ProtocolId"         | "proto-1"       }
+  { "ScreeningDate"      | "2026-08-12"    }
+  { "EligibilityStatus *"| "Eligible"      }
+  { "LegalName (masked field -- publish only, not shown here)" | [ ] }
+  ..
+  [ Publish PatientScreened ]
+  "Status: queued in outbox -- will publish when online"
+}
+@endsalt
+```
+
+Required properties (`*`) come straight from the schema's own `required`
+array — the same information `MaskingSchemaValidator`/
+`EnumFallbackSchemaValidator` already enforce at registration time, now
+surfaced to a human filling the form instead of only ever validated
+server-side after the fact.
+
+### Gherkin (Event Composer)
+
+```gherkin
+  Scenario: The Composer lists every active event type for the configured AppId
+    Given AppId "trial1" has 5 active registered event types
+    When a user opens the Composer tab
+    Then all 5 event type names should be listed, discovered via the eventTypes GraphQL query
+    And no event type name should be hardcoded in the client
+
+  Scenario: Selecting an event type renders a form generated from its JSON Schema
+    Given "PatientScreened" version 1 requires SubjectId, SiteId, and EligibilityStatus
+    When a user selects "PatientScreened" in the Composer
+    Then the rendered form should have an input for every schema property
+    And SubjectId, SiteId, and EligibilityStatus should be marked required
+
+  Scenario: Publishing a composed event calls the same idempotent publish path as any other command, online-only
+    Given a user has filled a valid "PatientScreened" form for a brand-new SubjectId "S-0099"
+    When the user clicks Publish
+    Then the client should POST /publish/PatientScreened with a client-supplied eventId (ADR-011)
+    And a 202 response should confirm the new entity's own resolved EntityId
+    # Deliberately NOT queued through the shared ClientOutboxEntry store --
+    # see this doc's own Event Composer section for why (a second identity,
+    # composer-client, authenticates this call). Publishing while offline
+    # surfaces a failure directly rather than silently queuing it.
+
+  Scenario: A masked or object-typed property renders informational-only, never silently dropped
+    Given "PatientScreened"'s LegalName property carries x-masking
+    When a user opens the Composer form for "PatientScreened"
+    Then LegalName should render as a visibly disabled/informational field
+    And the form should not fail to render or silently omit the property
+```
+
 ## Accessibility standard (ADR-073)
 
 Both the `ViewDefinition`-rendered template above and the generic

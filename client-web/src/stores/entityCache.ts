@@ -60,6 +60,16 @@ export const useEntityCacheStore = defineStore('entityCache', {
     get(instanceId: string, entityId: string): ClientEntityCacheEntry | undefined {
       return this.entries[keyFor(instanceId, entityId)]
     },
+    // The Entity Browser tab's whole data source -- no new server surface
+    // needed: mode: REPLAY (useEntityViewActions.ts's own subscribe())
+    // already accumulates one entry per distinct EntityId this instance's
+    // subscription has ever delivered, keyed exactly the way this getter
+    // filters by. Newest first, matching a browse list's usual convention.
+    listForInstance(instanceId: string): ClientEntityCacheEntry[] {
+      return Object.values(this.entries)
+        .filter((e) => e.instanceId === instanceId)
+        .sort((a, b) => b.cachedAt.localeCompare(a.cachedAt))
+    },
     // ADR-065's own local-purge requirement ("Local/Edge Active-Scope
     // Caching & Erasure Invalidation") -- this simple removal is the whole
     // mechanism; useEntityViewActions.subscribe() calls it immediately on

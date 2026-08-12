@@ -26,6 +26,8 @@
     <ProjectReference Include="..\EventStore.Migrator\EventStore.Migrator.csproj" />
     <ProjectReference Include="..\Samples.Vitals.Seed\Samples.Vitals.Seed.csproj" />
     <ProjectReference Include="..\Samples.Meridian.Seed\Samples.Meridian.Seed.csproj" />
+    <ProjectReference Include="..\Samples.Vitals.Simulator\Samples.Vitals.Simulator.csproj" />
+    <ProjectReference Include="..\Samples.Meridian.Simulator\Samples.Meridian.Simulator.csproj" />
   </ItemGroup>
 
 </Project>

@@ -104,13 +104,28 @@ function serializeWhereClauses(clauses: ScopeFilterClause[]): string {
 // `SubscriptionFieldSelector` (from `toSubscriptionFieldSelectors` above)
 // -- a masked one expands to its own `{ value masked erased }`
 // sub-selection instead of a bare name.
+// mode/fromSequenceNumber default to the pre-existing TAIL-only behavior --
+// every caller before this option existed keeps producing byte-identical
+// query text. REPLAY (EventTailReader's own single poll loop, server-side --
+// it keeps running past its starting cursor regardless of which mode it
+// started in, confirmed by reading that class directly) is what
+// useEntityViewActions.ts's actual subscribe() calls now pass: a freshly-
+// opened instance sees already-published history AND every subsequent live
+// event through the exact same stream, closing the "waiting for the first
+// event" gap a purely TAIL-only subscription can never close for data
+// published before the tab connected (TODO.md's tracked gap; this is the
+// concrete fix for the substance of it, not the fuller persisted-resume-
+// cursor mechanism that entry's own text also describes for later).
 export function buildSubscriptionQuery(
   appId: string,
   eventType: string,
   fields: Array<string | SubscriptionFieldSelector>,
   where?: ScopeFilterClause[],
+  mode: 'TAIL' | 'REPLAY' = 'TAIL',
+  fromSequenceNumber = 0,
 ): string {
   const whereArgument = where && where.length > 0 ? `, where: ${serializeWhereClauses(where)}` : ''
+  const modeArgument = mode === 'REPLAY' ? `mode: REPLAY, fromSequenceNumber: ${fromSequenceNumber}` : 'mode: TAIL'
   const selection = fields.map((f) => (typeof f === 'string' ? f : f.masked ? `${f.name} { value masked erased }` : f.name)).join(' ')
-  return `subscription { ${subscriptionFieldName(appId, eventType)}(mode: TAIL${whereArgument}) { ${selection} } }`
+  return `subscription { ${subscriptionFieldName(appId, eventType)}(${modeArgument}${whereArgument}) { ${selection} } }`
 }

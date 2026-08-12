@@ -90,4 +90,32 @@ describe('ClientEntityCache (ADR-039)', () => {
     await restarted.loadFromDb('instance-a')
     expect(restarted.get('instance-a', 'mvvm-demo:orderplaced:o-1')).toBeUndefined()
   })
+
+  it('listForInstance returns every distinct entity this instance has cached, scoped to its own instanceId', async () => {
+    const store = useEntityCacheStore()
+    await store.applyFollowedEvent('instance-a', 'orderplaced', 'mvvm-demo:orderplaced:o-1', {
+      orderId: 'o-1',
+      conflictFlag: false,
+      lateArrivalFlag: false,
+      authorityStatus: 'accepted',
+      schemaVersion: 1,
+    })
+    await store.applyFollowedEvent('instance-a', 'orderplaced', 'mvvm-demo:orderplaced:o-2', {
+      orderId: 'o-2',
+      conflictFlag: false,
+      lateArrivalFlag: false,
+      authorityStatus: 'accepted',
+      schemaVersion: 1,
+    })
+    await store.applyFollowedEvent('instance-b', 'orderplaced', 'mvvm-demo:orderplaced:o-3', {
+      orderId: 'o-3',
+      conflictFlag: false,
+      lateArrivalFlag: false,
+      authorityStatus: 'accepted',
+      schemaVersion: 1,
+    })
+
+    const listed = store.listForInstance('instance-a')
+    expect(listed.map((e) => e.entityId).sort()).toEqual(['mvvm-demo:orderplaced:o-1', 'mvvm-demo:orderplaced:o-2'])
+  })
 })

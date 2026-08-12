@@ -6,6 +6,8 @@ import { useOutboxStore } from './stores/outbox'
 import { useEntityCacheStore } from './stores/entityCache'
 import { useViewDefinitionsStore } from './stores/viewDefinitions'
 import EntityView from './components/entity/EntityView.vue'
+import EntityBrowser from './components/entity/EntityBrowser.vue'
+import EventComposer from './components/composer/EventComposer.vue'
 import { tokens } from './theme/tokens'
 
 // Per-instance launch configuration (ADR-039: "which EntityType/AppId/
@@ -55,6 +57,17 @@ const viewActions = useEntityViewActions(config)
 const currentEntityId = ref('')
 const amountInput = ref('')
 const statusMessage = ref('')
+// "Proving-Ground Application UX" -- a plain tab switcher, not a router
+// dependency: this instance still watches exactly one EntityType/AppId
+// (ADR-039's own per-instance launch configuration, unchanged), these are
+// three different VIEWS over that same subscription/outbox state, not
+// three different routes/pages.
+const activeTab = ref<'detail' | 'browser' | 'composer'>('detail')
+
+function selectFromBrowser(entityId: string): void {
+  currentEntityId.value = entityId
+  activeTab.value = 'detail'
+}
 
 const { isOnline } = useOnlineStatus(() => {
   void viewActions.flush().then(() => (statusMessage.value = 'Reconnected -- outbox flushed.'))
@@ -94,22 +107,34 @@ const pendingCount = computed(() => outbox.pendingFor(config.instanceId).length)
       </p>
     </header>
 
-    <section v-if="currentEntityId">
-      <EntityView :entity-id="currentEntityId" :instance-id="config.instanceId" :entity-type="config.entityType" :view-actions="viewActions" />
-    </section>
-    <section v-else>
-      <p>Waiting for the first event on this subscription…</p>
-    </section>
+    <nav aria-label="View">
+      <button type="button" :aria-pressed="activeTab === 'detail'" @click="activeTab = 'detail'">Detail</button>
+      <button type="button" :aria-pressed="activeTab === 'browser'" @click="activeTab = 'browser'">Browse</button>
+      <button type="button" :aria-pressed="activeTab === 'composer'" @click="activeTab = 'composer'">Compose</button>
+    </nav>
 
-    <section>
-      <h2>Dispatch a command</h2>
-      <label>
-        Amount
-        <input v-model="amountInput" type="number" />
-      </label>
-      <button type="button" :disabled="!currentEntityId" @click="submitAmountCommand">Set Amount</button>
-      <p>{{ statusMessage }}</p>
-    </section>
+    <template v-if="activeTab === 'detail'">
+      <section v-if="currentEntityId">
+        <EntityView :entity-id="currentEntityId" :instance-id="config.instanceId" :entity-type="config.entityType" :view-actions="viewActions" />
+      </section>
+      <section v-else>
+        <p>Waiting for the first event on this subscription…</p>
+      </section>
+
+      <section>
+        <h2>Dispatch a command</h2>
+        <label>
+          Amount
+          <input v-model="amountInput" type="number" />
+        </label>
+        <button type="button" :disabled="!currentEntityId" @click="submitAmountCommand">Set Amount</button>
+        <p>{{ statusMessage }}</p>
+      </section>
+    </template>
+
+    <EntityBrowser v-else-if="activeTab === 'browser'" :instance-id="config.instanceId" @select="selectFromBrowser" />
+
+    <EventComposer v-else :host-base-url="config.hostBaseUrl" :auth-base-url="config.authBaseUrl" :app-id="config.appId" />
   </main>
 </template>
 

@@ -184,7 +184,16 @@ export function useEntityViewActions(config: ClientConfig, deps: { fetchToken?: 
     const fields = introspection.__type?.fields ?? []
     if (fields.length === 0) return // nothing registered for this event type -- nothing to subscribe to yet
 
-    const query = buildSubscriptionQuery(config.appId, config.eventType, toSubscriptionFieldSelectors(fields), config.scopeFilter)
+    // REPLAY from 0, not TAIL -- EventTailReader's single poll loop keeps
+    // running past its starting cursor regardless of mode, so this
+    // delivers already-published history AND every subsequent live event
+    // through the one subscription (build-plan item "Proving-Ground
+    // Application UX"). No persisted per-instance cursor yet (TODO.md's
+    // fuller resume-cursor mechanism) -- every fresh subscribe still
+    // replays from the very start, which is the right trade-off for a
+    // demo/proving-ground instance and an honest, small scope narrowing
+    // for a long-lived production deployment with a large history.
+    const query = buildSubscriptionQuery(config.appId, config.eventType, toSubscriptionFieldSelectors(fields), config.scopeFilter, 'REPLAY', 0)
     const fieldName = subscriptionFieldName(config.appId, config.eventType)
 
     unsubscribeEntity = graphqlSubscribe<Record<string, FollowedEventEnvelope>>(
