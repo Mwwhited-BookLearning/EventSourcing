@@ -497,18 +497,14 @@ here instead of inlining.
 - **A second, fully independent design-compliance re-audit (2026-08-12,
   9 parallel agents across all 94 ADRs) found 12 further gaps the
   original audit above missed**, each verified directly against current
-  code, not assumed from the first pass. 3 were pure documentation
-  corrections and are already fixed (`ADR-022`'s `Optional<T>`
-  mechanism description, `ADR-026`'s docker-compose/06-solution-
-  structure 3-image disagreement, `ADR-075`'s missing correction note
-  re: `ADR-082`) — see `docs/changes/2026-08-12.md`. The remaining 9,
-  each needing a real build-or-narrow decision:
-  - **`ADR-002`'s `SpecEndpoints:Enabled` config gate ("the actual
-    `MapGet`/`MapScalarApiReference` registrations are conditional on
-    it") doesn't exist** — `EventStore.SpecGeneration/
-    SpecGenerationEndpoints.cs` maps `/openapi.json`/`/asyncapi.json`
-    unconditionally, `.AllowAnonymous()`, no config check anywhere. Fix:
-    either add the gate, or narrow `ADR-002`'s claim.
+  code, not assumed from the first pass. 4 are already resolved (`ADR-002`'s
+  `SpecEndpoints:Enabled` gate — built directly, `SpecGenerationEndpoints.cs`
+  + `AuthSqliteTests.SpecEndpointsCanBeDisabledViaConfig`; `ADR-022`'s
+  `Optional<T>` mechanism description, `ADR-026`'s docker-compose/06-
+  solution-structure 3-image disagreement, `ADR-075`'s missing correction
+  note re: `ADR-082` — all three doc-only) — see `docs/changes/
+  2026-08-12.md`. The remaining 8, each needing a real build-or-narrow
+  decision:
   - **`ADR-009`'s `revealOnDemand` half — "a caller who holds
     `requiredClaim` still never sees the real value in an ordinary
     query/stream response, only via the explicit `revealField` round

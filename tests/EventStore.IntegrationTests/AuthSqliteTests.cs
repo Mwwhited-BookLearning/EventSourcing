@@ -1,5 +1,6 @@
 extern alias DevIdpAssembly;
 
+using System.Net;
 using EventStore.Persistence;
 using EventStore.Persistence.Migrations.Sqlite;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
@@ -96,5 +97,26 @@ public class AuthSqliteTests
         await AuthScenarioAssertions.ARequestWithADpopProofSignedByADifferentKeyIsRejectedWith401(_hostClient, _devIdpClient);
         await AuthScenarioAssertions.ReplayingAnAlreadyUsedDpopProofIsRejectedWith401(_hostClient, _devIdpClient);
         await AuthScenarioAssertions.ATenantScopedTokenCanAdministerItsOwnAppIdButNotAnother(_hostClient, _devIdpClient);
+    }
+
+    // ADR-002 -- "a single config flag (SpecEndpoints:Enabled) turns the
+    // routes off completely... the actual MapGet registrations are
+    // conditional on it," found unimplemented by a design-compliance
+    // audit and built directly (SpecGenerationEndpoints.cs). A short-
+    // lived second factory against the same already-migrated database --
+    // this scenario only reads, no state to isolate from the class's own
+    // shared _hostClient.
+    [TestMethod]
+    public async Task SpecEndpointsCanBeDisabledViaConfig()
+    {
+        using var disabledFactory = new WebApplicationFactory<Program>().WithWebHostBuilder(builder =>
+        {
+            builder.UseSetting("ConnectionStrings:Sqlite", $"Data Source={_dbPath}");
+            builder.UseSetting("SpecEndpoints:Enabled", "false");
+        });
+        using var disabledClient = disabledFactory.CreateClient();
+
+        Assert.AreEqual(HttpStatusCode.NotFound, (await disabledClient.GetAsync("/openapi.json")).StatusCode);
+        Assert.AreEqual(HttpStatusCode.NotFound, (await disabledClient.GetAsync("/asyncapi.json")).StatusCode);
     }
 }
