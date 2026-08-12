@@ -125,14 +125,19 @@ before being written down, and turned out to be false — checked against
 OpenIddict's own docs/source/issue tracker while building `ADR-093`:
 `OpenIddictApplicationDescriptor.ClientSecret` is a single string per
 application, with no built-in multi-secret mechanism. `ADR-093` itself
-now says so explicitly (struck through, with the real finding), and
-only its webhook half (`ADR-060`'s `WebhookSubscription.SigningSecret`)
-was actually built. Zero-downtime rotation for THIS path's own
-`client_secret` still needs one of: (a) a custom OpenIddict event
-handler accepting a locally-stored previous secret alongside the
-current one, or (b) registering a second client application as a
-temporary stopgap during rotation. Neither is built — tracked in
-`TODO.md`, not silently claimed done.
+now says so explicitly (struck through, with the real finding). Zero-
+downtime rotation for THIS path's own `client_secret` needed one of: (a)
+a custom OpenIddict event handler accepting a locally-stored previous
+secret alongside the current one, or (b) registering a second client
+application as a temporary stopgap during rotation.
+
+**Built, later pass**: option (a) — `EventStore.DevIdp`'s
+`ClientSecretRotationStore` plus a `ValidateTokenRequestContext` pipeline
+handler that transparently rewrites a presented previous secret to the
+current one before OpenIddict's own built-in check runs, and a matching
+dual-secret check in `/oauth/introspect`'s own HMAC verification. See
+`ADR-093`'s own Consequences for the concrete mechanism and
+`TicketExchangeSecretRotationHttpSqliteTests.cs` for the proof.
 
 ## Salt (UI mockup) — the SPA's own flow constructing a header-incapable URL
 

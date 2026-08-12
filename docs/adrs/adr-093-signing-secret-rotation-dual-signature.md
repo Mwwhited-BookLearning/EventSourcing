@@ -49,6 +49,21 @@ Decision:
   40, per direct user decision after this was found): only the webhook
   half of this ADR (below) is built. The ticket-exchange HMAC-rotation
   mechanism remains open design work — see `TODO.md`.
+  **Built, later pass**: option (a) above, a real pipeline-level
+  credential-validation override — see this ADR's own Consequences for
+  the concrete mechanism and where it lives. Verified by actually running
+  it, which is also how a SECOND wrong assumption surfaced mid-build: the
+  application-code-level check
+  (`applicationManager.ValidateClientSecretAsync`, called explicitly
+  inside `/connect/token`'s own token-exchange branch) is never actually
+  reachable for a rotated-away secret, because OpenIddict's own built-in
+  `ValidateClientSecret` handler already rejects it (`ID2055`)
+  unconditionally for EVERY grant type reaching this endpoint, including
+  Token Exchange, before that branch's own code ever runs — a real
+  handler override inside OpenIddict's own `ValidateTokenRequestContext`
+  pipeline stage was genuinely required, not merely a nice-to-have; a
+  purely application-level fallback check (tried first, and initially
+  believed sufficient) never gets the chance to run.
 - **The rotation cadence/schedule itself stays ops-configurable, not a
   framework decision** — how often to rotate, how long the overlap
   window lasts before the previous secret is discarded, is deployment
@@ -85,6 +100,35 @@ Consequences:
   client-credential rotation" with no framework change; it needs real
   design work (a second registered application as a stopgap, or a
   custom credential-validation handler) not attempted this pass.
+  **Built, later pass**: `EventStore.DevIdp`'s `ClientSecretRotationStore`
+  (a DI singleton, in-process/non-persistent, same posture as `TicketStore`)
+  tracks, per registered `clientId`, a CURRENT-secret override (once
+  rotated at least once against this app instance) and a PREVIOUS secret
+  with its own overlap-window expiry — no persisted entity, exactly the
+  "outside `EventStoreContext` entirely" DevIdp-side state this
+  Consequences section's own prior correction already named. A new
+  `POST /oauth/clients/{clientId}/rotate-secret` admin endpoint updates
+  OpenIddict's registered application to the new secret (via
+  `IOpenIddictApplicationManager.UpdateAsync`, `PopulateAsync`+descriptor)
+  and records the old one as the tracked previous value. The actual
+  credential-acceptance mechanism lives in `.AddServer(...)`'s own
+  `OpenIddictServerEvents.ValidateTokenRequestContext` pipeline stage (a
+  handler registered ahead of OpenIddict's built-in `ValidateClientSecret`
+  check, `SetOrder(int.MinValue)` — the same technique this file's own
+  pre-existing `ValidateTokenContext` handler already used for a
+  different purpose): if the presented secret matches an unexpired
+  previous one, it transparently rewrites the request's `ClientSecret` to
+  the current value before OpenIddict's own check ever runs — this ADR's
+  option (a), a real credential-validation-pipeline override, not an
+  application-code-level fallback (see this ADR's own struck-through note
+  above on exactly why the latter alone doesn't work). `/oauth/introspect`
+  gets the matching read-side fix: a signature that fails against the
+  current secret is retried against the tracked previous one before being
+  rejected, covering a ticket signed just before a caller's own credential
+  refresh landed. `tests/EventStore.IntegrationTests/
+  TicketExchangeSecretRotationHttpSqliteTests.cs` proves the overlap
+  window, both grant-path and introspection-path acceptance, and that a
+  secret that was never current or previous still gets rejected.
 - Resolves `docs/10-open-questions.md` row 16 for the webhook half only
   — **corrected, later pass**: the ticket-exchange half is not actually
   resolved, since the mechanism its resolution rested on turned out not
@@ -92,5 +136,5 @@ Consequences:
   `docs/10-open-questions.md` row, since the SCHEMA question (does a
   current+previous pair exist) is answered (no, and none is needed) —
   only the MECHANISM question (how does rotation actually work for an
-  OpenIddict client) is still open, a narrower, already-scoped follow-up
-  rather than a genuinely undecided fork.
+  OpenIddict client) was still open. **Built, later pass** (see above) —
+  the `TODO.md` item this note re-opened is now removed.

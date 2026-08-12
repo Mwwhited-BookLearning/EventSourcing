@@ -77,6 +77,14 @@ builder.Services.AddDbContext<DevIdpDbContext>(options =>
 });
 builder.Services.AddSingleton<IDpopReplayCache, InMemoryDpopReplayCache>();
 builder.Services.AddSingleton<TicketStore>(); // ADR-040 -- in-process, non-persistent, per auth.md's own "client/token state lives in DevIdp" statement
+// ADR-093 -- constructed here, not via a bare AddSingleton<T>() registration,
+// so the SAME instance can be captured directly by the OpenIddict pipeline
+// handler below (.AddServer(...) configures the pipeline before app.Build()
+// exists, so there's no IServiceProvider yet to resolve a DI-registered
+// singleton from at that point) as well as injected into the ordinary
+// minimal-API endpoints via the registration on the next line.
+var clientSecretRotationStore = new ClientSecretRotationStore();
+builder.Services.AddSingleton(clientSecretRotationStore);
 builder.Services.AddScoped<TrustRootService>(); // ADR-044
 builder.Services.AddScoped<RoleService>(); // ADR-046
 builder.Services.AddScoped<FederationService>(); // ADR-047
@@ -103,7 +111,22 @@ builder.Services.AddSingleton<FollowClient>();
 builder.Services.AddHostedService<RbacProjectionWorker>();
 
 builder.Services.AddOpenIddict()
-    .AddCore(options => options.UseEntityFrameworkCore().UseDbContext<DevIdpDbContext>())
+    .AddCore(options =>
+    {
+        options.UseEntityFrameworkCore().UseDbContext<DevIdpDbContext>();
+        // ADR-093 -- OpenIddictApplicationCache's default in-memory entity
+        // cache returns the SAME cached TApplication reference across every
+        // scope/DbContext for a given ClientId; the rotate-secret endpoint's
+        // own UpdateAsync call then deterministically throws
+        // ConcurrencyException every attempt (confirmed only by actually
+        // running this -- a bounded retry loop failed identically three
+        // times in a row, ruling out a genuine transient conflict). No
+        // application is ever created/updated at any real request rate
+        // this dev/POC IdP serves, so disabling the cache costs nothing
+        // here and removes a real, reproducible bug in the one place this
+        // repo's own code ever calls UpdateAsync.
+        options.DisableEntityCaching();
+    })
     .AddServer(options =>
     {
         options.SetTokenEndpointUris("/connect/token");
@@ -132,6 +155,40 @@ builder.Services.AddOpenIddict()
         // format handler for a name it's never heard of, so it defers
         // entirely to this code's own sniff-the-JOSE-header branching below.
         options.Configure(o => o.SubjectTokenTypes.Add("urn:eventstore:token-type:external-subject"));
+        // ADR-093 -- OpenIddict's own built-in ValidateClientSecret handler
+        // runs unconditionally for EVERY grant type reaching this endpoint,
+        // including Token Exchange -- found only by actually running this:
+        // this file's own /connect/token delegate used to call
+        // ValidateClientSecretAsync explicitly inside its exchange branch,
+        // on the assumption that branch fully owned its own credential
+        // check (no built-in handler for a custom grant type, the same
+        // reasoning that held for requested_token_type/subject_token_type
+        // above); a real rotated-secret request instead came back rejected
+        // with OpenIddict's own ID2055 before that delegate ever ran. Real
+        // zero-downtime rotation therefore has to intervene INSIDE
+        // OpenIddict's own pipeline, not in application code: this handler
+        // runs first (SetOrder(int.MinValue), the same technique the
+        // ValidateTokenContext handler below already uses) and, if the
+        // presented secret matches an unexpired PREVIOUS one for this
+        // clientId, rewrites the request's own ClientSecret to the CURRENT
+        // value before OpenIddict's built-in check ever sees it --
+        // transparently, so that check still succeeds entirely on its own
+        // terms.
+        options.AddEventHandler<OpenIddictServerEvents.ValidateTokenRequestContext>(handler => handler
+            .UseInlineHandler(context =>
+            {
+                var clientId = context.ClientId;
+                var presentedSecret = context.Request?.ClientSecret;
+                if (!string.IsNullOrEmpty(clientId) && !string.IsNullOrEmpty(presentedSecret)
+                    && clientSecretRotationStore.MatchesUnexpiredPrevious(clientId, presentedSecret))
+                {
+                    var currentSecret = clientSecretRotationStore.CurrentOverrideOrNull(clientId) ?? DevIdpSeeder.GetClientSecret(clientId);
+                    if (currentSecret is not null)
+                        context.Request!.ClientSecret = currentSecret;
+                }
+                return default;
+            })
+            .SetOrder(int.MinValue));
         // Registering the type above only satisfies ValidateTokenExchangeParameters'
         // own presence/allow-list check. Decompiling OpenIddictServerHandlers
         // (this project's own "verify before citing" discipline, applied to
@@ -250,6 +307,14 @@ app.MapPost("/connect/token", async (
         if (string.IsNullOrEmpty(request.ClientId) || string.IsNullOrEmpty(request.ClientSecret))
             return Results.Json(new { error = "invalid_client", error_description = "client_id and client_secret are required on this endpoint -- use /oauth/ticket-exchange for the one_time_secret path." }, statusCode: StatusCodes.Status400BadRequest);
 
+        // ADR-093 -- a rotation-in-progress caller presenting its previous
+        // secret never actually reaches this check as a failure case: the
+        // ValidateTokenRequestContext handler registered above (.AddServer)
+        // already rewrote request.ClientSecret to the current value before
+        // OpenIddict's own built-in credential check ran; a request that
+        // gets this far always carries an already-current-or-otherwise-
+        // valid secret. This check stays as an explicit assertion at this
+        // trust boundary rather than being removed outright.
         var callerApplication = await applicationManager.FindByClientIdAsync(request.ClientId);
         if (callerApplication is null || !await applicationManager.ValidateClientSecretAsync(callerApplication, request.ClientSecret))
             return Results.Json(new { error = "invalid_client" }, statusCode: StatusCodes.Status400BadRequest);
@@ -566,7 +631,7 @@ app.MapPost("/oauth/ticket-exchange", async (HttpContext httpContext, IDpopRepla
 // ADR names no credential the calling Streaming/Attachment service itself
 // presents here) -- the receiving service never holds a shared secret and
 // never verifies a signature itself, it only ever forwards ticket+sig here.
-app.MapPost("/oauth/introspect", async (HttpContext httpContext, TicketStore ticketStore) =>
+app.MapPost("/oauth/introspect", async (HttpContext httpContext, TicketStore ticketStore, ClientSecretRotationStore secretRotationStore) =>
 {
     var form = await httpContext.Request.ReadFormAsync();
     var tokenValue = form["token"].ToString();
@@ -583,11 +648,20 @@ app.MapPost("/oauth/introspect", async (HttpContext httpContext, TicketStore tic
     // server-side, so this reads the same source DevIdpSeeder's own
     // "dev-only plaintext secrets" comment already names); the
     // one_time_secret path reads back the value the Ticket record is the
-    // ONLY place holding at all.
-    var secret = DevIdpSeeder.GetClientSecret(ticket!.SecretRef) ?? ticket.SecretRef;
+    // ONLY place holding at all. ADR-093 -- secretRotationStore's own
+    // per-app-instance override takes priority over DevIdpSeeder's static
+    // seed value once a rotation has actually happened against THIS app.
+    var secret = secretRotationStore.CurrentOverrideOrNull(ticket!.SecretRef) ?? DevIdpSeeder.GetClientSecret(ticket.SecretRef) ?? ticket.SecretRef;
 
     var expectedSig = HmacSigner.Sign(ticket.Value, secret!);
-    if (!string.Equals(expectedSig, sig, StringComparison.Ordinal))
+    // ADR-093 -- a ticket signed just before a rotation completed may carry
+    // a signature computed against the PREVIOUS secret; DevIdpSeeder above
+    // only ever knows the current one, so a mismatch here gets one more
+    // chance against the tracked previous secret before actually failing.
+    // A no-op for the one_time_secret path (SecretRef there is never a
+    // registered clientId, so this never matches anything).
+    if (!string.Equals(expectedSig, sig, StringComparison.Ordinal)
+        && !string.Equals(HmacSigner.Sign(ticket.Value, secretRotationStore.PreviousOrEmpty(ticket.SecretRef)), sig, StringComparison.Ordinal))
         return Results.Json(new { active = false });
 
     // Single-use, and only burned on a SUCCESSFUL (signature-matching)
@@ -637,10 +711,67 @@ app.MapPut("/oauth/federation-issuers", async (RegisterFederationIssuerRequest r
     return Results.Created();
 });
 
+// ADR-093 -- real zero-downtime rotation for the ticket-exchange shared
+// secret (ADR-040's client_id path): updates OpenIddict's own registered
+// application record to the new secret, then records the OLD one in
+// ClientSecretRotationStore as still-valid for OverlapWindow. Both the
+// /connect/token token-exchange branch above and /oauth/introspect's HMAC
+// check above already fall back to that store, so a caller mid-rotation
+// (still presenting the old secret) keeps working until the window
+// expires. Same unauthenticated-admin-surface posture as /oauth/roles and
+// /oauth/federation-issuers above -- this dev/POC IdP has no runtime
+// admin scope-gate for any of its own management calls.
+app.MapPost("/oauth/clients/{clientId}/rotate-secret", async (
+    string clientId, RotateClientSecretRequest request, IOpenIddictApplicationManager applicationManager, ClientSecretRotationStore secretRotationStore) =>
+{
+    if (await applicationManager.FindByClientIdAsync(clientId) is null)
+        return Results.NotFound();
+
+    // The CURRENT secret this rotation is moving away from -- either a
+    // prior rotation's own override (this app instance already rotated
+    // this clientId at least once) or DevIdpSeeder's original seed-time
+    // value, whichever this app instance actually last validated against.
+    var currentSecret = secretRotationStore.CurrentOverrideOrNull(clientId) ?? DevIdpSeeder.GetClientSecret(clientId);
+    if (currentSecret is null)
+        return Results.Problem($"'{clientId}' has no tracked current secret to rotate.", statusCode: StatusCodes.Status409Conflict);
+
+    // A bounded re-fetch-and-retry against DbUpdateConcurrencyException --
+    // textbook-correct handling for a genuine concurrent rotation request,
+    // now that DisableEntityCaching() above (AddCore's own registration)
+    // has removed the deterministic, every-single-time version of this
+    // exception a stale cached application reference used to cause.
+    for (var attempt = 1; ; attempt++)
+    {
+        var application = await applicationManager.FindByClientIdAsync(clientId)
+            ?? throw new InvalidOperationException($"'{clientId}' disappeared mid-rotation.");
+        var descriptor = new OpenIddictApplicationDescriptor();
+        await applicationManager.PopulateAsync(descriptor, application);
+        descriptor.ClientSecret = request.NewClientSecret;
+        try
+        {
+            await applicationManager.UpdateAsync(application, descriptor);
+            break;
+        }
+        catch (OpenIddictExceptions.ConcurrencyException) when (attempt < 3)
+        {
+        }
+    }
+
+    // ADR-093's own Decision: "the rotation cadence/schedule itself stays
+    // ops-configurable" -- the overlap window is a caller-supplied value,
+    // not a framework constant, with a reasonable default for a caller
+    // that doesn't need a specific one.
+    secretRotationStore.RecordPrevious(clientId, currentSecret, request.OverlapWindow ?? TimeSpan.FromHours(24));
+    secretRotationStore.SetCurrent(clientId, request.NewClientSecret);
+
+    return Results.Ok();
+});
+
 app.Run();
 
 record DefineRoleRequest(string AppId, string RoleName, List<string> Permissions);
 record RegisterFederationIssuerRequest(string AppId, string Issuer, string JwksUri, string? Description);
+record RotateClientSecretRequest(string NewClientSecret, TimeSpan? OverlapWindow);
 
 // Registered before AddOpenIddict() specifically so this ends up the
 // OUTERMOST IStartupFilter (see the registration site's own comment) --
