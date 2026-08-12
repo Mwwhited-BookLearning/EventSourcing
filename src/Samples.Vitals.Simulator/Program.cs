@@ -83,5 +83,36 @@ while (true)
         }
     }
 
+    // "Domain Decision Queues" -- the Vitals PI queue needs REAL,
+    // continuously-arriving pending items to demo against, not just the
+    // one static seed alert. ReviewPending: true (ADR-042) starts this
+    // alert's AuthorityStatus at "pending_review" -- the actual signal
+    // client-web's usePendingAuthorityQueue filters on -- rather than the
+    // ordinary immediately-"accepted" default every other event here uses.
+    // A distinct fixed EventId per tick (based on the same simulator-only
+    // index i, never colliding with the seed worker's own "alert-0091")
+    // keeps this idempotent-replay-safe across simulator restarts, the
+    // same reasoning as the PatientScreened publish above.
+    var alertId = $"alert-sim-{i:D5}";
+    var alertEventId = Guid.NewGuid();
+    var alertPayload = $$"""{"AlertId":"{{alertId}}","SubjectId":"{{subjectId}}","Finding":"SSEP amplitude decrease","Severity":"High"}""";
+    for (var attempt = 1; ; attempt++)
+    {
+        try
+        {
+            var result = await publisher.PublishAsync("IonmAlertRaised",
+                new PublishEventRequest(VitalsWorkflowD.AppId, 1, alertPayload, null, alertEventId, ReviewPending: true), seedUser);
+            Console.WriteLine(result is PublishResult.Accepted accepted
+                ? $"Published IonmAlertRaised for {alertId} -> {accepted.EntityId} (authorityStatus: {accepted.AuthorityStatus})"
+                : $"Publish for {alertId} did not succeed: {result}");
+            break;
+        }
+        catch (Exception ex) when (attempt < 5)
+        {
+            Console.WriteLine($"Publish for {alertId} threw ({ex.GetType().Name}: {ex.Message}) -- retrying (attempt {attempt}).");
+            await Task.Delay(TimeSpan.FromMilliseconds(200 * attempt));
+        }
+    }
+
     await Task.Delay(TimeSpan.FromSeconds(intervalSeconds));
 }

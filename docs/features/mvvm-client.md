@@ -520,6 +520,132 @@ care how the IdP satisfied the challenge.
     And a 202 response should confirm the signed event was accepted
 ```
 
+## Domain Decision Queues (bespoke per-domain screens)
+
+**Added 2026-08-12, build-plan item "Domain Decision Queues"** — the two
+"stretch" screens flagged and deliberately deferred when "Proving-Ground
+Application UX" landed, now built: a Vitals **Principal Investigator
+queue** and a Meridian **KYC analyst queue**. Unlike every other tab in
+this doc, these are genuinely bespoke, not generic — the Composer/Browser
+tabs above never hardcode a Vitals or Meridian field name, but a real
+"what does a PI need to review" screen inescapably does. The generic
+core (`usePendingAuthorityQueue.ts`/`AuthorityQueue.vue`) stays as
+domain-agnostic as this shape allows; `VitalsPiQueue.vue`/
+`MeridianAnalystQueue.vue` are the only two files carrying either
+domain's actual specifics.
+
+**A new identity per real reviewer role, not a widened Composer** —
+`composer-client` deliberately holds no domain review claim
+(`review:ae`/`review:ionm`/`consent:approve`/`identity:aml-review`); a
+Principal Investigator or KYC analyst is a distinct real-world actor from
+the generic Composer tool, so `vitals-pi-client`/`meridian-analyst-client`
+are new, separate, `events:publish`-only identities (`EventStore.DevIdp/
+DevIdpSeeder.cs`) — the same "one identity per real capability need"
+reasoning `composer-client` itself was added under.
+
+**Two asymmetric "pending" signals, by design, not oversight**: Vitals'
+`IonmAlertRaised` is published `ReviewPending: true` (a genuine
+non-authoritative capture, `ADR-042`) — its `AuthorityStatus` reaching
+`"pending_review"` is the actual queue signal. Meridian's
+`SanctionsScreeningPerformed` is an ordinary, immediately-`"accepted"`
+publish — its own `MatchFound` payload field, plain business data, is the
+signal instead. `usePendingAuthorityQueue`'s `isPending` predicate is
+caller-supplied specifically so this composable never assumes one
+universal rule covers both.
+
+**Resolution reuses the existing `authorityDecision` reactor as-is** —
+the exact same `EventStore.Router.AuthorityDecisionResolver` mechanism
+Vitals' Workflows A/B/D already established, never a new one. A queue
+item disappears the moment a matching `authorityDecision` (its own
+`targetEventId` naming the pending item's `eventId`) arrives back over
+the same live subscription — `AuthorityDecisionResolver` mutates the
+TARGET event's `AuthorityStatus` in place rather than emitting a new
+event for the raiser itself, so watching for the `authorityDecision`
+event is the only way a live subscriber learns an item was actually
+decided.
+
+**A new, small, generic Subscription field this item needed and no prior
+consumer did**: correlating a pending item's own `EventId` with a later
+`authorityDecision.targetEventId` needed a way to read that `EventId`
+off a Subscription payload at all — nothing exposed it before this item
+(confirmed by grep). `FollowSubscriptionTypeModule` gains an `eventId`
+envelope field, the same generic, always-present shape `conflictFlag`/
+`authorityStatus`/`schemaVersion` already have — useful to any future
+correlation need, not special-cased to this screen.
+
+### Sequence diagram — a Principal Investigator resolves a pending IONM alert
+
+```plantuml
+@startuml MvvmClient_AuthorityQueue_Sequence
+autonumber
+actor "Principal\nInvestigator" as PI
+participant "Queue tab\n(ViewModel)" as vm
+participant "GraphQL Subscription\n(IonmAlertRaised, authorityDecision)" as sub
+participant "Entity Store API\n(server)" as server
+
+PI -> vm: open Queue tab
+vm -> sub: subscribe(authorityDecision, mode: REPLAY)
+vm -> sub: subscribe(IonmAlertRaised, mode: REPLAY)
+sub --> vm: IonmAlertRaised { eventId, ..., authorityStatus: "pending_review" }
+vm -> vm: isPending(payload) == true -> add to queue
+vm --> PI: rendered queue item
+PI -> vm: fill Reason + Meaning, click Accept
+vm -> vm: fetch vitals-pi-client token\n(events:publish only)
+vm -> server: POST /publish/authorityDecision\n{ targetEventId, decision: "accepted", decidingActorId, reason }
+alt RequiredSignature not yet satisfied
+  server --> vm: 401 insufficient_user_authentication\n(acr_values, RFC 9470)
+  vm -> vm: fetch a stepped-up token (acr)
+  vm -> server: retry POST /publish/authorityDecision
+end
+server --> vm: 202 { status, entityId }
+sub --> vm: authorityDecision { targetEventId }
+vm -> vm: remove matching item from the queue
+vm --> PI: queue updated -- item resolved
+@enduml
+```
+
+### Salt (UI mockup) — Queue tab
+
+```plantuml
+@startsalt
+{
+  { "Principal Investigator Queue" }
+  ..
+  { "Reviewing as (PI)" | "pi-1" }
+  ..
+  { "alertId: alert-sim-00042, subjectId: S-SIM-00042, finding: SSEP amplitude decrease, severity: High" }
+  { "Reason"                     | "confirmed real finding" }
+  { "Reason for sign-off (Meaning) *" | "reviewed"           }
+  [ Accept ] | [ Reject ]
+  "Recorded -- accepted"
+}
+@endsalt
+```
+
+### Gherkin (Domain Decision Queues)
+
+```gherkin
+  Scenario: A genuinely pending Vitals alert appears in the PI queue
+    Given "IonmAlertRaised" was published with ReviewPending: true
+    When a user opens the Vitals client-web instance's Queue tab
+    Then the alert should appear in the queue, discovered via mode: REPLAY
+    And an ordinary, already-"accepted" IonmAlertRaised should NOT appear
+
+  Scenario: A Meridian sanctions hit appears in the analyst queue on business data alone
+    Given "SanctionsScreeningPerformed" was published with MatchFound: true
+    When a user opens the Meridian client-web instance's Queue tab
+    Then the hit should appear in the queue
+    And a screening published with MatchFound: false should NOT appear
+
+  Scenario: Accepting a queued item steps up authentication and resolves it
+    Given a Principal Investigator has filled Reason and Meaning for a queued alert
+    When they click Accept
+    Then the client should publish authorityDecision as vitals-pi-client
+    And satisfy RFC 9470 step-up automatically if the first attempt is challenged
+    And the item should disappear from the queue once the resulting
+      authorityDecision is received back over the live subscription
+```
+
 ## Accessibility standard (ADR-073)
 
 Both the `ViewDefinition`-rendered template above and the generic

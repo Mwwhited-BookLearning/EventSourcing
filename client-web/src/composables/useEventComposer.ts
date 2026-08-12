@@ -17,6 +17,14 @@ export interface EventComposerConfig {
   appId: string
   composerClientId?: string
   composerClientSecret?: string
+  // "Domain Decision Queues" -- composer-client's own identity genuinely
+  // needs both scopes (it lists/introspects AND publishes), but a
+  // decision-queue caller (vitals-pi-client/meridian-analyst-client) only
+  // ever publishes an already-known "authorityDecision" -- granting it
+  // registry:admin too would be unnecessary over-privilege for a
+  // clinical/compliance-actor identity. Defaults to the original
+  // composer-client scope so every existing caller is unaffected.
+  scope?: string
 }
 
 export interface EventTypeSummary {
@@ -56,10 +64,11 @@ export function useEventComposer(config: EventComposerConfig, deps: { fetchToken
   const tokenFetcher = deps.fetchToken ?? fetchToken
   const clientId = config.composerClientId ?? 'composer-client'
   const clientSecret = config.composerClientSecret ?? 'composer-client-secret'
+  const scope = config.scope ?? 'events:publish registry:admin'
   let token: string | null = null
 
   async function ensureComposerToken(): Promise<string> {
-    token ??= await tokenFetcher(config.authBaseUrl, clientId, clientSecret, 'events:publish registry:admin')
+    token ??= await tokenFetcher(config.authBaseUrl, clientId, clientSecret, scope)
     return token
   }
 
@@ -145,7 +154,7 @@ export function useEventComposer(config: EventComposerConfig, deps: { fetchToken
     const result = await publishCommand(config.hostBaseUrl, currentToken, entry)
     if (!result.stepUpRequired) return result
 
-    token = await tokenFetcher(config.authBaseUrl, clientId, clientSecret, 'events:publish registry:admin', result.stepUpRequired.acrValues[0])
+    token = await tokenFetcher(config.authBaseUrl, clientId, clientSecret, scope, result.stepUpRequired.acrValues[0])
     const retried = await publishCommand(config.hostBaseUrl, token, entry)
     return { ...retried, steppedUp: !retried.stepUpRequired }
   }

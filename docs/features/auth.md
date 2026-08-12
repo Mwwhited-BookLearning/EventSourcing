@@ -294,7 +294,7 @@ never written to directly and never a core-engine `EntityStoreRow`
 ## Seeded clients (dev)
 
 Seeded in code by `EventStore.DevIdp`'s `DevIdpSeeder.SeedAsync` at
-startup — no realm-export file, no admin console. Now 11 clients (one
+startup — no realm-export file, no admin console. Now 14 clients (one
 per build-plan item that needed a new caller identity, each named in
 `DevIdpSeeder.cs`'s own comments), not the original 4 — every client also
 gets its own generated DPoP key pair (`ADR-017`), and two are additionally
@@ -314,8 +314,11 @@ granted the Token Exchange grant type (`TokenExchangeClients`, `ADR-040`/
 | `clinician-spa-client` | `client_credentials` + Token Exchange | `telemetry:read`, `attachments:read` | `clearance:phi` ("Delegated Grants" — the granter role; also "Ticket Exchange"'s header-capable caller) |
 | `colleague-client` | `client_credentials` + Token Exchange | *(none)* | — ("Delegated Grants" — the grantee; holds nothing of its own, everything comes from what `clinician-spa-client` delegates) |
 | `devidp-rbac-follower-client` | `client_credentials` | `events:follow` | — (`RbacProjectionWorker`'s own identity when tailing `RoleGranted`/`RoleRevoked`/`PermissionGranted`/`AppTrustRootRegistered`) |
+| `composer-client` | `client_credentials` | `events:publish`, `registry:admin` | — ("Proving-Ground Application UX" — `client-web`'s generic Event Composer tab; **found missing from this table by the "Domain Decision Queues" pass below, added retroactively**) |
+| `vitals-pi-client` | `client_credentials` | `events:publish` | `review:ae`, `review:ionm`, `consent:approve` ("Domain Decision Queues" — a Vitals Principal Investigator's decision-claim bundle, distinct from `composer-client`'s own generic identity) |
+| `meridian-analyst-client` | `client_credentials` | `events:publish` | `identity:aml-review` ("Domain Decision Queues" — a Meridian KYC analyst) |
 
-That's 11 distinct scopes across the 11 clients (`colleague-client` holds
+That's 14 distinct scopes across the 14 clients (`colleague-client` holds
 none directly), each named for the build-plan item that introduced the
 need for a new caller identity — see `DevIdpSeeder.cs`'s own header
 comment and per-entry comments for the full reasoning behind each.

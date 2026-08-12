@@ -109,6 +109,7 @@ provider they apply to — not "code written."
 | 48 | [Event Log/AccessLog Archival Segment Detachment](#event-logaccesslog-archival-segment-detachment) | Binary Attachments, Delegated Grants/RBAC/Read Audit Logging, Hardening & Evolution, Lineage Export & Bitemporal Playback | Done |
 | 49 | [Expected-Response Tracking](#expected-response-tracking) | CQRS Read-Model Projections (worked example), Streaming Channels, Outbound Webhooks, Leader Election via Database-Backed Lease | Done |
 | 50 | [Proving-Ground Application UX](#proving-ground-application-ux) | MVVM Client | Done |
+| 51 | [Domain Decision Queues](#domain-decision-queues) | Proving-Ground Application UX, Digital Sign-Off for Regulated Actions, Non-Authoritative Capture | Done |
 
 Two groups worth naming up front, since they explain most of the
 ordering below:
@@ -247,6 +248,7 @@ state "UI" as tierUi {
   state "Accessibility Standard" as a21 #palegreen
   state "i18n/l10n Scope" as a22 #palegreen
   state "Proving-Ground\nApplication UX" as a27 #palegreen
+  state "Domain Decision Queues" as a28 #palegreen
 }
 
 ' Hidden edges between the 4 tier containers themselves -- not a real
@@ -368,6 +370,9 @@ p14 --> a26
 a10 --> a26
 a8 --> a26
 p20 --> a27
+a27 --> a28
+a5 --> a28
+p17 --> a28
 @enduml
 ```
 
@@ -4706,6 +4711,94 @@ background worker in this design (`RouterWorker`, `DerivationWorker`,
 `ExpectedResponseWatcher`) still advances by fixed-interval polling, never
 a push notification — raised while building this item's own Simulators,
 genuinely open, not decided.
+
+## Domain Decision Queues
+
+**Scope**: direct request, 2026-08-12 — a working demonstration of the
+"stretch" screens flagged (but deliberately deferred) when "Proving-Ground
+Application UX" landed: a Vitals **Principal Investigator queue** and a
+Meridian **KYC analyst queue**, each a real, bespoke per-domain screen (not
+the generic Composer/Browser) showing items genuinely awaiting a human
+decision and letting the reviewer accept/reject them through the shared
+`authorityDecision` reactor (`EventStore.Router.AuthorityDecisionResolver`,
+"Non-Authoritative Capture"), reusing "Proving-Ground Application UX"'s
+own step-up/Meaning mechanism unchanged. Investigating what this actually
+needed surfaced two real, previously-undiscovered gaps, both closed as
+part of this item rather than deferred: (1) `composer-client` holds no
+domain review claim (`review:ae`/`review:ionm`/`consent:approve`/
+`identity:aml-review`) and, by design, never should — a Principal
+Investigator or KYC analyst is a distinct real-world actor from the
+generic Composer tool, so this item adds **two new seeded identities**
+(`vitals-pi-client`, `meridian-analyst-client`), never widening
+`composer-client`'s own claims; (2) no Subscription payload anywhere
+exposed an event's own `EventId` — required to correlate a raiser event
+(the alert/screening-hit) with its eventual `authorityDecision.
+targetEventId` — so `FollowSubscriptionTypeModule` gains a new, generic
+`eventId` envelope field (`EventStore.GraphQL`), useful to any future
+Subscription consumer needing the same correlation, not just this item.
+
+**Deliberately generic core, domain-thin wrappers** — the same discipline
+the Composer itself established: `usePendingAuthorityQueue.ts` (a
+composable) and `AuthorityQueue.vue` (a component) never hardcode a
+Vitals or Meridian field/event-type name; `VitalsPiQueue.vue`/
+`MeridianAnalystQueue.vue` are the only two files that know either
+domain's specifics (which event type raises a pending item, which
+identity decides, what "pending" means). The two domains' own "pending"
+signals are deliberately asymmetric, a real finding rather than an
+oversight: Vitals' `IonmAlertRaised` is a genuine non-authoritative
+capture (`AuthorityStatus: "pending_review"`, `ADR-042`), while Meridian's
+`SanctionsScreeningPerformed` is an ordinary, immediately-"accepted"
+publish whose "needs review" signal is pure business data (`MatchFound`)
+— `PendingAuthorityQueueConfig.isPending` is a caller-supplied predicate
+specifically so this composable never has to assume one universal rule
+fits both.
+
+**Depends on**: Proving-Ground Application UX (the Composer's step-up/
+Meaning mechanism, reused as-is via `useEventComposer.publish()`), Digital
+Sign-Off for Regulated Actions (`RequiredSignature`/RFC 9470, already
+configured on the shared `authorityDecision` type), Non-Authoritative
+Capture (`AuthorityDecisionResolver`, the reactor this item's own "decide"
+action publishes against).
+
+**Exit criteria**: `Samples.Vitals.Simulator`/`Samples.Meridian.Simulator`
+each periodically publish a genuinely pending item (a `ReviewPending`
+`IonmAlertRaised`; a `MatchFound` `SanctionsScreeningPerformed`); opening
+the Vitals or Meridian client-web instance's new Queue tab shows that item
+without a page reload (`mode: REPLAY` from 0, the same fix "Proving-Ground
+Application UX" already applied elsewhere); accepting or rejecting an item
+publishes a real `authorityDecision` through `vitals-pi-client`/
+`meridian-analyst-client`, satisfies RFC 9470 step-up automatically, and
+the item disappears from the queue once the resulting decision event is
+received back over the same live subscription — all verified by
+automated test, not just by reading the code back.
+
+**Status: Done** — 2026-08-12, same session immediately following
+"Proving-Ground Application UX." Built: `FollowSubscriptionTypeModule.cs`
+gains the `eventId` envelope field (`EventStore.GraphQL`), covered by an
+extended `MvvmClientGraphQlHttpSqliteTests` assertion and documented in
+`docs/03-api-contracts.md`; `DevIdpSeeder.cs` gains `vitals-pi-client`
+(`review:ae`/`review:ionm`/`consent:approve`) and
+`meridian-analyst-client` (`identity:aml-review`), both `events:publish`
+only, documented in `docs/features/auth.md`'s seeded-clients table
+(which also gained the previously-missing `composer-client` row, found
+while already editing this table); `Samples.Vitals.Simulator`/`Samples.
+Meridian.Simulator` each gained a second periodic publish producing a
+real pending item. Client-web: `usePendingAuthorityQueue.ts` (generic,
+dual introspect-then-subscribe to the raiser type and the shared
+`authorityDecision` type, resolving a queued item the moment a matching
+decision arrives), `useEventComposer.ts` gained an optional `scope`
+override (so a decision identity never needs `registry:admin`),
+`components/queue/AuthorityQueue.vue` (generic UI) plus
+`VitalsPiQueue.vue`/`MeridianAnalystQueue.vue` (thin domain wrappers),
+wired into `App.vue` as a `config.appId`-gated fourth tab. Verified:
+full `dotnet build`/targeted SQLite+MvvmClient+Auth test subset (two
+unrelated, already-documented load-induced flakes reproduced once each,
+both confirmed passing cleanly in isolation and on re-run — not caused by
+this item); full client-web suite (139 passing, up from 134) and
+`vue-tsc -b`, both clean; new tests cover `eventId` introspection/
+delivery, `usePendingAuthorityQueue`'s subscribe/pending-filter/resolve-
+on-decision/decide flow, and `AuthorityQueue.vue`'s Meaning-gated Accept/
+Reject rendering.
 
 ## Cross-cutting, every item
 

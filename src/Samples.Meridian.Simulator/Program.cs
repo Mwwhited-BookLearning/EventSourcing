@@ -75,5 +75,42 @@ while (true)
         }
     }
 
+    // "Domain Decision Queues" -- the Meridian analyst queue needs a real,
+    // continuously-arriving stream of sanctions-screening hits to demo
+    // against. Unlike Vitals' IonmAlertRaised above, this is NOT an
+    // AuthorityStatus/ReviewPending concern -- SanctionsScreeningPerformed
+    // is registered with RequiredClaims: null (MeridianWorkflowC.cs), an
+    // ordinary, immediately-"accepted" fact; "needs analyst review" is
+    // pure business data (MatchFound), the same distinction this project's
+    // own domain docs draw between data authority and business review.
+    // Screens the applicant this SAME tick just onboarded (a screening
+    // immediately following onboarding is the realistic KYC sequence,
+    // matching MeridianWorkflowC's own Background) -- alternates
+    // MatchFound so client-web's queue shows some hits and some clears,
+    // not an unrealistic 100% hit rate.
+    var matchFound = i % 3 == 0;
+    var screeningEventId = Guid.NewGuid();
+    var screeningDate = DateTimeOffset.UtcNow.ToString("yyyy-MM-dd");
+    var screeningPayload = matchFound
+        ? $$"""{"ApplicantId":"{{applicantId}}","ScreeningDate":"{{screeningDate}}","ListsChecked":["OFAC-SDN","UN-Consolidated"],"MatchFound":true,"MatchConfidence":0.87,"MatchedName":"Simulated Match {{i}}","MatchedListEntryId":"OFAC-{{i:D5}}"}"""
+        : $$"""{"ApplicantId":"{{applicantId}}","ScreeningDate":"{{screeningDate}}","ListsChecked":["OFAC-SDN","UN-Consolidated"],"MatchFound":false}""";
+    for (var attempt = 1; ; attempt++)
+    {
+        try
+        {
+            var result = await publisher.PublishAsync("SanctionsScreeningPerformed",
+                new PublishEventRequest(MeridianWorkflowA.AppId, 1, screeningPayload, null, screeningEventId), seedUser);
+            Console.WriteLine(result is PublishResult.Accepted accepted
+                ? $"Published SanctionsScreeningPerformed for {applicantId} -> {accepted.EntityId} (matchFound: {matchFound})"
+                : $"Publish for {applicantId} screening did not succeed: {result}");
+            break;
+        }
+        catch (Exception ex) when (attempt < 5)
+        {
+            Console.WriteLine($"Publish for {applicantId} screening threw ({ex.GetType().Name}: {ex.Message}) -- retrying (attempt {attempt}).");
+            await Task.Delay(TimeSpan.FromMilliseconds(200 * attempt));
+        }
+    }
+
     await Task.Delay(TimeSpan.FromSeconds(intervalSeconds));
 }

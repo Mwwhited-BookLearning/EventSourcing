@@ -606,6 +606,14 @@ subscription {
   any parent whose type is restricted for the connected caller is
   omitted from that list, the same per-node visibility rule the Lineage
   API uses below.
+- **`eventId`** (added 2026-08-12, "Domain Decision Queues") is this
+  event's own `EventId`, selectable the same way as `conflictFlag`/
+  `authorityStatus`/`schemaVersion` — the field a subscriber needs to
+  correlate a *later* event back to this one (an `authorityDecision`'s
+  own `targetEventId`, or any `RespondsToEventId`, `ADR-094`). No prior
+  Subscription consumer needed it, so it didn't exist before this pass —
+  confirmed by grepping `FollowSubscriptionTypeModule.cs` for `EventId`
+  and finding no hits at all until it was added.
 
 ### GraphQL schema shape (masking)
 

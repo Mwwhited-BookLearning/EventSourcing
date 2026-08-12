@@ -8,6 +8,8 @@ import { useViewDefinitionsStore } from './stores/viewDefinitions'
 import EntityView from './components/entity/EntityView.vue'
 import EntityBrowser from './components/entity/EntityBrowser.vue'
 import EventComposer from './components/composer/EventComposer.vue'
+import VitalsPiQueue from './components/queue/VitalsPiQueue.vue'
+import MeridianAnalystQueue from './components/queue/MeridianAnalystQueue.vue'
 import { tokens } from './theme/tokens'
 
 // Per-instance launch configuration (ADR-039: "which EntityType/AppId/
@@ -60,9 +62,22 @@ const statusMessage = ref('')
 // "Proving-Ground Application UX" -- a plain tab switcher, not a router
 // dependency: this instance still watches exactly one EntityType/AppId
 // (ADR-039's own per-instance launch configuration, unchanged), these are
-// three different VIEWS over that same subscription/outbox state, not
-// three different routes/pages.
-const activeTab = ref<'detail' | 'browser' | 'composer'>('detail')
+// different VIEWS over that same subscription/outbox state, not
+// different routes/pages.
+const activeTab = ref<'detail' | 'browser' | 'composer' | 'queue'>('detail')
+
+// "Domain Decision Queues" -- the one place in this otherwise domain-
+// agnostic shell that knows Vitals is "trial1" and Meridian is "kyc"
+// (EventStore.AppHost/AppHost.cs's own VITE_APP_ID values) -- a bespoke
+// per-domain screen is, by definition, not generic, so this tab simply
+// doesn't render for any OTHER AppId (a standalone `npm run dev` against
+// the "mvvm-demo" fallback config, or a future third domain) rather than
+// guessing at a queue that doesn't apply.
+const queueDomain = computed<'vitals' | 'meridian' | null>(() => {
+  if (config.appId === 'trial1') return 'vitals'
+  if (config.appId === 'kyc') return 'meridian'
+  return null
+})
 
 function selectFromBrowser(entityId: string): void {
   currentEntityId.value = entityId
@@ -111,6 +126,7 @@ const pendingCount = computed(() => outbox.pendingFor(config.instanceId).length)
       <button type="button" :aria-pressed="activeTab === 'detail'" @click="activeTab = 'detail'">Detail</button>
       <button type="button" :aria-pressed="activeTab === 'browser'" @click="activeTab = 'browser'">Browse</button>
       <button type="button" :aria-pressed="activeTab === 'composer'" @click="activeTab = 'composer'">Compose</button>
+      <button v-if="queueDomain" type="button" :aria-pressed="activeTab === 'queue'" @click="activeTab = 'queue'">Queue</button>
     </nav>
 
     <template v-if="activeTab === 'detail'">
@@ -134,7 +150,12 @@ const pendingCount = computed(() => outbox.pendingFor(config.instanceId).length)
 
     <EntityBrowser v-else-if="activeTab === 'browser'" :instance-id="config.instanceId" @select="selectFromBrowser" />
 
-    <EventComposer v-else :host-base-url="config.hostBaseUrl" :auth-base-url="config.authBaseUrl" :app-id="config.appId" />
+    <EventComposer v-else-if="activeTab === 'composer'" :host-base-url="config.hostBaseUrl" :auth-base-url="config.authBaseUrl" :app-id="config.appId" />
+
+    <template v-else-if="activeTab === 'queue' && queueDomain">
+      <VitalsPiQueue v-if="queueDomain === 'vitals'" :host-base-url="config.hostBaseUrl" :auth-base-url="config.authBaseUrl" :app-id="config.appId" />
+      <MeridianAnalystQueue v-else :host-base-url="config.hostBaseUrl" :auth-base-url="config.authBaseUrl" :app-id="config.appId" />
+    </template>
   </main>
 </template>
 
