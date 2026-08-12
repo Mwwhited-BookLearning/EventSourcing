@@ -110,6 +110,7 @@ provider they apply to — not "code written."
 | 49 | [Expected-Response Tracking](#expected-response-tracking) | CQRS Read-Model Projections (worked example), Streaming Channels, Outbound Webhooks, Leader Election via Database-Backed Lease | Done |
 | 50 | [Proving-Ground Application UX](#proving-ground-application-ux) | MVVM Client | Done |
 | 51 | [Domain Decision Queues](#domain-decision-queues) | Proving-Ground Application UX, Digital Sign-Off for Regulated Actions, Non-Authoritative Capture | Done |
+| 52 | [Generic Entity/Live-View Query](#generic-entitylive-view-query) | GraphQL-Only Query Layer, Non-Authoritative Capture, Property-Level Masking, Delegated Grants/RBAC/Read Audit Logging | Done |
 
 Two groups worth naming up front, since they explain most of the
 ordering below:
@@ -249,6 +250,7 @@ state "UI" as tierUi {
   state "i18n/l10n Scope" as a22 #palegreen
   state "Proving-Ground\nApplication UX" as a27 #palegreen
   state "Domain Decision Queues" as a28 #palegreen
+  state "Generic Entity/\nLive-View Query" as a29 #palegreen
 }
 
 ' Hidden edges between the 4 tier containers themselves -- not a real
@@ -373,6 +375,10 @@ p20 --> a27
 a27 --> a28
 a5 --> a28
 p17 --> a28
+p18 --> a29
+p17 --> a29
+p8 --> a29
+p22 --> a29
 @enduml
 ```
 
@@ -1643,13 +1649,14 @@ honestly flagged rather than silently dropped:
   uses `after` or a Connection shape, so building the fuller cursor
   machinery would have produced a response shape the doc itself never
   shows. Narrower than a full Relay cursor implementation.
-- **No generic "get current entity" query field, and no `extensions: JSON`
-  field anywhere.** `ADR-037`'s Consequences describe `extensions: JSON`
-  as "a generic field on every GraphQL type, exposing the Entity Store's
-  `Extensions` bag," but none of Follow/Lineage/Registry listing — the
-  only read surfaces this item's own exit criteria actually name — ever
-  queries current Entity Store state directly; there is currently no
-  GraphQL type it would attach to.
+- ~~No generic "get current entity" query field, and no `extensions: JSON`
+  field anywhere.~~ **Corrected, 2026-08-12, direct decision — see
+  "Generic Entity/Live-View Query" below**: this gap was left open long
+  enough that `ADR-042`/`ADR-045` (both written assuming such a field
+  would exist) drifted from reality, tracked as `docs/10-open-questions.md`'s
+  own row on it. Now built as its own item. `extensions: JSON` is still
+  not built — narrower than the query itself, no caller has needed the
+  overflow bag through this surface yet.
 - **DataLoader batching and cross-shard/cross-replica fan-out are not
   exercised, honestly, because there's no concrete case to exercise.**
   Every resolver this item builds already reads its data in one batched
@@ -4799,6 +4806,77 @@ this item); full client-web suite (139 passing, up from 134) and
 delivery, `usePendingAuthorityQueue`'s subscribe/pending-filter/resolve-
 on-decision/decide flow, and `AuthorityQueue.vue`'s Meaning-gated Accept/
 Reject rendering.
+
+## Generic Entity/Live-View Query
+
+**Scope**: direct decision, 2026-08-12, resolving `docs/10-open-questions.md`'s
+row on which "GraphQL-Only Query Layer" itself left open: `ADR-042`'s own
+headline caller-facing requirement (every Live View response carrying
+`isAuthoritative`) and `ADR-045`'s most-cited surface ("every GraphQL
+query against the authoritative Entity Store or Live View" gets an
+`AccessLogEntry`) both assumed a generic entity-by-id query would exist —
+"GraphQL-Only Query Layer" explicitly scoped it out ("nothing built here
+ever needs one"). Built now: `entity_{appId}_{entityType}(id)`, one field
+per registered `(AppId, EntityType)` pair (the same dynamic-per-registered-
+type schema composition `FollowSubscriptionTypeModule` already establishes
+for Subscriptions, `ADR-037`'s own "a client cannot construct a query
+referencing an undeclared field" guarantee applied here too), reading
+whichever of the authoritative Entity Store or the always-populated Live
+View actually has the entity, masking (`ADR-009`/`057`) and Read-claim
+gating (`ADR-008`/`050`) enforced identically to Follow, and writing an
+`AccessLogEntry` (`ADR-045`) on every call.
+
+**A real, found nuance, not assumed going in**: an `EntityType` can be
+folded from SEVERAL distinct event types (Vitals' `IonmAlert` entity:
+`IonmAlertRaised` + `IonmAlertAcknowledged`) — the dynamic type's own
+fields and masking rules are therefore a UNION across every event type
+sharing that `EntityType`, not one type's own schema alone. A synthesized,
+merged JSON Schema (first contributing definition wins a name collision)
+lets `IPayloadMasker.MaskAsync` — built for a single event's own payload
+walk — mask a multi-source, already-merged Entity Store `Data` blob
+correctly regardless of which contributing type originally supplied a
+given field.
+
+**Depends on**: GraphQL-Only Query Layer (the schema/masking/claims
+machinery this item extends), Non-Authoritative Capture (`isAuthoritative`/
+the Live View fallback this item's entire reason to exist), Property-Level
+Masking, Delegated Grants/RBAC/Read Audit Logging (`ADR-045`'s
+`AccessLogEntry`).
+
+**Exit criteria**: an authoritative (accepted) entity is queryable with
+masking enforced per caller exactly as Follow already enforces it; an
+`unattested`/`pending_review` entity (never yet accepted) is still
+queryable via the Live View fallback, `isAuthoritative: false`; two
+distinct event types folding the same `EntityType` both contribute fields
+visible on the one query; a caller lacking a type's own Read claim is
+Forbidden; querying a nonexistent entity returns `null`, never an error;
+every call writes an `AccessLogEntry` — all verified by real HTTP
+integration test, not by reading the code back.
+
+**Status: Done** — 2026-08-12, same session. Built: `EntityQueryTypeModule`
+(`EventStore.GraphQL`, a new `ITypeModule` mirroring
+`FollowSubscriptionTypeModule`'s own structure), registered alongside it in
+`GraphQlServiceCollectionExtensions.cs`. One real bug found only by
+running this, not by reading HotChocolate's docs: a field typed
+`DateTimeOffset!` failed schema build ("Unable to resolve type reference
+`DateTimeOffset!`") the one time nothing else in the schema had already
+caused that scalar to be bound — worked around by returning `updatedAt`
+as a plain ISO-8601 `String` instead, avoiding the scalar-registration
+ordering quirk entirely (every other envelope field already matched
+`FollowSubscriptionTypeModule`'s own no-`!`-suffix convention and needed
+no such workaround). `docs/03-api-contracts.md` documents the new query
+shape; `ADR-042`/`ADR-045` both gain a forward-pointer note confirming
+this closes the gap their own text assumed. `docs/10-open-questions.md`'s
+row deleted. New test file `EntityQueryHttpSqliteTests.cs` (6 tests, real
+HTTP against a live Host): masking enforced per caller, Live View fallback
+with `isAuthoritative: false`, cross-event-type field merge, Read-claim
+Forbidden, null-for-nonexistent, and `AccessLogEntry` verified directly
+against the database. Verified: full `dotnet build` clean; full SQLite
+regression suite re-run twice (two unrelated, already-documented
+load-induced flakes reproduced once each across the two runs — an
+OpenTelemetry fold-lag assertion and a Projections catch-up 499 — both
+confirmed passing cleanly in isolation, neither touching
+`EntityQueryTypeModule`/`GraphQlServiceCollectionExtensions.cs`).
 
 ## Cross-cutting, every item
 

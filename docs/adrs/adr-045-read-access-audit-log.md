@@ -35,7 +35,17 @@ Decision:
   authoritative Entity Store or the Live View (`ADR-037`/`ADR-042`),
   attachment retrieval (`ADR-032`), streaming channel playback
   (`ADR-031`), ticket-authenticated headerless access (`ADR-040`) —
-  writes one `AccessLogEntry`:
+  writes one `AccessLogEntry`. **This ADR's own most-cited surface — a
+  generic GraphQL query against the authoritative Entity Store or Live
+  View — did not actually exist for a long time**: "GraphQL-Only Query
+  Layer" (`ADR-037`) explicitly scoped it out, a gap `docs/10-open-
+  questions.md` tracked until it was built directly as its own item,
+  "Generic Entity/Live-View Query" (build-plan item 52, 2026-08-12) —
+  `EntityQueryTypeModule`'s `entity_{appId}_{entityType}(id)` field is
+  the first real caller of this ADR's mechanism for that specific
+  surface; every other surface this bullet names (attachments, streaming,
+  ticket-authenticated access) was already genuinely wired before this
+  correction:
   ```csharp
   public class AccessLogEntry
   {

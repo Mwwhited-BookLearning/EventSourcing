@@ -717,6 +717,57 @@ request** — "you can only see what you can see":
   is omitted from that list, not surfaced as a bare ID they can't
   otherwise learn anything about.
 
+## Generic entity/Live-View query — GraphQL query field (added 2026-08-12, "Generic Entity/Live-View Query")
+
+`ADR-042`/`ADR-045` both assumed this field would exist; `ADR-037`'s own
+"GraphQL-Only Query Layer" scope explicitly deferred it. Built now, one
+field per registered `(AppId, EntityType)` pair — the same dynamic-
+per-registered-type schema composition Follow's own `on_{appId}_{eventType}`
+fields already use, `ADR-037`'s "a client cannot construct a query
+referencing an undeclared field" guarantee applied here too:
+
+```graphql
+query {
+  entity_trial1_ionmalert(id: "alert-0091") {
+    isAuthoritative
+    authorityStatus
+    version
+    updatedAt
+    finding
+    severity
+    ackedBy
+  }
+}
+```
+
+- **Field naming**: `entity_{safeAppId}_{safeEntityType}(id: String)`,
+  sanitized/lower-cased the identical way Follow's own field names are.
+- **Authoritative-first, Live View fallback (`ADR-042`)**: reads the
+  authoritative Entity Store when a row exists there; otherwise falls back
+  to the always-populated Live View. `isAuthoritative` tells the caller
+  which one actually answered — `false` for an `unattested`/`pending_review`
+  entity never yet accepted, matching `ADR-042`'s own headline
+  caller-facing requirement. `version`/`schemaVersion`/`lateArrivalFlag`
+  are only ever meaningful once `isAuthoritative` is `true` (the Live View
+  tracks none of them) and read as `null`/`false` otherwise.
+- **Masking (`ADR-009`/`057`) and Read-claim gating (`ADR-008`/`050`)**
+  enforced identically to Follow — the same `{ value masked erased }`
+  wrapper, the same claim check. An `EntityType` folded from *several*
+  distinct event types (e.g. Vitals' `IonmAlert`: `IonmAlertRaised` +
+  `IonmAlertAcknowledged`) exposes the UNION of every contributing type's
+  own fields/masking rules/Read claims, not one type's schema alone.
+- **`AccessLogEntry` (`ADR-045`)** written on every call — `ViewAccessed`
+  is `"Authoritative"` or `"Live"` (`AccessLogEntry`'s own documented
+  values) depending on which one actually answered, `ResourceRef` is the
+  full `EntityId`, `Action` is `"read"`.
+- **Nonexistent entity returns `null`**, never a GraphQL error — the same
+  tolerant-read posture every other query surface in this contract
+  already uses.
+- **Not built**: `extensions: JSON` (the `ADR-022` overflow-bag field
+  `ADR-037`'s own Consequences once described as generic) — no caller has
+  needed the overflow bag through this surface yet, a narrower scope than
+  the query itself, not silently dropped.
+
 ## Registry listing — GraphQL query field (`ADR-037`)
 
 ```graphql
