@@ -550,3 +550,25 @@ here instead of inlining.
   real BenchmarkDotNet coverage of the hash chain/conflict resolution
   paths this ADR names, or correct both docs from "adopted" to
   "decided, not yet built."
+
+- **`client-web`'s `typescript` and `jsdom` devDependencies are
+  deliberately held back one major version each, not yet at "latest."**
+  Found while updating every dependency this session (commit `6716c27`):
+  `typescript` is capped at `6.0.3`, not the current `7.0.2` — that's
+  TypeScript's new native (non-JS) compiler rewrite, and `vue-tsc`'s
+  current release reaches into a `typescript/lib/tsc` subpath that
+  `7.x`'s restructured package no longer exports, breaking type-checking
+  outright (`vue-tsc -b` throws `ERR_PACKAGE_PATH_NOT_EXPORTED`,
+  confirmed directly). `jsdom` is capped at `25.0.1`, not the current
+  `30.0.1` — `client-web/src/deviceInput/NativeBridgeInputSource.spec.ts`'s
+  real (non-mocked) `WebSocket` round-trip test fails with `TypeError:
+  The "event" argument must be an instance of Event. Received an
+  instance of Event`, a cross-realm identity mismatch between Node's
+  global `WebSocket` (undici) and jsdom's own `Event` class that `30.x`'s
+  internal changes introduced. Revisit both: `npm outdated` in
+  `client-web/` will show them again once either upstream issue is
+  fixed (a new `vue-tsc` release supporting TS 7's native compiler; a
+  jsdom release restoring cross-realm `Event`/`WebSocket` compatibility,
+  or Node/undici accepting jsdom's `Event` instances again) — bump then,
+  not before, and re-run the full `vitest`/`vue-tsc -b`/build sequence
+  again before trusting either bump.
