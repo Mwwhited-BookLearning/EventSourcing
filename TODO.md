@@ -506,37 +506,6 @@ here instead of inlining.
   paths this ADR names, or correct both docs from "adopted" to
   "decided, not yet built."
 
-- **A second, fully independent design-compliance re-audit (2026-08-12,
-  9 parallel agents across all 94 ADRs) found 12 further gaps the
-  original audit above missed**, each verified directly against current
-  code, not assumed from the first pass. 4 are already resolved (`ADR-002`'s
-  `SpecEndpoints:Enabled` gate — built directly, `SpecGenerationEndpoints.cs`
-  + `AuthSqliteTests.SpecEndpointsCanBeDisabledViaConfig`; `ADR-022`'s
-  `Optional<T>` mechanism description, `ADR-026`'s docker-compose/06-
-  solution-structure 3-image disagreement, `ADR-075`'s missing correction
-  note re: `ADR-082` — all three doc-only; `ADR-002` built directly) —
-  see `docs/changes/2026-08-12.md`. `ADR-009`'s `revealOnDemand` half is
-  now also built directly (`PayloadMasker.MaskLeafAsync` computes a
-  display mask via `PartialRevealMaskingStrategy` against the field's own
-  `revealOnDemand` sub-object when a claim holder would otherwise see the
-  real value; `MaskingSchemaValidator` validates its shape structurally;
-  new test `ARevealOnDemandFieldStaysDisplayMaskedForAClaimHolder
-  UntilRevealFieldIsCalled` across all 3 providers) — genuinely low-risk
-  once actually read closely: the ADR's own text already says the
-  *general* (non-`revealOnDemand`) masking wrapper is unchanged, so this
-  only ever changes behavior for a field that opts in, and zero fields
-  in this codebase did before this fix. **The remaining 7 are now all
-  resolved by narrowing (2026-08-12)** — each got an honest, additive
-  "Corrected, 2026-08-12" note on the ADR itself rather than a build:
-  `ADR-036`'s self-attestation issuance mechanism, `ADR-043`'s
-  `accessGrant`/`accessGrantRevoked` event trail, `ADR-048`'s peer-sync
-  half (still shared-DevIdp, not SPIFFE-mTLS), `ADR-055`'s Moq adoption,
-  `ADR-057`'s third overclaim location (`docs/extensibility-points.md`,
-  fixed directly), `ADR-065`'s proactive scope-exit eviction, and
-  `ADR-080`'s NuGet-signing/npm-provenance half — each ADR file now
-  states plainly what's actually built vs. what the Decision originally
-  overclaimed. See `docs/changes/2026-08-12.md`.
-
 - **`client-web`'s `typescript` and `jsdom` devDependencies are
   deliberately held back one major version each, not yet at "latest."**
   Found while updating every dependency this session (commit `6716c27`):
