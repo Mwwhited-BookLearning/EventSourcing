@@ -88,7 +88,7 @@ Decision:
   with no identity claim attached"), not via `AttestedActorId`/
   `AttestedClaims` (`ADR-042`'s IDENTITY-claim trigger, used instead
   only when a device presents a REAL self-attested identity) — see
-  `client-web/src/deviceInput/deviceReadingOutbox.ts`.
+  `client-web/packages/mvvm-client/src/deviceInput/deviceReadingOutbox.ts`.
 
 Consequences:
 - `docs/extensibility-points.md` gains the `IDeviceInputSource` row.

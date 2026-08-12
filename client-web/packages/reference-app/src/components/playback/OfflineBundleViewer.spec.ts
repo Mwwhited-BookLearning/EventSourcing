@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
 import OfflineBundleViewer from './OfflineBundleViewer.vue'
-import { computeManifestHash } from '../../playback/verifyBundle'
+import { computeManifestHash } from '@eventstore/mvvm-client'
 
 // crypto.subtle.digest resolves via a macrotask, not a plain microtask --
 // flushPromises() alone (a microtask-queue drain) doesn't wait long enough

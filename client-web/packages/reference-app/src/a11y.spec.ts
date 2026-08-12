@@ -4,7 +4,7 @@ import axe from 'axe-core'
 import GenericFallbackView from './components/entity/GenericFallbackView.vue'
 import TemplateRenderer from './components/entity/TemplateRenderer.vue'
 import FlagRow from './components/entity/FlagRow.vue'
-import type { ClientEntityCacheEntry } from './types'
+import type { ClientEntityCacheEntry } from '@eventstore/mvvm-client'
 
 // ADR-073 -- WCAG 2.1 AA baseline for every screen this client renders.
 // axe-core runs the real, published ruleset against the ACTUALLY

@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { mount } from '@vue/test-utils'
 import GenericFallbackView from './GenericFallbackView.vue'
 import FlagRow from './FlagRow.vue'
-import type { ClientEntityCacheEntry } from '../../types'
+import type { ClientEntityCacheEntry } from '@eventstore/mvvm-client'
 
 function makeEntry(overrides: Partial<ClientEntityCacheEntry> = {}): ClientEntityCacheEntry {
   return {

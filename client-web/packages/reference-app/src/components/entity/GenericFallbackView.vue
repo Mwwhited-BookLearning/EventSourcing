@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import type { ClientEntityCacheEntry } from '../../types'
+import type { ClientEntityCacheEntry } from '@eventstore/mvvm-client'
 import FlagRow from './FlagRow.vue'
 
 // ADR-039's own required fallback: "no view definition for an entity

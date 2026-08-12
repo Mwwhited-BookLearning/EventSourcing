@@ -3713,7 +3713,7 @@ VCR-style control, calling `playbackAsOf`) and `OfflineBundleViewer.vue`
 (the verification-result + event-list screen, reading either a
 downloaded bundle or the offline build's embedded one) — one shared
 component pair mounted from two entry points, per `ADR-068 §3`.
-`client-web/src/playback/verifyBundle.ts` recomputes the manifest hash
+`client-web/packages/mvvm-client/src/playback/verifyBundle.ts` recomputes the manifest hash
 (cross-checked this session against a real C# `ManifestHash.Compute`
 run, including the `DateTimeOffset`-fractional-second-trimming edge case
 `System.Text.Json` applies) and counts masked/erased fields — see
@@ -3890,7 +3890,7 @@ principle.
 (`useEntityViewActions.flush()`, called by `GenericFallbackView`'s
 "Retry sync" button since item 21) — genuinely nothing new needed for
 the ordinary case. The **air-gapped sneakernet** half is new:
-`client-web/src/outbox/{bundle,exportImport}.ts` reuse `ADR-068`'s
+`client-web/packages/mvvm-client/src/outbox/{bundle,exportImport}.ts` reuse `ADR-068`'s
 NDJSON-plus-manifest SHAPE directly (via `playback/verifyBundle.ts`'s
 own `computeManifestHash`, exported and shared rather than
 duplicated), adapted for a queued *command* rather than a stored
@@ -3986,7 +3986,7 @@ side lets a downstream analysis flag a sample whose claimed wall-clock
 delta diverges sharply from its actual monotonic delta as a suspiciously
 inconsistent wall clock.
 
-**Status: Done.** Built inside `client-web/src/deviceInput/`, not a
+**Status: Done.** Built inside `client-web/packages/mvvm-client/src/deviceInput/`, not a
 separate `EventStore.Client.DeviceInput` project — the four browser
 Hardware APIs only make sense inside an actual browser context, which
 `client-web` already is (loaded in a real tab or, if `EventStore.Client.
@@ -4109,7 +4109,7 @@ fallback view conform to WCAG 2.1 AA — a manual screen-reader pass
 specifically confirms the fallback is fully navigable, not merely
 visually present.
 
-**Status: Done.** `client-web/src/a11y.spec.ts` runs the real,
+**Status: Done.** `client-web/packages/reference-app/src/a11y.spec.ts` runs the real,
 published `axe-core` ruleset (`wcag2a`/`wcag2aa`/`wcag21a`/`wcag21aa`
 tags specifically, matching this ADR's own cited legal baseline, not
 the newer 2.2 tags) against the ACTUALLY rendered DOM of
@@ -4230,11 +4230,11 @@ pre-existing test fixture (`ViewDefinitionScenarioAssertions.cs`) was
 found still hardcoding literal `<div>v1</div>`-style text once this
 check went live, fixed to reference translation keys instead.
 
-Client-side: `client-web/src/i18n/locale.ts` (`resolveLocale`,
-`isRtlLocale`), `client-web/src/i18n/translations.ts`
+Client-side: `client-web/packages/mvvm-client/src/i18n/locale.ts` (`resolveLocale`,
+`isRtlLocale`), `client-web/packages/mvvm-client/src/i18n/translations.ts`
 (`resolveTranslations` + `placeholderTranslations` — en-US/fr-FR/ar-SA,
 domain-owned real content explicitly out of scope per this item's own
-Scope text), `client-web/src/api/localeClient.ts` (`negotiateLocale`,
+Scope text), `client-web/packages/mvvm-client/src/api/localeClient.ts` (`negotiateLocale`,
 reading the server's own negotiated `Content-Language` back rather than
 trusting `navigator.language` directly). `TemplateRenderer.vue` extends
 its existing `{{ field }}` interpolation regex with `{{ t:key }}`
@@ -4633,9 +4633,11 @@ by reading the code back.
 
 **Status: Done** — 2026-08-12, same session, immediately following a full
 independent 94-ADR re-audit that (among other findings) reproduced the
-`mode: Tail` gap concretely for the first time. Built: `client-web/src/
-composables/useEventComposer.ts` + `components/composer/EventComposer.vue`
-(schema-driven form generation, a second `composer-client` identity holding
+`mode: Tail` gap concretely for the first time. Built: `client-web/
+packages/mvvm-client/src/composables/useEventComposer.ts` +
+`client-web/packages/reference-app/src/components/composer/
+EventComposer.vue` (schema-driven form generation, a second
+`composer-client` identity holding
 `registry:admin`+`events:publish`, `EventStore.DevIdp/DevIdpSeeder.cs`);
 `components/entity/EntityBrowser.vue` (a pure new VIEW over the entity
 cache store's own existing per-entityId map — no new server surface);

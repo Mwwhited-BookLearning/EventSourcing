@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import { useEntityCacheStore } from '../../stores/entityCache'
+import { useEntityCacheStore } from '@eventstore/mvvm-client'
 
 // docs/features/mvvm-client.md, "Proving-Ground Application UX" -- no new
 // server surface: mode: REPLAY (useEntityViewActions.ts's own subscribe())

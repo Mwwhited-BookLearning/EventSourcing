@@ -1,22 +1,21 @@
 {
-  "name": "duplex-client-web",
+  "name": "duplex-client-web-workspace",
   "private": true,
   "version": "0.1.0",
   "type": "module",
+  "workspaces": [
+    "packages/*"
+  ],
   "scripts": {
-    "dev": "vite",
-    "dev:vitals": "vite --mode vitals",
-    "dev:meridian": "vite --mode meridian",
-    "build": "vue-tsc -b && vite build",
-    "build:offline-player": "vite build --config vite.offline-player.config.ts",
-    "embed:offline-bundle": "node scripts/embed-bundle.mjs",
-    "bridge:reference": "node native-bridge-reference/server.mjs",
-    "test": "vitest run",
-    "test:watch": "vitest"
-  },
-  "dependencies": {
-    "pinia": "^4.0.2",
-    "vue": "^3.5.41"
+    "dev": "npm run dev --workspace=packages/reference-app",
+    "dev:vitals": "npm run dev:vitals --workspace=packages/reference-app",
+    "dev:meridian": "npm run dev:meridian --workspace=packages/reference-app",
+    "build": "npm run build --workspace=packages/mvvm-client && npm run build --workspace=packages/reference-app",
+    "build:offline-player": "npm run build:offline-player --workspace=packages/reference-app",
+    "embed:offline-bundle": "npm run embed:offline-bundle --workspace=packages/reference-app",
+    "bridge:reference": "npm run bridge:reference --workspace=packages/reference-app",
+    "test": "npm run test --workspaces --if-present",
+    "test:watch": "npm run test:watch --workspace=packages/reference-app"
   },
   "devDependencies": {
     "@types/ws": "^8.18.1",

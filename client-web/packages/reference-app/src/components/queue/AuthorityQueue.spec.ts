@@ -43,7 +43,15 @@ describe('AuthorityQueue', () => {
     // graphqlSubscribe uses its own streaming fetch path -- easier to spy on
     // the module directly here than hand-roll an SSE ReadableStream mock,
     // matching how useEntityViewActions.spec.ts already tests subscribe().
-    const graphqlClientModule = await import('../../api/graphqlClient')
+    // Imported by its own underlying module path, not the package's index
+    // barrel -- Vitest's ESM-export spying needs to mutate the EXACT same
+    // module instance usePendingAuthorityQueue.ts itself imports
+    // graphqlSubscribe from; spying through an `export *` re-export
+    // barrel's own copy of the binding doesn't reliably propagate back to
+    // that original module in every case (found only by running this: the
+    // spy silently never intercepted the real call once this test moved
+    // to a separate package from the composable it's testing).
+    const graphqlClientModule = await import('@eventstore/mvvm-client/src/api/graphqlClient')
     vi.spyOn(graphqlClientModule, 'graphqlSubscribe').mockImplementation((_host, _token, query, onMessage) => {
       if ((query as string).includes('ionmalertraised')) raiserOnMessage = onMessage as typeof raiserOnMessage
       return () => {}

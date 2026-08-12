@@ -664,8 +664,9 @@ the mockup above) or a template-backed `ViewDefinition`'s own markup is
 exempt merely for being a fallback or being content-addressed — both are
 screens a real user reads.
 
-**Implementation note (added once built, 2026-08-11):** `client-web/src/
-a11y.spec.ts` runs the real, published `axe-core` ruleset (`wcag2a`/
+**Implementation note (added once built, 2026-08-11):** `client-web/
+packages/reference-app/src/a11y.spec.ts` runs the real, published
+`axe-core` ruleset (`wcag2a`/
 `wcag2aa`/`wcag21a`/`wcag21aa` tags specifically, matching this ADR's own
 cited legal baseline, not the newer 2.2 tags) against the ACTUALLY
 rendered DOM of `GenericFallbackView` (plain and with an Extensions-
@@ -730,9 +731,9 @@ sequence diagram (above) shows, and to the client generally:
   format's own "small injected binding runtime" style rather than adding
   an HTML-parser dependency; any non-whitespace text left over is a
   hardcoded literal and rejected), and resolved client-side by
-  `client-web/src/components/entity/TemplateRenderer.vue` against
-  `client-web/src/i18n/translations.ts`'s resource map for the locale
-  `client-web/src/api/localeClient.ts` negotiated. An unresolved key
+  `client-web/packages/reference-app/src/components/entity/TemplateRenderer.vue` against
+  `client-web/packages/mvvm-client/src/i18n/translations.ts`'s resource map for the locale
+  `client-web/packages/mvvm-client/src/api/localeClient.ts` negotiated. An unresolved key
   renders visibly as `[key]` rather than silently blanking, matching this
   doc's own "never a blank/failed render" framing for the generic
   fallback.

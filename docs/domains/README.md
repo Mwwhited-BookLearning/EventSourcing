@@ -115,7 +115,7 @@ own token-endpoint middleware intercepts a request before ASP.NET
 Core's CORS middleware runs (fixed via an `IStartupFilter` ordered
 ahead of `AddOpenIddict()`); `eventstore`'s own CORS policy never
 allowed the `DPoP` header; `client-web` had zero DPoP (RFC 9449) support
-anywhere (added, `client-web/src/api/dpop.ts`); `client-web` fetched
+anywhere (added, `client-web/packages/mvvm-client/src/api/dpop.ts`); `client-web` fetched
 tokens from `devIdp`'s HTTPS endpoint while `eventstore`'s trusted
 `Authority` pointed at `devIdp`'s HTTP one — `DevIdp`'s OpenIddict issuer
 is computed per-request, so every token got rejected; and

@@ -1,10 +1,8 @@
 <script setup lang="ts">
 import { computed, onMounted } from 'vue'
-import { useEntityCacheStore } from '../../stores/entityCache'
-import { useViewDefinitionsStore } from '../../stores/viewDefinitions'
+import { useEntityCacheStore, useViewDefinitionsStore, type useEntityViewActions } from '@eventstore/mvvm-client'
 import TemplateRenderer from './TemplateRenderer.vue'
 import GenericFallbackView from './GenericFallbackView.vue'
-import type { useEntityViewActions } from '../../composables/useEntityViewActions'
 
 // docs/features/mvvm-client.md's "rendering a ViewDefinition, with generic
 // fallback" sequence diagram, realized directly: read the cache (offline-

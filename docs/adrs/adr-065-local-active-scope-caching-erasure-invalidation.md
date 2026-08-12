@@ -58,7 +58,7 @@ Decision:
   on some unrelated TTL — the subscription's own filter *is* the
   retention policy.~~ **Corrected, 2026-08-12, found by an independent
   design-compliance audit**: this proactive-eviction half was never
-  built — confirmed directly against `client-web/src/composables/
+  built — confirmed directly against `client-web/packages/mvvm-client/src/composables/
   useEntityViewActions.ts`'s own `subscribeToEntity`, whose comment
   states the real behavior plainly: because `config.scopeFilter` is
   enforced server-side per event, an entity that stops matching "simply

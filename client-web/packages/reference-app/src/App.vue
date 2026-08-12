@@ -1,16 +1,11 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref } from 'vue'
-import { useEntityViewActions, type ClientConfig } from './composables/useEntityViewActions'
-import { useOnlineStatus } from './composables/useOnlineStatus'
-import { useOutboxStore } from './stores/outbox'
-import { useEntityCacheStore } from './stores/entityCache'
-import { useViewDefinitionsStore } from './stores/viewDefinitions'
+import { useEntityViewActions, useOnlineStatus, useOutboxStore, useEntityCacheStore, useViewDefinitionsStore, tokens, type ClientConfig } from '@eventstore/mvvm-client'
 import EntityView from './components/entity/EntityView.vue'
 import EntityBrowser from './components/entity/EntityBrowser.vue'
 import EventComposer from './components/composer/EventComposer.vue'
 import VitalsPiQueue from './components/queue/VitalsPiQueue.vue'
 import MeridianAnalystQueue from './components/queue/MeridianAnalystQueue.vue'
-import { tokens } from './theme/tokens'
 
 // Per-instance launch configuration (ADR-039: "which EntityType/AppId/
 // subscription target an instance follows is per-instance launch

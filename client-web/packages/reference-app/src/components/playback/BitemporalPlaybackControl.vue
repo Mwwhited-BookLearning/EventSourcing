@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref } from 'vue'
-import { playbackAsOf, type PlaybackResult } from '../../api/playbackClient'
+import { playbackAsOf, type PlaybackResult } from '@eventstore/mvvm-client'
 
 // docs/features/lineage-export-and-playback.md, Screen 2 -- VCR-style
 // bitemporal system-time playback, live against the real Gateway. [<]/[>]

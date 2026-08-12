@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { ref, watchEffect } from 'vue'
-import { parseNdjson, type LineageExportBundle } from '../../playback/bundle'
-import { verifyBundle, type BundleVerificationResult } from '../../playback/verifyBundle'
+import { parseNdjson, type LineageExportBundle, verifyBundle, type BundleVerificationResult } from '@eventstore/mvvm-client'
 
 // docs/features/lineage-export-and-playback.md, Screen 3 -- the self-
 // contained offline player's own verification-result screen. Runs

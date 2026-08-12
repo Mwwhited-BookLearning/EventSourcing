@@ -2,8 +2,7 @@ import { describe, expect, it, beforeEach } from 'vitest'
 import { mount } from '@vue/test-utils'
 import { setActivePinia, createPinia } from 'pinia'
 import EntityBrowser from './EntityBrowser.vue'
-import { useEntityCacheStore } from '../../stores/entityCache'
-import { resetDbConnectionForTests } from '../../db/indexedDb'
+import { useEntityCacheStore, resetDbConnectionForTests } from '@eventstore/mvvm-client'
 
 describe('EntityBrowser', () => {
   beforeEach(() => {

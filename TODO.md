@@ -315,21 +315,6 @@ here instead of inlining.
   `docs/features/ticket-exchange.md` and `ADR-040`/`ADR-093` all need a
   follow-up pass once a real mechanism is designed and built.
 
-- **`ADR-062`'s Decision that `client-web` ships as one or more
-  installable npm packages (e.g. `@eventstore/mvvm-client`), with the
-  existing Vue app becoming a reference implementation consuming its
-  own published package, was never built** — `client-web/package.json`
-  is still the one, only app (`"name": "duplex-client-web"`), not split
-  into a library + reference app. Unlike every other unfinished piece in
-  this design, this gap wasn't named anywhere: not in `ADR-062`'s own
-  Consequences, not in build-plan item 39's "Status: Done," not
-  previously here. (The NuGet-packaging half of the same ADR IS
-  genuinely built — `Directory.Build.props`, `EventStore.Abstractions`
-  — this gap is npm-specific.) Found by a design-compliance audit
-  (ADR-058–076 range). Fix: either split `client-web` into a published
-  library + thin reference app, or add an additive note to `ADR-062`
-  narrowing its own claim to the NuGet half only.
-
 - **`ADR-063`'s Decision to adopt FsCheck (property-based tests for the
   hash chain/conflict resolution) and Polly+Simmy (fault-injection tests
   for outbox/inbox crash recovery), "alongside `ADR-055`'s

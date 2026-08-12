@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
-import { useEventComposer, type ComposerFormField, type ComposerRequiredSignature, type EventTypeSummary } from '../../composables/useEventComposer'
+import { useEventComposer, type ComposerFormField, type ComposerRequiredSignature, type EventTypeSummary } from '@eventstore/mvvm-client'
 
 const props = defineProps<{
   hostBaseUrl: string

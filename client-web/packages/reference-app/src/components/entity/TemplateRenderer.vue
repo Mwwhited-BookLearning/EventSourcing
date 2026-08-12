@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import type { ClientEntityCacheEntry } from '../../types'
+import type { ClientEntityCacheEntry } from '@eventstore/mvvm-client'
 import FlagRow from './FlagRow.vue'
-import { isRtlLocale } from '../../i18n/locale'
+import { isRtlLocale } from '@eventstore/mvvm-client'
 
 // ADR-039's "small injected binding runtime" -- raw HTML+JS
 // (`templateContent`), never precompiled, interpreted by this generic

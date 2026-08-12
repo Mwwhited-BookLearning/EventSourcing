@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { onMounted, onUnmounted, reactive, ref } from 'vue'
-import { usePendingAuthorityQueue } from '../../composables/usePendingAuthorityQueue'
+import { usePendingAuthorityQueue } from '@eventstore/mvvm-client'
 
 // "Domain Decision Queues" -- deliberately generic (docs/features/
 // mvvm-client.md's own "never hardcodes a Vitals or Meridian field name"
