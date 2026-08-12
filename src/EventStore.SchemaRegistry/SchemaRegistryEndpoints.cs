@@ -31,7 +31,11 @@ public static class SchemaRegistryEndpoints
             return result switch
             {
                 RegisterEventTypeResult.Success success => Results.Created($"/registry/{eventType}/{success.Version}", new { version = success.Version }),
-                RegisterEventTypeResult.ValidationFailed failed => Results.BadRequest(new { errors = failed.Errors }),
+                RegisterEventTypeResult.ValidationFailed failed => Results.Problem(
+                    type: "https://eventstore.example/problems/event-type-validation-failed",
+                    title: "event type registration failed validation",
+                    statusCode: StatusCodes.Status400BadRequest,
+                    extensions: new Dictionary<string, object?> { ["errors"] = failed.Errors }),
                 _ => Results.Problem(statusCode: 500),
             };
         });

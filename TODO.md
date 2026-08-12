@@ -315,27 +315,6 @@ here instead of inlining.
   `docs/features/ticket-exchange.md` and `ADR-040`/`ADR-093` all need a
   follow-up pass once a real mechanism is designed and built.
 
-- **`ADR-013`'s RFC 9457 Problem Details decision was never actually
-  implemented.** No `AddProblemDetails()`/`UseExceptionHandler`/
-  `UseStatusCodePages` registration exists anywhere in `src/` (confirmed
-  by grep across the whole repo). 16+ endpoint files
-  (`PublishEndpoints.cs`, `SchemaRegistryEndpoints.cs`,
-  `LineageEndpoints.cs`, `StreamingEndpoints.cs`, `RbacEndpoints.cs`,
-  `LineageExportEndpoints.cs`, `DerivationEndpoints.cs`,
-  `InterchangeEndpoints.cs`, and others) return ad hoc anonymous objects
-  (`Results.BadRequest(new { error = "..." })`) instead — exactly the
-  shape this ADR explicitly rejected. `DpopValidationMiddleware.cs`'s own
-  `Results.Problem(...)` call is the one real, correct usage, which only
-  highlights how isolated compliance is. `docs/03-api-contracts.md`
-  still asserts Problem Details is used everywhere — that claim is
-  false against the current code, not just aspirational. Found by a
-  full design-compliance audit (ADR-001–019 range). Fix: either wire
-  `AddProblemDetails()`/`UseExceptionHandler` globally and migrate every
-  ad hoc error response to it, or add an honest additive note to
-  `ADR-013` narrowing its own claim and correct `docs/03-api-contracts.md`
-  to match reality — a real decision the user should make, not a call
-  for a review pass to make silently.
-
 - **`ADR-025`'s Decision (Scalar UI at `/scalar`, a static AsyncAPI UI
   page via `@asyncapi/react-component`) was never built.** No `Scalar`
   package reference anywhere in `src/`, no `/scalar` or `/asyncapi-ui`

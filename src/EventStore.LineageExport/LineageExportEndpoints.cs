@@ -28,7 +28,10 @@ public static class LineageExportEndpoints
         {
             var bundle = store.TryGet(exportId);
             return bundle is null
-                ? Results.NotFound(new { error = "export not found or its retrieval window has expired" })
+                ? Results.Problem(
+                    type: "https://eventstore.example/problems/not-found",
+                    title: "export not found or its retrieval window has expired",
+                    statusCode: StatusCodes.Status404NotFound)
                 : Results.Text(bundle.ToNdjson(), "application/x-ndjson");
         }).RequireAuthorization("events:lineage:read");
 
@@ -49,7 +52,10 @@ public static class LineageExportEndpoints
             }
             catch (FormatException ex)
             {
-                return Results.BadRequest(new { error = $"malformed bundle: {ex.Message}" });
+                return Results.Problem(
+                    type: "https://eventstore.example/problems/malformed-lineage-bundle",
+                    title: $"malformed bundle: {ex.Message}",
+                    statusCode: StatusCodes.Status400BadRequest);
             }
 
             try
@@ -59,7 +65,10 @@ public static class LineageExportEndpoints
             }
             catch (InvalidOperationException ex)
             {
-                return Results.BadRequest(new { error = ex.Message });
+                return Results.Problem(
+                    type: "https://eventstore.example/problems/lineage-import-failed",
+                    title: ex.Message,
+                    statusCode: StatusCodes.Status400BadRequest);
             }
         }).RequireAuthorization("events:publish");
 

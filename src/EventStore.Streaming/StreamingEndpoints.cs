@@ -34,7 +34,11 @@ public static class StreamingEndpoints
             return result switch
             {
                 RegisterChannelResult.Success => Results.Created($"/telemetry/channels/{channelId}", new { channelId }),
-                RegisterChannelResult.ValidationFailed failed => Results.BadRequest(new { errors = failed.Errors }),
+                RegisterChannelResult.ValidationFailed failed => Results.Problem(
+                    type: "https://eventstore.example/problems/channel-validation-failed",
+                    title: "telemetry channel registration failed validation",
+                    statusCode: StatusCodes.Status400BadRequest,
+                    extensions: new Dictionary<string, object?> { ["errors"] = failed.Errors }),
                 _ => Results.Problem(statusCode: 500),
             };
         }).RequireAuthorization("telemetry:ingest");
@@ -51,7 +55,10 @@ public static class StreamingEndpoints
                     lateArrivalCount = accepted.LateArrivalCount,
                 }),
                 IngestSamplesResult.ChannelNotFound => Results.NotFound(),
-                IngestSamplesResult.ValidationFailed failed => Results.BadRequest(new { error = failed.Error }),
+                IngestSamplesResult.ValidationFailed failed => Results.Problem(
+                    type: "https://eventstore.example/problems/sample-validation-failed",
+                    title: failed.Error,
+                    statusCode: StatusCodes.Status400BadRequest),
                 _ => Results.Problem(statusCode: 500),
             };
         }).RequireAuthorization("telemetry:ingest");

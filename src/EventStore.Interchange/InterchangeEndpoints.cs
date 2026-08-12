@@ -45,7 +45,10 @@ public static class InterchangeEndpoints
             }
             catch (InvalidOperationException)
             {
-                return Results.NotFound(new { error = $"no interchange adapter is registered under key '{adapterKey}'" });
+                return Results.Problem(
+                    type: "https://eventstore.example/problems/not-found",
+                    title: $"no interchange adapter is registered under key '{adapterKey}'",
+                    statusCode: StatusCodes.Status404NotFound);
             }
 
             InterchangeInboundResult parsed;
@@ -55,7 +58,10 @@ public static class InterchangeEndpoints
             }
             catch (Exception ex) when (ex is FormatException or NotSupportedException or JsonException)
             {
-                return Results.BadRequest(new { error = ex.Message });
+                return Results.Problem(
+                    type: "https://eventstore.example/problems/malformed-interchange-payload",
+                    title: ex.Message,
+                    statusCode: StatusCodes.Status400BadRequest);
             }
 
             var publishRequest = new PublishEventRequest(appId, 1, parsed.Payload, null, null, ReviewPending: parsed.ReviewPending);

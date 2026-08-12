@@ -37,17 +37,33 @@ public static class PublishEndpoints
                     sequenceNumber = a.SequenceNumber,
                     originId = (string?)null, // ADR-033/090 -- null for this single-site deployment
                 }),
-                PublishResult.Conflict => Results.Conflict(new { error = "eventId already used with different content" }),
-                PublishResult.UnregisteredEventType => Results.NotFound(new { error = $"event type '{eventType}' is not registered" }),
+                // ADR-013 -- RFC 9457 Problem Details, per docs/adrs/adr-013-problem-details.md's own table.
+                PublishResult.Conflict => Results.Problem(
+                    type: "https://eventstore.example/problems/event-id-conflict",
+                    title: "eventId already used with different content",
+                    statusCode: StatusCodes.Status409Conflict,
+                    extensions: new Dictionary<string, object?> { ["eventId"] = request.EventId }),
+                PublishResult.UnregisteredEventType => Results.Problem(
+                    type: "https://eventstore.example/problems/not-found",
+                    title: $"event type '{eventType}' is not registered",
+                    statusCode: StatusCodes.Status404NotFound),
                 PublishResult.Forbidden => Results.Forbid(),
-                PublishResult.UnresolvedParent p => Results.BadRequest(new { error = "parent event not found", missingParentEventIds = p.MissingParentEventIds }),
+                PublishResult.UnresolvedParent p => Results.Problem(
+                    type: "https://eventstore.example/problems/parent-not-found",
+                    title: "One or more parent events do not exist",
+                    detail: "parentEventIds referenced an event that has not been published.",
+                    statusCode: StatusCodes.Status400BadRequest,
+                    extensions: new Dictionary<string, object?> { ["missingParentEventIds"] = p.MissingParentEventIds }),
                 // ADR-066/RFC 9470 -- the challenge itself is plain HTTP
                 // headers (RFC 9470 §5), built here (an HTTP-response
                 // concern) rather than in PublishService. `Results.Forbid()`
                 // above can't carry a custom WWW-Authenticate value, so this
                 // is a hand-built 401 rather than that helper.
                 PublishResult.StepUpRequired su => BuildStepUpChallenge(su, httpContext),
-                PublishResult.MissingSignatureMeaning => Results.BadRequest(new { error = "meaning is required when the target event type has RequiredSignature configured" }),
+                PublishResult.MissingSignatureMeaning => Results.Problem(
+                    type: "https://eventstore.example/problems/missing-signature-meaning",
+                    title: "meaning is required when the target event type has RequiredSignature configured",
+                    statusCode: StatusCodes.Status400BadRequest),
                 _ => Results.Problem(statusCode: 500),
             };
         }).RequireAuthorization("events:publish");
@@ -74,7 +90,10 @@ public static class PublishEndpoints
             }
             catch (JsonException)
             {
-                return Results.BadRequest(new { error = "request body must be a JSON array of batch items" });
+                return Results.Problem(
+                    type: "https://eventstore.example/problems/malformed-batch",
+                    title: "request body must be a JSON array of batch items",
+                    statusCode: StatusCodes.Status400BadRequest);
             }
 
             var results = new List<object>();
@@ -155,9 +174,15 @@ public static class PublishEndpoints
             parameters.Add($"max_age=\"{maxAge}\"");
         httpContext.Response.Headers["WWW-Authenticate"] = $"Bearer {string.Join(", ", parameters)}";
 
-        return Results.Json(
-            new { error = "insufficient_user_authentication", acrValues = stepUp.AcrValues, maxAge = stepUp.MaxAge },
-            statusCode: StatusCodes.Status401Unauthorized);
+        // ADR-013 -- the WWW-Authenticate header above carries RFC 9470's
+        // own challenge parameters; the body is still an ordinary Problem
+        // Details response, just with the same values also surfaced there
+        // for a caller that only inspects the body.
+        return Results.Problem(
+            type: "https://eventstore.example/problems/insufficient-user-authentication",
+            title: "insufficient_user_authentication",
+            statusCode: StatusCodes.Status401Unauthorized,
+            extensions: new Dictionary<string, object?> { ["acrValues"] = stepUp.AcrValues, ["maxAge"] = stepUp.MaxAge });
     }
 
     // The same per-item envelope /publish/{eventType} returns via distinct
