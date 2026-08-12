@@ -260,14 +260,6 @@ here instead of inlining.
   A handful of the findings were CODE-side gaps the docs now correctly
   describe as open, rather than doc bugs to fix; listed here since they
   represent real remaining work, not narrative to restate elsewhere:
-  - **GraphQL browsing of attachments (`entity(id) { attachments {...} } }`)
-    was documented and Gherkin-tested as if built; it isn't** — no
-    `entity(id)` field or `attachments` field exists anywhere in
-    `src/EventStore.GraphQL/`. This was already indirectly explained by
-    item 19's own text (no generic "get current entity" query field
-    exists), but the re-verification item 16's own note promised, once
-    "GraphQL-Only Query Layer" landed, never actually happened until this
-    pass. Docs now state the gap as confirmed, not deferred.
 
 - **`ADR-084`'s readiness-probe Decision — readiness should fail when
   the instance's own primary database is unreachable, while tolerating

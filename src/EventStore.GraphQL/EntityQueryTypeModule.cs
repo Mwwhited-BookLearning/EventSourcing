@@ -69,6 +69,7 @@ public class EntityQueryTypeModule(IServiceScopeFactory scopeFactory) : ITypeMod
                             entityConfig.Fields.Add(field);
             foreach (var field in BuildEntityEnvelopeFields())
                 entityConfig.Fields.Add(field);
+            entityConfig.Fields.Add(BuildAttachmentsField());
 
             var entityGraphType = ObjectType.CreateUnsafe(entityConfig);
             types.Add(entityGraphType);
@@ -158,6 +159,45 @@ public class EntityQueryTypeModule(IServiceScopeFactory scopeFactory) : ITypeMod
         { PureResolver = ctx => ctx.Parent<EntityQueryResult>().LateArrivalFlag };
         yield return new ObjectFieldConfiguration("updatedAt", type: TypeReference.Parse("String"))
         { PureResolver = ctx => ctx.Parent<EntityQueryResult>().UpdatedAt.ToString("O") };
+    }
+
+    // ADR-032's own Decision, verbatim: "entity(id) { attachments {
+    // contentHash, filename, mimeType, sizeBytes } }" -- TODO.md had
+    // flagged this as documented/Gherkin-tested but never built (no
+    // entity(id) field existed at all at the time). Attached to every
+    // dynamically-built entity type below, resolving AttachmentRef rows
+    // linked to THIS entity's own EntityId, joined to Attachment for the
+    // listed fields. A single shared Attachment output type, registered
+    // once in the composition root (GraphQlServiceCollectionExtensions),
+    // not duplicated per entity type the way entityConfig itself is.
+    private static ObjectFieldConfiguration BuildAttachmentsField() =>
+        new("attachments", type: TypeReference.Parse("[Attachment!]!"))
+        {
+            Resolver = async ctx => await ResolveAttachmentsAsync(ctx),
+        };
+
+    private static async ValueTask<object> ResolveAttachmentsAsync(IResolverContext ctx)
+    {
+        var db = ctx.Service<EventStoreContext>();
+        var user = ctx.Service<ClaimsPrincipal>();
+        var entityId = ctx.Parent<EntityQueryResult>().EntityId;
+
+        var linked = await db.AttachmentRefs.AsNoTracking()
+            .Where(r => r.EntityId == entityId)
+            .Join(db.Attachments.AsNoTracking(), r => r.ContentHash, a => a.ContentHash,
+                (r, a) => new { a.ContentHash, a.FileName, a.MimeType, a.SizeBytes, a.RequiredReadClaim })
+            .ToListAsync(ctx.RequestAborted);
+
+        // ADR-032 -- "a direct claim on the attachment always governs if
+        // set," the same check AttachmentEndpoints' own GET enforces for
+        // byte retrieval; here it silently excludes an inaccessible
+        // attachment from the list rather than forbidding the whole
+        // query, since this is a listing of POTENTIALLY many attachments
+        // with independent, per-item claims, not a single-resource read.
+        return linked
+            .Where(a => a.RequiredReadClaim is null || RequiredClaimEvaluator.HasClaim(user, a.RequiredReadClaim))
+            .Select(a => new Attachment(a.ContentHash, a.FileName, a.MimeType, a.SizeBytes))
+            .ToList();
     }
 
     private static object? BuildMasked(JsonObject? payload, EventPayloadProperty property)
@@ -251,6 +291,7 @@ public class EntityQueryTypeModule(IServiceScopeFactory scopeFactory) : ITypeMod
             authoritative is not null ? "Authoritative" : "Live", entityId, "read", ctx.RequestAborted);
 
         return new EntityQueryResult(
+            EntityId: entityId,
             IsAuthoritative: authoritative is not null,
             AuthorityStatus: authoritative?.AuthorityStatus ?? live!.AuthorityStatus,
             Version: authoritative?.Version,
@@ -283,5 +324,5 @@ public class EntityQueryTypeModule(IServiceScopeFactory scopeFactory) : ITypeMod
 }
 
 internal record EntityQueryResult(
-    bool IsAuthoritative, string AuthorityStatus, long? Version, int? SchemaVersion,
+    string EntityId, bool IsAuthoritative, string AuthorityStatus, long? Version, int? SchemaVersion,
     bool LateArrivalFlag, DateTimeOffset UpdatedAt, JsonObject? MaskedData);

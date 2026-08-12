@@ -28,18 +28,20 @@ Retrieval is a plain `GET` against a content-addressed URL, whose
 byte-range support reuses `ADR-031`'s Range-request reasoning (seekable
 retrieval), the same mechanism, not a second implementation.
 
-**Browsing an entity's attachments via GraphQL is designed, not yet
-built.** `ADR-032`'s Decision names it as a nested field off the owning
-entity (`entity(id) { attachments { contentHash, filename, mimeType,
-sizeBytes } } }`), but `08-build-plan.md`'s "GraphQL-Only Query Layer"
-item is explicit that no such field exists in the real schema: there is
-"no generic 'get current entity' query field, and no `extensions: JSON`
-field anywhere" — none of the real GraphQL surfaces this design actually
-built (Follow, Lineage, Registry listing) ever query current Entity Store
-state directly, so there is currently no GraphQL type an `attachments`
-field could attach to. The sequence diagram and Gherkin scenario below
-still show the query this ADR specifies, marked as the confirmed gap it
-is rather than as something callable today.
+**Browsing an entity's attachments via GraphQL — built, later pass.**
+`ADR-032`'s Decision names it as a nested field off the owning entity
+(`entity(id) { attachments { contentHash, filename, mimeType,
+sizeBytes } } }`). At the time this was written, `08-build-plan.md`'s
+"GraphQL-Only Query Layer" item was explicit that no such field existed
+at all — no generic "get current entity" query field, so nothing an
+`attachments` field could attach to. `EntityQueryTypeModule` (built
+separately, resolving a different open question about a generic entity/
+Live-View query) now provides that entity type, per `(AppId,
+EntityType)` rather than one single literal `entity(id)` root field —
+the sequence diagram and Gherkin below are updated to the real,
+per-type field name shape rather than the originally-envisioned generic
+one, though the access shape (a nested `attachments` list off the
+entity's own result) is exactly what this ADR specified.
 
 ## Sequence diagram — uploading and linking an attachment
 
@@ -85,28 +87,28 @@ independent flags — either, both, or (for a second entry) different
 combinations may be set in the same publish call, each producing one
 `AttachmentRef` row.
 
-## Sequence diagram — browsing via GraphQL (designed, not yet built) and retrieving via a Range GET (built)
+## Sequence diagram — browsing via GraphQL (built) and retrieving via a Range GET (built)
 
 ```plantuml
 @startuml BinaryAttachments_Browse_Sequence
 autonumber
 actor "Consuming System" as follower
-participant "GraphQL Gateway\n(NOT YET BUILT for this query --\nno entity(id) field exists, see prose above)" as graphql #line.dashed
+participant "GraphQL Gateway" as graphql
 participant "Attachment API" as attachApi
 database "Attachment & Entity Store" as db
 
-follower -> graphql: QUERY { entity(id: "patient-1") {\n  attachments { contentHash, filename, mimeType, sizeBytes } } }
-graphql -> db: SELECT AttachmentRef JOIN Attachment\nWHERE EntityId = "patient-1"
-db --> graphql: rows (ContentHash, FileName, MimeType, SizeBytes)
-graphql --> follower: 200 { entity: { attachments: [ {contentHash, filename, ...}, ... ] } }
+follower -> graphql: QUERY { entity_myapp_patient(id: "patient-1") {\n  attachments { contentHash, filename, mimeType, sizeBytes } } }
+graphql -> db: SELECT AttachmentRef JOIN Attachment\nWHERE EntityId = "myapp:patient:patient-1"
+db --> graphql: rows (ContentHash, FileName, MimeType, SizeBytes, RequiredReadClaim)
+graphql -> graphql: filter out any row whose RequiredReadClaim\nthe caller doesn't hold (silent exclusion, not Forbidden)
+graphql --> follower: 200 { entity_myapp_patient: { attachments: [ {contentHash, filename, ...}, ... ] } }
 note right of graphql
-  This half is ADR-032's Decision, not the live schema --
-  08-build-plan.md's "GraphQL-Only Query Layer" item states
-  explicitly that no generic "get current entity" query field
-  (and so no attachments field) exists anywhere in the real
-  GraphQL surface. Confirmed against src/EventStore.GraphQL/
-  Query.cs (an empty root) -- a known, confirmed gap, not an
-  oversight in this doc.
+  EntityQueryTypeModule (src/EventStore.GraphQL/EntityQueryTypeModule.cs)
+  -- a per-(AppId, EntityType) dynamically-named field, the same
+  per-type dynamic-schema convention FollowSubscriptionTypeModule
+  already established, not one single literal "entity(id)" root
+  field as originally envisioned. The attachments field itself is
+  the exact nested-list access shape ADR-032's Decision names.
 end note
 
 follower -> attachApi: GET /attachments/{contentHash}\nRange: bytes=0-999
@@ -117,10 +119,10 @@ attachApi --> follower: 206 Partial Content\nContent-Range: bytes 0-999/SizeByte
 ```
 
 There is no virtual folder/file hierarchy of any kind — attachments are
-addressed directly by `ContentHash` (the Decision above), meant to be
-discovered by querying the entity they're linked to, exactly the access
-shape `ADR-032` specifies, once the GraphQL-browse half above actually
-exists. `GET`'s byte-range support is the same `ADR-031` Range-request
+addressed directly by `ContentHash` (the Decision above), discovered by
+querying the entity they're linked to, exactly the access shape
+`ADR-032` specifies and the GraphQL-browse half above now builds.
+`GET`'s byte-range support is the same `ADR-031` Range-request
 mechanism, not a second implementation, and is fully built today.
 
 ## Data model (ER diagram)
@@ -255,20 +257,30 @@ Feature: Binary attachments (content-addressed, linked to an entity or event, br
     And an AttachmentRef should exist with contentHash "h-referral-1", eventId "visit-1", and no entityId
 
   Scenario: Browsing an entity's attachments via GraphQL lists them
-    # NOT YET BUILT -- ADR-032's Decision names this query shape, but
-    # 08-build-plan.md's "GraphQL-Only Query Layer" item confirms no
-    # generic entity(id) field (and so no attachments field) exists in
-    # the real GraphQL schema (src/EventStore.GraphQL/Query.cs is an
-    # empty root). Kept here as the designed scenario, marked as a known,
-    # confirmed gap rather than something callable today.
+    # The real field name is per-(AppId, EntityType), e.g.
+    # entity_myapp_patient(id: ...) -- EntityQueryTypeModule
+    # (src/EventStore.GraphQL/EntityQueryTypeModule.cs), not the single
+    # generic "entity(id)" name originally envisioned when this scenario
+    # was first written; the nested attachments access shape below is
+    # exactly what actually built.
     Given attachment "h-history-1" (named "history.pdf") is linked to entity "patient-1"
     And attachment "h-referral-1" (named "referral.pdf") is linked to entity "patient-1"
     When I QUERY the GraphQL Gateway with:
       """
-      { entity(id: "patient-1") { attachments { contentHash, filename, mimeType, sizeBytes } } }
+      { entity_myapp_patient(id: "patient-1") { attachments { contentHash, filename, mimeType, sizeBytes } } }
       """
     Then the response status should be 200
     And the "attachments" list should include entries with filename "history.pdf" and filename "referral.pdf"
+
+  Scenario: An attachment with a per-item RequiredReadClaim is excluded from the list for a caller who lacks it
+    Given attachment "h-confidential-1" (named "confidential.pdf") is linked to entity "patient-1"
+    And attachment "h-confidential-1" has RequiredReadClaim "clearance:phi"
+    When a caller without claim "clearance:phi" QUERIES the GraphQL Gateway with:
+      """
+      { entity_myapp_patient(id: "patient-1") { attachments { contentHash, filename } } }
+      """
+    Then the response status should be 200
+    And the "attachments" list should NOT include an entry with filename "confidential.pdf"
 
   Scenario: Retrieving an attachment via a byte-range GET returns partial content
     Given attachment "h-history-1" (named "history.pdf", 10000 bytes) is linked to entity "patient-1"

@@ -5,6 +5,7 @@ using System.Net.Http.Json;
 using System.Text;
 using System.Text.Json;
 using EventStore.Domain.SchemaRegistry;
+using EventStore.Domain.Streaming;
 using EventStore.Persistence;
 using EventStore.Persistence.Migrations.Sqlite;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
@@ -249,5 +250,69 @@ public class EntityQueryHttpSqliteTests
         Assert.IsNotNull(entry, "expected an AccessLogEntry for this entity query (ADR-045)");
         Assert.AreEqual("follower-client", entry!.ReaderActorId);
         Assert.AreEqual("Authoritative", entry.ViewAccessed);
+    }
+
+    // ADR-032's own Decision, verbatim: "entity(id) { attachments {
+    // contentHash, filename, mimeType, sizeBytes } }" -- TODO.md had
+    // flagged this as documented/Gherkin-tested but never built.
+    [TestMethod]
+    public async Task EntityAttachmentsAreListedWithPerAttachmentClaimFiltering()
+    {
+        await PublishAsync("WidgetCreated", """{ "WidgetId": "w-attach-1", "Name": "Gizmo", "Secret": "shh4" }""");
+        await Task.Delay(500);
+        var entityId = $"{AppId}:widget:w-attach-1";
+
+        await using (var db = OpenDirectDb())
+        {
+            db.Attachments.Add(new Attachment
+            {
+                ContentHash = "hash-open-1", Bytes = "open"u8.ToArray(), MimeType = "application/pdf",
+                SizeBytes = 4, FileName = "open.pdf", UploadedAt = DateTimeOffset.UtcNow,
+            });
+            db.Attachments.Add(new Attachment
+            {
+                ContentHash = "hash-restricted-1", Bytes = "secret"u8.ToArray(), MimeType = "application/pdf",
+                SizeBytes = 6, FileName = "restricted.pdf", UploadedAt = DateTimeOffset.UtcNow,
+                RequiredReadClaim = "pii:view",
+            });
+            db.AttachmentRefs.Add(new AttachmentRef { ContentHash = "hash-open-1", EntityId = entityId });
+            db.AttachmentRefs.Add(new AttachmentRef { ContentHash = "hash-restricted-1", EntityId = entityId });
+            await db.SaveChangesAsync();
+        }
+
+        const string query = """query { entity_entityquery_demo_1_widget(id: "w-attach-1") { attachments { contentHash filename mimeType sizeBytes } } }""";
+
+        // follower-client holds "pii:view" -- sees both attachments.
+        var withClaim = await ExecuteGraphQlAsync(query, "follower-client", "follower-client-secret", "events:follow");
+        Assert.IsFalse(withClaim.TryGetProperty("errors", out _), withClaim.ToString());
+        var withClaimAttachments = withClaim.GetProperty("data").GetProperty("entity_entityquery_demo_1_widget").GetProperty("attachments");
+        Assert.AreEqual(2, withClaimAttachments.GetArrayLength());
+        var withClaimHashes = withClaimAttachments.EnumerateArray().Select(a => a.GetProperty("contentHash").GetString()).ToHashSet();
+        CollectionAssert.AreEquivalent(new[] { "hash-open-1", "hash-restricted-1" }, withClaimHashes.ToArray());
+
+        // projections-client holds events:follow only, no pii:view -- only the unrestricted attachment.
+        var withoutClaim = await ExecuteGraphQlAsync(query, "projections-client", "projections-client-secret", "events:follow");
+        Assert.IsFalse(withoutClaim.TryGetProperty("errors", out _), withoutClaim.ToString());
+        var withoutClaimAttachments = withoutClaim.GetProperty("data").GetProperty("entity_entityquery_demo_1_widget").GetProperty("attachments");
+        Assert.AreEqual(1, withoutClaimAttachments.GetArrayLength());
+        var onlyAttachment = withoutClaimAttachments[0];
+        Assert.AreEqual("hash-open-1", onlyAttachment.GetProperty("contentHash").GetString());
+        Assert.AreEqual("open.pdf", onlyAttachment.GetProperty("filename").GetString());
+        Assert.AreEqual("application/pdf", onlyAttachment.GetProperty("mimeType").GetString());
+        Assert.AreEqual(4, onlyAttachment.GetProperty("sizeBytes").GetInt64());
+    }
+
+    [TestMethod]
+    public async Task AnEntityWithNoAttachmentsReturnsAnEmptyList()
+    {
+        await PublishAsync("WidgetCreated", """{ "WidgetId": "w-attach-2", "Name": "Sprocket2", "Secret": "shh5" }""");
+        await Task.Delay(500);
+
+        var result = await ExecuteGraphQlAsync(
+            """query { entity_entityquery_demo_1_widget(id: "w-attach-2") { attachments { contentHash } } }""",
+            "follower-client", "follower-client-secret", "events:follow");
+        Assert.IsFalse(result.TryGetProperty("errors", out _), result.ToString());
+        var attachments = result.GetProperty("data").GetProperty("entity_entityquery_demo_1_widget").GetProperty("attachments");
+        Assert.AreEqual(0, attachments.GetArrayLength());
     }
 }
