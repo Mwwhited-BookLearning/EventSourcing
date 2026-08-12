@@ -497,7 +497,12 @@ here instead of inlining.
 - **A second, fully independent design-compliance re-audit (2026-08-12,
   9 parallel agents across all 94 ADRs) found 12 further gaps the
   original audit above missed**, each verified directly against current
-  code, not assumed from the first pass:
+  code, not assumed from the first pass. 3 were pure documentation
+  corrections and are already fixed (`ADR-022`'s `Optional<T>`
+  mechanism description, `ADR-026`'s docker-compose/06-solution-
+  structure 3-image disagreement, `ADR-075`'s missing correction note
+  re: `ADR-082`) — see `docs/changes/2026-08-12.md`. The remaining 9,
+  each needing a real build-or-narrow decision:
   - **`ADR-002`'s `SpecEndpoints:Enabled` config gate ("the actual
     `MapGet`/`MapScalarApiReference` registrations are conditional on
     it") doesn't exist** — `EventStore.SpecGeneration/
@@ -518,23 +523,6 @@ here instead of inlining.
     claim holder, unless explicitly revealed on demand), or narrow
     `ADR-009` to describe only the click-to-reveal mechanism actually
     built.
-  - **`ADR-022`'s described mechanism, `Optional<T>`, doesn't exist as a
-    type anywhere in `src/`** — the three-state (unspecified/null/value)
-    fold semantics it decides ARE correctly implemented, via raw
-    `JsonNode` manipulation in `EntityDataMerger.cs` instead, with the
-    divergence explicitly acknowledged in that code's own comments.
-    Behavior-correct, mechanism-described-wrong — lower priority than
-    the others here. Fix: add an additive note to `ADR-022` describing
-    the actual mechanism.
-  - **`ADR-026`'s Decision, `docker-compose.yml`, and `docs/06-solution-
-    structure.md` disagree on whether a third production image
-    (`EventStore.Projections.Host`) exists.** It doesn't, and
-    structurally can't — that project is a plain class library with no
-    `Program.cs`, can't be built as a container image at all.
-    `docker-compose.yml` defines only `postgres`/`devidp`/`migrate`/
-    `eventstore`. Fix: correct `ADR-026`'s Decision text and `06-
-    solution-structure.md` to describe two production images, not
-    three.
   - **`ADR-036`'s self-attestation issuance mechanism
     (`DelegationChainRef`, a server-initiated token exchange) was never
     built** — honestly narrated as a gap in `docs/08-build-plan.md`'s
@@ -591,14 +579,6 @@ here instead of inlining.
     never proactively purged" as the actual, accepted behavior (the same
     honest framing `ADR-065`'s OWN text already uses elsewhere for this
     exact trade-off — just not consistently, per this finding).
-  - **`ADR-075`'s own text still says its tenant-to-tenant native-schema-
-    mapping residual is "tracked as an open question... not resolved
-    here," but that row no longer exists in `docs/10-open-questions.md`**
-    — `ADR-082` ("Tenant-to-Tenant Federation Mapping") resolved it, but
-    `ADR-075` never got the additive "Corrected, later pass" note this
-    project's own convention calls for. A reader of `ADR-075` alone is
-    told something is open that isn't. Fix: add the correction note to
-    `ADR-075` pointing at `ADR-082`.
   - **`ADR-080`'s build-signing/provenance half (NuGet author signing via
     a registered X.509 certificate, `npm publish --provenance`) has zero
     implementation** — no signing config in any `.csproj`/`Directory.

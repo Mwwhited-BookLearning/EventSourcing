@@ -70,8 +70,16 @@ Decision:
   schema registry (per tenant, by design) — there is no external spec
   to anchor a tenant-to-tenant mapping to, and a bespoke adapter per
   tenant pair doesn't scale past a handful of federation partners.
-  Tracked as an open question (`docs/10-open-questions.md`), not
-  resolved here.
+  ~~Tracked as an open question (`docs/10-open-questions.md`), not
+  resolved here.~~ **Corrected, 2026-08-12, found by an independent
+  design-compliance audit**: this residual was resolved by `ADR-082`
+  ("Tenant-to-Tenant Federation Mapping") — accepted as ordinary
+  `client_credentials` API calls with bespoke-per-pair shape mapping, no
+  new adapter category, the same non-scaling trade-off this paragraph
+  already named as the open question's own concern. The corresponding
+  row no longer exists in `docs/10-open-questions.md` — it was deleted
+  outright per that file's own resolution convention, with `ADR-082`
+  itself standing as the permanent record.
 - **The silo spectrum runs all the way down to a single machine — no new
   mechanism needed for that extreme either.** A "radius zero,"
   origin-authoritative deployment (one standalone install, database on

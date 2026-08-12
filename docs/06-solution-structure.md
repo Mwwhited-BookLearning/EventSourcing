@@ -936,9 +936,14 @@ builder.Build().Run();
 ```
 
 `EventStore.ServiceDefaults` wires the standard Aspire cross-cutting
-concerns into whichever `EventStore.Host.<Provider>` is running (and
-`EventStore.DevIdp`, `EventStore.Projections.Host`) via a single
-`builder.AddServiceDefaults()` call — no lineage/auth logic lives there.
+concerns into whichever `EventStore.Host.<Provider>` is running, and into
+`EventStore.DevIdp`, via a single `builder.AddServiceDefaults()` call — no
+lineage/auth logic lives there. **Corrected, 2026-08-12, found by an
+independent design-compliance audit**: `EventStore.Projections.Host` was
+listed here too, but it's a plain class library with no `Program.cs` — it
+can't call `AddServiceDefaults()` itself, and its real worked-example
+entry point, `Samples.Orders.Projections/Program.cs`, doesn't call it
+either. The Projections pathway has no `ServiceDefaults` wiring today.
 Per `ADR-026`, this is where all three OpenTelemetry signals — logging,
 tracing, metrics — get configured, identically for every service in the
 solution; see `ADR-026` for the full `ConfigureOpenTelemetry` code and
