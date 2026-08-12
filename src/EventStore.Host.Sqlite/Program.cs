@@ -53,7 +53,7 @@ builder.Services.AddScoped<IJsonPathTranslator, SqliteJsonPathTranslator>();
 builder.Services.AddScoped<IFilterableFieldIndexDdlGenerator, SqliteFilterableFieldIndexDdlGenerator>();
 builder.Services.AddScoped<IUniqueConstraintViolationDetector, SqliteUniqueConstraintViolationDetector>();
 builder.Services.AddScoped<IEventLineageQueryProvider, SqliteEventLineageQueryProvider>();
-builder.Services.AddUpcasting();
+builder.Services.AddUpcasting(builder.Configuration);
 builder.Services.AddSchemaRegistry();
 builder.Services.AddFeatureFlags();
 // ADR-095 -- SQLite has no cross-process notification primitive at all;

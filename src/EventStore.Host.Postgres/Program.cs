@@ -52,7 +52,7 @@ builder.Services.AddScoped<IJsonPathTranslator, PostgresJsonPathTranslator>();
 builder.Services.AddScoped<IFilterableFieldIndexDdlGenerator, PostgresFilterableFieldIndexDdlGenerator>();
 builder.Services.AddScoped<IUniqueConstraintViolationDetector, PostgresUniqueConstraintViolationDetector>();
 builder.Services.AddScoped<IEventLineageQueryProvider, PostgresEventLineageQueryProvider>();
-builder.Services.AddUpcasting();
+builder.Services.AddUpcasting(builder.Configuration);
 builder.Services.AddSchemaRegistry();
 builder.Services.AddFeatureFlags();
 // ADR-095 -- Postgres LISTEN/NOTIFY, notify-to-wake/poll-to-confirm on top

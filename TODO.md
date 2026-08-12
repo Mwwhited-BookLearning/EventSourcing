@@ -260,16 +260,6 @@ here instead of inlining.
   A handful of the findings were CODE-side gaps the docs now correctly
   describe as open, rather than doc bugs to fix; listed here since they
   represent real remaining work, not narrative to restate elsewhere:
-  - **`IUpcastExpressionEvaluator`'s CEL/JSONata choice is not actually
-    swappable via configuration**, contradicting `ADR-053`'s "no core-
-    engine change" claim — `src/EventStore.Upcasting/
-    UpcastingServiceCollectionExtensions.cs` hardcodes
-    `AddSingleton<IUpcastExpressionEvaluator, CelUpcastExpressionEvaluator>()`;
-    `JsonataUpcastExpressionEvaluator` exists but is registered nowhere
-    outside a test. Docs now say "a code-level DI edit today, not a
-    deployment-time switch" rather than overclaiming. Build a real
-    config-driven registration switch if this ever needs to be genuinely
-    swappable without a rebuild.
   - **`revealField`'s `ADR-066` step-up-authentication gap did not close
     when "Digital Sign-Off for Regulated Actions" (item 29) landed** —
     item 29 only wired RFC 9470 step-up into publish-time

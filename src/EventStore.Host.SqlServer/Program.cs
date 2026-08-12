@@ -52,7 +52,7 @@ builder.Services.AddScoped<IJsonPathTranslator, SqlServerJsonPathTranslator>();
 builder.Services.AddScoped<IFilterableFieldIndexDdlGenerator, SqlServerFilterableFieldIndexDdlGenerator>();
 builder.Services.AddScoped<IUniqueConstraintViolationDetector, SqlServerUniqueConstraintViolationDetector>();
 builder.Services.AddScoped<IEventLineageQueryProvider, SqlServerEventLineageQueryProvider>();
-builder.Services.AddUpcasting();
+builder.Services.AddUpcasting(builder.Configuration);
 builder.Services.AddSchemaRegistry();
 builder.Services.AddFeatureFlags();
 // ADR-095 -- SQL Server Service Broker, notify-to-wake/poll-to-confirm on
