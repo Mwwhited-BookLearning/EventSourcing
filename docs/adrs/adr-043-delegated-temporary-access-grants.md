@@ -63,14 +63,27 @@ Decision:
   because SQLite (`ADR-001`'s third supported provider) has no native
   RLS feature at all — the same "portable, not provider-native" instinct
   `ADR-004` already applies to JSON storage.
-- **Grant issuance and revocation are ordinary events**, not a new
+- ~~**Grant issuance and revocation are ordinary events**, not a new
   persistence mechanism — an `accessGrant`/`accessGrantRevoked` event
   type, registered and folded like any other, giving delegation the
   same auditable, queryable, never-deleted trail as everything else in
   this design (`README.md`'s governing principle). The event is a record
   that a grant happened; the live authorization check itself still
   happens at UCAN exchange/introspection time (an expired or revoked
-  grant fails there), not by scanning events at query time.
+  grant fails there), not by scanning events at query time.~~
+  **Corrected, 2026-08-12, found by an independent design-compliance
+  audit**: no `accessGrant`/`accessGrantRevoked` event type exists
+  anywhere in `src/` — confirmed directly, zero hits. What's actually
+  built (`EventStore.Ucan/UcanDelegation.Create`) is a self-contained,
+  self-verifying signed JWT with no event-log trail at all: issuance
+  never calls `EventAppender.AppendAsync` or any other write path, and
+  there is no revocation-before-expiry mechanism whatsoever — a grant is
+  valid until its own `exp` claim passes, full stop. This is a real gap
+  against this Decision's own "same auditable, queryable, never-deleted
+  trail as everything else" claim, not a cosmetic one: a delegation
+  today leaves no record in the Event Log that it was ever issued, and
+  cannot be revoked early if a granter changes their mind or a grantee's
+  access needs to be pulled before natural expiry.
 - ~~**Not resolved here, flagged to `docs/10-open-questions.md`**: whether
   every *read* made under a delegated grant should itself be logged as
   an auditable event...~~ **Resolved by `ADR-045`, written directly in

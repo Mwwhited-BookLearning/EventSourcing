@@ -30,7 +30,21 @@ Decision:
   required. This is the specific capability that closes the gap
   `ADR-006`'s single, centrally-issued OAuth2 model can't reach: two
   sites under different administrative control, authenticating each
-  other directly.
+  other directly. **Corrected, 2026-08-12, found by an independent
+  design-compliance audit**: the peer-sync half of this move never
+  happened — confirmed directly, `PeerSyncClient.cs` still authenticates
+  with `grant_type=client_credentials` against shared `DevIdp`, and
+  `PeerSyncEndpoints.cs` still gates `/peer-sync/push` with
+  `RequireAuthorization("peer:sync")` (an ordinary bearer-token scope
+  check, not mTLS/SPIFFE-identity verification) — genuinely additive on
+  top of the existing OAuth2 gate, per `HostCoreExtensions.cs`'s own
+  comment, never a replacement for it. Two sites under genuinely
+  different administrative control still cannot authenticate without
+  both trusting one shared DevIdp — the exact gap this bullet claims to
+  close is, for peer-sync specifically, still open. The Gateway↔internal-
+  service half of this ADR (SPIFFE SVID on `EventStore.Gateway`'s
+  outbound handler, `06-solution-structure.md`) genuinely is built as
+  designed; only this peer-sync bullet overclaimed.
 - **`ADR-006`'s OAuth2/OIDC is unaffected and stays exactly as
   designed** — SPIFFE/SPIRE answers a different question (which
   *workload* is calling) from `ADR-006` (which *user/external client*

@@ -513,73 +513,17 @@ here instead of inlining.
   once actually read closely: the ADR's own text already says the
   *general* (non-`revealOnDemand`) masking wrapper is unchanged, so this
   only ever changes behavior for a field that opts in, and zero fields
-  in this codebase did before this fix. The remaining 7, each needing a
-  real build-or-narrow decision:
-  - **`ADR-036`'s self-attestation issuance mechanism
-    (`DelegationChainRef`, a server-initiated token exchange) was never
-    built** — honestly narrated as a gap in `docs/08-build-plan.md`'s
-    own text already, but never promoted into this file the way every
-    structurally identical "Accepted-ADR-piece-never-built" gap above
-    was. `EventStore.Ucan/UcanValidator.cs` implements a different,
-    correctly-cross-referenced mechanism (`ADR-043`/`044`'s capability
-    delegation) instead. Fix: either build the described issuance flow,
-    or add the same kind of additive note `ADR-025`/`050`/etc. already
-    carry.
-  - **`ADR-043`'s Decision that grant issuance/revocation are ordinary
-    events (`accessGrant`/`accessGrantRevoked`) was never built.** Zero
-    hits for `accessGrant` anywhere in `src/`; `UcanDelegation.Create`
-    never calls `EventAppender.AppendAsync` — delegation is a self-
-    contained signed JWT with no durable event-log trail and no
-    revocation-before-expiry path, contradicting the ADR's own
-    Consequences claim about revocation. Fix: either build the durable
-    grant/revocation event trail, or narrow `ADR-043`'s Consequences to
-    match the JWT-only mechanism actually shipped.
-  - **`ADR-048`'s peer-sync half still requires a shared central
-    IdP — contradicting its own headline claim ("no shared central IdP
-    or root CA required").** `PeerSyncClient.cs` still does
-    `grant_type=client_credentials` against shared DevIdp;
-    `PeerSyncEndpoints.cs` still gates `/peer-sync/push` with
-    `RequireAuthorization("peer:sync")` (bearer-token, not mTLS/SPIFFE-
-    identity) — confirmed deliberately additive, not a replacement, per
-    `HostCoreExtensions.cs`'s own comment. The Gateway↔internal-service
-    half of this ADR genuinely is built as designed; only the peer-sync
-    half drifted. Fix: either build real SPIFFE-identity-based peer
-    authentication (removing the shared-DevIdp dependency for cross-
-    administrative-domain peers), or narrow `ADR-048`'s claim to the
-    Gateway half only.
-  - **`ADR-055`'s Moq adoption (catalogued in `docs/libraries/README.md`/
-    `docs/libraries/dotnet/moq.md` for a never-built `EventStore.
-    UnitTests`) has zero actual usage** — no `.csproj` references it, no
-    `Mock<`/`using Moq` anywhere. Same class as the already-tracked
-    FsCheck/Polly+Simmy gap above, but Moq itself wasn't named there.
-    Fix: fold into that same entry's resolution once `EventStore.
-    UnitTests` is either built or descoped.
-  - **`ADR-057`'s missing-backend overclaim (tracked above) also appears
-    in a third location**: `docs/extensibility-points.md`'s
-    `IErasureKeyStore` row lists Azure Key Vault/AWS KMS/GCP KMS as
-    adopted (and omits HashiCorp Vault, which IS built) — not just the
-    two per-library docs already named. Fix: correct this third location
-    in the same pass as the other two.
-  - **`ADR-065`'s Decision that a local client "purges its local cached
-    copy proactively" the moment an entity falls out of active scope was
-    never implemented** — only the OTHER half (erasure-triggered purge)
-    is built. `client-web/src/composables/useEntityViewActions.ts` has
-    an explicit code comment admitting this; `docs/patterns/pwa-offline-
-    outbox.md` still describes proactive eviction as built behavior.
-    Fix: either build client-side scope-exit eviction, or correct both
-    the ADR's Consequences and the pattern doc to describe "goes stale,
-    never proactively purged" as the actual, accepted behavior (the same
-    honest framing `ADR-065`'s OWN text already uses elsewhere for this
-    exact trade-off — just not consistently, per this finding).
-  - **`ADR-080`'s build-signing/provenance half (NuGet author signing via
-    a registered X.509 certificate, `npm publish --provenance`) has zero
-    implementation** — no signing config in any `.csproj`/`Directory.
-    Build.props`, no publish/release workflow at all (`.github/
-    workflows/` has only `ci.yml`). The scanning half (Dependabot,
-    `dotnet list package --vulnerable`, `npm audit`) genuinely is built.
-    Same "decided, not built" shape as `ADR-062`/`063`/`085` above, but
-    not named anywhere yet. Fix: either build the signing/provenance
-    half, or narrow `ADR-080`'s Consequences to the scanning half only.
+  in this codebase did before this fix. **The remaining 7 are now all
+  resolved by narrowing (2026-08-12)** — each got an honest, additive
+  "Corrected, 2026-08-12" note on the ADR itself rather than a build:
+  `ADR-036`'s self-attestation issuance mechanism, `ADR-043`'s
+  `accessGrant`/`accessGrantRevoked` event trail, `ADR-048`'s peer-sync
+  half (still shared-DevIdp, not SPIFFE-mTLS), `ADR-055`'s Moq adoption,
+  `ADR-057`'s third overclaim location (`docs/extensibility-points.md`,
+  fixed directly), `ADR-065`'s proactive scope-exit eviction, and
+  `ADR-080`'s NuGet-signing/npm-provenance half — each ADR file now
+  states plainly what's actually built vs. what the Decision originally
+  overclaimed. See `docs/changes/2026-08-12.md`.
 
 - **`client-web`'s `typescript` and `jsdom` devDependencies are
   deliberately held back one major version each, not yet at "latest."**

@@ -42,6 +42,19 @@ Decision:
   per direct preference. Swapping to `NSubstitute` later is a mechanical,
   low-cost change if trust becomes a real concern (no assertions/API
   surface this design depends on are `Moq`-specific).
+  **Corrected, 2026-08-12, found by an independent design-compliance
+  audit**: `Moq` has zero actual usage anywhere in this codebase — no
+  `.csproj` references it, no `Mock<`/`using Moq` appears anywhere,
+  confirmed directly. This ADR's own "backend unit tests" layer was never
+  built as its own thing at all: `tests/EventStore.IntegrationTests` is
+  the one test project that exists, and its own style (real
+  `SchemaRegistryService`/`PublishService`/`FollowService` instances
+  against a real database, never a mocked dependency) never needed a
+  mocking library to begin with. Same "decided, not built" shape as the
+  already-tracked `EventStore.UnitTests`/FsCheck/Polly+Simmy gap
+  (`TODO.md`, this ADR's own `ADR-063` escalation) — `Moq` itself just
+  wasn't named there specifically until now. Resolves once `EventStore.
+  UnitTests` is either built for real or that item is formally descoped.
 - **Frontend unit tests: [Vitest](../libraries/web/vitest.md) + [Vue Test Utils](../libraries/web/vue-test-utils.md).** `Vitest` is
   maintained by the Vue/Vite team itself, needs zero additional config
   since `ADR-039`'s client is already Vite-based, and has solidified as
