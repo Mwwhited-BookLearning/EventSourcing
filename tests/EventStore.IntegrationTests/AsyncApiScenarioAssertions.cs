@@ -60,4 +60,23 @@ internal static class AsyncApiScenarioAssertions
         StringAssert.Contains(json, "\"masked\"");
         StringAssert.Contains(json, "\"erased\"");
     }
+
+    // ADR-050 -- the AsyncAPI counterpart to OpenApiScenarioAssertions'
+    // own x-required-claims test: Read-direction only, matching the
+    // Follow (consume) operation's own direction.
+    public static async Task ARegisteredReadDirectionClaimAppearsAsAnXRequiredClaimsExtension(SchemaRegistryService registry, AsyncApiDocumentBuilder specBuilder)
+    {
+        const string appId = "asyncapi-demo-4";
+        await registry.RegisterAsync("ThingamajigFollowed", new RegisterEventTypeRequest(
+            AppId: appId, JsonSchema: """{ "type": "object", "properties": { "Name": { "type": "string" } }, "required": ["Name"] }""",
+            FilterableFields: [], ChangeKind: "Full", EntityIdField: "$.ThingamajigId",
+            ParentValidationMode: null,
+            RequiredClaims: [new RequiredClaimRequest("Read", "scope:thingamajigs:read"), new RequiredClaimRequest("Publish", "scope:thingamajigs:create")],
+            UpcastFromPrevious: null, DowncastToPrevious: null));
+
+        var json = await specBuilder.GetOrBuildJsonAsync();
+        StringAssert.Contains(json, "\"x-required-claims\"");
+        StringAssert.Contains(json, "scope:thingamajigs:read");
+        Assert.IsFalse(json.Contains("scope:thingamajigs:create"), "the Follow operation's own extension must carry only Read-direction claims, never Publish-direction ones");
+    }
 }

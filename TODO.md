@@ -315,18 +315,6 @@ here instead of inlining.
   `docs/features/ticket-exchange.md` and `ADR-040`/`ADR-093` all need a
   follow-up pass once a real mechanism is designed and built.
 
-- **`ADR-050`'s `x-required-claims` JSON Schema extension (the
-  entity-level spec-extension half of that ADR, distinct from
-  `RequiredClaims` itself, which IS genuinely implemented and correctly
-  documented) appears nowhere in code — zero hits for that exact
-  string anywhere in `src/`.** Separately, the ADR's static
-  `[LoggerMessage]`-attribute log-redaction half (as opposed to the
-  dynamic, payload-derived `IRedactorProvider` path, which IS built and
-  tested) also has no real call site anywhere in this codebase. Found
-  by a design-compliance audit (ADR-039–057 range). Fix: either build
-  both halves, or add an additive note to `ADR-050` narrowing its own
-  claim to what actually shipped.
-
 - **`ADR-057`'s Decision names five `IErasureKeyStore` backends
   (Local, HashiCorp Vault, Azure Key Vault, AWS KMS, Google Cloud KMS);
   only `LocalErasureKeyStore` and `HashiCorpVaultErasureKeyStore` exist

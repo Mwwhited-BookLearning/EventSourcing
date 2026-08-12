@@ -14,6 +14,7 @@ using EventStore.Router;
 using EventStore.SchemaRegistry;
 using EventStore.WorkerWakeSignal;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
 namespace EventStore.Inbox;
@@ -39,7 +40,8 @@ public class PublishService(
     PayloadEncryptor? payloadEncryptor = null,
     IOptions<OriginIdOptions>? originIdOptions = null,
     ITimestampAuthorityClient? timestampAuthorityClient = null,
-    IWorkerWakeSignal? wakeSignal = null)
+    IWorkerWakeSignal? wakeSignal = null,
+    ILogger<PublishService>? logger = null)
 {
     // ADR-033 -- defaults every existing 3-arg construction site (every
     // pre-"Sharding & Replication" test file, ~26 of them) to a single-
@@ -78,13 +80,29 @@ public class PublishService(
                 return ReplayOrConflict(existing, ComputeHash(normalizedName, payloadJson, parentEventIds));
         }
 
+        // ADR-064 -- the verified token subject, for EVERY publish, not just
+        // a self-attested one; AccessLogReaderContext.Resolve's own claim
+        // lookup is reused verbatim (same JWT, same claims, same
+        // JwtBearer-vs-TicketAuthenticationHandler "sub" naming quirk its
+        // own comment explains) rather than duplicated a second time. Hoisted
+        // ahead of the claims/step-up checks below (originally computed only
+        // once StoredEvent was built) so a rejection can log WHO was
+        // rejected, not just that a rejection happened.
+        var actorId = AccessLogReaderContext.Resolve(user).ReaderActorId;
+
         // ADR-008/050 -- checked against the ACTIVE version's claims, not the
         // caller's declared schemaVersion (which, under ADR-023, might not
         // even exist as a registered version) -- the same active-version
         // fallback Follow/Lineage's own bare-name read-side checks already use
         // (docs/10-open-questions.md row 1).
         if (!RequiredClaimEvaluator.HasAny(activeDefinition.RequiredClaims, ClaimDirection.Publish, user))
+        {
+            // ADR-050 -- the static log-redaction shape: [ActorIdentity]
+            // on PublishServiceLogMessages.PublishRejected's own actorId
+            // parameter redacts it before this ever reaches a log sink.
+            logger?.PublishRejected(normalizedName, actorId, "missing required claim");
             return new PublishResult.Forbidden();
+        }
 
         // ADR-066 -- RFC 9470 step-up: a signature-required type short-
         // circuits before storage on insufficient authentication strength,
@@ -104,7 +122,10 @@ public class PublishService(
             // so this works the same whether or not that remapping ran.
             acr = user.FindFirst("http://schemas.microsoft.com/claims/authnclassreference")?.Value ?? user.FindFirst("acr")?.Value;
             if (!StepUpSatisfied(user, requiredSignature, acr))
+            {
+                logger?.PublishRejected(normalizedName, actorId, "insufficient step-up authentication");
                 return new PublishResult.StepUpRequired(requiredSignature.AcrValues, requiredSignature.MaxAge);
+            }
             if (string.IsNullOrWhiteSpace(request.Meaning))
                 return new PublishResult.MissingSignatureMeaning();
         }
@@ -140,13 +161,6 @@ public class PublishService(
             request.AttestedActorId is not null || request.AttestedClaims is not null ? "unattested" :
             request.ReviewPending ? "pending_review" :
             "accepted";
-
-        // ADR-064 -- the verified token subject, for EVERY publish, not just
-        // a self-attested one; AccessLogReaderContext.Resolve's own claim
-        // lookup is reused verbatim (same JWT, same claims, same
-        // JwtBearer-vs-TicketAuthenticationHandler "sub" naming quirk its
-        // own comment explains) rather than duplicated a second time.
-        var actorId = AccessLogReaderContext.Resolve(user).ReaderActorId;
 
         var storedEvent = new StoredEvent
         {

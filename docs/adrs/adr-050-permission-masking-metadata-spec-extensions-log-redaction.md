@@ -98,6 +98,44 @@ Consequences:
   discipline/code-review concern once built, not solved by the library
   alone. Stated honestly as a residual risk.
 
+**Implementation note, added 2026-08-12**: a design-compliance audit
+found `x-required-claims` appeared nowhere in `src/` at all — the
+entity-level spec-extension half of this Decision (distinct from
+`RequiredClaims` itself, which was already correctly implemented and
+documented) had simply never been built. Built to match this Decision's
+own text: `OpenApiDocumentBuilder` now attaches an `x-required-claims`
+extension (a plain array of claim strings) to each generated Publish
+operation, filtered to that operation's own `Publish`-direction entries;
+`AsyncApiDocumentBuilder` does the same for each Follow operation,
+filtered to `Read`-direction entries — each operation shows only the
+direction it actually enforces, never leaking the other direction's own
+requirement onto the wrong operation. Absent entirely (not an empty
+array) when a type declares no matching-direction `RequiredClaims`,
+mirroring `x-masking`'s own "present only when it applies" convention.
+
+The static `[LoggerMessage]`-attribute log-redaction half was also
+unbuilt — no real call site anywhere used the documented pattern
+(`Microsoft.Extensions.Telemetry`'s redaction-aware `[LoggerMessage]`
+generator, a `DataClassificationAttribute`-derived attribute). Built as
+`EventStore.Masking.ActorIdentityAttribute` (a real `DataClassification`
+under a new `ActorIdentityTaxonomy`) and a genuine, motivated call site:
+`PublishService.PublishAsync` now logs exactly which actor was rejected
+and why on a `Forbidden`/`StepUpRequired` rejection — a real security
+diagnostic an operator investigating a spike in rejected publishes
+needs — via `PublishServiceLogMessages.PublishRejected`, whose `actorId`
+parameter carries `[ActorIdentity]`. No explicit `Redactor` registered
+for this new classification; it falls back to `ErasingRedactor` by
+default, the same fallback `MaskingServiceCollectionExtensions.AddMasking`'s
+own comment already documents for every unregistered classification
+(including the dynamic sink's own `"MaskingLogRedaction"` one). New
+tests: `ARegisteredPublishDirectionClaimAppearsAsAnXRequiredClaimsExtension`/
+`ARegisteredReadDirectionClaimAppearsAsAnXRequiredClaimsExtension`
+(`OpenApiScenarioAssertions.cs`/`AsyncApiScenarioAssertions.cs`, all
+three providers); `ARejectedPublishLogsWhoWasRejectedWithTheActorIdentityRedacted`
+(`StaticLogRedactionSqliteTests.cs`) — asserts the real actor identity
+genuinely never reaches the captured log output, not just that the code
+compiles.
+
 **Compliance note** (a proving-ground compliance review, this session):
 log redaction is a distinct sink from `ADR-009`'s query/stream masking
 (that ADR's own compliance note covers the response-serialization sink,

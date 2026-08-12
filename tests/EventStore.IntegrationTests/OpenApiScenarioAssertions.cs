@@ -36,4 +36,26 @@ internal static class OpenApiScenarioAssertions
         Assert.AreNotEqual(beforeJson, afterJson, "expected the cached document to be invalidated and rebuilt after registration");
         StringAssert.Contains(afterJson, "/publish/gadgetcreated");
     }
+
+    // ADR-050 -- "x-required-claims at the schema/operation level," this
+    // ADR's own entity-level counterpart to ADR-009's already-emitted
+    // property-level x-masking. Publish-direction only, matching this
+    // operation's own direction (a Read-direction entry on the same type
+    // must NOT leak into the Publish operation's own extension).
+    public static async Task ARegisteredPublishDirectionClaimAppearsAsAnXRequiredClaimsExtension(
+        SchemaRegistryService registry, OpenApiDocumentBuilder specBuilder)
+    {
+        const string appId = "openapi-demo-3";
+        await registry.RegisterAsync("SprocketCreated", new RegisterEventTypeRequest(
+            AppId: appId, JsonSchema: """{ "type": "object", "properties": { "Name": { "type": "string" } }, "required": ["Name"] }""",
+            FilterableFields: [], ChangeKind: "Full", EntityIdField: "$.SprocketId",
+            ParentValidationMode: null,
+            RequiredClaims: [new RequiredClaimRequest("Publish", "scope:sprockets:create"), new RequiredClaimRequest("Read", "scope:sprockets:read")],
+            UpcastFromPrevious: null, DowncastToPrevious: null));
+
+        var json = await specBuilder.GetOrBuildJsonAsync();
+        StringAssert.Contains(json, "\"x-required-claims\"");
+        StringAssert.Contains(json, "scope:sprockets:create");
+        Assert.IsFalse(json.Contains("scope:sprockets:read"), "the Publish operation's own extension must carry only Publish-direction claims, never Read-direction ones");
+    }
 }
