@@ -1,0 +1,32 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="FsCheck" Version="3.3.0" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="10.0.11" />
+    <PackageReference Include="MSTest" Version="4.3.3" />
+    <PackageReference Include="Polly.Contrib.Simmy" Version="0.3.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Using Include="Microsoft.VisualStudio.TestTools.UnitTesting" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\EventStore.Domain\EventStore.Domain.csproj" />
+    <ProjectReference Include="..\..\src\EventStore.Persistence\EventStore.Persistence.csproj" />
+    <ProjectReference Include="..\..\src\EventStore.Persistence.Migrations.Sqlite\EventStore.Persistence.Migrations.Sqlite.csproj" />
+    <ProjectReference Include="..\..\src\EventStore.Replication\EventStore.Replication.csproj" />
+    <ProjectReference Include="..\..\src\EventStore.Router\EventStore.Router.csproj" />
+    <ProjectReference Include="..\..\src\EventStore.SchemaRegistry\EventStore.SchemaRegistry.csproj" />
+    <ProjectReference Include="..\..\src\EventStore.Inbox\EventStore.Inbox.csproj" />
+    <ProjectReference Include="..\..\src\EventStore.Upcasting\EventStore.Upcasting.csproj" />
+  </ItemGroup>
+
+</Project>

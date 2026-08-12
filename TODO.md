@@ -315,26 +315,6 @@ here instead of inlining.
   `docs/features/ticket-exchange.md` and `ADR-040`/`ADR-093` all need a
   follow-up pass once a real mechanism is designed and built.
 
-- **`ADR-063`'s Decision to adopt FsCheck (property-based tests for the
-  hash chain/conflict resolution) and Polly+Simmy (fault-injection tests
-  for outbox/inbox crash recovery), "alongside `ADR-055`'s
-  `EventStore.UnitTests`," was never built.** There is no
-  `EventStore.UnitTests` project at all (only `tests/
-  EventStore.IntegrationTests`, confirmed via `EventStore.slnx`), and no
-  `.csproj` anywhere references `FsCheck`, `Polly`, or `Simmy`.
-  `docs/08-build-plan.md`'s "Cross-cutting, every item" testing section
-  explicitly asserts "both adopted now, cheaply, alongside the existing
-  MSTest suite" — a factual claim not backed by any code in the repo.
-  (`ADR-055`'s own `EventStore.E2ETests`/Playwright gap is a related but
-  separate, already-honestly-tracked absence — `08-build-plan.md` and
-  this file both already say "no browser E2E harness yet"; this item is
-  specifically about the FsCheck/Polly/Simmy half, which wasn't
-  previously tracked as missing.) Found by a design-compliance audit
-  (ADR-058–076 range). Fix: either build `EventStore.UnitTests` with
-  real FsCheck/Polly+Simmy coverage, or correct
-  `docs/08-build-plan.md`'s claim from "adopted" to "decided, not yet
-  built."
-
 - **`ADR-084`'s readiness-probe Decision — readiness should fail when
   the instance's own primary database is unreachable, while tolerating
   peer degradation — is only half-built: the database-reachability half
