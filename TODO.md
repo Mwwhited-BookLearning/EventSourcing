@@ -65,11 +65,63 @@ here instead of inlining.
   criteria by seeding the one test that needs a live Subscription
   directly into the database before the Host starts, proving the dynamic
   schema CONSTRUCTION mechanism itself is correct — the gap is narrowly
-  about hot-registering against an ALREADY-RUNNING Host. Investigate:
-  read HotChocolate's actual `RequestExecutorManager`/type-module-disposal
-  source, or try `IRequestExecutorManager.EvictExecutor(schemaName)`
-  explicitly alongside `TypesChanged` instead of relying on the event
-  alone.
+  about hot-registering against an ALREADY-RUNNING Host.
+  **`IRequestExecutorManager.EvictExecutor(ISchemaDefinition.DefaultName)`
+  tried, this session, and reverted — found unsafe, not merely
+  insufficient.** Calling it alongside `TypesChanged` in
+  `FollowSubscriptionTypeModule.NotifyChanged` DOES close the original
+  gap (confirmed: a type registered after Host warmup became queryable
+  on the very next request, no restart, when tested in isolation). But
+  run alongside this suite's own `[assembly: Parallelize(Scope =
+  ExecutionScope.MethodLevel)]` concurrency, it surfaced a materially
+  worse bug: evicting the cached executor while a DIFFERENT test's
+  Follow subscription is still connected can rebuild the schema mid-
+  flight and cross-deliver an event published under one `AppId` to a
+  subscription's own dynamic, AppId-qualified field for a DIFFERENT
+  `AppId`. A schema rebuild is not safe to trigger while any subscription
+  may be live against the current executor, and nothing in this codebase
+  currently tracks that. **Do not re-attempt `EvictExecutor` without
+  first solving that problem** — read HotChocolate's actual
+  `RequestExecutorManager`/subscription-rebinding source to understand
+  whether it's expected to survive a mid-flight eviction safely (it
+  apparently isn't, as configured/used here), or find a way to defer
+  eviction until no subscriptions are active.
+- **A more serious, separate bug found WHILE investigating the item
+  above: `EventTailReader.TailAsync` (`src/EventStore.Follow.Api/
+  EventTailReader.cs:38-41`) filters Follow/Subscription delivery by
+  `EventType` name ALONE — `db.Events.Where(e => e.EventType ==
+  eventTypeName && ...)` — with no `AppId` filter anywhere in the query
+  or in `TailAsync`'s own parameter list.** Two different `AppId`s
+  registering the same event type name (an explicitly normal,
+  explicitly supported scenario, `ADR-030`) will cross-deliver events to
+  each other's Follow subscribers, even though the GraphQL field itself
+  is `AppId`-qualified (`on_{appId}_{eventType}`) and looks isolated at
+  the schema level. **Reproduced concretely, not theorized**: running
+  `GraphQlHttpSqliteTests` repeatedly (no code changes of mine in
+  effect — this is present on a clean checkout) shows
+  `SubscribingOverRealHttpStreamsAMatchingEventAsSse`
+  (`AppId "graphql-http-demo-5"`) intermittently receiving
+  `LineageQueryWalksParentsOverRealHttpAndRejectsWithoutTheLineageScope`'s
+  own published event (`AppId "graphql-http-demo-2"`, same event type
+  name `"OrderPlaced"`) — about 1 run in 6 in local testing, higher under
+  more concurrent load. **This is a real cross-application data leak
+  within one deployment, not test flakiness** — confirmed against
+  `EventTypeDefinition`'s own primary key, `(AppId, Name, Version)`
+  (`EventStoreContext.cs`): two different `AppId`s registering the
+  identical `Name` is explicitly allowed by the data model, not an edge
+  case this bug happens to hit by accident. `FollowService.
+  ConnectAsync`'s own non-GraphQL Follow path likely has the identical
+  gap (same `TailAsync` call), not checked yet. Compounds further:
+  `TailAsync`'s own schema-version lookups
+  (`SchemaRegistryService.GetActiveDefinitionByNameAsync`/
+  `GetVersionsByNameAsync`, both name-only, no `AppId` parameter) mean a
+  name collision could also resolve upcast/downcast against the WRONG
+  AppId's schema definition, not just deliver the wrong event — a
+  potential shape-corruption path, not only a confidentiality one. Fix:
+  add an `AppId` parameter to `TailAsync` (and the two schema lookups it
+  calls) and filter on it directly — the "are names unique" question is
+  already settled by the data model, in the direction that makes this a
+  real bug, not an open design question to resolve first.
 - **`dotnet test tests/EventStore.IntegrationTests` intermittently fails
   one or two SQL Server test classes per full run, a different class (or
   pair) failing each time** (seen: `DerivationSqlServerTests`, then

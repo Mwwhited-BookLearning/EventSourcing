@@ -75,6 +75,27 @@ public class FollowSubscriptionTypeModule : ITypeModule, ISchemaChangeNotifier
     // this class is expected to implement; the gap is on HotChocolate's own
     // reload-scheduling side, not in whether this fires or reaches a
     // subscriber (both confirmed true by direct debugging).
+    //
+    // TODO.md's own next-suggested-step -- also calling
+    // IRequestExecutorManager.EvictExecutor(ISchemaDefinition.DefaultName)
+    // here -- was tried and reverted, this same session: it DOES close the
+    // gap in isolation (confirmed: a type registered after Host warmup
+    // became queryable on the very next request, no restart), but running
+    // it alongside this class's OTHER, concurrently-executing tests
+    // (MSTestSettings.cs runs every test method in parallel by default)
+    // surfaced a materially worse bug than the one it fixed: evicting the
+    // cached executor while a DIFFERENT test's Follow subscription is
+    // still connected can rebuild the schema mid-flight and cross-deliver
+    // an event published under one AppId to a subscription's own dynamic,
+    // AppId-qualified field for a DIFFERENT AppId (reproduced concretely --
+    // SubscribingOverRealHttpStreamsAMatchingEventAsSse's own
+    // "graphql-http-demo-5"-scoped subscription received
+    // "graphql-http-demo-2"'s own published OrderPlaced payload). A schema
+    // rebuild is not safe to trigger while ANY subscription may be live
+    // against the current executor, and this codebase has no mechanism to
+    // know that. Do not re-add EvictExecutor here without first solving
+    // THAT problem -- it is a materially harder one than "hot-register a
+    // new type."
     public void NotifyChanged() => TypesChanged?.Invoke(this, EventArgs.Empty);
 
     public async ValueTask<IReadOnlyCollection<ITypeSystemMember>> CreateTypesAsync(IDescriptorContext context, CancellationToken cancellationToken)
