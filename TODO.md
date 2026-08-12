@@ -315,19 +315,6 @@ here instead of inlining.
   `docs/features/ticket-exchange.md` and `ADR-040`/`ADR-093` all need a
   follow-up pass once a real mechanism is designed and built.
 
-- **`ADR-057`'s Decision names five `IErasureKeyStore` backends
-  (Local, HashiCorp Vault, Azure Key Vault, AWS KMS, Google Cloud KMS);
-  only `LocalErasureKeyStore` and `HashiCorpVaultErasureKeyStore` exist
-  in `src/EventStore.Erasure`.** `docs/libraries/dotnet/azure-key-vault.md`
-  and its AWS/GCP siblings present those three as adopted, with no
-  corresponding implementation or SDK package reference in
-  `EventStore.Erasure.csproj` — the docs overclaim relative to the
-  actual build. Found by a design-compliance audit (ADR-039–057 range).
-  Fix: either build the three missing backends, or correct
-  `docs/libraries/dotnet/{azure-key-vault,aws-kms,gcp-kms}.md` (whichever
-  filenames apply) from "adopted" to "considered, not yet built,"
-  per `docs/references.md`'s own adopted-vs-rejected discipline.
-
 - **`ADR-062`'s Decision that `client-web` ships as one or more
   installable npm packages (e.g. `@eventstore/mvvm-client`), with the
   existing Vue app becoming a reference implementation consuming its

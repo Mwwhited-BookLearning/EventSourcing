@@ -38,6 +38,22 @@ irreversible key destruction is the concrete mechanism behind an
 `EntityErasureRequested` event's crypto-shredding for a tenant configured
 to use Google Cloud KMS.
 
+**Corrected, 2026-08-12** (`GoogleCloudKmsErasureKeyStore`, built and
+verified against the real SDK): `client.Encrypt(keyName, plaintextBytes)`
+above encrypts the field value directly under the entity's own
+`CryptoKey` — but Cloud KMS's own symmetric `Encrypt` is not
+deterministic (a fresh random IV every call), which would break
+`ADR-011`'s publish-idempotency comparison the same way it would for
+Azure Key Vault/AWS KMS (see those docs' own correction notes). The real
+implementation wraps a LOCAL AES-256 Data-Encryption Key once via this
+same `Encrypt` call (a 32-byte payload, trivially small), then uses
+`EnvelopeAesGcm`'s own deterministic-nonce AES-256-GCM for the actual,
+repeatable field-value encryption. The `CryptoKey` itself must be
+created under a pre-existing `KeyRing` (Cloud KMS `KeyRing`s can never
+be deleted, so this project creates one per DEPLOYMENT, not per entity —
+only the `CryptoKey`s inside it are created per entity and are what
+`DestroyCryptoKeyVersion` actually destroys).
+
 ## Links
 
 - [cloud.google.com/dotnet/docs/reference/Google.Cloud.Kms.V1/latest](https://cloud.google.com/dotnet/docs/reference/Google.Cloud.Kms.V1/latest)
