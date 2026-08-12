@@ -83,6 +83,15 @@ internal static class MaskingSchemaValidator
         // ErasureScopeResolver/EntityIdResolver's identical restricted walker.
         if (masking["erasureScope"]?.GetValue<string>() is { } erasureScope && !JsonPathValidation.IsSafe(erasureScope))
             errors.Add($"x-masking.erasureScope must be a safe JSON-path-like pointer (got: {erasureScope})");
+
+        // ADR-009 -- "reveal-on-demand display masking," an opt-in, per-
+        // field object shaped like PartialRevealMaskingStrategy's own
+        // config (showFirst/showLast/maskChar/preserveSeparators),
+        // independent of whatever `strategy` a non-claim-holder sees.
+        // Structural check only, matching this validator's own existing
+        // depth for `strategy`'s shape (not deeply typed either).
+        if (masking.TryGetPropertyValue("revealOnDemand", out var revealOnDemandNode) && revealOnDemandNode is not null and not JsonObject)
+            errors.Add("x-masking.revealOnDemand must be an object if present");
     }
 
     private static bool IsTypeValueFormat(string claim)

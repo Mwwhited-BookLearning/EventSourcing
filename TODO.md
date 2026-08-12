@@ -502,23 +502,19 @@ here instead of inlining.
   + `AuthSqliteTests.SpecEndpointsCanBeDisabledViaConfig`; `ADR-022`'s
   `Optional<T>` mechanism description, `ADR-026`'s docker-compose/06-
   solution-structure 3-image disagreement, `ADR-075`'s missing correction
-  note re: `ADR-082` — all three doc-only) — see `docs/changes/
-  2026-08-12.md`. The remaining 8, each needing a real build-or-narrow
-  decision:
-  - **`ADR-009`'s `revealOnDemand` half — "a caller who holds
-    `requiredClaim` still never sees the real value in an ordinary
-    query/stream response, only via the explicit `revealField` round
-    trip" — is not implemented at all**, a materially bigger gap than
-    the already-tracked "no step-up auth on `revealField`" entry above
-    (which implicitly assumed this base guarantee existed). Zero hits
-    for `revealOnDemand` anywhere in `src/`;
-    `PayloadMasker.MaskLeafAsync` reveals the real value directly to any
-    claim holder, unconditionally. `docs/08-build-plan.md`'s "Property-
-    Level Masking" item text claims a `displayMask` computation exists
-    that doesn't. Fix: either build the base guarantee (mask even for a
-    claim holder, unless explicitly revealed on demand), or narrow
-    `ADR-009` to describe only the click-to-reveal mechanism actually
-    built.
+  note re: `ADR-082` — all three doc-only; `ADR-002` built directly) —
+  see `docs/changes/2026-08-12.md`. `ADR-009`'s `revealOnDemand` half is
+  now also built directly (`PayloadMasker.MaskLeafAsync` computes a
+  display mask via `PartialRevealMaskingStrategy` against the field's own
+  `revealOnDemand` sub-object when a claim holder would otherwise see the
+  real value; `MaskingSchemaValidator` validates its shape structurally;
+  new test `ARevealOnDemandFieldStaysDisplayMaskedForAClaimHolder
+  UntilRevealFieldIsCalled` across all 3 providers) — genuinely low-risk
+  once actually read closely: the ADR's own text already says the
+  *general* (non-`revealOnDemand`) masking wrapper is unchanged, so this
+  only ever changes behavior for a field that opts in, and zero fields
+  in this codebase did before this fix. The remaining 7, each needing a
+  real build-or-narrow decision:
   - **`ADR-036`'s self-attestation issuance mechanism
     (`DelegationChainRef`, a server-initiated token exchange) was never
     built** — honestly narrated as a gap in `docs/08-build-plan.md`'s

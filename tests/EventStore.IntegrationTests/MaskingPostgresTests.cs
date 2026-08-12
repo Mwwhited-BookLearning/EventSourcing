@@ -56,5 +56,6 @@ public class MaskingPostgresTests
         await MaskingScenarioAssertions.ARequiredNonNullableFieldIsStillMaskableWithNoNullWorkaround(registry, publish, follow);
         await MaskingScenarioAssertions.ALegitimatelyAbsentFieldStaysAbsentNotWrapped(registry, publish, follow);
         await MaskingScenarioAssertions.ScalarArrayWrapsEachElementAndComplexArrayWrapsOnlyTheMaskedPropertyPerElement(registry, publish, follow);
+        await MaskingScenarioAssertions.ARevealOnDemandFieldStaysDisplayMaskedForAClaimHolderUntilRevealFieldIsCalled(registry, publish, follow);
     }
 }
