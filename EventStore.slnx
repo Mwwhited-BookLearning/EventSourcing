@@ -4,6 +4,7 @@
     <Project Path="src/EventStore.Archival/EventStore.Archival.csproj" />
     <Project Path="src/EventStore.AppHost/EventStore.AppHost.csproj" />
     <Project Path="src/EventStore.Attachments/EventStore.Attachments.csproj" />
+    <Project Path="src/EventStore.Benchmarks/EventStore.Benchmarks.csproj" />
     <Project Path="src/EventStore.DevIdp/EventStore.DevIdp.csproj" />
     <Project Path="src/EventStore.Derivation/EventStore.Derivation.csproj" />
     <Project Path="src/EventStore.Domain/EventStore.Domain.csproj" />

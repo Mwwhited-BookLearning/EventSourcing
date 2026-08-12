@@ -332,19 +332,6 @@ here instead of inlining.
   health endpoints should be exposed (behind auth, presumably) outside
   Development.
 
-- **`ADR-085`'s "Adopt now: BenchmarkDotNet" was never built.**
-  `docs/08-build-plan.md`'s "Cross-cutting, every item" section and
-  `docs/libraries/dotnet/benchmarkdotnet.md` (which names a specific
-  project, `EventStore.Benchmarks`, and a runnable `dotnet run` command)
-  both describe it as already wired in — no such project exists, and a
-  full scan of every `.csproj` in the repo shows zero `BenchmarkDotNet`
-  package references. `docs/libraries/dotnet/benchmarkdotnet.md`'s own
-  runnable command would fail today. Found by a design-compliance audit
-  (ADR-077–094 range). Fix: either build `EventStore.Benchmarks` with
-  real BenchmarkDotNet coverage of the hash chain/conflict resolution
-  paths this ADR names, or correct both docs from "adopted" to
-  "decided, not yet built."
-
 - **`client-web`'s `typescript` and `jsdom` devDependencies are
   deliberately held back one major version each, not yet at "latest."**
   Found while updating every dependency this session (commit `6716c27`):

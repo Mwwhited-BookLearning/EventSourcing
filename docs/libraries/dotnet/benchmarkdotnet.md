@@ -21,15 +21,15 @@ measurement problem with no project-specific value in reimplementing.
 public class FoldStepBenchmarks
 {
     [Benchmark(Baseline = true)]
-    public void FoldOrdinaryEvent() => _router.Fold(_acceptedEvent);
+    public JsonObject MergePatch() => EntityDataMerger.MergePatch(_current, _patch);
 
     [Benchmark]
-    public void ComputeChainHash() => HashChain.Compute(_priorHash, _event);
+    public string ComputeChainHash() => EventChainHash.Compute(EventChainHash.Genesis, _payloadHash, 12345L);
 }
 ```
 
 ```
-dotnet run -c Release --project EventStore.Benchmarks
+dotnet run -c Release --project src/EventStore.Benchmarks
 ```
 
 Run against a git ref (a tag, a previous commit's build) to get an
@@ -37,12 +37,18 @@ automatic regression comparison, not just an absolute number.
 
 ## Where this project uses it
 
-`ADR-085` — micro-benchmarks against this design's known hot paths: the
-`Router` fold step, `ADR-019`'s hash-chain computation, and
-`IJsonPathTranslator`'s per-provider filter translation. Adopted now,
-deliberately ahead of any load/soak testing infrastructure, since it
-needs no running deployment to be useful — a relative, not absolute,
-regression check.
+`ADR-085` — `src/EventStore.Benchmarks/FoldStepBenchmarks.cs` benchmarks
+the Router fold step's own pure-merge primitive
+(`EntityDataMerger.MergePatch`) and `ADR-019`'s hash-chain computation
+(`EventChainHash.Compute`); `JsonPathTranslationBenchmarks.cs` benchmarks
+all three `IJsonPathTranslator` implementations' per-provider filter
+translation. `RouterWorker.FoldAsync` itself is `internal` and EF-Core-
+bound (a live `DbContext`, a stored `EventLog` row) — deliberately not
+benchmarked directly, since its cost is dominated by I/O this suite isn't
+measuring; `MergePatch` is the actual CPU-bound hot path inside it.
+Adopted now, deliberately ahead of any load/soak testing infrastructure,
+since it needs no running deployment to be useful — a relative, not
+absolute, regression check.
 
 ## Links
 
