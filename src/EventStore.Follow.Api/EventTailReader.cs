@@ -154,16 +154,16 @@ public class EventTailReader(
         var resolvedParents = await db.Events
             .AsNoTracking()
             .Where(e => parentIds.Contains(e.EventId))
-            .Select(e => new { e.EventId, e.EventType })
+            .Select(e => new { e.EventId, e.AppId, e.EventType })
             .ToListAsync(ct);
-        var eventTypeById = resolvedParents.ToDictionary(e => e.EventId, e => e.EventType);
+        var parentById = resolvedParents.ToDictionary(e => e.EventId, e => (e.AppId, e.EventType));
 
-        var claimsByEventType = await schemaRegistry.GetActiveClaimsByNamesAsync(
-            resolvedParents.Select(e => e.EventType).Distinct().ToList(), ct);
+        var claimsByKey = await schemaRegistry.GetActiveClaimsByAppAndNamesAsync(
+            resolvedParents.Select(e => (e.AppId, e.EventType)).Distinct().ToList(), ct);
 
         return parentIds.Where(id =>
-            !eventTypeById.TryGetValue(id, out var eventType) ||
-            !claimsByEventType.TryGetValue(eventType, out var claims) ||
+            !parentById.TryGetValue(id, out var key) ||
+            !claimsByKey.TryGetValue(key, out var claims) ||
             RequiredClaimEvaluator.HasAny(claims, ClaimDirection.Read, user)
         ).ToList();
     }

@@ -105,21 +105,6 @@ here instead of inlining.
   environment specifically when many `MsSqlContainer`s start back-to-back
   with no other work between them, not a regression to chase per-item.
 
-- **`StoredEvent.AppId` now exists (added by "Entity-Centric Core Rebuild",
-  `ADR-021` — the dedicated fix `docs/10-open-questions.md`'s former row 1
-  named as one resolution path, now closed and deleted), but only
-  `EventStore.Router`'s own schema/entity resolution was rewired to use it
-  directly.** `SchemaRegistryService.GetActiveClaimsByNameAsync`/
-  `GetActiveClaimsByNamesAsync`/`GetActiveChangeKindByNameAsync` (used by
-  Follow's connect-time claim gate, Follow's per-parent visibility check,
-  and Lineage's own claim checks — all bare-`EventType`-name, tie-broken by
-  `AppId` ordering on a genuine collision) could now resolve unambiguously
-  by reading each `StoredEvent.AppId` directly instead, for every call
-  site that already has the `StoredEvent` in hand (Follow/Lineage both
-  do). Not done in the same pass as adding the column — a real, scoped
-  follow-up, not a fresh design question (the fix is already decided: use
-  `StoredEvent.AppId`; only the doing is left across those specific call
-  sites).
 - **`EventStore.AppHost`'s Postgres database resource doesn't reliably
   finish auto-creating before `EventStore.Host.Postgres`'s first
   connection attempt.** `Aspire.Hosting.PostgreSql` 13.4.6's `AddDatabase
@@ -142,23 +127,6 @@ here instead of inlining.
   (OIDC/OpenIddict) + Orchestration" section's own note for the full
   list of *other* real orchestration bugs this same pass found and
   fixed.
-- **`EventUpcastFailed`/`ChannelLagDetectedEventType`/`EntityErasureRequestedEventType`
-  (reserved, platform-owned event types) are NOT excluded from
-  `SchemaRegistryService.ListAsync`'s own per-AppId listing, unlike
-  `SchemaRegisteredEventType` (excluded while building "Control-Plane
-  Actions as Reserved Events," item 30, after `ListingSupportsTopAndSkip
-  Pagination`'s own count assertion broke the moment any AppId's first
-  registration also triggered `SchemaRegistered`'s bootstrap).** The three
-  older reserved types happen not to have surfaced this same bug only
-  because no existing test both (a) registers one of them and (b) asserts
-  an exact count via `ListAsync`/`QUERY /registry` against the SAME AppId
-  — the underlying gap (a caller's own type listing can be silently padded
-  by ANY reserved type that happened to bootstrap under their AppId) is
-  real and pre-existing, just not yet observed. Investigate: either widen
-  `ListAsync`'s exclusion to a real `IsReserved`/`IsPlatformOwned` column
-  on `EventTypeDefinition` (checked at registration time, not a hardcoded
-  name list) or accept the current per-name exclusion approach and add
-  each reserved type's own lowercased name to it explicitly.
 - **`RbacProjectionWorker`'s own live, cross-process Follow subscription
   (item 30, "Control-Plane Actions as Reserved Events") is not exercised
   end-to-end by any test.** `DelegatedGrantsRbacFederationHttpSqliteTests.cs`
@@ -265,23 +233,6 @@ here instead of inlining.
   If this needs closing later: attempt the vitest 4.x upgrade in its own
   isolated pass, run the full client-web test suite before/after to
   isolate any breakage from the version bump itself.
-- **`ADR-076`'s deploy-time migration-bundle-apply step is NOT wired
-  into `docker-compose.yml`** — narrowed, 2026-08-11: `EventStore.AppHost`
-  now DOES apply migrations automatically (a new `EventStore.Migrator`
-  project — a one-shot `Database.MigrateAsync()` runner, added as a real
-  Aspire resource; `eventstore`'s own `.WaitForCompletion(migrator)`
-  guarantees exactly one execution before it starts accepting traffic,
-  verified by actually running `dotnet run` against `EventStore.AppHost`
-  end to end against a real Docker Postgres container, not assumed —
-  `/health` returned 200 only after the migrator resource had already
-  exited). `docker-compose.yml` (the OTHER orchestration path `ADR-076`
-  names) still has no equivalent init step — a human running `docker
-  compose up` against a brand-new database must still run
-  `scripts/generate-migration-bundle.sh`/`apply-migration-bundle.sh` by
-  hand first. Investigate: an init container (or a `depends_on` +
-  healthcheck-gated one-shot service, Compose's own closest equivalent to
-  Aspire's `WaitForCompletion`) running the same bundle-apply script
-  ahead of the `Host` services.
 - **`.github/workflows/ci.yml`/`.github/dependabot.yml` have never
   actually been run by GitHub Actions** (item 39) — this environment has
   no push access to trigger a real run, an explicit, deliberate scope
@@ -319,14 +270,6 @@ here instead of inlining.
     deployment-time switch" rather than overclaiming. Build a real
     config-driven registration switch if this ever needs to be genuinely
     swappable without a rebuild.
-  - **`src/EventStore.SchemaRegistry/RegisterEventTypeRequest.cs`'s own
-    code comment is stale**: it calls the required `AppId` body field
-    "temporary... removed once Auth + Orchestration lands," but both
-    Auth + Orchestration (item 6) and Multi-Tenancy (item 13) have long
-    since shipped and the field is still required, still never resolved
-    from the caller's scope. Update or remove that comment — a small,
-    low-risk fix, just not done this pass since it's source code, not a
-    doc.
   - **`revealField`'s `ADR-066` step-up-authentication gap did not close
     when "Digital Sign-Off for Regulated Actions" (item 29) landed** —
     item 29 only wired RFC 9470 step-up into publish-time

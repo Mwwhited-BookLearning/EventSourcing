@@ -20,7 +20,7 @@ public class LineageService(EventStoreContext db, IEventLineageQueryProvider lin
         if (root is null)
             return LineageRootCheck.NotFound;
 
-        var claims = await schemaRegistry.GetActiveClaimsByNameAsync(root.EventType, ct);
+        var claims = await schemaRegistry.GetActiveClaimsByAppAndNameAsync(root.AppId, root.EventType, ct);
         return RequiredClaimEvaluator.HasAny(claims, ClaimDirection.Read, user) ? LineageRootCheck.Ok : LineageRootCheck.Forbidden;
     }
 
@@ -54,9 +54,10 @@ public class LineageService(EventStoreContext db, IEventLineageQueryProvider lin
             .Where(e => ids.Contains(e.EventId))
             .ToListAsync(ct);
         var lookup = resolvedEvents.ToDictionary(e => e.EventId);
-        var claimsByType = await schemaRegistry.GetActiveClaimsByNamesAsync(resolvedEvents.Select(e => e.EventType).Distinct().ToList(), ct);
+        var claimsByKey = await schemaRegistry.GetActiveClaimsByAppAndNamesAsync(
+            resolvedEvents.Select(e => (e.AppId, e.EventType)).Distinct().ToList(), ct);
 
-        IEnumerable<LineageNode> nodes = ids.Select(id => BuildNode(id, lookup, claimsByType, user));
+        IEnumerable<LineageNode> nodes = ids.Select(id => BuildNode(id, lookup, claimsByKey, user));
 
         if (skip is { } s) nodes = nodes.Skip(s);
         if (top is { } t) nodes = nodes.Take(t);
@@ -99,7 +100,8 @@ public class LineageService(EventStoreContext db, IEventLineageQueryProvider lin
 
         var events = await db.Events.AsNoTracking().Where(e => closureIds.Contains(e.EventId)).ToListAsync(ct);
         var eventById = events.ToDictionary(e => e.EventId);
-        var claimsByType = await schemaRegistry.GetActiveClaimsByNamesAsync(events.Select(e => e.EventType).Distinct().ToList(), ct);
+        var claimsByKey = await schemaRegistry.GetActiveClaimsByAppAndNamesAsync(
+            events.Select(e => (e.AppId, e.EventType)).Distinct().ToList(), ct);
 
         var visited = new HashSet<Guid> { rootEventId };
         var queue = new Queue<Guid>();
@@ -117,7 +119,7 @@ public class LineageService(EventStoreContext db, IEventLineageQueryProvider lin
                 if (!visited.Add(neighborId))
                     continue;
 
-                var node = BuildNode(neighborId, eventById, claimsByType, user);
+                var node = BuildNode(neighborId, eventById, claimsByKey, user);
                 results.Add(node);
 
                 // Dangling (unresolved) nodes have no further closure edges by
@@ -138,13 +140,13 @@ public class LineageService(EventStoreContext db, IEventLineageQueryProvider lin
     private static LineageNode BuildNode(
         Guid id,
         IReadOnlyDictionary<Guid, StoredEvent> eventById,
-        IReadOnlyDictionary<string, IReadOnlyList<RequiredClaim>> claimsByType,
+        IReadOnlyDictionary<(string AppId, string EventType), IReadOnlyList<RequiredClaim>> claimsByKey,
         ClaimsPrincipal user)
     {
         if (!eventById.TryGetValue(id, out var ev))
             return new LineageNode(id, null, null, null, Resolved: false);
 
-        if (claimsByType.TryGetValue(ev.EventType, out var claims) && !RequiredClaimEvaluator.HasAny(claims, ClaimDirection.Read, user))
+        if (claimsByKey.TryGetValue((ev.AppId, ev.EventType), out var claims) && !RequiredClaimEvaluator.HasAny(claims, ClaimDirection.Read, user))
             return new LineageNode(id, null, null, null, Resolved: true, Restricted: true);
 
         return new LineageNode(ev.EventId, ev.EventType, ev.SequenceNumber, ev.OccurredAt, Resolved: true);
