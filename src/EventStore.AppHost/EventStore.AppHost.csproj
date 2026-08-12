@@ -24,6 +24,8 @@
     <ProjectReference Include="..\EventStore.Host.Postgres\EventStore.Host.Postgres.csproj" />
     <ProjectReference Include="..\EventStore.DevIdp\EventStore.DevIdp.csproj" />
     <ProjectReference Include="..\EventStore.Migrator\EventStore.Migrator.csproj" />
+    <ProjectReference Include="..\Samples.Vitals.Seed\Samples.Vitals.Seed.csproj" />
+    <ProjectReference Include="..\Samples.Meridian.Seed\Samples.Meridian.Seed.csproj" />
   </ItemGroup>
 
 </Project>
