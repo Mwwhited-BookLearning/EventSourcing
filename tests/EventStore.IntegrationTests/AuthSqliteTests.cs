@@ -118,5 +118,33 @@ public class AuthSqliteTests
 
         Assert.AreEqual(HttpStatusCode.NotFound, (await disabledClient.GetAsync("/openapi.json")).StatusCode);
         Assert.AreEqual(HttpStatusCode.NotFound, (await disabledClient.GetAsync("/asyncapi.json")).StatusCode);
+        // ADR-025 -- both UI routes are gated by the exact same
+        // SpecEndpoints:Enabled early-return as the raw JSON documents
+        // they render; disabling one disables all four together.
+        Assert.AreEqual(HttpStatusCode.NotFound, (await disabledClient.GetAsync("/scalar")).StatusCode);
+        Assert.AreEqual(HttpStatusCode.NotFound, (await disabledClient.GetAsync("/asyncapi-ui")).StatusCode);
+    }
+
+    // ADR-025 -- both UI routes are pure presentation over the existing
+    // JSON documents; real HTTP is the only way to prove Scalar's own
+    // OpenApiRoutePattern wiring and the static AsyncAPI page actually
+    // come back, not just that the code compiles.
+    [TestMethod]
+    public async Task ScalarUiServesAnHtmlPageAtScalar()
+    {
+        using var response = await _hostClient.GetAsync("/scalar");
+        Assert.AreEqual(HttpStatusCode.OK, response.StatusCode);
+        Assert.AreEqual("text/html", response.Content.Headers.ContentType!.MediaType);
+    }
+
+    [TestMethod]
+    public async Task AsyncApiUiServesTheStandaloneRendererPointedAtAsyncApiJson()
+    {
+        using var response = await _hostClient.GetAsync("/asyncapi-ui");
+        Assert.AreEqual(HttpStatusCode.OK, response.StatusCode);
+        Assert.AreEqual("text/html", response.Content.Headers.ContentType!.MediaType);
+        var html = await response.Content.ReadAsStringAsync();
+        StringAssert.Contains(html, "AsyncApiStandalone.render");
+        StringAssert.Contains(html, "url: '/asyncapi.json'");
     }
 }

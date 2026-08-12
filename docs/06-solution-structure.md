@@ -404,8 +404,18 @@ There's no mature .NET library for this half — a unit test that parses
 each generated `asyncapi.json` back against the published AsyncAPI 3.0
 JSON Schema is the safety net a type system would otherwise provide.
 
-Both endpoints are thin routes mapped by `MapEventStoreCommonEndpoints`
-(`EventStore.Host.Core`, shared by all three provider deployables):
+**Built and verified, 2026-08-12** (previously an unconfirmed sketch,
+`TODO.md`) — real HTTP tests (`ScalarUiServesAnHtmlPageAtScalar`,
+`AsyncApiUiServesTheStandaloneRendererPointedAtAsyncApiJson`,
+`AuthSqliteTests.cs`) confirm both UI routes actually come back. One
+correction from the sketch below: both are mapped by
+`MapSpecGenerationEndpoints` (`EventStore.SpecGeneration`, right
+alongside `/openapi.json`/`/asyncapi.json` themselves, gated by the same
+`SpecEndpoints:Enabled` check), not `MapEventStoreCommonEndpoints`.
+
+Both endpoints are thin routes mapped alongside `/openapi.json`/
+`/asyncapi.json` themselves (`EventStore.SpecGeneration`, one
+registration shared by all three provider deployables):
 
 ```csharp
 app.MapGet("/openapi.json", async (OpenApiDocumentBuilder b) =>

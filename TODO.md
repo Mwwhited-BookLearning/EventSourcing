@@ -315,18 +315,6 @@ here instead of inlining.
   `docs/features/ticket-exchange.md` and `ADR-040`/`ADR-093` all need a
   follow-up pass once a real mechanism is designed and built.
 
-- **`ADR-025`'s Decision (Scalar UI at `/scalar`, a static AsyncAPI UI
-  page via `@asyncapi/react-component`) was never built.** No `Scalar`
-  package reference anywhere in `src/`, no `/scalar` or `/asyncapi-ui`
-  route. `docs/06-solution-structure.md` still shows this only as an
-  unverified code *sketch*, never confirmed built. Not its own
-  build-plan item, and not previously tracked here or in
-  `docs/10-open-questions.md` — an Accepted ADR with no implementation
-  and no acknowledgment of the gap, found by a design-compliance audit.
-  Fix: either build it (add `Scalar.AspNetCore`, map `/scalar`, add the
-  static AsyncAPI viewer page) or add an additive note to `ADR-025`
-  narrowing its claim to "documented, not built."
-
 - **`ADR-050`'s `x-required-claims` JSON Schema extension (the
   entity-level spec-extension half of that ADR, distinct from
   `RequiredClaims` itself, which IS genuinely implemented and correctly

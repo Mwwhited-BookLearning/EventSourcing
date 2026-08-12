@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Scalar.AspNetCore;
 
 namespace EventStore.SpecGeneration;
 
@@ -31,6 +32,22 @@ public static class SpecGenerationEndpoints
 
         app.MapGet("/asyncapi.json", async (AsyncApiDocumentBuilder builder, CancellationToken ct) =>
             Results.Text(await builder.GetOrBuildJsonAsync(ct), "application/json")).AllowAnonymous();
+
+        // ADR-025 -- a pure presentation layer on top of /openapi.json above,
+        // never a second generation path: OpenApiRoutePattern points Scalar
+        // at the SAME on-demand document ADR-002's own OpenApiDocumentBuilder
+        // produces, rather than the built-in Microsoft.AspNetCore.OpenApi
+        // convention (/openapi/{documentName}.json) this project doesn't use.
+        app.MapScalarApiReference(options => options.WithOpenApiRoutePattern("/openapi.json")).AllowAnonymous();
+
+        // ADR-025 -- AsyncAPI has no .NET-native renderer to lean on (unlike
+        // Scalar for OpenAPI); a single static HTML page loading
+        // @asyncapi/react-component from a CDN, pointed at the existing
+        // /asyncapi.json endpoint, is the same "single HTML file" simplicity
+        // Scalar itself uses for non-.NET stacks. Read-only Studio is
+        // deliberately NOT used -- this route browses generated output, it
+        // never hand-authors a spec.
+        app.MapGet("/asyncapi-ui", () => Results.Content(AsyncApiUiPage.Html, "text/html")).AllowAnonymous();
 
         return app;
     }
