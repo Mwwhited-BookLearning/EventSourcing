@@ -122,11 +122,17 @@ resolver -> db: SELECT StoredEvent WHERE EventId = targetEventId
 resolver -> registry: get EventTypeDefinition(target.EventType).RejectionBehavior
 alt RejectionBehavior = Annotate (default)
   resolver -> db: UPDATE target StoredEvent\nSET AuthorityStatus = "rejected",\n    AuthorityDecisionRef = <this event's EventId>
+  resolver -> fold: rebuild this ONE entity from scratch,\nreplaying only its still-"accepted" events
+  fold -> db: UPDATE EntityStoreRow.Data (recomputed), Version, Hash
   note right of resolver
-    Payload untouched. Entity Store Data for this
-    property is unchanged -- a consumer must check
-    AuthorityStatus itself to treat it as untrustworthy
-    (comparisons/authority-rejection-behavior.md).
+    Payload untouched -- only the DERIVED Entity Store
+    cache is recomputed (comparisons/authority-
+    rejection-behavior.md's targeted-rebuild refinement,
+    adopted as the real default 2026-08-12). The Event
+    Log itself is never touched; ConflictFlag/
+    LateArrivalFlag on each replayed event are never
+    reassigned -- they stay a permanent record of what
+    happened at that event's own original processing time.
   end note
 else RejectionBehavior = Compensate
   resolver -> db: UPDATE target StoredEvent\nSET AuthorityStatus = "rejected",\n    AuthorityDecisionRef = <this event's EventId>
@@ -299,8 +305,14 @@ Feature: Non-authoritative capture (AuthorityStatus as a trust axis)
     And the stored event "reading-1" should have AuthorityStatus "accepted"
     And the stored event "reading-1"'s AuthorityDecisionRef should equal the authorityDecision event's EventId
 
-  Scenario: An authorityDecision:rejected event on an Annotate-type event flags the event without touching its Payload
+  # Corrected, 2026-08-12: this scenario's own outcome changed when the
+  # targeted-rebuild refinement (comparisons/authority-rejection-
+  # behavior.md) was adopted as Annotate's real default -- the Entity
+  # Store now excludes a rejected event's contribution instead of
+  # continuing to show it under a flag. See the two scenarios below.
+  Scenario: An authorityDecision:rejected event on an Annotate-type event flags the event, never touches its Payload, and excludes it from a rebuilt Entity Store
     Given a "SensorReading" event "reading-2" was published with body { "SensorId": "sensor-42", "Reading": 99.9 }
+    And "reading-2" is the only event ever published for "sensor-42"
     When I POST to "/publish/authorityDecision" with body:
       """
       { "payload": { "targetEventId": "reading-2", "decision": "rejected", "decidingActorId": "reviewer-1", "reason": "sensor miscalibrated" } }
@@ -308,8 +320,17 @@ Feature: Non-authoritative capture (AuthorityStatus as a trust axis)
     Then the response status should be 202
     And the stored event "reading-2" should have AuthorityStatus "rejected"
     And the stored event "reading-2"'s Payload should be unchanged
-    And the Entity Store row for "sensor-42" should still show Reading 99.9
+    And the Entity Store row for "sensor-42" should no longer exist -- zero accepted contributions survive the rebuild
     And no compensating patch event should be appended
+
+  Scenario: Rejecting the more recent of two accepted readings rebuilds back to the earlier one's data
+    Given a "SensorReading" event "reading-A" was published and accepted with body { "SensorId": "sensor-43", "Reading": 10.0 }
+    And a "SensorReading" event "reading-B" was published and accepted with body { "SensorId": "sensor-43", "Reading": 99.9 }
+    And the Entity Store row for "sensor-43" currently shows Reading 99.9 (Full ChangeKind -- the later accepted event replaced the earlier one's Data)
+    When I POST to "/publish/authorityDecision" rejecting "reading-B"
+    Then "reading-A" should remain AuthorityStatus "accepted", untouched by "reading-B"'s own rejection
+    And the Entity Store row for "sensor-43" should be rebuilt back to Reading 10.0
+    And it should no longer show Reading 99.9
 
   Scenario: An authorityDecision:rejected event on a Compensate-type event triggers a compensating patch (reversal after prior acceptance)
     Given a "ClaimSubmission" event "claim-1" was published with body { "ClaimId": "claim-9", "Amount": 5000 } and AttestedClaims present

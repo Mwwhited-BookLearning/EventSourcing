@@ -50,7 +50,8 @@ public class NonAuthoritativeCapturePostgresTests
         await NonAuthoritativeCaptureScenarioAssertions.AnUnattestedEventReachesTheLiveViewImmediatelyButNotTheAuthoritativeEntityStore(registry, publish, db);
         await NonAuthoritativeCaptureScenarioAssertions.OnceAcceptedTheAuthoritativeEntityStoreCatchesUpToWhatTheLiveViewAlreadyShowed(registry, publish, db);
         await NonAuthoritativeCaptureScenarioAssertions.AuthorityStatusIsIndependentOfSchemaStatus(registry, publish, db);
-        await NonAuthoritativeCaptureScenarioAssertions.AnAuthorityDecisionRejectedEventOnAnAnnotateTypeEventFlagsWithoutTouchingPayload(registry, publish, db);
+        await NonAuthoritativeCaptureScenarioAssertions.AnAuthorityDecisionRejectedEventOnAnAnnotateTypeEventNeverMutatesPayloadAndRebuildsTheEntityStore(registry, publish, db);
+        await NonAuthoritativeCaptureScenarioAssertions.RejectingTheMostRecentOfTwoAcceptedReadingsRebuildsBackToTheEarlierOnesData(registry, publish, db);
         await NonAuthoritativeCaptureScenarioAssertions.AnAuthorityDecisionRejectedEventOnACompensateTypeEventTriggersACompensatingPatch(registry, publish, db);
         await NonAuthoritativeCaptureScenarioAssertions.AuthorityDecisionRefDenormalizesBackToTheDecidingEvent(registry, publish, db);
         await NonAuthoritativeCaptureScenarioAssertions.TwoServersIndependentlyDisagreeingAboutReviewStatusResolvesViaConflictFlag(registry, publish, db);

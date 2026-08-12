@@ -427,4 +427,90 @@ public class RouterWorker(IServiceScopeFactory scopeFactory, ILogger<RouterWorke
 
     private static string ComputeHash(string dataJson) =>
         Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(dataJson))).ToLowerInvariant();
+
+    // "Non-Authoritative Capture", comparisons/authority-rejection-behavior.md's
+    // targeted-rebuild refinement -- adopted as RejectionBehavior.Annotate's
+    // real default (2026-08-12), replacing the prior "leave the Entity Store
+    // exactly as it was" behavior. Called by AuthorityDecisionResolver only
+    // when an already-accepted-and-folded event is reversed to "rejected"
+    // (ADR-042's own narrowing -- an event never accepted has nothing to
+    // rebuild away). Re-folds this ONE entity's entire event history from a
+    // blank slate, including only events whose CURRENT AuthorityStatus is
+    // "accepted" -- re-evaluated fresh here, not the status each event held
+    // at its own original processing time, since that's exactly what may
+    // have just changed. The Event Log itself is never touched (AsNoTracking,
+    // and ConflictFlag/LateArrivalFlag on each source StoredEvent are
+    // deliberately never reassigned here -- they remain the permanent record
+    // of what happened at that event's own original processing time, not
+    // overwritten by a later rebuild's own internal late-arrival bookkeeping,
+    // which is why isLateArrival below is a local, not a field write). Only
+    // the DERIVED Entity Store cache is recomputed -- consistent with
+    // README.md's "never lose or corrupt data": the immutable history is
+    // what makes this replay possible and correct in the first place.
+    internal static async Task RebuildEntityFromAcceptedEventsAsync(
+        EventStoreContext db, SchemaRegistryService schemaRegistry, string entityId, CancellationToken ct)
+    {
+        var events = await db.Events.AsNoTracking()
+            .Where(e => e.EntityId == entityId)
+            .OrderBy(e => e.SequenceNumber)
+            .ToListAsync(ct);
+
+        var row = await db.EntityStore.SingleAsync(r => r.EntityId == entityId, ct);
+        row.Data = "{}";
+        row.Extensions = "{}";
+        row.Version = 0;
+        row.LastAppliedLogicalTime = DateTimeOffset.MinValue;
+
+        var anyAccepted = false;
+        foreach (var storedEvent in events.Where(e => e.AuthorityStatus == "accepted"))
+        {
+            anyAccepted = true;
+            var definition = await schemaRegistry.GetVersionAsync(storedEvent.AppId, storedEvent.EventType, storedEvent.SchemaVersion, ct);
+            if (definition is null)
+                continue; // shouldn't happen -- this event already resolved an EntityId once, under this same version
+
+            var payloadNode = JsonNode.Parse(storedEvent.Payload) as JsonObject ?? new JsonObject();
+            var (known, unknown) = SplitByConformance(JsonNode.Parse(definition.JsonSchema), payloadNode);
+
+            // Same late-arrival guard FoldAsync uses (ADR-029) -- re-evaluated
+            // against THIS replay's own accumulating LastAppliedLogicalTime,
+            // never written back to the source StoredEvent. row.LateArrivalFlag
+            // (unlike the per-event flag) IS a rolled-up field on the row
+            // itself (ADR-029's own comment: "rolled up from contributing
+            // events") -- FoldAsync always reassigns it per fold, so this
+            // rebuild does too, for the same "reflects the most recently
+            // processed contribution" semantics.
+            var isLateArrival = storedEvent.OccurredAt <= row.LastAppliedLogicalTime;
+            row.LateArrivalFlag = isLateArrival;
+            row.LastAppliedSequenceNumber = storedEvent.SequenceNumber;
+            if (isLateArrival)
+                continue;
+
+            var mergedData = definition.ChangeKind == ChangeKind.Full
+                ? (JsonObject)known.DeepClone()
+                : EntityDataMerger.MergePatch(JsonNode.Parse(row.Data), known);
+            var mergedExtensions = EntityDataMerger.MergePatch(JsonNode.Parse(row.Extensions), unknown);
+
+            var newDataJson = mergedData.ToJsonString();
+            if (newDataJson != row.Data)
+                row.Version += 1;
+            row.Data = newDataJson;
+            row.Extensions = mergedExtensions.ToJsonString();
+            row.SchemaVersion = storedEvent.SchemaVersion;
+            row.Hash = ComputeHash(newDataJson);
+            row.LastAppliedLogicalTime = storedEvent.OccurredAt;
+            row.LastAppliedOriginId = storedEvent.OriginId;
+        }
+
+        // Zero surviving contributions -- the entity never existed from the
+        // remaining, trustworthy history's point of view. Removing the row
+        // outright (rather than leaving a hollow "{}" shell) matches ADR-042's
+        // own gate: an entity with no accepted events gets NO authoritative
+        // row at all, the same rule that applies before any event is ever
+        // accepted for the first time.
+        if (!anyAccepted)
+            db.EntityStore.Remove(row);
+        else
+            row.UpdatedAt = DateTimeOffset.UtcNow;
+    }
 }

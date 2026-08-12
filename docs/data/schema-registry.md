@@ -55,7 +55,7 @@ public class RequiredSignature
 
 public enum RejectionBehavior
 {
-    Annotate,   // default — a rejected event stays as originally published, flagged via AuthorityStatus only (ADR-035)
+    Annotate,   // default — flags AuthorityStatus and triggers an immediate targeted rebuild of the Entity Store, excluding this and any other non-"accepted" event (ADR-035, corrected 2026-08-12)
     Compensate  // a rejected event triggers a compensating patch, per-type opt-in where the domain needs it
 }
 

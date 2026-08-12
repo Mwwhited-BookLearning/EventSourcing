@@ -59,15 +59,37 @@ public static class AuthorityDecisionResolver
             // ADR-042's narrowing of the annotate-vs-compensate fork
             // (comparisons/authority-rejection-behavior.md): a rejection of
             // an event that was never accepted has nothing to compensate
-            // for -- it simply never applied. Compensate only matters for
-            // this residual case: already accepted and folded, now reversed.
+            // for -- it simply never applied. Compensate/Annotate's own
+            // rebuild only matter for this residual case: already accepted
+            // and folded, now reversed.
             var declaredDefinition = await schemaRegistry.GetVersionAsync(target.AppId, target.EventType, target.SchemaVersion, ct);
             if (declaredDefinition?.RejectionBehavior == RejectionBehavior.Compensate)
                 await AppendCompensatingPatchAsync(db, target, declaredDefinition, ct);
+            else
+            {
+                // RejectionBehavior.Annotate (the default) -- comparisons/
+                // authority-rejection-behavior.md's targeted-rebuild
+                // refinement, adopted as the real default (2026-08-12): an
+                // immediate single-entity re-fold excluding this (now-
+                // rejected) event and any other non-"accepted" contribution.
+                // The rejected event's own Payload is still never mutated --
+                // only the DERIVED Entity Store cache is recomputed; the
+                // Event Log itself stays exactly as append-only as ever.
+                //
+                // RunOnceAsync's own SaveChangesAsync only runs once, AFTER
+                // every event in this tick's batch is processed -- but the
+                // rebuild below re-queries target's own current AuthorityStatus
+                // straight from the database (AsNoTracking, so it can't see
+                // this DbContext's own not-yet-flushed change tracker), and
+                // would otherwise still see "accepted" and wrongly include
+                // this very event in its own replay. Flushing here first is
+                // the same established pattern AppendCompensatingPatchAsync's
+                // own EventAppender.AppendAsync call already relies on
+                // (mid-batch SaveChangesAsync from inside a per-event reactor).
+                await db.SaveChangesAsync(ct);
+                await RouterWorker.RebuildEntityFromAcceptedEventsAsync(db, schemaRegistry, target.EntityId, ct);
+            }
         }
-        // RejectionBehavior.Annotate (the default): the target's Payload and
-        // the authoritative Entity Store are left exactly as they were --
-        // AuthorityStatus alone is the flag a consumer must check.
     }
 
     private static async Task CatchUpAuthoritativeFoldAsync(EventStoreContext db, SchemaRegistryService schemaRegistry, StoredEvent target, CancellationToken ct)
