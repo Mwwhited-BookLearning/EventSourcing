@@ -2033,11 +2033,65 @@ stale numbers here are worse than none)*
   (`WithParentRelationship`) established for the core engine's own
   resources has nothing to attach to yet, honestly noted in that same
   build-status section — neither sample is a runnable deployable.
-- **Next up**: nothing currently queued. The user's own request queue
-  from this session (doc audit → SLA-branch merge/item 49 → AppHost
-  migrations/client-UI → Aspire dashboard grouping → proving-ground
-  build-out) is now fully worked through. A fresh session resuming here
-  should check with the user for the next task rather than assume one.
+- **Superseded — both proving-ground apps are now also seeded and
+  browsable, per direct follow-up request ("I want to see all the
+  proving ground apps working," "Seeded + browsable in the MVVM
+  client").** `Samples.Vitals.Seed`/`Samples.Meridian.Seed` (new
+  one-shot direct-DB console projects, `ADR-076`'s posture) register
+  each domain's event types + a Detail `ViewDefinition`, then publish
+  the continuity subject/applicant every feature doc already names.
+  Wired into `AppHost.cs` as real resources (`vitalsSeed`/
+  `meridianSeed`, gated after `migrator`, `meridianSeed` also gated
+  after `vitalsSeed` — running them concurrently hit a real Postgres
+  Serializable-isolation conflict) plus two new `client-web` instances
+  (`clientWebVitals`/`clientWebMeridian`) alongside the original
+  generic one. The dashboard-grouping gap the prior bullet above noted
+  ("nothing to attach to yet") is now closed — each seed worker is its
+  own top-level `WithParentRelationship` pool. Getting this actually
+  rendering in a real browser (not curl, not a unit test) surfaced six
+  more real, previously-undiscovered bugs — none specific to Vitals/
+  Meridian, every one would have blocked the *original* generic demo
+  identically: a flaky `GenerateParameterDefault` Postgres password
+  (fixed with a literal); `eventstore`'s https endpoint never binding
+  under Aspire's dynamic port allocation (fixed, and incidentally
+  resolved, by pinning fixed dev ports for every resource — 5000/5001
+  eventstore, 5010/5011 devidp, 5173/5174/5175 the three client-web
+  instances); `DevIdp` having no CORS policy at all, compounded by
+  OpenIddict's own middleware intercepting requests before ASP.NET
+  Core's CORS middleware runs (fixed via an `IStartupFilter` ordered
+  ahead of `AddOpenIddict()`); `eventstore`'s CORS policy never
+  allowing the `DPoP` header; `client-web` having zero RFC 9449 DPoP
+  support anywhere (added, `client-web/src/api/dpop.ts`, wired into
+  every authenticated fetch call); and `client-web` fetching tokens
+  from `devIdp`'s HTTPS endpoint while `eventstore` trusted `devIdp`'s
+  HTTP one — `devIdp`'s OpenIddict issuer is computed per-request, so
+  the mismatch silently rejected every token. A seventh bug in the
+  ViewDefinition path itself: `TranslationKeyValidator` never
+  recognized `{{ field:date }}`/`{{ field:number }}` (a syntax
+  `TemplateRenderer.vue` already supported), so the Vitals `Patient`
+  ViewDefinition was silently failing registration until both seed
+  workers were changed to check `RegisterAsync`'s own result — fixed
+  the validator, and separately fixed `TemplateRenderer.vue` itself
+  (it was passing a masked placeholder like `"REDACTED"` through
+  `new Date(...)`, throwing). Verified with Playwright (Edge via
+  `msedge` channel) plus a raw Node script reproducing the full wire
+  protocol directly, confirming a live-published event renders
+  correctly through the registered template, masked fields included.
+  Full narrative: `docs/changes/2026-08-11.md`'s "Vitals/Meridian seed
+  workers + AppHost wiring" section; `docs/domains/README.md`'s own
+  "Sample application build status" section updated in the same pass.
+  Three commits on `dev/build-framework`: `c34d20f` (seed workers +
+  AppHost wiring), `53d4e5f` (DPoP/CORS/auth-issuer fixes + port
+  pinning + `.env` files), `ad77f00` (ViewDefinition validator +
+  TemplateRenderer fix).
+- **Next up**: the user's own still-pending, separately-queued request
+  from mid-session — "update all dependencies as high as you can"
+  (NuGet packages across every `EventStore.*`/`Samples.*` project, npm
+  packages in `client-web/`) — deliberately deferred until the
+  proving-ground/browser verification above finished, to avoid
+  confounding it with an unrelated change. Not yet started as of this
+  snapshot. A fresh session resuming here should pick this up next
+  unless the user redirects.
 
 ## How to resume cold
 

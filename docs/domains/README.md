@@ -81,14 +81,50 @@ tests), not runnable `EventStore.Host`-style deployables with their own
 `Program.cs` — no feature doc for either domain ever asked for a
 seeding worker or a domain-specific deployable, only that the framework
 demonstrably carry each real workflow end to end, which every scenario
-above actually running proves. This means the AppHost dashboard-grouping
-pattern this session's own earlier `EventStore.Migrator`/`postgres-
-server`/`devidp`/`client-web` work established (`WithParentRelationship`)
-has nothing to attach to here yet — there is no real Aspire resource for
-either proving-ground app to group. If a real seeding worker or
-domain-specific Host ever gets built for either domain, apply that same
-established grouping pattern to it then; nothing about it needs
-rediscovering.
+above actually running proves.
+
+**Superseded, this session, per direct request ("I want to see all the
+proving ground apps working")**: `Samples.Vitals.Seed`/`Samples.
+Meridian.Seed` now exist — one-shot, direct-DB seeding workers (mirroring
+`EventStore.Migrator`'s own `ADR-076` posture) that register each
+domain's event types and a Detail `ViewDefinition`, then publish a
+continuity subject/applicant (Vitals' `S-0091`, Meridian's
+`applicant-1001`) every feature doc above already names. Wired into
+`AppHost.cs` as real Aspire resources — `vitalsSeed`/`meridianSeed`,
+gated after `migrator` (schema must exist first) and, for `meridianSeed`
+specifically, after `vitalsSeed` too (running them concurrently hit a
+real Postgres `Serializable`-isolation conflict, `EventAppender.cs`'s own
+deliberate choice — found by actually running it, not assumed) — plus
+three `client-web` instances (the original generic one, and
+`clientWebVitals`/`clientWebMeridian`, each pre-configured via
+`VITE_APP_ID`/`VITE_ENTITY_TYPE`/`VITE_EVENT_TYPE`/`VITE_ENTITY_ID_FIELD`
+build-time env vars). The AppHost dashboard-grouping pattern this
+session's own earlier `EventStore.Migrator`/`postgres-server`/`devidp`/
+`client-web` work established (`WithParentRelationship`) now DOES apply
+here: `vitalsSeed`/`meridianSeed` are each their own top-level pool, with
+their matching `client-web` instance nested underneath — exactly the
+pattern that paragraph's own prior text anticipated, applied once a real
+resource existed to apply it to.
+
+Getting this working end to end in a real browser (not curl, not a unit
+test) surfaced five more real, previously-undiscovered gaps, none of
+them specific to Vitals/Meridian — every one would have blocked the
+original generic demo identically, they had just never been exercised
+this way before: `DevIdp` had no CORS policy at all, and OpenIddict's
+own token-endpoint middleware intercepts a request before ASP.NET
+Core's CORS middleware runs (fixed via an `IStartupFilter` ordered
+ahead of `AddOpenIddict()`); `eventstore`'s own CORS policy never
+allowed the `DPoP` header; `client-web` had zero DPoP (RFC 9449) support
+anywhere (added, `client-web/src/api/dpop.ts`); `client-web` fetched
+tokens from `devIdp`'s HTTPS endpoint while `eventstore`'s trusted
+`Authority` pointed at `devIdp`'s HTTP one — `DevIdp`'s OpenIddict issuer
+is computed per-request, so every token got rejected; and
+`TranslationKeyValidator` never recognized `{{ field:date }}`/
+`{{ field:number }}`, the ViewDefinition format-modifier syntax
+`TemplateRenderer.vue` itself already supported, silently rejecting any
+template that used it (both seed workers now check `RegisterAsync`'s own
+result and throw instead of continuing past a failure). See
+`docs/changes/2026-08-11.md` for the full account.
 
 | Domain | Workflow | Feature doc(s) | Status |
 |---|---|---|---|
