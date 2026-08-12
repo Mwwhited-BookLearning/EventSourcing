@@ -157,28 +157,6 @@ here instead of inlining.
   environment specifically when many `MsSqlContainer`s start back-to-back
   with no other work between them, not a regression to chase per-item.
 
-- **`EventStore.AppHost`'s Postgres database resource doesn't reliably
-  finish auto-creating before `EventStore.Host.Postgres`'s first
-  connection attempt.** `Aspire.Hosting.PostgreSql` 13.4.6's `AddDatabase
-  ("Postgres")` documents that "the database being created on the
-  Postgres server ... happens automatically as part of the resource
-  lifecycle," but running `aspire run` against a clean checkout
-  (`src/EventStore.AppHost`) repeatedly showed Postgres itself become
-  ready, then a single `FATAL: database "Postgres" does not exist` with
-  no further retry/creation logged, and `EventStore.Host.Postgres` never
-  starts. `WaitFor(db)` on the database resource (already present in
-  `AppHost.cs`) didn't close this gap. Everything else about the Auth
-  item's live-orchestration verification checked out (real token issuance
-  from a live `EventStore.DevIdp`, `.WithDataVolume()` + a stable
-  persisted password surviving restarts, `RequireHttpsMetadata`/
-  `Authority` env-var injection all correct) — this is narrowly about the
-  database resource's own creation timing. Investigate: an explicit
-  `.WithCreationScript(...)`, a longer/explicit health-check retry
-  before the dependent resource's first connection, or filing/checking
-  an upstream Aspire issue. See `docs/08-build-plan.md`'s "Auth
-  (OIDC/OpenIddict) + Orchestration" section's own note for the full
-  list of *other* real orchestration bugs this same pass found and
-  fixed.
 - **`RbacProjectionWorker`'s own live, cross-process Follow subscription
   (item 30, "Control-Plane Actions as Reserved Events") is not exercised
   end-to-end by any test.** `DelegatedGrantsRbacFederationHttpSqliteTests.cs`

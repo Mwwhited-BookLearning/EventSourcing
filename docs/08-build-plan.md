@@ -918,15 +918,28 @@ Aspire's plain-HTTP `Authority` injection, a missing migrate-on-startup
 step, and a stale `EventStore.DevIdp/Properties/launchSettings.json`
 whose hardcoded port Aspire's own endpoint-reference resolution used in
 place of the real dynamically-assigned one) — each fixed and confirmed
-individually. **One further issue found this same pass is still open**:
-`AddDatabase("Postgres")`'s own documented "the database being created
-... automatically as part of the resource lifecycle" did not reliably
+individually. **A further issue found this same pass — `AddDatabase
+("Postgres")`'s own documented "the database being created ...
+automatically as part of the resource lifecycle" did not reliably
 complete before `EventStore.Host.Postgres`'s first connection attempt in
-this environment (`Aspire.Hosting.PostgreSql` 13.4.6), so the live,
-fully-orchestrated `aspire run` → real `/connect/token` → real protected
-endpoint round trip was not itself completed end-to-end, only DevIdp's
-own token issuance in isolation. Tracked in `TODO.md` rather than
-silently claimed fixed.
+this environment (`Aspire.Hosting.PostgreSql` 13.4.6) — fixed, later
+pass.** Root cause confirmed directly: Aspire creates the named database
+asynchronously off the Postgres server resource's own
+`ResourceReadyEvent`, and `WaitFor(db)` waits for the database
+*resource* to be registered, not for that `CREATE DATABASE` to have
+actually committed — a real, reproducible race, not environment-specific
+flakiness. Fixed with `EnableRetryOnFailure(errorCodesToAdd: ["3D000"])`
+(Postgres's own SQLSTATE for "database does not exist") on both
+`EventStore.Migrator`'s and `EventStore.Host.Postgres`'s `UseNpgsql`
+registrations — verified against a real, bare Postgres container with a
+deliberately-delayed `CREATE DATABASE` racing an ordinary `DbSet` query
+(the exact call shape both processes use): fails instantly without the
+fix, recovers automatically once the database lands, with it. **Not
+re-verified via a full live `aspire run` this pass** (a heavier,
+longer-running check than this targeted reproduction, given the
+orchestration's own simulators never exit) — the specific race is
+fixed and directly verified; the full end-to-end round trip noted above
+as unattempted still hasn't been separately re-run.
 
 ## Event-Type Security
 
