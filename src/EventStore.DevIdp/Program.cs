@@ -19,6 +19,47 @@ using static OpenIddict.Abstractions.OpenIddictConstants;
 var builder = WebApplication.CreateBuilder(args);
 builder.AddServiceDefaults(); // ADR-026 -- all three OTel signals, wired identically for every service
 
+// ADR-014's own deny-by-default CORS posture (EventStore.Host.Core.
+// HostCoreExtensions.CorsPolicyName's exact policy shape: config-driven
+// Cors:AllowedOrigins, AllowAnyMethod, only Authorization/Content-Type
+// headers, no AllowCredentials -- bearer-only auth, never cookies) --
+// this project never had its own copy of it (no browser client ever
+// called this IdP's /connect/token endpoint directly until client-web's
+// Vitals/Meridian instances did, this session): confirmed missing by
+// actually opening this in a real browser, not assumed. Duplicated here
+// rather than referencing EventStore.Host.Core directly -- that project
+// pulls in the whole provider-agnostic Host composition root (auth
+// policies, DPoP, request localization) DevIdp has no other reason to
+// depend on, for one policy this small.
+var devIdpAllowedOrigins = builder.Configuration.GetSection("Cors:AllowedOrigins").Get<string[]>() ?? [];
+builder.Services.AddCors(options => options.AddDefaultPolicy(policy => policy
+    .WithOrigins(devIdpAllowedOrigins)
+    .AllowAnyMethod()
+    .WithHeaders("Authorization", "Content-Type", "DPoP")));
+
+// A plain app.UseCors() call placed after Build() (this project's first
+// attempt) never actually ran early enough: OpenIddict's own server
+// middleware -- registered via ITS OWN IStartupFilter, activated by
+// AddOpenIddict()...AddServer() below -- intercepts every request to its
+// configured token endpoint URI unconditionally, REGARDLESS of where
+// app.Use(...) calls appear in this file's own top-level statements.
+// Confirmed directly: an OPTIONS preflight to /connect/token returned
+// OpenIddict's own 400 ("only client_credentials/token-exchange grant
+// types implemented") with no CORS headers at all, while the identical
+// preflight against an ordinary MapPost/MapPut endpoint (/oauth/roles)
+// got CORS's own correct 204 + headers -- proving the CORS policy/origin
+// config itself was already right, and isolating the gap to specifically
+// OpenIddict's request interception outrunning app.UseCors() for its own
+// endpoint. IStartupFilter composition reverses registration order when
+// folding (the framework's own documented behavior), so the FIRST
+// IStartupFilter registered in the DI container ends up wrapping
+// OUTERMOST -- i.e. runs first against every request. Registering this
+// filter here, BEFORE AddOpenIddict() below ever registers its own, is
+// what actually gets a plain UseCors() call to run before OpenIddict's
+// interception -- reproduced and confirmed via a fast standalone run,
+// not assumed from documentation alone.
+builder.Services.AddTransient<IStartupFilter, CorsBeforeOpenIddictStartupFilter>();
+
 // A fresh, unique name per process start (computed once, outside the options
 // delegate below -- AddDbContext re-invokes that delegate on every scoped
 // DbContext instantiation, so a Guid generated INSIDE it would hand every
@@ -600,5 +641,18 @@ app.Run();
 
 record DefineRoleRequest(string AppId, string RoleName, List<string> Permissions);
 record RegisterFederationIssuerRequest(string AppId, string Issuer, string JwksUri, string? Description);
+
+// Registered before AddOpenIddict() specifically so this ends up the
+// OUTERMOST IStartupFilter (see the registration site's own comment) --
+// its UseCors() call then runs against every request before OpenIddict's
+// own middleware ever gets a chance to intercept one.
+public sealed class CorsBeforeOpenIddictStartupFilter : IStartupFilter
+{
+    public Action<IApplicationBuilder> Configure(Action<IApplicationBuilder> next) => app =>
+    {
+        app.UseCors();
+        next(app);
+    };
+}
 
 public partial class Program;

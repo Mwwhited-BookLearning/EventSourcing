@@ -18,17 +18,30 @@ import { tokens } from './theme/tokens'
 const params = new URLSearchParams(window.location.search)
 const config: ClientConfig = {
   instanceId: params.get('instanceId') ?? crypto.randomUUID(),
-  appId: params.get('appId') ?? 'mvvm-demo',
-  entityType: params.get('entityType') ?? 'orderplaced',
-  eventType: params.get('eventType') ?? 'OrderPlaced',
-  entityIdField: params.get('entityIdField') ?? 'orderId',
   // Query string wins if present (a specific launch always overrides);
   // otherwise the Vite build-time env vars EventStore.AppHost injects via
-  // WithEnvironment (the actual, dynamically-assigned Aspire endpoint for
-  // this run) win over the hardcoded fallback, which only applies when
-  // running client-web standalone (`npm run dev`, no AppHost at all).
+  // WithEnvironment (a per-domain client-web resource -- clientWebVitals/
+  // clientWebMeridian -- pre-configured for its own AppId/EntityType/
+  // EventType, the same reasoning hostBaseUrl/authBaseUrl below already
+  // established for the dynamically-assigned Aspire endpoint) win over the
+  // hardcoded fallback, which only applies when running client-web
+  // standalone (`npm run dev`, no AppHost at all).
+  appId: params.get('appId') ?? import.meta.env.VITE_APP_ID ?? 'mvvm-demo',
+  entityType: params.get('entityType') ?? import.meta.env.VITE_ENTITY_TYPE ?? 'orderplaced',
+  eventType: params.get('eventType') ?? import.meta.env.VITE_EVENT_TYPE ?? 'OrderPlaced',
+  entityIdField: params.get('entityIdField') ?? import.meta.env.VITE_ENTITY_ID_FIELD ?? 'orderId',
   hostBaseUrl: params.get('hostBaseUrl') ?? import.meta.env.VITE_HOST_BASE_URL ?? 'https://localhost:5001',
-  authBaseUrl: params.get('authBaseUrl') ?? import.meta.env.VITE_AUTH_BASE_URL ?? 'https://localhost:5011',
+  // http, not https -- devIdp's own OpenIddict issuer is computed per-
+  // request from whichever endpoint actually receives the call, and
+  // eventstore's own Authentication:Authority trusts devIdp's HTTP
+  // endpoint specifically (avoids an HTTPS metadata fetch at server
+  // startup, EventStore.AppHost/AppHost.cs's own comment on that config
+  // value). A token fetched via devIdp's https endpoint carries an
+  // issuer eventstore doesn't trust, and every later GraphQL call fails
+  // with "Forbidden -- caller's token does not hold the required scope"
+  // -- found only by actually driving a real token through both
+  // endpoints and comparing, not from reading the config alone.
+  authBaseUrl: params.get('authBaseUrl') ?? import.meta.env.VITE_AUTH_BASE_URL ?? 'http://localhost:5010',
   clientId: params.get('clientId') ?? 'follower-client',
   clientSecret: params.get('clientSecret') ?? 'follower-client-secret',
   scope: params.get('scope') ?? 'events:follow',

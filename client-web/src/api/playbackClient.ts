@@ -1,4 +1,5 @@
 import { graphqlQuery } from './graphqlClient'
+import { createDpopProof } from './dpop'
 
 export interface PlaybackResult {
   asOfSequenceNumber: number
@@ -31,7 +32,8 @@ export async function exportLineage(hostBaseUrl: string, token: string, entityId
 }
 
 export async function downloadBundle(hostBaseUrl: string, token: string, bundleUrl: string): Promise<string> {
-  const response = await fetch(`${hostBaseUrl}${bundleUrl}`, { headers: { Authorization: `Bearer ${token}` } })
+  const url = `${hostBaseUrl}${bundleUrl}`
+  const response = await fetch(url, { headers: { Authorization: `Bearer ${token}`, DPoP: await createDpopProof('GET', url, token) } }) // ADR-017
   if (!response.ok) throw new Error(`Failed to download lineage export bundle: HTTP ${response.status}`)
   return response.text()
 }
