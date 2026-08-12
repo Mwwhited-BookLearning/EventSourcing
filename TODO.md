@@ -494,6 +494,121 @@ here instead of inlining.
   paths this ADR names, or correct both docs from "adopted" to
   "decided, not yet built."
 
+- **A second, fully independent design-compliance re-audit (2026-08-12,
+  9 parallel agents across all 94 ADRs) found 12 further gaps the
+  original audit above missed**, each verified directly against current
+  code, not assumed from the first pass:
+  - **`ADR-002`'s `SpecEndpoints:Enabled` config gate ("the actual
+    `MapGet`/`MapScalarApiReference` registrations are conditional on
+    it") doesn't exist** — `EventStore.SpecGeneration/
+    SpecGenerationEndpoints.cs` maps `/openapi.json`/`/asyncapi.json`
+    unconditionally, `.AllowAnonymous()`, no config check anywhere. Fix:
+    either add the gate, or narrow `ADR-002`'s claim.
+  - **`ADR-009`'s `revealOnDemand` half — "a caller who holds
+    `requiredClaim` still never sees the real value in an ordinary
+    query/stream response, only via the explicit `revealField` round
+    trip" — is not implemented at all**, a materially bigger gap than
+    the already-tracked "no step-up auth on `revealField`" entry above
+    (which implicitly assumed this base guarantee existed). Zero hits
+    for `revealOnDemand` anywhere in `src/`;
+    `PayloadMasker.MaskLeafAsync` reveals the real value directly to any
+    claim holder, unconditionally. `docs/08-build-plan.md`'s "Property-
+    Level Masking" item text claims a `displayMask` computation exists
+    that doesn't. Fix: either build the base guarantee (mask even for a
+    claim holder, unless explicitly revealed on demand), or narrow
+    `ADR-009` to describe only the click-to-reveal mechanism actually
+    built.
+  - **`ADR-022`'s described mechanism, `Optional<T>`, doesn't exist as a
+    type anywhere in `src/`** — the three-state (unspecified/null/value)
+    fold semantics it decides ARE correctly implemented, via raw
+    `JsonNode` manipulation in `EntityDataMerger.cs` instead, with the
+    divergence explicitly acknowledged in that code's own comments.
+    Behavior-correct, mechanism-described-wrong — lower priority than
+    the others here. Fix: add an additive note to `ADR-022` describing
+    the actual mechanism.
+  - **`ADR-026`'s Decision, `docker-compose.yml`, and `docs/06-solution-
+    structure.md` disagree on whether a third production image
+    (`EventStore.Projections.Host`) exists.** It doesn't, and
+    structurally can't — that project is a plain class library with no
+    `Program.cs`, can't be built as a container image at all.
+    `docker-compose.yml` defines only `postgres`/`devidp`/`migrate`/
+    `eventstore`. Fix: correct `ADR-026`'s Decision text and `06-
+    solution-structure.md` to describe two production images, not
+    three.
+  - **`ADR-036`'s self-attestation issuance mechanism
+    (`DelegationChainRef`, a server-initiated token exchange) was never
+    built** — honestly narrated as a gap in `docs/08-build-plan.md`'s
+    own text already, but never promoted into this file the way every
+    structurally identical "Accepted-ADR-piece-never-built" gap above
+    was. `EventStore.Ucan/UcanValidator.cs` implements a different,
+    correctly-cross-referenced mechanism (`ADR-043`/`044`'s capability
+    delegation) instead. Fix: either build the described issuance flow,
+    or add the same kind of additive note `ADR-025`/`050`/etc. already
+    carry.
+  - **`ADR-043`'s Decision that grant issuance/revocation are ordinary
+    events (`accessGrant`/`accessGrantRevoked`) was never built.** Zero
+    hits for `accessGrant` anywhere in `src/`; `UcanDelegation.Create`
+    never calls `EventAppender.AppendAsync` — delegation is a self-
+    contained signed JWT with no durable event-log trail and no
+    revocation-before-expiry path, contradicting the ADR's own
+    Consequences claim about revocation. Fix: either build the durable
+    grant/revocation event trail, or narrow `ADR-043`'s Consequences to
+    match the JWT-only mechanism actually shipped.
+  - **`ADR-048`'s peer-sync half still requires a shared central
+    IdP — contradicting its own headline claim ("no shared central IdP
+    or root CA required").** `PeerSyncClient.cs` still does
+    `grant_type=client_credentials` against shared DevIdp;
+    `PeerSyncEndpoints.cs` still gates `/peer-sync/push` with
+    `RequireAuthorization("peer:sync")` (bearer-token, not mTLS/SPIFFE-
+    identity) — confirmed deliberately additive, not a replacement, per
+    `HostCoreExtensions.cs`'s own comment. The Gateway↔internal-service
+    half of this ADR genuinely is built as designed; only the peer-sync
+    half drifted. Fix: either build real SPIFFE-identity-based peer
+    authentication (removing the shared-DevIdp dependency for cross-
+    administrative-domain peers), or narrow `ADR-048`'s claim to the
+    Gateway half only.
+  - **`ADR-055`'s Moq adoption (catalogued in `docs/libraries/README.md`/
+    `docs/libraries/dotnet/moq.md` for a never-built `EventStore.
+    UnitTests`) has zero actual usage** — no `.csproj` references it, no
+    `Mock<`/`using Moq` anywhere. Same class as the already-tracked
+    FsCheck/Polly+Simmy gap above, but Moq itself wasn't named there.
+    Fix: fold into that same entry's resolution once `EventStore.
+    UnitTests` is either built or descoped.
+  - **`ADR-057`'s missing-backend overclaim (tracked above) also appears
+    in a third location**: `docs/extensibility-points.md`'s
+    `IErasureKeyStore` row lists Azure Key Vault/AWS KMS/GCP KMS as
+    adopted (and omits HashiCorp Vault, which IS built) — not just the
+    two per-library docs already named. Fix: correct this third location
+    in the same pass as the other two.
+  - **`ADR-065`'s Decision that a local client "purges its local cached
+    copy proactively" the moment an entity falls out of active scope was
+    never implemented** — only the OTHER half (erasure-triggered purge)
+    is built. `client-web/src/composables/useEntityViewActions.ts` has
+    an explicit code comment admitting this; `docs/patterns/pwa-offline-
+    outbox.md` still describes proactive eviction as built behavior.
+    Fix: either build client-side scope-exit eviction, or correct both
+    the ADR's Consequences and the pattern doc to describe "goes stale,
+    never proactively purged" as the actual, accepted behavior (the same
+    honest framing `ADR-065`'s OWN text already uses elsewhere for this
+    exact trade-off — just not consistently, per this finding).
+  - **`ADR-075`'s own text still says its tenant-to-tenant native-schema-
+    mapping residual is "tracked as an open question... not resolved
+    here," but that row no longer exists in `docs/10-open-questions.md`**
+    — `ADR-082` ("Tenant-to-Tenant Federation Mapping") resolved it, but
+    `ADR-075` never got the additive "Corrected, later pass" note this
+    project's own convention calls for. A reader of `ADR-075` alone is
+    told something is open that isn't. Fix: add the correction note to
+    `ADR-075` pointing at `ADR-082`.
+  - **`ADR-080`'s build-signing/provenance half (NuGet author signing via
+    a registered X.509 certificate, `npm publish --provenance`) has zero
+    implementation** — no signing config in any `.csproj`/`Directory.
+    Build.props`, no publish/release workflow at all (`.github/
+    workflows/` has only `ci.yml`). The scanning half (Dependabot,
+    `dotnet list package --vulnerable`, `npm audit`) genuinely is built.
+    Same "decided, not built" shape as `ADR-062`/`063`/`085` above, but
+    not named anywhere yet. Fix: either build the signing/provenance
+    half, or narrow `ADR-080`'s Consequences to the scanning half only.
+
 - **`client-web`'s `typescript` and `jsdom` devDependencies are
   deliberately held back one major version each, not yet at "latest."**
   Found while updating every dependency this session (commit `6716c27`):

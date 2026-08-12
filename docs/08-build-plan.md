@@ -466,11 +466,11 @@ here as prose:
   from item 6) so it reads as resolved, not as an open dependency edge
   the way a same-level sibling node would.
 - **Expected-Response Tracking** (`ADR-094`, merged in from the
-  `design/service-level-agreement` branch — not yet implemented, queued
-  as this file's own next item) depends on **CQRS Read-Model Projections
-  (worked example)**, **Streaming Channels**, **Outbound Webhooks**, and
-  **Leader Election via Database-Backed Lease** — see that item's own
-  full section below for the reasoning behind each.
+  `design/service-level-agreement` branch, implemented and Done as of
+  2026-08-11) depends on **CQRS Read-Model Projections (worked example)**,
+  **Streaming Channels**, **Outbound Webhooks**, and **Leader Election via
+  Database-Backed Lease** — see that item's own full section below for the
+  reasoning behind each.
 - **GDPR/CCPA Erasure** depends on **Property-Level Masking** and
   **Entity-Centric Core Rebuild**.
 - **PCI-DSS SAD Boundary** depends on **Schema Registry** and
