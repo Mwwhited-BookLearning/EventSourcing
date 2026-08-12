@@ -58,13 +58,28 @@ function interpolate(template: string, entry: ClientEntityCacheEntry, locale: st
     if (path === 'entityId') return entry.entityId
     if (path === 'entityType') return entry.entityType
     let value: unknown = entry.data[path]
+    // A masked (not revealed) placeholder is arbitrary display text
+    // (FixedValueMaskingStrategy's "REDACTED", PartialReveal's own
+    // partial string) -- never a real date/number, so it must skip the
+    // format conversion below entirely. Found only by actually
+    // registering a ViewDefinition with a {{ field:date }} binding on a
+    // masked field and rendering it for a caller lacking the reveal
+    // claim: new Date("REDACTED") throws RangeError: Invalid time value.
+    let isMaskedPlaceholder = false
     if (isMaskedWrapper(value)) {
       if (value.erased) return translations['field_erased'] ?? '(erased)'
-      value = value.value ?? value.masked ?? ''
+      if (value.value !== null && value.value !== undefined) {
+        value = value.value
+      } else {
+        value = value.masked ?? ''
+        isMaskedPlaceholder = true
+      }
     }
     if (value === undefined || value === null) return ''
-    if (format === 'number' && typeof value === 'number') return new Intl.NumberFormat(locale).format(value)
-    if (format === 'date') return new Intl.DateTimeFormat(locale, { dateStyle: 'medium' }).format(new Date(String(value)))
+    if (!isMaskedPlaceholder) {
+      if (format === 'number' && typeof value === 'number') return new Intl.NumberFormat(locale).format(value)
+      if (format === 'date') return new Intl.DateTimeFormat(locale, { dateStyle: 'medium' }).format(new Date(String(value)))
+    }
     return String(value)
   })
 }
