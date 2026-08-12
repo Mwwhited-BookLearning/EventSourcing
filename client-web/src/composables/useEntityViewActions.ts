@@ -7,7 +7,14 @@ import { fetchToken } from '../api/authClient'
 import { publishCommand } from '../api/publishClient'
 import { ingestSamples } from '../api/streamingClient'
 import { graphqlQuery, graphqlSubscribe } from '../api/graphqlClient'
-import { buildIntrospectionQuery, buildSubscriptionQuery, subscriptionFieldName, type ScopeFilterClause } from '../api/subscriptionBuilder'
+import {
+  buildIntrospectionQuery,
+  buildSubscriptionQuery,
+  subscriptionFieldName,
+  toSubscriptionFieldSelectors,
+  type IntrospectedField,
+  type ScopeFilterClause,
+} from '../api/subscriptionBuilder'
 import type { DeviceReading } from '../deviceInput/types'
 import { toOutboxEntry, type ReadingMapping } from '../deviceInput/deviceReadingOutbox'
 import { negotiateLocale } from '../api/localeClient'
@@ -169,15 +176,15 @@ export function useEntityViewActions(config: ClientConfig, deps: { fetchToken?: 
   // outcome.
   async function subscribeToEntity(onUpdate?: (entityId: string) => void): Promise<void> {
     const currentToken = await ensureToken()
-    const introspection = await graphqlQuery<{ __type: { fields: Array<{ name: string }> } | null }>(
+    const introspection = await graphqlQuery<{ __type: { fields: IntrospectedField[] } | null }>(
       config.hostBaseUrl,
       currentToken,
       buildIntrospectionQuery(config.appId, config.eventType),
     )
-    const fieldNames = introspection.__type?.fields.map((f) => f.name) ?? []
-    if (fieldNames.length === 0) return // nothing registered for this event type -- nothing to subscribe to yet
+    const fields = introspection.__type?.fields ?? []
+    if (fields.length === 0) return // nothing registered for this event type -- nothing to subscribe to yet
 
-    const query = buildSubscriptionQuery(config.appId, config.eventType, fieldNames, config.scopeFilter)
+    const query = buildSubscriptionQuery(config.appId, config.eventType, toSubscriptionFieldSelectors(fields), config.scopeFilter)
     const fieldName = subscriptionFieldName(config.appId, config.eventType)
 
     unsubscribeEntity = graphqlSubscribe<Record<string, FollowedEventEnvelope>>(
@@ -216,11 +223,13 @@ export function useEntityViewActions(config: ClientConfig, deps: { fetchToken?: 
   // erasure fires won't purge until it reconnects and receives this event.
   async function subscribeToErasure(): Promise<void> {
     const currentToken = await ensureToken()
-    const introspection = await graphqlQuery<{ __type: { fields: Array<{ name: string }> } | null }>(
+    const introspection = await graphqlQuery<{ __type: { fields: IntrospectedField[] } | null }>(
       config.hostBaseUrl,
       currentToken,
       buildIntrospectionQuery(config.appId, ERASURE_EVENT_TYPE),
     )
+    // EntityErasureRequested's own schema (TargetEntityId only) never
+    // carries a masked field -- bare names, same as before this fix.
     const fieldNames = introspection.__type?.fields.map((f) => f.name) ?? []
     if (fieldNames.length === 0) return // this AppId has never published a classified field -- nothing to erase yet
 

@@ -1,3 +1,5 @@
+import { createDpopProof } from './dpop'
+
 // OAuth2 Client Credentials against EventStore.DevIdp -- mirrors this
 // repo's own AuthScenarioAssertions.GetTokenAsync (C#) exactly, since this
 // is the same dev/POC IdP every server-side test already talks to.
@@ -7,9 +9,13 @@ export async function fetchToken(
   clientSecret: string,
   scope: string,
 ): Promise<string> {
-  const response = await fetch(`${authBaseUrl}/connect/token`, {
+  const url = `${authBaseUrl}/connect/token`
+  const response = await fetch(url, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    headers: {
+      'Content-Type': 'application/x-www-form-urlencoded',
+      DPoP: await createDpopProof('POST', url), // ADR-017 -- no access token exists yet to bind via "ath"
+    },
     body: new URLSearchParams({
       grant_type: 'client_credentials',
       client_id: clientId,

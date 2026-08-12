@@ -1,3 +1,5 @@
+import { createDpopProof } from './dpop'
+
 // ADR-031/070 -- irregular/event-driven ingest shape only (a device
 // reading has no fixed sample rate the way a periodic sensor would);
 // mirrors EventStore.Streaming.IngestSamplesRequest/IrregularSampleRequest
@@ -17,11 +19,13 @@ export interface IngestSamplesResult {
 }
 
 export async function ingestSamples(hostBaseUrl: string, token: string, channelId: string, samples: IrregularSample[]): Promise<IngestSamplesResult> {
-  const response = await fetch(`${hostBaseUrl}/telemetry/${channelId}/samples`, {
+  const url = `${hostBaseUrl}/telemetry/${channelId}/samples`
+  const response = await fetch(url, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       Authorization: `Bearer ${token}`,
+      DPoP: await createDpopProof('POST', url, token), // ADR-017
     },
     body: JSON.stringify({
       samples: samples.map((s) => ({ timestamp: s.timestamp, value: s.value, monotonicElapsedMicros: s.monotonicElapsedMicros })),

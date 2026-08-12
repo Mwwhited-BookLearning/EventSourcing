@@ -10,6 +10,10 @@
 *.userosscache
 *.sln.docstates
 *.env
+# client-web's own checked-in dev defaults -- no secrets, just localhost
+# URLs matching AppHost.cs's own pinned dev ports; see that file's env
+# entries for the full reasoning.
+!client-web/.env
 
 # User-specific files (MonoDevelop/Xamarin Studio)
 *.userprefs
