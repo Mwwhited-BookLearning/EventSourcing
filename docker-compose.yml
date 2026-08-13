@@ -16,8 +16,15 @@ services:
       POSTGRES_USER: eventstore
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}
       POSTGRES_DB: eventstore
+    # postgres:18+'s own image refuses to start with a separate mount at the
+    # old .../data path (docker-library/postgres#1259 -- it now wants
+    # pg_ctlcluster-style, major-version-specific subdirectories under ONE
+    # mount at /var/lib/postgresql itself, not a mount one level deeper).
+    # Found by actually running `docker compose up` against this file for
+    # the first time (scripts/deploy-docker-local.ps1) -- the postgres
+    # container exited(1) immediately with that exact error.
     volumes:
-      - postgres-data:/var/lib/postgresql/data
+      - postgres-data:/var/lib/postgresql
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U eventstore"]
       interval: 5s
@@ -45,8 +52,13 @@ services:
   # self-contained and needs no SDK/runtime install to execute).
   migrate:
     image: mcr.microsoft.com/dotnet/runtime-deps:10.0
+    # NOT :ro -- this command's own `chmod +x` needs write access to the
+    # mount to set the bundle's executable bit; a read-only mount here
+    # always fails that chmod regardless of platform or the bundle's actual
+    # permission bits on the host. Found by actually running `docker compose
+    # up` against this file for the first time (scripts/deploy-docker-local.ps1).
     volumes:
-      - ./scripts/bundles/postgres:/bundle:ro
+      - ./scripts/bundles/postgres:/bundle
     entrypoint: ["/bin/sh", "-c"]
     command:
       - chmod +x /bundle/efbundle && /bundle/efbundle --connection "Host=postgres;Port=5432;Database=eventstore;Username=eventstore;Password=${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}"

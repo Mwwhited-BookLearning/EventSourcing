@@ -130,6 +130,34 @@ here instead of inlining.
   equivalent at all (it needs a real CI provider's own signing
   identity) — that's the one piece that would need writing fresh, not
   just re-adding the already-proven `sbom-tool` step.
+  **Narrowed further still, 2026-08-13, direct request — a real Windows-
+  native local equivalent now exists and was actually run, not just
+  written.** `scripts/run-ci-local.ps1` mirrors `ci.yml`'s two jobs
+  command-for-command; running it for real caught a genuinely open,
+  previously undetected high-severity NuGet advisory
+  (`GHSA-q939-rpr3-3284`, `SSH.NET` 2025.1.0, pulled in transitively by
+  `Testcontainers` — never called into by anything this repo actually
+  exercises, but flagged anyway), fixed by pinning `SSH.NET` directly to
+  `2026.0.0` in `EventStore.IntegrationTests.csproj`. This means `ci.yml`
+  itself, if it had ever actually run on GitHub Actions before this fix,
+  would have failed its own vulnerability-scan job — a real gap the
+  never-run status above left undetected. `scripts/deploy-docker-local.ps1`
+  and `scripts/run-aspire-local.ps1` (wrapping `docker-compose.yml` and
+  `EventStore.AppHost` respectively) were also added for local manual/
+  integration testing, per direct request; running the docker-compose one
+  for real (this environment does have Docker, just no Actions) surfaced
+  two more real, previously-undetected `docker-compose.yml` bugs, both
+  fixed: `postgres:18-alpine`'s own image refuses a separate mount at the
+  old `.../data` path (docker-library/postgres#1259 -- fixed by mounting
+  the named volume at `/var/lib/postgresql` itself), and the `migrate`
+  service's own `chmod +x` command against its `:ro` bundle mount always
+  failed regardless of platform (fixed by dropping `:ro`). Verified end-
+  to-end: a full `docker compose up` now brings up a healthy `postgres` +
+  `devidp` + one-shot `migrate` + `eventstore`, with `eventstore`'s own
+  `/health` endpoint returning 200 against a really-migrated database.
+  Still true and still not attempted: this is all local-only; nothing
+  here has run inside GitHub Actions itself, since that still needs a
+  real `origin` with Actions enabled.
 
 - **`client-web`'s `typescript` and `jsdom` devDependencies are
   deliberately held back one major version each, not yet at "latest."**
