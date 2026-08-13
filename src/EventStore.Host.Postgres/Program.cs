@@ -57,6 +57,7 @@ builder.Services.AddDbContext<EventStoreContext>(options => options.UseNpgsql(
     x => x
         .MigrationsAssembly("EventStore.Persistence.Migrations.Postgres")
         .EnableRetryOnFailure(maxRetryCount: 10, maxRetryDelay: TimeSpan.FromSeconds(2), errorCodesToAdd: ["3D000"])));
+builder.AddDbReachabilityHealthCheck(); // ADR-084 -- readiness fails when THIS database is unreachable
 builder.Services.AddScoped<IJsonPathTranslator, PostgresJsonPathTranslator>();
 builder.Services.AddScoped<IFilterableFieldIndexDdlGenerator, PostgresFilterableFieldIndexDdlGenerator>();
 builder.Services.AddScoped<IUniqueConstraintViolationDetector, PostgresUniqueConstraintViolationDetector>();

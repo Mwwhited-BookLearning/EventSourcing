@@ -164,23 +164,6 @@ here instead of inlining.
   describe as open, rather than doc bugs to fix; listed here since they
   represent real remaining work, not narrative to restate elsewhere:
 
-- **`ADR-084`'s readiness-probe Decision — readiness should fail when
-  the instance's own primary database is unreachable, while tolerating
-  peer degradation — is only half-built: the database-reachability half
-  was never implemented.** `EventStore.ServiceDefaults/Extensions.cs`'s
-  `AddDefaultHealthChecks`/`MapDefaultEndpoints` only registers one
-  always-healthy `"self"` check tagged `"live"`; no
-  `Host.<Provider>`/`Program.cs` uses Aspire's health-check-integrated
-  DB client APIs (each just calls plain `AddDbContext`). "Tolerates peer
-  degradation" reads as true only because nothing is actually checked.
-  Health endpoints are also only mapped `if
-  (app.Environment.IsDevelopment())`, so even the trivial check isn't
-  exposed outside dev. No corrective note anywhere flags this gap.
-  Found by a design-compliance audit (ADR-077–094 range). Fix: add a
-  real DB-reachability health check per provider, and decide whether
-  health endpoints should be exposed (behind auth, presumably) outside
-  Development.
-
 - **`client-web`'s `typescript` and `jsdom` devDependencies are
   deliberately held back one major version each, not yet at "latest."**
   Found while updating every dependency this session (commit `6716c27`):

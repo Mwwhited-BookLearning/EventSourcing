@@ -49,6 +49,7 @@ if (builder.Configuration["FeatureFlags:AppId"] is { } featureFlagsAppId)
 builder.Services.AddDbContext<EventStoreContext>(options => options.UseSqlite(
     builder.Configuration.GetConnectionString("Sqlite"),
     x => x.MigrationsAssembly("EventStore.Persistence.Migrations.Sqlite")));
+builder.AddDbReachabilityHealthCheck(); // ADR-084 -- readiness fails when THIS database is unreachable
 builder.Services.AddScoped<IJsonPathTranslator, SqliteJsonPathTranslator>();
 builder.Services.AddScoped<IFilterableFieldIndexDdlGenerator, SqliteFilterableFieldIndexDdlGenerator>();
 builder.Services.AddScoped<IUniqueConstraintViolationDetector, SqliteUniqueConstraintViolationDetector>();

@@ -58,3 +58,42 @@ Consequences:
   on them — flagged as propagation work, not done in this pass.
 - Resolves the design fork logged in `docs/changes/2026-07-31.md`
   (formerly `docs/10-open-questions.md` row 8).
+
+Addendum, 2026-08-12 — the "propagation work" above, actually done: a
+design-compliance audit found this Decision's own database-reachability
+half was never implemented — `EventStore.ServiceDefaults.Extensions.
+AddDefaultHealthChecks` only ever registered one always-healthy `"self"`
+check, so "readiness fails when the instance's own primary database is
+unreachable" read as true only because nothing was actually checked.
+Fixed:
+- `HostCoreExtensions.AddDbReachabilityHealthCheck` (`EventStore.Host.
+  Core`) adds `AddDbContextCheck<EventStoreContext>()` — provider-
+  agnostic (`Database.CanConnectAsync()` underneath), so the identical
+  call works unchanged in every `Host.<Provider>/Program.cs`. Left
+  deliberately untagged: `MapDefaultEndpoints`'s `/health` (readiness,
+  no predicate) includes it, `/alive` (liveness, filtered to the `"live"`
+  tag) does not — this Decision's own liveness/readiness split, with no
+  new tagging scheme needed to express it.
+- **The endpoint-exposure question this Decision left open — "should
+  health endpoints be exposed outside Development" — is resolved, not
+  left unresolved a second time: yes, unconditionally, in every
+  environment.** The `IsDevelopment()` gate removed from both `/health`
+  and `/alive`. Reasoning: an orchestrator's readiness/liveness probes
+  (Kubernetes, ECS, any real deployment target) need to reach these
+  endpoints in EVERY environment, not just Development — gating both
+  behind `IsDevelopment()` didn't defer a security decision, it silently
+  made the probes non-functional in the one place (production) they
+  actually matter, a worse gap than the theoretical one the gate was
+  guarding against. That theoretical gap is narrower than it first
+  appears: ASP.NET Core's default `MapHealthChecks` response (no custom
+  `ResponseWriter` configured here) is a bare status string
+  (`"Healthy"`/`"Degraded"`/`"Unhealthy"`) — no exception messages, no
+  connection strings, no per-check descriptions ever reach the response
+  body. Exposing that minimal signal publicly is the same posture nearly
+  every real production Kubernetes deployment already takes for its own
+  liveness/readiness probes. If a future deployment's own risk tolerance
+  genuinely needs more (a private-network-only management port, an auth
+  gate on these routes specifically), that's the same "framework sets a
+  sane default, deployment can override" shape this Decision's own
+  replica-lag override already uses — not a reason to leave the default
+  itself broken in the meantime.

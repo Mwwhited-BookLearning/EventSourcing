@@ -48,6 +48,7 @@ if (builder.Configuration["FeatureFlags:AppId"] is { } featureFlagsAppId)
 builder.Services.AddDbContext<EventStoreContext>(options => options.UseSqlServer(
     builder.Configuration.GetConnectionString("SqlServer"),
     x => x.MigrationsAssembly("EventStore.Persistence.Migrations.SqlServer")));
+builder.AddDbReachabilityHealthCheck(); // ADR-084 -- readiness fails when THIS database is unreachable
 builder.Services.AddScoped<IJsonPathTranslator, SqlServerJsonPathTranslator>();
 builder.Services.AddScoped<IFilterableFieldIndexDdlGenerator, SqlServerFilterableFieldIndexDdlGenerator>();
 builder.Services.AddScoped<IUniqueConstraintViolationDetector, SqlServerUniqueConstraintViolationDetector>();
