@@ -1,4 +1,5 @@
 using System.Security.Claims;
+using EventStore.Domain.Observability;
 using EventStore.Inbox;
 using EventStore.Persistence;
 using EventStore.Persistence.Migrations.Postgres;
@@ -19,6 +20,14 @@ using Samples.Vitals;
 // schema this publishes against is already registered -- this project
 // never calls SchemaRegistryService.RegisterAsync itself.
 var builder = Host.CreateApplicationBuilder(args);
+
+// Direct request -- ConfigureOpenTelemetry alone (not the full
+// AddServiceDefaults), since this plain console loop has no HTTP surface
+// of its own to add health checks/service discovery/resilience for; it
+// exists here purely so DuplexInstrumentation.SimulatorEventsPublished
+// below (and .NET's own runtime/process metrics) actually reach the
+// Aspire dashboard instead of being recorded into a Meter nothing reads.
+builder.ConfigureOpenTelemetry();
 
 var connectionString = builder.Configuration.GetConnectionString("Postgres")
     ?? throw new InvalidOperationException("ConnectionStrings:Postgres is required -- expected to be injected by Aspire's WithReference(db).");
@@ -71,9 +80,15 @@ while (true)
         try
         {
             var result = await publisher.PublishAsync("PatientScreened", new PublishEventRequest(VitalsWorkflowA.AppId, 1, payload, null, eventId), seedUser);
-            Console.WriteLine(result is PublishResult.Accepted accepted
-                ? $"Published PatientScreened for {subjectId} -> {accepted.EntityId}"
-                : $"Publish for {subjectId} did not succeed: {result}");
+            if (result is PublishResult.Accepted accepted)
+            {
+                Console.WriteLine($"Published PatientScreened for {subjectId} -> {accepted.EntityId}");
+                DuplexInstrumentation.SimulatorEventsPublished.Add(1, new KeyValuePair<string, object?>("app.id", VitalsWorkflowA.AppId));
+            }
+            else
+            {
+                Console.WriteLine($"Publish for {subjectId} did not succeed: {result}");
+            }
             break;
         }
         catch (Exception ex) when (attempt < 5)
@@ -102,9 +117,15 @@ while (true)
         {
             var result = await publisher.PublishAsync("IonmAlertRaised",
                 new PublishEventRequest(VitalsWorkflowD.AppId, 1, alertPayload, null, alertEventId, ReviewPending: true), seedUser);
-            Console.WriteLine(result is PublishResult.Accepted accepted
-                ? $"Published IonmAlertRaised for {alertId} -> {accepted.EntityId} (authorityStatus: {accepted.AuthorityStatus})"
-                : $"Publish for {alertId} did not succeed: {result}");
+            if (result is PublishResult.Accepted accepted)
+            {
+                Console.WriteLine($"Published IonmAlertRaised for {alertId} -> {accepted.EntityId} (authorityStatus: {accepted.AuthorityStatus})");
+                DuplexInstrumentation.SimulatorEventsPublished.Add(1, new KeyValuePair<string, object?>("app.id", VitalsWorkflowD.AppId));
+            }
+            else
+            {
+                Console.WriteLine($"Publish for {alertId} did not succeed: {result}");
+            }
             break;
         }
         catch (Exception ex) when (attempt < 5)

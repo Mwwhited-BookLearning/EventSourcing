@@ -4395,6 +4395,23 @@ own header comment already documents for its own file, for the
 identical reason. Full non-container suite: 125/125 (up from 123),
 re-run 3× for the new peer-sync fixture specifically with zero flakes.
 
+**Extended, 2026-08-13 (direct request)**: five more instruments on the
+same shared `Duplex.Core` `Meter` — publish throughput/latency
+(`PublishService`), GraphQL request volume/latency (a new
+`GraphQlDiagnosticEventListener` in `EventStore.GraphQL`, HotChocolate's
+own diagnostic-event-listener extension point), derivation lag
+(`DerivationWorker`), archival operation count/duration
+(`ArchivalService`), and simulator publish rate (both proving-ground
+Simulators, which gained their first-ever OTel wiring in the process) —
+plus standard .NET process metrics (`OpenTelemetry.Instrumentation.
+Process`) in `EventStore.ServiceDefaults`. Full reasoning, the real
+HotChocolate API-verification detour, and why each metric is shaped the
+way it is: `ADR-088`'s own "Extended, 2026-08-13" note and `docs/changes/
+2026-08-13.md`. This item's own Scope/Exit-criteria text above is left as
+originally written (additive-history convention) — the extension is
+real but was never a gap in what was ORIGINALLY scoped, so nothing above
+needed correcting, only extending.
+
 ## Event Log/AccessLog Archival Segment Detachment
 
 **Scope**: `ADR-089` — detach a verified, contiguous segment of

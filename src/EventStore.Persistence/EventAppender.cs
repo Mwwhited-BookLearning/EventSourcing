@@ -25,64 +25,110 @@ public static class EventAppender
     public static async Task AppendAsync(
         EventStoreContext db, StoredEvent storedEvent, IReadOnlyList<Guid> parentEventIds, string? observedRemoteClock, CancellationToken ct = default)
     {
-        db.Events.Add(storedEvent);
-        foreach (var parentEventId in parentEventIds)
-            db.EventParents.Add(new EventParent { ChildEventId = storedEvent.EventId, ParentEventId = parentEventId });
-
-        // ADR-019/033 -- ChainHash needs this row's own SequenceNumber, which
-        // isn't known until the insert itself assigns it (an identity column),
-        // so this is necessarily a read-prior-state, insert, then compute-and-
-        // update sequence, not one single insert. LogicalClock's own "read this
-        // site's most recent clock, compute the next one" follows the identical
-        // shape, in the same transaction. Serializable isolation prevents a
-        // concurrent appender's own insert from reading the same "prior tail"
-        // and producing two rows that both chain off the same predecessor.
-        await using var transaction = await db.Database.BeginTransactionAsync(IsolationLevel.Serializable, ct);
-        try
+        // Npgsql's retrying execution strategy (EventStore.Host.Postgres's
+        // EnableRetryOnFailure) forbids a manually-started transaction unless
+        // the WHOLE retryable unit -- every Add and SaveChanges, not just
+        // BeginTransaction/Commit -- runs inside CreateExecutionStrategy's own
+        // delegate (EF throws InvalidOperationException otherwise, "does not
+        // support user-initiated transactions"). Found only by actually
+        // running a publish through the real Postgres-backed AppHost, which
+        // is the only path that ever enables retry-on-failure -- every
+        // SQLite/PostgreSQL/SQL Server integration test constructs its own
+        // DbContext without it, so none of them could have caught this.
+        var strategy = db.Database.CreateExecutionStrategy();
+        await strategy.ExecuteAsync(async () =>
         {
-            var prior = await db.Events
-                .AsNoTracking()
-                .OrderByDescending(e => e.SequenceNumber)
-                .Select(e => new { e.ChainHash, e.LogicalClock })
-                .FirstOrDefaultAsync(ct);
+            // A retry re-enters this delegate from scratch, but storedEvent
+            // is the SAME shared instance across every attempt (constructed
+            // once by the caller, before this method ever runs) -- found, by
+            // actually running 30 genuinely concurrent publishes against a
+            // real Postgres container, to leave the hash chain silently
+            // WRONG rather than just fail loudly on a retry: an attempt
+            // whose transaction later aborted can still leave EF's change
+            // tracker believing storedEvent's identity-generated
+            // SequenceNumber was already assigned, so a bare re-Add() skips
+            // re-generating it and ChainHash below gets computed from a
+            // stale value that no longer matches the row this attempt is
+            // actually about to insert. Detaching and resetting the one
+            // property this method itself reads back is the fix -- every
+            // other property this method writes (ChainHash/LogicalClock/
+            // AppendedAt) is unconditionally overwritten before being read
+            // again regardless of attempt, so nothing else needs resetting.
+            db.Entry(storedEvent).State = EntityState.Detached;
+            storedEvent.SequenceNumber = default;
 
-            // ADR-089 -- once the live tail has been archived away
-            // (EventStore.Archival), the query above finds nothing even
-            // though a real prior chain exists; falling straight to
-            // EventChainHash.Genesis here would silently restart the chain
-            // from zero, breaking every ChainHash computed from this point
-            // on. Falls back to the latest EventLogChainCheckpoint's own
-            // ChainHashAtRangeEnd instead -- found only by actually running
-            // a publish immediately after an archival, not by reading the
-            // code back; ChainVerificationService needed the identical fix
-            // for the same reason.
-            var priorChainHash = prior?.ChainHash;
-            if (priorChainHash is null)
-                priorChainHash = await db.EventLogChainCheckpoints
+            // A prior attempt's own freshly-`new`'d EventParent rows (built
+            // fresh each attempt, right below) are a DIFFERENT defect from
+            // storedEvent's own -- not stale data, but a duplicate-key
+            // tracking conflict: EF still has the previous attempt's own
+            // instances tracked under the same (ChildEventId, ParentEventId)
+            // key, and `.Add()`-ing a second, different instance with that
+            // same key throws. Detached defensively for the identical
+            // "retry must start from a clean slate" reason as storedEvent
+            // above, even though the test that caught storedEvent's own bug
+            // published with no parents and so never exercised this path.
+            foreach (var tracked in db.ChangeTracker.Entries<EventParent>().Where(e => e.Entity.ChildEventId == storedEvent.EventId).ToList())
+                tracked.State = EntityState.Detached;
+
+            db.Events.Add(storedEvent);
+            foreach (var parentEventId in parentEventIds)
+                db.EventParents.Add(new EventParent { ChildEventId = storedEvent.EventId, ParentEventId = parentEventId });
+
+            // ADR-019/033 -- ChainHash needs this row's own SequenceNumber, which
+            // isn't known until the insert itself assigns it (an identity column),
+            // so this is necessarily a read-prior-state, insert, then compute-and-
+            // update sequence, not one single insert. LogicalClock's own "read this
+            // site's most recent clock, compute the next one" follows the identical
+            // shape, in the same transaction. Serializable isolation prevents a
+            // concurrent appender's own insert from reading the same "prior tail"
+            // and producing two rows that both chain off the same predecessor.
+            await using var transaction = await db.Database.BeginTransactionAsync(IsolationLevel.Serializable, ct);
+            try
+            {
+                var prior = await db.Events
                     .AsNoTracking()
-                    .OrderByDescending(c => c.SequenceNumberRangeEnd)
-                    .Select(c => c.ChainHashAtRangeEnd)
+                    .OrderByDescending(e => e.SequenceNumber)
+                    .Select(e => new { e.ChainHash, e.LogicalClock })
                     .FirstOrDefaultAsync(ct);
 
-            await db.SaveChangesAsync(ct);
+                // ADR-089 -- once the live tail has been archived away
+                // (EventStore.Archival), the query above finds nothing even
+                // though a real prior chain exists; falling straight to
+                // EventChainHash.Genesis here would silently restart the chain
+                // from zero, breaking every ChainHash computed from this point
+                // on. Falls back to the latest EventLogChainCheckpoint's own
+                // ChainHashAtRangeEnd instead -- found only by actually running
+                // a publish immediately after an archival, not by reading the
+                // code back; ChainVerificationService needed the identical fix
+                // for the same reason.
+                var priorChainHash = prior?.ChainHash;
+                if (priorChainHash is null)
+                    priorChainHash = await db.EventLogChainCheckpoints
+                        .AsNoTracking()
+                        .OrderByDescending(c => c.SequenceNumberRangeEnd)
+                        .Select(c => c.ChainHashAtRangeEnd)
+                        .FirstOrDefaultAsync(ct);
 
-            // ADR-088 -- stamped exactly here, the same moment SequenceNumber
-            // itself became known via the insert above, not at method entry
-            // (which would include time spent inside the Serializable
-            // transaction's own retry/contention window, not genuine append
-            // latency) and not after the second SaveChangesAsync below (which
-            // would exclude the ChainHash/LogicalClock computation this row
-            // still needs before it's actually durable).
-            storedEvent.AppendedAt = DateTimeOffset.UtcNow;
-            storedEvent.ChainHash = EventChainHash.Compute(priorChainHash ?? EventChainHash.Genesis, storedEvent.PayloadHash, storedEvent.SequenceNumber, storedEvent.Signature);
-            storedEvent.LogicalClock = HybridLogicalClock.Next(prior?.LogicalClock, observedRemoteClock);
-            await db.SaveChangesAsync(ct);
-            await transaction.CommitAsync(ct);
-        }
-        catch (DbUpdateException)
-        {
-            await transaction.RollbackAsync(ct);
-            throw;
-        }
+                await db.SaveChangesAsync(ct);
+
+                // ADR-088 -- stamped exactly here, the same moment SequenceNumber
+                // itself became known via the insert above, not at method entry
+                // (which would include time spent inside the Serializable
+                // transaction's own retry/contention window, not genuine append
+                // latency) and not after the second SaveChangesAsync below (which
+                // would exclude the ChainHash/LogicalClock computation this row
+                // still needs before it's actually durable).
+                storedEvent.AppendedAt = DateTimeOffset.UtcNow;
+                storedEvent.ChainHash = EventChainHash.Compute(priorChainHash ?? EventChainHash.Genesis, storedEvent.PayloadHash, storedEvent.SequenceNumber, storedEvent.Signature);
+                storedEvent.LogicalClock = HybridLogicalClock.Next(prior?.LogicalClock, observedRemoteClock);
+                await db.SaveChangesAsync(ct);
+                await transaction.CommitAsync(ct);
+            }
+            catch (DbUpdateException)
+            {
+                await transaction.RollbackAsync(ct);
+                throw;
+            }
+        });
     }
 }

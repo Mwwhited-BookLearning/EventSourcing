@@ -196,6 +196,39 @@ internal static class FollowScenarioAssertions
         Assert.AreEqual(e2.CorrelationId, events.Single().EventId);
     }
 
+    // Direct regression coverage for a real bug: EventTailReader.TailAsync's
+    // idle-poll Task.Delay(pollInterval, ct) let a real client disconnect
+    // (cancelling ct mid-await, the exact same thing closing a browser tab
+    // does to a live GraphQL Subscription) propagate as an unhandled
+    // OperationCanceledException/TaskCanceledException all the way through
+    // FollowSubscriptionTypeModule's own pass-through wrapper and into
+    // HotChocolate's subscription executor, instead of ending the stream
+    // cleanly. No events are published for this type -- MoveNextAsync's
+    // first call finds nothing and parks inside that exact Task.Delay,
+    // the real suspension point a disconnect cancels mid-await; cancelling
+    // before it has genuinely reached that await (or before the loop even
+    // starts) would prove nothing about this bug.
+    public static async Task DisconnectingMidTailEndsTheStreamGracefullyRatherThanThrowing(SchemaRegistryService registry, PublishService publish, FollowService follow)
+    {
+        const string appId = "follow-demo-graceful-cancel";
+        const string typeName = "OrderPlacedGracefulCancel";
+        await RegisterType(registry, appId, typeName);
+
+        using var cts = new CancellationTokenSource();
+        var connected = (FollowResult.Connected)await follow.ConnectAsync(
+            typeName, new FollowRequest(appId, Filter: null, Mode: null, FromSequenceNumber: null), TestClaimsPrincipal.None, cts.Token);
+        var enumerator = connected.Events.GetAsyncEnumerator(cts.Token);
+
+        var moveNextTask = enumerator.MoveNextAsync().AsTask();
+        await Task.Delay(TimeSpan.FromMilliseconds(50));
+        cts.Cancel();
+
+        var hasNext = await moveNextTask; // must complete cleanly, not throw, despite cancellation firing mid-await
+        Assert.IsFalse(hasNext, "cancelling the follow token mid-poll must end the stream cleanly, not throw");
+
+        await enumerator.DisposeAsync();
+    }
+
     public static async Task SupplyingFromSequenceNumberWithoutModeReplayIsRejected(SchemaRegistryService registry, PublishService publish, FollowService follow)
     {
         const string appId = "follow-demo-8";

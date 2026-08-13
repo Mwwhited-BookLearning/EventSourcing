@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Security.Claims;
 using System.Security.Cryptography;
 using System.Text;
@@ -6,6 +7,7 @@ using System.Text.Json.Nodes;
 using EventStore.Abstractions;
 using EventStore.Domain.AccessLog;
 using EventStore.Domain.EventLog;
+using EventStore.Domain.Observability;
 using EventStore.Domain.SchemaRegistry;
 using EventStore.Domain.Streaming;
 using EventStore.Erasure;
@@ -49,8 +51,43 @@ public class PublishService(
     // all of them for a value most don't care about; a real Host always
     // supplies a real configured value via DI.
     private readonly string _originId = originIdOptions?.Value.OriginId ?? OriginIdOptions.Default;
+
+    // Direct request -- a thin timing/outcome-tagging wrapper around every
+    // real publish path (HTTP endpoint, DerivationWorker, PeerSyncReceiver),
+    // rather than instrumenting each early-return branch of the actual
+    // publish logic below individually: PublishAsyncCore has many distinct
+    // return points (UnregisteredEventType/Forbidden/StepUpRequired/
+    // MissingSignatureMeaning/UnresolvedParent/Conflict/Accepted), and a
+    // wrapper covers all of them uniformly with one Stopwatch instead of
+    // duplicating the recording call at each one.
     public async Task<PublishResult> PublishAsync(
         string eventTypeName, PublishEventRequest request, ClaimsPrincipal user, CancellationToken ct = default, int derivationHopCount = 0)
+    {
+        var stopwatch = Stopwatch.StartNew();
+        var result = await PublishAsyncCore(eventTypeName, request, user, ct, derivationHopCount);
+
+        var appIdTag = new KeyValuePair<string, object?>("app.id", request.AppId);
+        var eventTypeTag = new KeyValuePair<string, object?>("event.type", eventTypeName.ToLowerInvariant());
+        DuplexInstrumentation.PublishLatencyMs.Record(stopwatch.Elapsed.TotalMilliseconds, appIdTag, eventTypeTag);
+        DuplexInstrumentation.PublishOutcomes.Add(1, appIdTag, eventTypeTag, new KeyValuePair<string, object?>("outcome", OutcomeTag(result)));
+
+        return result;
+    }
+
+    private static string OutcomeTag(PublishResult result) => result switch
+    {
+        PublishResult.Accepted => "accepted",
+        PublishResult.Conflict => "conflict",
+        PublishResult.UnregisteredEventType => "unregistered_event_type",
+        PublishResult.Forbidden => "forbidden",
+        PublishResult.UnresolvedParent => "unresolved_parent",
+        PublishResult.StepUpRequired => "step_up_required",
+        PublishResult.MissingSignatureMeaning => "missing_signature_meaning",
+        _ => "unknown",
+    };
+
+    private async Task<PublishResult> PublishAsyncCore(
+        string eventTypeName, PublishEventRequest request, ClaimsPrincipal user, CancellationToken ct, int derivationHopCount)
     {
         var normalizedName = eventTypeName.ToLowerInvariant();
         var parentEventIds = request.ParentEventIds ?? [];

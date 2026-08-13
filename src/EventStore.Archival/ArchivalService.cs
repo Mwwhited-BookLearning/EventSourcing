@@ -1,7 +1,9 @@
+using System.Diagnostics;
 using System.Text;
 using EventStore.Attachments;
 using EventStore.Domain.AccessLog;
 using EventStore.Domain.EventLog;
+using EventStore.Domain.Observability;
 using EventStore.Inbox;
 using EventStore.Persistence;
 using Microsoft.EntityFrameworkCore;
@@ -24,7 +26,21 @@ public class ArchivalService(
     // durable BEFORE the only local copy is ever removed (this design's
     // own governing "never lose or corrupt data" principle, applied to
     // the archival operation itself, not just the mechanism it protects).
+    // Direct request -- ArchivalService has no polling worker of its own
+    // (ADR-056 owns WHEN this runs, not yet built), so there's no "lag"
+    // to measure the way RouterWorker/DerivationWorker's own histograms do.
+    // What's actually useful here is operation count/duration/outcome per
+    // on-demand call, recorded uniformly regardless of which of the three
+    // ArchiveResult cases the real work below returns.
     public async Task<ArchiveResult> ArchiveEventLogSegmentAsync(long throughSequenceNumber, string contentProviderKey, CancellationToken ct = default)
+    {
+        var stopwatch = Stopwatch.StartNew();
+        var result = await ArchiveEventLogSegmentCoreAsync(throughSequenceNumber, contentProviderKey, ct);
+        RecordArchivalMetrics("event", stopwatch.Elapsed.TotalMilliseconds, result);
+        return result;
+    }
+
+    private async Task<ArchiveResult> ArchiveEventLogSegmentCoreAsync(long throughSequenceNumber, string contentProviderKey, CancellationToken ct)
     {
         var verification = await eventLogVerifier.VerifyAsync(throughSequenceNumber, ct);
         if (verification is ChainVerificationResult.Tampered tampered)
@@ -78,6 +94,14 @@ public class ArchivalService(
     }
 
     public async Task<ArchiveResult> ArchiveAccessLogSegmentAsync(long throughSequenceNumber, string contentProviderKey, CancellationToken ct = default)
+    {
+        var stopwatch = Stopwatch.StartNew();
+        var result = await ArchiveAccessLogSegmentCoreAsync(throughSequenceNumber, contentProviderKey, ct);
+        RecordArchivalMetrics("access", stopwatch.Elapsed.TotalMilliseconds, result);
+        return result;
+    }
+
+    private async Task<ArchiveResult> ArchiveAccessLogSegmentCoreAsync(long throughSequenceNumber, string contentProviderKey, CancellationToken ct)
     {
         var verification = await accessLogVerifier.VerifyAsync(throughSequenceNumber, ct);
         if (verification is ChainVerificationResult.Tampered tampered)
@@ -166,5 +190,19 @@ public class ArchivalService(
         return expected == checkpoint.ChainHashAtRangeEnd
             ? new ChainVerificationResult.Verified(bundle.Lines.Count)
             : new ChainVerificationResult.Tampered(checkpoint.SequenceNumberRangeEnd);
+    }
+
+    private static void RecordArchivalMetrics(string log, double durationMs, ArchiveResult result)
+    {
+        var logTag = new KeyValuePair<string, object?>("log", log);
+        var outcome = result switch
+        {
+            ArchiveResult.Archived => "archived",
+            ArchiveResult.NothingToArchive => "nothing_to_archive",
+            ArchiveResult.SegmentNotVerified => "not_verified",
+            _ => "unknown",
+        };
+        DuplexInstrumentation.ArchivalOperationDurationMs.Record(durationMs, logTag);
+        DuplexInstrumentation.ArchivalSegmentsArchived.Add(1, logTag, new KeyValuePair<string, object?>("outcome", outcome));
     }
 }

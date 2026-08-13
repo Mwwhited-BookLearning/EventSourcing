@@ -59,11 +59,18 @@ public static class Extensions
                 metrics.AddAspNetCoreInstrumentation()
                     .AddHttpClientInstrumentation()
                     .AddRuntimeInstrumentation()
+                    // Direct request -- process-level metrics (CPU%, working
+                    // set, thread/handle count), the one standard .NET
+                    // instrumentation category AspNetCore/Http/Runtime above
+                    // don't cover. See this project's own PackageReference
+                    // comment for why it's a prerelease package.
+                    .AddProcessInstrumentation()
                     // ADR-088 -- Router fold lag, peer-sync outbox depth/
                     // age, webhook delivery lag, hash-chain verification
-                    // outcomes. DuplexInstrumentation.Meter is the one
-                    // shared instance every mechanism's own instrument is
-                    // created against.
+                    // outcomes, plus this pass's own publish/derivation/
+                    // archival/GraphQL/simulator additions.
+                    // DuplexInstrumentation.Meter is the one shared instance
+                    // every mechanism's own instrument is created against.
                     .AddMeter(DuplexInstrumentation.Name);
             })
             .WithTracing(tracing =>

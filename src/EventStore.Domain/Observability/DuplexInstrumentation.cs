@@ -79,4 +79,46 @@ public static class DuplexInstrumentation
         () => PeerSyncOutboxSnapshots.Select(kv => new Measurement<long>((long)kv.Value.OldestPendingAgeMs, new KeyValuePair<string, object?>("peer.id", kv.Key))),
         unit: "ms",
         description: "Age of the oldest pending item in this site's peer-sync outbox, per peer.");
+
+    // Direct request -- broader than ADR-088's own original mechanism list
+    // (Router/Webhooks/Replication/Inbox's hash-chain verifier), added the
+    // same additive way: one more instrument on the same shared Meter, no
+    // new pipeline wiring beyond what AddMeter(Name) already covers.
+
+    public static readonly Counter<long> PublishOutcomes = Meter.CreateCounter<long>(
+        "duplex.publish.outcomes",
+        description: "Count of PublishService.PublishAsync calls, tagged by \"app.id\", \"event.type\", and \"outcome\" (the PublishResult case name).");
+
+    public static readonly Histogram<double> PublishLatencyMs = Meter.CreateHistogram<double>(
+        "duplex.publish.latency", "ms",
+        "Wall-clock time PublishService.PublishAsync spent per call, regardless of outcome -- tagged by \"app.id\"/\"event.type\".");
+
+    public static readonly Counter<long> GraphQlRequestOutcomes = Meter.CreateCounter<long>(
+        "duplex.graphql.request_outcomes",
+        description: "Count of completed GraphQL requests (query/mutation/subscription-connect), tagged by \"outcome\" (\"ok\" or \"error\" -- error means at least one ResolverError fired during the request).");
+
+    public static readonly Histogram<double> GraphQlRequestLatencyMs = Meter.CreateHistogram<double>(
+        "duplex.graphql.request_latency", "ms",
+        "Wall-clock time between HotChocolate's own StartProcessing and StopProcessing diagnostic events for one GraphQL request.");
+
+    public static readonly Histogram<double> DerivationLagMs = Meter.CreateHistogram<double>(
+        "duplex.derivation.lag", "ms",
+        "Elapsed time between the triggering source event's own AppendedAt and the derived event's successful publish -- the DerivationWorker analogue of RouterFoldLagMs above, tagged by \"app.id\"/\"derivation.name\".");
+
+    public static readonly Counter<long> ArchivalSegmentsArchived = Meter.CreateCounter<long>(
+        "duplex.archival.segments",
+        description: "Count of ArchivalService segment-archive attempts, tagged by \"log\" (\"event\" or \"access\") and \"outcome\" (\"archived\", \"nothing_to_archive\", or \"not_verified\").");
+
+    public static readonly Histogram<double> ArchivalOperationDurationMs = Meter.CreateHistogram<double>(
+        "duplex.archival.operation_duration", "ms",
+        "Wall-clock time one ArchivalService segment-archive call took (verify + serialize + checkpoint + detach), tagged by \"log\".");
+
+    // Samples.Vitals.Simulator/Samples.Meridian.Simulator both run as plain
+    // BackgroundService-free console loops with no other reason to carry
+    // OTel wiring of their own -- recorded on the same shared instrument
+    // here rather than a third copy of a near-identical Meter, tagged by
+    // "app.id" to tell the two domains' own dashboard series apart.
+    public static readonly Counter<long> SimulatorEventsPublished = Meter.CreateCounter<long>(
+        "duplex.simulator.events_published",
+        description: "Count of events a proving-ground Simulator process has successfully published, tagged by \"app.id\".");
 }

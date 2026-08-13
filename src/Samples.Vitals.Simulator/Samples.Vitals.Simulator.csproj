@@ -17,6 +17,7 @@
     <ProjectReference Include="..\EventStore.SchemaRegistry\EventStore.SchemaRegistry.csproj" />
     <ProjectReference Include="..\EventStore.Upcasting\EventStore.Upcasting.csproj" />
     <ProjectReference Include="..\EventStore.Inbox\EventStore.Inbox.csproj" />
+    <ProjectReference Include="..\EventStore.ServiceDefaults\EventStore.ServiceDefaults.csproj" />
     <ProjectReference Include="..\Samples.Vitals\Samples.Vitals.csproj" />
   </ItemGroup>
 
