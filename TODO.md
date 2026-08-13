@@ -237,3 +237,19 @@ here instead of inlining.
   or Node/undici accepting jsdom's `Event` instances again) — bump then,
   not before, and re-run the full `vitest`/`vue-tsc -b`/build sequence
   again before trusting either bump.
+  **Retried, 2026-08-12 — still blocked, both real, neither stale.**
+  `npm outdated` still shows the same two versions (`typescript` 7.0.2,
+  `jsdom` 30.0.1 — no newer release of either since this item was
+  written) and `vue-tsc` itself is already at its own latest (`3.3.9`),
+  so no upstream fix has landed on any of the three packages this gap
+  depends on. Bumping each in isolation and re-running the real build/test
+  commands reproduced both failures byte-for-byte: `typescript@7.0.2` +
+  `vue-tsc build` still throws the identical
+  `ERR_PACKAGE_PATH_NOT_EXPORTED` on `typescript/lib/tsc`; `jsdom@30.0.1`
+  + the real suite still throws the identical `TypeError: The "event"
+  argument must be an instance of Event. Received an instance of Event`
+  from `NativeBridgeInputSource.spec.ts`'s real `WebSocket` round trip.
+  Both reverted immediately after confirming (`package.json`/
+  `package-lock.json` diff-clean against `git diff` afterward, full
+  workspace test suite re-passing). Re-check again next time `npm
+  outdated` is run against this workspace, not before.
