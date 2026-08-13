@@ -39,6 +39,16 @@ namespace EventStore.IntegrationTests;
 // value that no longer matches the row actually being inserted. Only the
 // concurrent test below (genuinely forcing a real 40001) can reproduce
 // this -- a single, uncontended publish never hits the retry path at all.
+//
+// Bug 3: fixing bugs 1 and 2 still left a real, reported AppHost startup
+// crash -- 40001 IS now correctly classified as transient, but the retry
+// BUDGET (maxRetryCount: 10, maxRetryDelay: 2s) can genuinely be exhausted
+// under sustained multi-writer load, propagating the exact same exception
+// the caller sees regardless of how correct the retry logic itself is.
+// SustainedConcurrentLoadFromMultipleWritersNeverExhaustsTheRetryBudget
+// below reproduces this directly (16 concurrent writers for 15s fails
+// reliably at maxRetryCount: 10, passes reliably -- 3 repeated runs -- at
+// 20, which EventStore.Host.Postgres/Program.cs now uses).
 [TestClass]
 public class RetryOnFailurePostgresTests
 {
@@ -63,7 +73,7 @@ public class RetryOnFailurePostgresTests
         var options = new DbContextOptionsBuilder<EventStoreContext>()
             .UseNpgsql(_container.GetConnectionString(), x => x
                 .MigrationsAssembly("EventStore.Persistence.Migrations.Postgres")
-                .EnableRetryOnFailure(maxRetryCount: 10, maxRetryDelay: TimeSpan.FromSeconds(2), errorCodesToAdd: ["3D000", "40001"]))
+                .EnableRetryOnFailure(maxRetryCount: 20, maxRetryDelay: TimeSpan.FromSeconds(2), errorCodesToAdd: ["3D000", "40001"]))
             .Options;
         return new EventStoreContext(options, new PostgresJsonPathTranslator());
     }
@@ -168,5 +178,43 @@ public class RetryOnFailurePostgresTests
         var verifier = new ChainVerificationService(verifyDb);
         var verification = await verifier.VerifyAsync(maxSequenceNumber);
         Assert.IsInstanceOfType<ChainVerificationResult.Verified>(verification, "a retried append must never leave the hash chain internally inconsistent");
+    }
+
+    [TestMethod]
+    public async Task SustainedConcurrentLoadFromMultipleWritersNeverExhaustsTheRetryBudget()
+    {
+        const int writers = 16;
+        var duration = TimeSpan.FromSeconds(15);
+        const string appId = "sustained-load-demo";
+
+        using (var setupDb = CreateContext())
+        {
+            var setupRegistry = new SchemaRegistryService(setupDb, new PostgresFilterableFieldIndexDdlGenerator(), new MemoryCache(new MemoryCacheOptions()), UpcastingTestSupport.CreateEvaluator());
+            await setupRegistry.RegisterAsync("SustainedEvent", new RegisterEventTypeRequest(
+                AppId: appId, JsonSchema: RetryTestEventSchema, FilterableFields: [],
+                ChangeKind: "Full", EntityIdField: "$.Marker",
+                ParentValidationMode: null, RequiredClaims: null, UpcastFromPrevious: null, DowncastToPrevious: null));
+        }
+
+        var deadline = DateTimeOffset.UtcNow + duration;
+        var counters = new int[writers];
+        var tasks = Enumerable.Range(0, writers).Select(async w =>
+        {
+            var i = 0;
+            while (DateTimeOffset.UtcNow < deadline)
+            {
+                using var db = CreateContext();
+                var registry = new SchemaRegistryService(db, new PostgresFilterableFieldIndexDdlGenerator(), new MemoryCache(new MemoryCacheOptions()), UpcastingTestSupport.CreateEvaluator());
+                var publish = new PublishService(db, registry, new PostgresUniqueConstraintViolationDetector());
+                var result = await publish.PublishAsync("SustainedEvent", new PublishEventRequest(
+                    AppId: appId, SchemaVersion: 1, Payload: $$"""{ "Marker": "w{{w}}-{{i}}" }""",
+                    ParentEventIds: null, EventId: null), TestClaimsPrincipal.None);
+                Assert.IsInstanceOfType<PublishResult.Accepted>(result, $"writer {w} attempt {i} did not retry away a real conflict within the configured retry budget");
+                counters[w] = ++i;
+            }
+        });
+
+        await Task.WhenAll(tasks);
+        Console.WriteLine($"Sustained-load publishes per writer: {string.Join(", ", counters)}");
     }
 }
