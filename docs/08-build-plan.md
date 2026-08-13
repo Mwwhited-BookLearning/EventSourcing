@@ -2591,19 +2591,27 @@ point of the decision, not silently dropped:**
   `PUT /oauth/roles` (what a role NAME bundles) and `PUT /oauth/federation-
   issuers` stay genuine DevIdp-internal configuration, unaffected — neither
   is one of `ADR-067`'s own 5 named reserved event types.
-- **The lineage-parent-linking and replay-rebuild exit criteria above are
-  NOT yet backed by a dedicated test** — `tests/EventStore.IntegrationTests/
-  DelegatedGrantsRbacFederationHttpSqliteTests.cs`'s two RBAC-mutation
-  scenarios verify the Host's real write path (scope-gated publish through
-  `/rbac/*`) and DevIdp's own fold-target methods directly, but simulate
-  the fold rather than running the live `RbacProjectionWorker` inside the
-  test process — a `WebApplicationFactory` self-reference-during-startup
-  hazard made that impractical this pass (worked around in production code
-  with a real startup delay, but never proven against a live, in-process
-  factory pair). Tracked in `TODO.md`, including the lineage-parent-linking
-  and replay-rebuild coverage gap. Verified against SQLite only, matching
-  the SPIFFE/Gateway items' own provider-agnostic precedent (this item's
-  Host-side and DevIdp-side mechanisms are equally provider-agnostic).
+- **The live `RbacProjectionWorker` itself is now exercised end-to-end —
+  built, later pass.** `tests/EventStore.IntegrationTests/
+  DelegatedGrantsRbacFederationHttpSqliteTests.cs`'s own two RBAC-mutation
+  scenarios still simulate the fold (calling `RoleService`/
+  `TrustRootService` directly) rather than running the live worker, for
+  the same `WebApplicationFactory` self-reference-during-startup hazard
+  reason as before — but `RbacProjectionWorker.CatchUpOnceAsync` (extracted
+  from `ExecuteAsync`'s own tail loop, mirroring
+  `ProjectionHost<TReadModel>.CatchUpOnceAsync`'s identical shape) can now
+  be called directly, post-`ClassInit`, entirely bypassing
+  `BackgroundService.StartAsync`/`ExecuteAsync` and the hazard along with
+  it — both `WebApplicationFactory` instances are already fully built by
+  the time a test ever calls it. `tests/EventStore.IntegrationTests/
+  RbacProjectionWorkerHttpSqliteTests.cs` (new) drives the REAL Follow
+  subscription this way — genuine `FollowClient.TailAsync` against the
+  Host's own `/follow/{eventType}` SSE endpoint, genuine DPoP-bound
+  `client_credentials` token acquisition against DevIdp itself, and the
+  real event-dispatch-by-type logic inside `ApplyAsync` — for
+  `RoleGranted`, `RoleRevoked`, and the idle-timeout-stops-consumption
+  behavior. Verified against SQLite only, matching the SPIFFE/Gateway
+  items' own provider-agnostic precedent.
 
 ## Dynamic Feature-Flag Configuration Provider
 

@@ -73,15 +73,7 @@ public class RbacProjectionWorker(
         {
             try
             {
-                // Always Replay from 0 -- see this class's own header comment.
-                // A 404 (the event type not yet registered for this AppId --
-                // no grant has happened yet) surfaces as an ordinary
-                // exception via FollowClient's EnsureSuccessStatusCode and is
-                // handled identically to a dropped connection: retried after
-                // ReconnectDelay until the first grant's own
-                // EnsureRegisteredAsync makes it exist.
-                await foreach (var envelope in followClient.TailAsync(eventType, appId, fromSequenceNumber: 0, ct))
-                    await ApplyAsync(appId, eventType, envelope, ct);
+                await CatchUpOnceAsync(appId, eventType, maxEventsToConsume: int.MaxValue, idleTimeout: Timeout.InfiniteTimeSpan, ct);
             }
             catch (OperationCanceledException) when (ct.IsCancellationRequested)
             {
@@ -94,6 +86,56 @@ public class RbacProjectionWorker(
 
             await Task.Delay(ReconnectDelay, ct);
         }
+    }
+
+    // Extracted so a test can drive one bounded fold pass directly, post-
+    // ClassInit, without going through BackgroundService's own eager
+    // ExecuteAsync-on-StartAsync timing at all -- the exact hazard this
+    // class's own ExecuteAsync comment documents (its self-referential
+    // "DevIdp" HttpClient recursing into a WebApplicationFactory still
+    // being built one level up the call stack). Mirrors ProjectionHost
+    // <TReadModel>.CatchUpOnceAsync's identical shape and reasoning
+    // (TODO.md's own suggested fix). Always Replay from 0 -- see this
+    // class's own header comment on why there's no persisted checkpoint.
+    // A 404 (the event type not yet registered for this AppId -- no grant
+    // has happened yet) surfaces as an ordinary exception via FollowClient's
+    // EnsureSuccessStatusCode; a caller driving this directly (a test, or
+    // TailForeverAsync's own reconnect loop) sees it as a thrown exception,
+    // not a silent zero-events return.
+    public async Task<int> CatchUpOnceAsync(string appId, string eventType, int maxEventsToConsume, TimeSpan idleTimeout, CancellationToken ct)
+    {
+        using var idleTimeoutCts = idleTimeout == Timeout.InfiniteTimeSpan ? null : new CancellationTokenSource();
+        using var linkedCts = idleTimeoutCts is null ? null : CancellationTokenSource.CreateLinkedTokenSource(ct, idleTimeoutCts.Token);
+        var effectiveCt = linkedCts?.Token ?? ct;
+
+        var consumed = 0;
+        var enumerator = followClient.TailAsync(eventType, appId, fromSequenceNumber: 0, effectiveCt).GetAsyncEnumerator(effectiveCt);
+        try
+        {
+            while (consumed < maxEventsToConsume)
+            {
+                idleTimeoutCts?.CancelAfter(idleTimeout);
+                bool hasNext;
+                try
+                {
+                    hasNext = await enumerator.MoveNextAsync();
+                }
+                catch (OperationCanceledException) when (idleTimeoutCts?.IsCancellationRequested == true)
+                {
+                    break; // idle timeout elapsed with no new event -- not a real error
+                }
+                if (!hasNext)
+                    break; // the connection closed
+
+                await ApplyAsync(appId, eventType, enumerator.Current, ct);
+                consumed++;
+            }
+        }
+        finally
+        {
+            await enumerator.DisposeAsync();
+        }
+        return consumed;
     }
 
     private async Task ApplyAsync(string appId, string eventType, FollowedEventEnvelope envelope, CancellationToken ct)
