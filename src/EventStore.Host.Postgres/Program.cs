@@ -52,11 +52,29 @@ if (builder.Configuration["FeatureFlags:AppId"] is { } featureFlagsAppId)
 // so this specific race is less likely to bite here in practice, but
 // there's no reason to leave this connection any less resilient than
 // the one that already needs it.
+// "40001" (serialization_failure) added on top of Migrator's own "3D000"
+// -- found by actually running the real AppHost under concurrent write
+// load (both proving-ground Simulators plus RouterWorker), not assumed:
+// EventAppender.AppendAsync/AccessLogAppender.AppendAsync's own Serializable
+// isolation (their own comments: "prevents a concurrent appender's own
+// insert from reading the same 'prior tail'") makes 40001 an EXPECTED,
+// routine outcome under concurrency, not a rare edge case -- but it is not
+// one of Npgsql's own built-in transient codes (retrying a serialization
+// failure is only safe because this session's own transaction-strategy fix
+// already moved every BeginTransactionAsync call into a real
+// CreateExecutionStrategy().ExecuteAsync delegate that redoes the whole
+// unit of work from scratch on retry, not just resends the same SQL).
+// Verified against nuget/Npgsql's own docs before adding: errorCodesToAdd
+// is the officially documented extension point for exactly this "a known
+// error code is actually transient in my specific scenario" case, the same
+// mechanism Migrator's own 3D000 already uses. Migrator itself does not
+// get 40001 -- it never does concurrent Serializable inserts against the
+// Events table, so there is nothing there for this code to actually guard.
 builder.Services.AddDbContext<EventStoreContext>(options => options.UseNpgsql(
     builder.Configuration.GetConnectionString("Postgres"),
     x => x
         .MigrationsAssembly("EventStore.Persistence.Migrations.Postgres")
-        .EnableRetryOnFailure(maxRetryCount: 10, maxRetryDelay: TimeSpan.FromSeconds(2), errorCodesToAdd: ["3D000"])));
+        .EnableRetryOnFailure(maxRetryCount: 10, maxRetryDelay: TimeSpan.FromSeconds(2), errorCodesToAdd: ["3D000", "40001"])));
 builder.AddDbReachabilityHealthCheck(); // ADR-084 -- readiness fails when THIS database is unreachable
 builder.Services.AddScoped<IJsonPathTranslator, PostgresJsonPathTranslator>();
 builder.Services.AddScoped<IFilterableFieldIndexDdlGenerator, PostgresFilterableFieldIndexDdlGenerator>();

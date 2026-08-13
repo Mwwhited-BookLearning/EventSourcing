@@ -30,6 +30,16 @@
     <PackageReference Include="OpenTelemetry.Instrumentation.AspNetCore" Version="1.17.0" />
     <PackageReference Include="OpenTelemetry.Instrumentation.Http" Version="1.17.0" />
     <PackageReference Include="OpenTelemetry.Instrumentation.Runtime" Version="1.17.0" />
+    <!-- Direct request: process-level metrics (CPU%, working set, thread/
+         handle count), a "useful application detail" beyond AspNetCore/Http/
+         Runtime above. Verified against nuget.org before adding: this
+         package has never shipped a stable release (still 1.17.0-rc.1 as of
+         this pass, every earlier version alpha/beta too), the one
+         inconsistency with every other OTel package here being a real,
+         non-prerelease 1.17.0. Added anyway, since there is no stable
+         alternative for process metrics and the API surface has been
+         release-candidate for a long time. -->
+    <PackageReference Include="OpenTelemetry.Instrumentation.Process" Version="1.17.0-rc.1" />
   </ItemGroup>
 
 </Project>

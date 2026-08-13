@@ -54,6 +54,7 @@ public static class GraphQlServiceCollectionExtensions
             .AddType<Attachment>()
             .AddType<EventFilterInput>()
             .AddType<Follow.Api.FollowMode>()
+            .AddDiagnosticEventListener<GraphQlDiagnosticEventListener>() // duplex.graphql.* metrics -- see that class's own comment
             .AddMaxExecutionDepthRule(15) // guards against unbounded hierarchical fan-out (e.g. deeply nested ancestors-of-ancestors)
             .AddCostAnalyzer()
             .ModifyCostOptions(o => o.MaxFieldCost = 10_000) // mandatory complexity/cost scoring, independent of depth

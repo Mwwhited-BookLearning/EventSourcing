@@ -161,65 +161,77 @@ public class SchemaRegistryService(
         if (errors.Count > 0)
             return new RegisterEventTypeResult.ValidationFailed(errors);
 
-        var priorActiveVersion = await db.EventTypeDefinitions
-            .Where(e => e.AppId == request.AppId && e.Name == normalizedName && e.IsActive)
-            .SingleOrDefaultAsync(ct);
-
-        var newVersion = (priorActiveVersion?.Version ?? 0) + 1;
-
-        await using var transaction = await db.Database.BeginTransactionAsync(ct);
-
-        if (priorActiveVersion is not null)
+        // Npgsql's retrying execution strategy (EventStore.Host.Postgres's
+        // EnableRetryOnFailure) forbids a manually-started transaction unless
+        // the WHOLE retryable unit -- every read/Add/SaveChanges, not just
+        // BeginTransaction/Commit -- runs inside CreateExecutionStrategy's own
+        // delegate. Same fix as EventAppender.AppendAsync's own comment
+        // explains in full; newVersion is returned out of the delegate since
+        // it's still needed below for the SchemaRegistered audit event.
+        var strategy = db.Database.CreateExecutionStrategy();
+        var newVersion = await strategy.ExecuteAsync(async () =>
         {
-            priorActiveVersion.IsActive = false;
-            db.EventTypeDefinitions.Update(priorActiveVersion);
-        }
+            var priorActiveVersion = await db.EventTypeDefinitions
+                .Where(e => e.AppId == request.AppId && e.Name == normalizedName && e.IsActive)
+                .SingleOrDefaultAsync(ct);
 
-        var definition = new EventTypeDefinition
-        {
-            AppId = request.AppId,
-            Name = normalizedName,
-            Version = newVersion,
-            JsonSchema = request.JsonSchema,
-            RegisteredAt = DateTimeOffset.UtcNow,
-            IsActive = true,
-            ParentValidationMode = parentValidationMode,
-            RequiredClaims = requiredClaims,
-            ChangeKind = changeKind,
-            EntityIdField = request.EntityIdField ?? "",
-            EntityType = string.IsNullOrEmpty(request.EntityType) ? normalizedName : request.EntityType.ToLowerInvariant(),
-            UpcastFromPrevious = request.UpcastFromPrevious,
-            DowncastToPrevious = request.DowncastToPrevious,
-            RejectionBehavior = rejectionBehavior,
-            FilterableFields = filterableFields,
-            RequiredSignature = requiredSignature,
-            ExpectedResponse = expectedResponse,
-        };
-        db.EventTypeDefinitions.Add(definition);
+            var newVersion = (priorActiveVersion?.Version ?? 0) + 1;
 
-        await db.SaveChangesAsync(ct);
+            await using var transaction = await db.Database.BeginTransactionAsync(ct);
 
-        foreach (var field in filterableFields.Where(f => f.IsIndexed))
-        {
-            var indexName = $"IX_Events_{request.AppId}_{normalizedName}_{newVersion}_{field.Id}";
-            var ddlStatements = indexDdlGenerator.GenerateCreateIndexDdl("Events", "Payload", field.JsonPath, indexName);
-            // Not db.Database.ExecuteSqlRawAsync -- found while implementing that it always
-            // parses the SQL as a composite format string (RawSqlCommandBuilder.Build), even
-            // with no parameters supplied. PostgreSQL's own path-array literal syntax ('{Amount}')
-            // uses literal curly braces, which that parser misreads as a {0}-style placeholder.
-            // A raw ADO.NET command against the same connection/transaction has no such parsing.
-            var connection = db.Database.GetDbConnection();
-            var dbTransaction = transaction.GetDbTransaction();
-            foreach (var statement in ddlStatements)
+            if (priorActiveVersion is not null)
             {
-                await using var command = connection.CreateCommand();
-                command.CommandText = statement;
-                command.Transaction = dbTransaction;
-                await command.ExecuteNonQueryAsync(ct);
+                priorActiveVersion.IsActive = false;
+                db.EventTypeDefinitions.Update(priorActiveVersion);
             }
-        }
 
-        await transaction.CommitAsync(ct);
+            var definition = new EventTypeDefinition
+            {
+                AppId = request.AppId,
+                Name = normalizedName,
+                Version = newVersion,
+                JsonSchema = request.JsonSchema,
+                RegisteredAt = DateTimeOffset.UtcNow,
+                IsActive = true,
+                ParentValidationMode = parentValidationMode,
+                RequiredClaims = requiredClaims,
+                ChangeKind = changeKind,
+                EntityIdField = request.EntityIdField ?? "",
+                EntityType = string.IsNullOrEmpty(request.EntityType) ? normalizedName : request.EntityType.ToLowerInvariant(),
+                UpcastFromPrevious = request.UpcastFromPrevious,
+                DowncastToPrevious = request.DowncastToPrevious,
+                RejectionBehavior = rejectionBehavior,
+                FilterableFields = filterableFields,
+                RequiredSignature = requiredSignature,
+                ExpectedResponse = expectedResponse,
+            };
+            db.EventTypeDefinitions.Add(definition);
+
+            await db.SaveChangesAsync(ct);
+
+            foreach (var field in filterableFields.Where(f => f.IsIndexed))
+            {
+                var indexName = $"IX_Events_{request.AppId}_{normalizedName}_{newVersion}_{field.Id}";
+                var ddlStatements = indexDdlGenerator.GenerateCreateIndexDdl("Events", "Payload", field.JsonPath, indexName);
+                // Not db.Database.ExecuteSqlRawAsync -- found while implementing that it always
+                // parses the SQL as a composite format string (RawSqlCommandBuilder.Build), even
+                // with no parameters supplied. PostgreSQL's own path-array literal syntax ('{Amount}')
+                // uses literal curly braces, which that parser misreads as a {0}-style placeholder.
+                // A raw ADO.NET command against the same connection/transaction has no such parsing.
+                var connection = db.Database.GetDbConnection();
+                var dbTransaction = transaction.GetDbTransaction();
+                foreach (var statement in ddlStatements)
+                {
+                    await using var command = connection.CreateCommand();
+                    command.CommandText = statement;
+                    command.Transaction = dbTransaction;
+                    await command.ExecuteNonQueryAsync(ct);
+                }
+            }
+
+            await transaction.CommitAsync(ct);
+            return newVersion;
+        });
 
         cache.Remove(OpenApiDocumentCacheKey); // ADR-002 -- ~60s TTL otherwise; invalidate immediately on registration
         cache.Remove(AsyncApiDocumentCacheKey);

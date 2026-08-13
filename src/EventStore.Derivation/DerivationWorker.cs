@@ -2,6 +2,7 @@
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using EventStore.Domain.EventLog;
+using EventStore.Domain.Observability;
 using EventStore.Domain.SchemaRegistry;
 using EventStore.Inbox;
 using EventStore.Persistence;
@@ -221,7 +222,7 @@ public class DerivationWorker(IServiceScopeFactory scopeFactory, ILogger<Derivat
             return;
         }
 
-        await PublishDerivedEventAsync(publishService, derivation, activeDefinition, arrived, hopCount, ct);
+        await PublishDerivedEventAsync(publishService, derivation, activeDefinition, arrived, hopCount, arrivingEvent.AppendedAt, ct);
 
         if (pending is not null)
             db.PendingJoinStates.Remove(pending);
@@ -269,7 +270,7 @@ public class DerivationWorker(IServiceScopeFactory scopeFactory, ILogger<Derivat
             return;
         }
 
-        await PublishDerivedEventAsync(publishService, derivation, activeDefinition, arrived, hopCount, ct);
+        await PublishDerivedEventAsync(publishService, derivation, activeDefinition, arrived, hopCount, arrivingEvent.AppendedAt, ct);
     }
 
     private static async Task<StoredEvent?> FindLatestMatchingEventAsync(
@@ -294,17 +295,27 @@ public class DerivationWorker(IServiceScopeFactory scopeFactory, ILogger<Derivat
 
     private static async Task PublishDerivedEventAsync(
         PublishService publishService, DerivationDefinition derivation, EventTypeDefinition activeDefinition,
-        Dictionary<string, ArrivedSource> arrived, int hopCount, CancellationToken ct)
+        Dictionary<string, ArrivedSource> arrived, int hopCount, DateTimeOffset triggeringEventAppendedAt, CancellationToken ct)
     {
         var outputPayload = BuildOutputPayload(derivation.SelectFields, arrived);
         var parentEventIds = arrived.Values.Select(a => a.EventId).ToList();
 
-        await publishService.PublishAsync(
+        var result = await publishService.PublishAsync(
             derivation.Name,
             new PublishEventRequest(derivation.AppId, activeDefinition.Version, outputPayload, parentEventIds, EventId: null),
             SystemPrincipal,
             ct,
             derivationHopCount: hopCount);
+
+        // Direct request -- RouterFoldLagMs's own analogue for this worker.
+        // Recorded only on a genuinely successful publish, same reasoning as
+        // that histogram's own comment: a rejected/conflicting publish never
+        // reached the state this lag is meant to measure.
+        if (result is PublishResult.Accepted)
+            DuplexInstrumentation.DerivationLagMs.Record(
+                (DateTimeOffset.UtcNow - triggeringEventAppendedAt).TotalMilliseconds,
+                new KeyValuePair<string, object?>("app.id", derivation.AppId),
+                new KeyValuePair<string, object?>("derivation.name", derivation.Name));
     }
 
     private static string BuildOutputPayload(List<SelectField> selectFields, IReadOnlyDictionary<string, ArrivedSource> arrived)

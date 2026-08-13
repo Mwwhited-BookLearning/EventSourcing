@@ -99,3 +99,74 @@ added pipeline line, not zero, but still far short of "a new
 observability stack." The Decision text above is left as originally
 written (additive-history convention) rather than silently edited; this
 note is the correction.
+
+**Extended, 2026-08-13 (direct request — "setup the otel metrics as
+well," then "add new metrics," then "all standard .net and asp.net
+metrics as well as any application details that might be useful")**: the
+Decision text above named four mechanisms (Router, peer-sync outbox,
+webhooks, hash-chain verification) — real gaps existed beyond them,
+closed this pass on the same shared `Duplex.Core` `Meter`, no new
+pipeline wiring beyond what's already described above:
+- **Publish throughput/latency** — `PublishOutcomes`
+  (`Counter<long>`, tagged `app.id`/`event.type`/`outcome`) and
+  `PublishLatencyMs` (`Histogram<double>`), recorded by a thin
+  `PublishService.PublishAsync` wrapper around the renamed
+  `PublishAsyncCore` — one Stopwatch covers every one of that method's
+  several early-return outcomes uniformly, rather than instrumenting
+  each branch.
+- **GraphQL request volume/latency** — the one query-layer gap this
+  ADR's original Decision text never covered at all (Router/Webhooks/
+  Replication/Inbox only). `HotChocolate.Diagnostics`' own OpenTelemetry
+  integration (`AddInstrumentation`/`AddHotChocolateInstrumentation`,
+  checked directly against its v16 docs page before deciding not to add
+  it) produces spans, never a `Meter` — so `GraphQlRequestOutcomes`/
+  `GraphQlRequestLatencyMs` are recorded by a new
+  `GraphQlDiagnosticEventListener` (`EventStore.GraphQL`) extending
+  HotChocolate's own abstract `ExecutionDiagnosticEventListener`
+  (`HotChocolate.Execution.Instrumentation`), registered via
+  `.AddDiagnosticEventListener<T>()`. Found only by letting the compiler
+  enumerate the real member set after reflection against the installed
+  assembly proved insufficient (it under-reported: `StartProcessing`/
+  `StopProcessing` are real, per that reflection check, but a much larger
+  `ICoreExecutionDiagnosticEvents` base surface lived in an assembly that
+  same reflection pass never actually loaded) — the same "verify before
+  citing" discipline `FollowSubscriptionTypeModule`'s own comment already
+  establishes for this library, taken one step further than reflection
+  alone this time.
+- **Derivation lag** — `DerivationLagMs` (`Histogram<double>`, tagged
+  `app.id`/`derivation.name`), `DerivationWorker`'s own analogue of
+  Router fold lag above: elapsed time between the triggering source
+  event's `AppendedAt` and the derived event's successful publish.
+- **Archival operation count/duration** — `ArchivalSegmentsArchived`
+  (`Counter<long>`, tagged `log`/`outcome`) and
+  `ArchivalOperationDurationMs` (`Histogram<double>`, tagged `log`).
+  `ArchivalService` has no polling worker of its own (this ADR's sibling
+  gap, `ADR-056`, still not built) — no "lag" to measure the way the
+  three worker-shaped mechanisms above have, so this measures the
+  on-demand operation itself instead.
+- **Simulator publish rate** — `SimulatorEventsPublished`
+  (`Counter<long>`, tagged `app.id`), recorded by
+  `Samples.Vitals.Simulator`/`Samples.Meridian.Simulator` directly. Both
+  had **zero** OTel wiring before this pass (a plain
+  `Host.CreateApplicationBuilder`, no `ConfigureOpenTelemetry` call) —
+  Aspire injects `OTEL_EXPORTER_OTLP_ENDPOINT` into every project
+  resource regardless, but nothing was listening for it. Both now call
+  `EventStore.ServiceDefaults`' `ConfigureOpenTelemetry()` directly
+  (not the full `AddServiceDefaults()` — a plain console loop with no
+  HTTP surface has no use for the health-check/service-discovery/HTTP-
+  resilience wiring that bundles), a new `ProjectReference` each.
+- **Standard .NET process metrics** — `OpenTelemetry.Instrumentation.
+  Process`'s `AddProcessInstrumentation()` (CPU%, working set, thread/
+  handle count), added to `EventStore.ServiceDefaults` alongside the
+  pre-existing AspNetCore/Http/Runtime instrumentation. The one
+  inconsistency worth flagging: this package has never shipped a stable
+  release (`1.17.0-rc.1` as of this pass, checked directly against
+  nuget.org's own version listing before adding it) — added anyway,
+  since there's no stable alternative for process-level metrics and the
+  surface has been release-candidate for a long time.
+
+All additions verified by actually building every touched project (and
+the full solution) after each change, plus a full `EventStore.
+IntegrationTests` run (224/224) after the transaction-strategy fix this
+same pass required first (see `docs/changes/2026-08-13.md`) — not just
+assumed to compile.

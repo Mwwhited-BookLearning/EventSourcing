@@ -1,4 +1,5 @@
 using System.Security.Claims;
+using EventStore.Domain.Observability;
 using EventStore.Inbox;
 using EventStore.Persistence;
 using EventStore.Persistence.Migrations.Postgres;
@@ -24,6 +25,10 @@ using Samples.Meridian;
 // activity exists, found live by actually checking the running app, not
 // assumed from the schema alone.
 var builder = Host.CreateApplicationBuilder(args);
+
+// Same reasoning as Samples.Vitals.Simulator's own comment -- see that
+// project's Program.cs.
+builder.ConfigureOpenTelemetry();
 
 var connectionString = builder.Configuration.GetConnectionString("Postgres")
     ?? throw new InvalidOperationException("ConnectionStrings:Postgres is required -- expected to be injected by Aspire's WithReference(db).");
@@ -63,9 +68,15 @@ while (true)
         try
         {
             var result = await publisher.PublishAsync("IdentityClaimSubmitted", new PublishEventRequest(MeridianWorkflowA.AppId, 1, payload, null, eventId), seedUser);
-            Console.WriteLine(result is PublishResult.Accepted accepted
-                ? $"Published IdentityClaimSubmitted for {applicantId} -> {accepted.EntityId}"
-                : $"Publish for {applicantId} did not succeed: {result}");
+            if (result is PublishResult.Accepted accepted)
+            {
+                Console.WriteLine($"Published IdentityClaimSubmitted for {applicantId} -> {accepted.EntityId}");
+                DuplexInstrumentation.SimulatorEventsPublished.Add(1, new KeyValuePair<string, object?>("app.id", MeridianWorkflowA.AppId));
+            }
+            else
+            {
+                Console.WriteLine($"Publish for {applicantId} did not succeed: {result}");
+            }
             break;
         }
         catch (Exception ex) when (attempt < 5)
@@ -100,9 +111,15 @@ while (true)
         {
             var result = await publisher.PublishAsync("SanctionsScreeningPerformed",
                 new PublishEventRequest(MeridianWorkflowA.AppId, 1, screeningPayload, null, screeningEventId), seedUser);
-            Console.WriteLine(result is PublishResult.Accepted accepted
-                ? $"Published SanctionsScreeningPerformed for {applicantId} -> {accepted.EntityId} (matchFound: {matchFound})"
-                : $"Publish for {applicantId} screening did not succeed: {result}");
+            if (result is PublishResult.Accepted accepted)
+            {
+                Console.WriteLine($"Published SanctionsScreeningPerformed for {applicantId} -> {accepted.EntityId} (matchFound: {matchFound})");
+                DuplexInstrumentation.SimulatorEventsPublished.Add(1, new KeyValuePair<string, object?>("app.id", MeridianWorkflowA.AppId));
+            }
+            else
+            {
+                Console.WriteLine($"Publish for {applicantId} screening did not succeed: {result}");
+            }
             break;
         }
         catch (Exception ex) when (attempt < 5)

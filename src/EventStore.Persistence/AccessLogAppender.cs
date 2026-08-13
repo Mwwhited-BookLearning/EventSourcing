@@ -28,37 +28,58 @@ public static class AccessLogAppender
             AccessedAt = DateTimeOffset.UtcNow,
             ChainHash = "", // computed below, once SequenceNumber is known
         };
-        db.AccessLogEntries.Add(entry);
 
-        await using var transaction = await db.Database.BeginTransactionAsync(IsolationLevel.Serializable, ct);
-        try
+        // Npgsql's retrying execution strategy (EventStore.Host.Postgres's
+        // EnableRetryOnFailure) forbids a manually-started transaction unless
+        // the WHOLE retryable unit -- every Add and SaveChanges, not just
+        // BeginTransaction/Commit -- runs inside CreateExecutionStrategy's own
+        // delegate. Same fix as EventAppender.AppendAsync's own comment
+        // explains in full.
+        var strategy = db.Database.CreateExecutionStrategy();
+        await strategy.ExecuteAsync(async () =>
         {
-            var prior = await db.AccessLogEntries
-                .AsNoTracking()
-                .OrderByDescending(e => e.SequenceNumber)
-                .Select(e => e.ChainHash)
-                .FirstOrDefaultAsync(ct);
+            // Same real bug EventAppender.AppendAsync's own comment
+            // explains in full, found the identical way (a shared entity
+            // instance reused across retry attempts, its identity-generated
+            // SequenceNumber left stale by an aborted-but-already-executed
+            // prior attempt) -- entry is constructed once, above, outside
+            // this delegate, so it needs the identical detach-and-reset
+            // before every attempt, including the first.
+            db.Entry(entry).State = EntityState.Detached;
+            entry.SequenceNumber = default;
 
-            // ADR-089 -- the identical fallback EventAppender.AppendAsync
-            // now needs for the Event Log's own chain: once AccessLog's own
-            // live tail has been archived away, nothing is left to read a
-            // "prior" ChainHash from even though a real prior chain exists.
-            var priorChainHash = prior ?? await db.AccessLogChainCheckpoints
-                .AsNoTracking()
-                .OrderByDescending(c => c.SequenceNumberRangeEnd)
-                .Select(c => c.ChainHashAtRangeEnd)
-                .FirstOrDefaultAsync(ct);
+            db.AccessLogEntries.Add(entry);
 
-            await db.SaveChangesAsync(ct);
+            await using var transaction = await db.Database.BeginTransactionAsync(IsolationLevel.Serializable, ct);
+            try
+            {
+                var prior = await db.AccessLogEntries
+                    .AsNoTracking()
+                    .OrderByDescending(e => e.SequenceNumber)
+                    .Select(e => e.ChainHash)
+                    .FirstOrDefaultAsync(ct);
 
-            entry.ChainHash = EventChainHash.Compute(priorChainHash ?? EventChainHash.Genesis, AccessLogEntryHash.Compute(entry), entry.SequenceNumber);
-            await db.SaveChangesAsync(ct);
-            await transaction.CommitAsync(ct);
-        }
-        catch (DbUpdateException)
-        {
-            await transaction.RollbackAsync(ct);
-            throw;
-        }
+                // ADR-089 -- the identical fallback EventAppender.AppendAsync
+                // now needs for the Event Log's own chain: once AccessLog's own
+                // live tail has been archived away, nothing is left to read a
+                // "prior" ChainHash from even though a real prior chain exists.
+                var priorChainHash = prior ?? await db.AccessLogChainCheckpoints
+                    .AsNoTracking()
+                    .OrderByDescending(c => c.SequenceNumberRangeEnd)
+                    .Select(c => c.ChainHashAtRangeEnd)
+                    .FirstOrDefaultAsync(ct);
+
+                await db.SaveChangesAsync(ct);
+
+                entry.ChainHash = EventChainHash.Compute(priorChainHash ?? EventChainHash.Genesis, AccessLogEntryHash.Compute(entry), entry.SequenceNumber);
+                await db.SaveChangesAsync(ct);
+                await transaction.CommitAsync(ct);
+            }
+            catch (DbUpdateException)
+            {
+                await transaction.RollbackAsync(ct);
+                throw;
+            }
+        });
     }
 }
