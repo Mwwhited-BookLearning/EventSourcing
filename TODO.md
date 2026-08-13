@@ -157,13 +157,6 @@ here instead of inlining.
   identity) — that's the one piece that would need writing fresh, not
   just re-adding the already-proven `sbom-tool` step.
 
-- **A full docs-vs-implementation audit across all 39 completed
-  build-plan items (this pass) found and fixed ~65 stale-doc findings
-  across 44 files** — narrated in full in `docs/changes/2026-08-11.md`.
-  A handful of the findings were CODE-side gaps the docs now correctly
-  describe as open, rather than doc bugs to fix; listed here since they
-  represent real remaining work, not narrative to restate elsewhere:
-
 - **`client-web`'s `typescript` and `jsdom` devDependencies are
   deliberately held back one major version each, not yet at "latest."**
   Found while updating every dependency this session (commit `6716c27`):
