@@ -175,7 +175,29 @@ var eventstore = builder.AddProject<Projects.EventStore_Host_Postgres>("eventsto
     // Aspire, which isn't guaranteed; setting it explicitly here removes
     // that assumption. Found by actually running `dotnet run` against this
     // AppHost and observing every token rejected -- not assumed correct.
-    .WithEnvironment("Authentication__RequireHttpsMetadata", "false");
+    .WithEnvironment("Authentication__RequireHttpsMetadata", "false")
+    // Direct request -- EventStore.SpecGeneration.SpecGenerationEndpoints
+    // maps these four routes on "eventstore" itself (verified live against
+    // the running resource, not assumed): /scalar/v1 (interactive OpenAPI
+    // UI, ADR-025), /openapi.json and /asyncapi.json (raw specs), and
+    // /asyncapi-ui (the AsyncAPI HTML viewer, that same ADR). Anchored to
+    // the "https" endpoint via WithUrlForEndpoint rather than a hardcoded
+    // WithUrl string, so the dashboard link always resolves against
+    // whatever host/port this resource ACTUALLY bound this run, the same
+    // way GetEndpoint("https") above never hardcodes a URL either.
+    //
+    // The callback returns a NEW ResourceUrlAnnotation each time (not a
+    // mutated existing one) -- verified against dotnet/aspire PR #8743
+    // ("Custom URLs improvements") before writing this: that's the specific
+    // overload (Func<EndpointReference, ResourceUrlAnnotation>) that ADDS
+    // another distinct link per call: a same-shaped callback that instead
+    // mutates and returns the endpoint's own existing annotation only
+    // REPLACES the endpoint's single primary URL on each call, which would
+    // have left only the last of these four visible.
+    .WithUrlForEndpoint("https", _ => new ResourceUrlAnnotation { Url = "/scalar/v1", DisplayText = "OpenAPI (Scalar)" })
+    .WithUrlForEndpoint("https", _ => new ResourceUrlAnnotation { Url = "/openapi.json", DisplayText = "OpenAPI JSON" })
+    .WithUrlForEndpoint("https", _ => new ResourceUrlAnnotation { Url = "/asyncapi-ui", DisplayText = "AsyncAPI UI" })
+    .WithUrlForEndpoint("https", _ => new ResourceUrlAnnotation { Url = "/asyncapi.json", DisplayText = "AsyncAPI JSON" });
 
 // client-web's own MVVM client (ADR-039), run as a real Vite dev server
 // under Aspire rather than started by hand. App.vue reads hostBaseUrl/

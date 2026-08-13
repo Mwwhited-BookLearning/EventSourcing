@@ -7,9 +7,9 @@
     "packages/*"
   ],
   "scripts": {
-    "dev": "npm run dev --workspace=packages/reference-app",
-    "dev:vitals": "npm run dev:vitals --workspace=packages/reference-app",
-    "dev:meridian": "npm run dev:meridian --workspace=packages/reference-app",
+    "dev": "npm run dev --workspace=packages/reference-app --",
+    "dev:vitals": "npm run dev:vitals --workspace=packages/reference-app --",
+    "dev:meridian": "npm run dev:meridian --workspace=packages/reference-app --",
     "build": "npm run build --workspace=packages/mvvm-client && npm run build --workspace=packages/reference-app",
     "build:offline-player": "npm run build:offline-player --workspace=packages/reference-app",
     "embed:offline-bundle": "npm run embed:offline-bundle --workspace=packages/reference-app",
