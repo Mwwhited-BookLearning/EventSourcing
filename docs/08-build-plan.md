@@ -1684,22 +1684,22 @@ honestly flagged rather than silently dropped:
   genuinely untestable, not just deferred: `ShardKey` is a logical column
   in this codebase, never a physically separate database/replica to fan
   out across.
-- **A real, found limitation, not a silent gap: registering a new event
-  type while a Host is already running does not make its Subscription
-  field appear without a process restart.** `FollowSubscriptionTypeModule`
-  (`ITypeModule`) is genuinely dynamic and correctly reflects whatever is
-  active *at schema warmup* — proven by seeding a registration directly
-  into the database before the Host starts, then subscribing successfully
-  over real HTTP. But `ISchemaChangeNotifier.NotifyChanged()` firing
-  afterward, confirmed by direct debugging to reach a real subscriber,
-  never actually triggers a second `CreateTypesAsync` invocation against
-  an already-running Host, and a periodic-timer fallback was tried and
-  hit the same wall (most likely explanation, not fully proven: whatever
-  HotChocolate-internal scope builds the schema disposes the type modules
-  it resolves once building finishes, which would silently stop a
-  `Timer` field on this same long-lived singleton). Tracked in `TODO.md`
-  as a real follow-up, not swept under the exit criteria — none of which
-  actually requires hot-registration against a live Host.
+- **Corrected, 2026-08-13**: registering a new event type while a Host is
+  already running DOES make its Subscription field appear without a
+  process restart, reliably, under normal load — the "never" claim
+  originally recorded here was a misdiagnosis, found and corrected after
+  cloning HotChocolate v16.6.0's own source directly and testing against
+  it rather than continuing to reason from symptoms
+  (`HotReloadHttpSqliteTests`, new, proves the working case as permanent
+  regression coverage). A real, narrower gap remains under heavy
+  concurrent/ambient load — a rebuild attempt that fails partway through
+  can permanently disable further hot-reload for the process's remaining
+  life, a genuine chicken-and-egg deadlock inside HotChocolate's own
+  plumbing this codebase cannot safely work around (the one available
+  workaround, calling `EvictExecutor` directly, was tried and reverted
+  for causing a worse, cross-AppId data-leak bug under concurrent live
+  subscriptions). `TODO.md`'s own entry has the full, corrected account —
+  not restated here per this file's own citation convention.
 - **Updated once "Ticket Exchange" and "Delegated Grants, RBAC,
   Federated Claims & Read Audit Logging" landed**: the RFC 8693 OAuth
   Token Exchange bridge endpoint this note originally flagged as not
