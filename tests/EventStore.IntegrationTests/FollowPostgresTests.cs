@@ -57,6 +57,7 @@ public class FollowPostgresTests
         await FollowScenarioAssertions.SupplyingFromSequenceNumberOnlyReplaysEventsAfterThatSequenceNumber(registry, publish, follow);
         await FollowScenarioAssertions.ModeReplayCombinedWithFilterReplaysOnlyMatchingHistory(registry, publish, follow);
         await FollowScenarioAssertions.TheDefaultModeTailNeverDeliversPreExistingEvents(registry, publish, follow);
+        await FollowScenarioAssertions.DisconnectingMidTailEndsTheStreamGracefullyRatherThanThrowing(registry, publish, follow);
         await FollowScenarioAssertions.SupplyingFromSequenceNumberWithoutModeReplayIsRejected(registry, publish, follow);
         await FollowScenarioAssertions.ConnectingToAnUnregisteredEventTypeIsRejected(follow);
         await FollowScenarioAssertions.ConnectingWithoutTheRequiredReadClaimIsRejectedWith403(registry, publish, follow);

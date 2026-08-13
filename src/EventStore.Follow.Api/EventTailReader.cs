@@ -31,58 +31,104 @@ public class EventTailReader(
     {
         while (!ct.IsCancellationRequested)
         {
-            // ADR-027 -- "consuming only originals and always upcasting live
-            // remains equally correct" is this design's DEFAULT, not an
-            // opt-in; a materialization is a reshaped COPY of an original
-            // already delivered once, so surfacing it too would double-
-            // deliver one logical fact as two distinct events.
-            //
-            // EventTypeDefinition's own primary key is (AppId, Name,
-            // Version) -- event type NAMES are explicitly not globally
-            // unique, so filtering by eventTypeName alone let one AppId's
-            // subscription see a DIFFERENT AppId's same-named event, a real
-            // cross-application data leak (found and documented in TODO.md,
-            // now fixed here rather than deferred further).
-            var matching = await db.Events
-                .AsNoTracking()
-                .Where(e => e.AppId == appId && e.EventType == eventTypeName && e.EventKind == EventKind.Original && e.SequenceNumber > lastSeen)
-                .Where(predicate)
-                .OrderBy(e => e.SequenceNumber)
-                .ToListAsync(ct);
+            // Direct request -- a client disconnecting (closing the browser
+            // tab, navigating away) cancels ct mid-await here just as
+            // routinely as it does at the Task.Delay below; this is the
+            // ORDINARY way a GraphQL Subscription ends, never a fault, but
+            // neither this ToListAsync nor Task.Delay distinguished that
+            // from a genuine failure before this fix -- both let
+            // OperationCanceledException/TaskCanceledException propagate
+            // uncaught, all the way through FollowSubscriptionTypeModule's
+            // own pass-through Cast() and into HotChocolate's subscription
+            // executor as an unhandled exception. ct.IsCancellationRequested
+            // is what distinguishes "the caller asked to stop" from any
+            // other OperationCanceledException a query/timeout might throw
+            // for an unrelated reason -- only the former ends the stream
+            // quietly (yield break), the latter still propagates.
+            List<StoredEvent> matching;
+            int activeVersion = 0, targetVersion = 0;
+            IReadOnlyDictionary<int, EventTypeDefinition>? schemasByVersion = null;
+            try
+            {
+                // ADR-027 -- "consuming only originals and always upcasting live
+                // remains equally correct" is this design's DEFAULT, not an
+                // opt-in; a materialization is a reshaped COPY of an original
+                // already delivered once, so surfacing it too would double-
+                // deliver one logical fact as two distinct events.
+                //
+                // EventTypeDefinition's own primary key is (AppId, Name,
+                // Version) -- event type NAMES are explicitly not globally
+                // unique, so filtering by eventTypeName alone let one AppId's
+                // subscription see a DIFFERENT AppId's same-named event, a real
+                // cross-application data leak (found and documented in TODO.md,
+                // now fixed here rather than deferred further).
+                matching = await db.Events
+                    .AsNoTracking()
+                    .Where(e => e.AppId == appId && e.EventType == eventTypeName && e.EventKind == EventKind.Original && e.SequenceNumber > lastSeen)
+                    .Where(predicate)
+                    .OrderBy(e => e.SequenceNumber)
+                    .ToListAsync(ct);
+
+                if (matching.Count > 0)
+                {
+                    // ADR-018 -- a mode=replay burst can span every version this type
+                    // has ever had; the destination is always the CURRENT active
+                    // version, not whichever version happens to appear in this batch,
+                    // so every intermediate hop's own definition is fetched too, not
+                    // just the versions literally present among these events.
+                    var activeDefinition = await schemaRegistry.GetActiveDefinitionAsync(appId, eventTypeName, ct);
+                    activeVersion = activeDefinition?.Version ?? matching.Max(e => e.SchemaVersion);
+                    var minVersion = Math.Min(matching.Min(e => e.SchemaVersion), asOfSchemaVersion ?? activeVersion);
+                    var maxVersion = Math.Max(activeVersion, asOfSchemaVersion ?? activeVersion);
+                    var versionsNeeded = Enumerable.Range(minVersion, Math.Max(1, maxVersion - minVersion + 1)).ToList();
+                    schemasByVersion = await schemaRegistry.GetVersionsAsync(appId, eventTypeName, versionsNeeded, ct);
+
+                    // ADR-028 -- the shape ultimately served to the caller is the
+                    // requested (asOfSchemaVersion) shape when one was asked for,
+                    // never the active one -- FollowService.ConnectAsync already
+                    // confirmed every hop down to it exists before this loop starts.
+                    targetVersion = asOfSchemaVersion ?? activeVersion;
+                }
+            }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested)
+            {
+                yield break;
+            }
 
             if (matching.Count > 0)
             {
-                // ADR-018 -- a mode=replay burst can span every version this type
-                // has ever had; the destination is always the CURRENT active
-                // version, not whichever version happens to appear in this batch,
-                // so every intermediate hop's own definition is fetched too, not
-                // just the versions literally present among these events.
-                var activeDefinition = await schemaRegistry.GetActiveDefinitionAsync(appId, eventTypeName, ct);
-                var activeVersion = activeDefinition?.Version ?? matching.Max(e => e.SchemaVersion);
-                var minVersion = Math.Min(matching.Min(e => e.SchemaVersion), asOfSchemaVersion ?? activeVersion);
-                var maxVersion = Math.Max(activeVersion, asOfSchemaVersion ?? activeVersion);
-                var versionsNeeded = Enumerable.Range(minVersion, Math.Max(1, maxVersion - minVersion + 1)).ToList();
-                var schemasByVersion = await schemaRegistry.GetVersionsAsync(appId, eventTypeName, versionsNeeded, ct);
-
-                // ADR-028 -- the shape ultimately served to the caller is the
-                // requested (asOfSchemaVersion) shape when one was asked for,
-                // never the active one -- FollowService.ConnectAsync already
-                // confirmed every hop down to it exists before this loop starts.
-                var targetVersion = asOfSchemaVersion ?? activeVersion;
-
                 foreach (var storedEvent in matching)
                 {
-                    var visibleParentIds = await GetVisibleParentEventIdsAsync(storedEvent.EventId, user, ct);
-                    var upcastPayload = UpcastPayload(storedEvent, activeVersion, schemasByVersion);
-                    var currentPayload = DowncastPayload(upcastPayload, activeVersion, targetVersion, schemasByVersion);
-                    var maskedPayload = await MaskPayloadAsync(currentPayload, targetVersion, schemasByVersion, storedEvent.EntityId, user, ct);
+                    IReadOnlyList<Guid> visibleParentIds;
+                    JsonNode? maskedPayload;
+                    try
+                    {
+                        visibleParentIds = await GetVisibleParentEventIdsAsync(storedEvent.EventId, user, ct);
+                        var upcastPayload = UpcastPayload(storedEvent, activeVersion, schemasByVersion!);
+                        var currentPayload = DowncastPayload(upcastPayload, activeVersion, targetVersion, schemasByVersion!);
+                        maskedPayload = await MaskPayloadAsync(currentPayload, targetVersion, schemasByVersion!, storedEvent.EntityId, user, ct);
+                    }
+                    catch (OperationCanceledException) when (ct.IsCancellationRequested)
+                    {
+                        yield break;
+                    }
+
                     yield return new FollowedEvent(storedEvent, visibleParentIds, maskedPayload);
                     lastSeen = storedEvent.SequenceNumber;
                 }
             }
 
             if (matching.Count == 0)
-                await Task.Delay(pollInterval, ct);
+            {
+                try
+                {
+                    await Task.Delay(pollInterval, ct);
+                }
+                catch (OperationCanceledException) when (ct.IsCancellationRequested)
+                {
+                    yield break;
+                }
+            }
         }
     }
 
