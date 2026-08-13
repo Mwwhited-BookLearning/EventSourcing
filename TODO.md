@@ -27,14 +27,13 @@ here instead of inlining.
 
 - **`ADR-073`/build-plan item 45's own exit criterion asks for a manual
   screen-reader pass (a real NVDA/JAWS/VoiceOver session) confirming
-  `GenericFallbackView` is fully navigable — still not literally
-  performed, no such software is installable/operable in this
-  environment, but narrowed further this session.** Previously: automated
-  `axe-core` conformance (zero critical/serious violations, verified both
-  under jsdom and, for `color-contrast` specifically, a real headless-
-  Chromium cross-check) plus one real fix found by reasoning directly
-  about screen-reader behavior (`<th scope="row">` + a visually-hidden
-  `<caption>`). **New, 2026-08-13**: `@guidepup/virtual-screen-reader`
+  `GenericFallbackView` is fully navigable — narrowed twice more this
+  session, still not fully closed.** Previously: automated `axe-core`
+  conformance (zero critical/serious violations, verified both under
+  jsdom and, for `color-contrast` specifically, a real headless-Chromium
+  cross-check) plus one real fix found by reasoning directly about
+  screen-reader behavior (`<th scope="row">` + a visually-hidden
+  `<caption>`). `@guidepup/virtual-screen-reader`
   (`client-web/packages/reference-app`, pure JS/TS, no OS-level screen-
   reader engine needed) added — `a11y.virtualScreenReader.spec.ts` (5
   tests) walks the actual simulated accessibility tree over the real
@@ -45,20 +44,52 @@ here instead of inlining.
   anonymous cells — plus the Extensions-sourced property's own visual
   `"(Extensions)"` marker actually reaching the tree, the `Retry sync`
   button's own accessible name, and the `ViewDefinition`-template `<dl>`
-  pairing its `term`/`definition` roles in navigation order.
-  **Still an honest gap, not closed**: this tool's own README states it
-  "should not be used as a substitute for testing with real screen
-  readers and with real screen reader users" — confirmed directly while
-  writing these tests, not just quoted: `FlagRow`'s own `"⚠"` glyph
-  carries through as literal text in the simulated tree (`"⚠
-  ConflictFlag"`), but whether a REAL screen reader actually pronounces
-  that bare Unicode character (documented as inconsistent across real
-  AT) is something only an actual NVDA/JAWS/VoiceOver session could
-  confirm one way or the other. Investigate, if this needs fully closing:
-  a real NVDA (Windows, free) or VoiceOver (macOS, built-in) session
-  against the built `client-web` app, specifically confirming the `"⚠"`
-  glyph's own pronunciation and any other real-AT-specific behavior this
-  virtual simulation can't reach.
+  pairing its `term`/`definition` roles in navigation order. That tool's
+  own README states it "should not be used as a substitute for testing
+  with real screen readers and with real screen reader users" —
+  confirmed directly while writing these tests: `FlagRow`'s own `"⚠"`
+  glyph carries through as literal text in the simulated tree (`"⚠
+  ConflictFlag"`), but whether a REAL screen reader pronounces that bare
+  Unicode character was, at that point, still an open question.
+  **Narrowed further, 2026-08-13, direct request: "no such software is
+  installable/operable in this environment" turned out to be wrong, not
+  yet actually checked — real NVDA installs and runs fine here
+  (`winget install NVAccess.NVDA`), a real desktop session with real
+  audio hardware.** Installed it, pointed it (via `-c`/`-m`/`-f`/`-l 10`
+  at an isolated config dir) at a static HTML fixture reproducing
+  `FlagRow`'s exact DOM for `conflictFlag: true, lateArrivalFlag: false,
+  authorityStatus: 'accepted'` (the same fixture the virtual-simulator
+  test already covers), opened it in a real Edge window, and read NVDA's
+  own debug log (which records every `speech.speech.speak` call
+  verbatim at `IO` level — no custom plugin needed). NVDA's own
+  auto-read-new-page behavior read the whole document top to bottom on
+  its own; the captured line: `Speaking [LangChangeCommand ('en_US'),
+  '⚠ ConflictFlag LateArrivalFlag: false AuthorityStatus: accepted', ...]`
+  — confirming, with a real screen reader rather than a simulator, that
+  the glyph reaches NVDA's actual speech-queue input as literal text, in
+  the right order.
+  **A real incident happened during this pass, worth recording**: an
+  earlier attempt to drive Edge/NVDA via blind `SendKeys` (using VB's
+  `AppActivate` to try to focus the target window) did NOT reliably keep
+  focus scoped to the intended window — keystrokes reached the real
+  desktop instead (system tray, a VS Code window, and NVDA's own tray
+  icon, ending in NVDA quitting via its own exit dialog). Fixed by
+  switching to direct Win32 `SetForegroundWindow`/`GetForegroundWindow`
+  P/Invoke calls with **explicit verification that the intended window
+  handle is genuinely the foreground window before sending any key**,
+  one key at a time — this worked reliably on retry. Anyone repeating
+  this: don't trust `AppActivate` (or any focus call) without verifying
+  `GetForegroundWindow()` matches afterward; Windows' foreground-lock
+  behavior can make it silently fail.
+  **Still an honest gap, not closed**: NVDA's debug log records the TEXT
+  sent to the speech synthesizer, not the AUDIO it actually produces —
+  whether the synthesizer voices `"⚠"` as a word, a sound, or silently
+  skips it is still unconfirmed, and would need real audio capture (the
+  user's own original suggestion, audio + a local Whisper transcription,
+  remains the way to close this specific remaining piece, not yet
+  attempted). Investigate, if this needs fully closing: capture NVDA's
+  actual synthesized audio output for this exact fixture and transcribe
+  or listen to it directly.
 
 - **The full SQLite regression suite's own known load-induced flakiness
   (see `.claude/context.md`'s repeated notes on
