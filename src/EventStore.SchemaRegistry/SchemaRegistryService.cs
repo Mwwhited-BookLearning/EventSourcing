@@ -317,14 +317,18 @@ public class SchemaRegistryService(
     }
 
     // "Hardening & Evolution" -- UpcastChain needs the event type's own
-    // CURRENT active version as the upcast destination, given only a bare
-    // EventType name (Follow has no AppId per event, same docs/10-open-
-    // questions.md row 1 gap every other bare-name lookup here shares).
-    public async Task<EventTypeDefinition?> GetActiveDefinitionByNameAsync(string eventTypeName, CancellationToken ct = default) =>
+    // CURRENT active version as the upcast destination. AppId-scoped, not
+    // the bare-name lookup this originally was -- every actual caller
+    // (EventTailReader.TailAsync) has a real AppId in scope (the
+    // subscription/Follow request's own AppId), and a bare-name lookup
+    // here is what let EventTailReader resolve upcast/downcast against
+    // the WRONG AppId's schema definition on a name collision -- the same
+    // class of cross-application leak as the AppId-blind event query this
+    // pass also fixed, not just a benign open design question.
+    public async Task<EventTypeDefinition?> GetActiveDefinitionAsync(string appId, string eventTypeName, CancellationToken ct = default) =>
         await db.EventTypeDefinitions
             .AsNoTracking()
-            .Where(e => e.Name == eventTypeName.ToLowerInvariant() && e.IsActive)
-            .OrderBy(e => e.AppId)
+            .Where(e => e.AppId == appId && e.Name == eventTypeName.ToLowerInvariant() && e.IsActive)
             .FirstOrDefaultAsync(ct);
 
     // "CQRS Read-Model Projections" -- ProjectionHost needs each followed
@@ -346,33 +350,14 @@ public class SchemaRegistryService(
         return definition?.ChangeKind;
     }
 
-    // Batch, bare-name-and-version lookup for Follow's per-event masking --
-    // EventTailReader's poll loop only carries eventTypeName forward, not an
-    // AppId, so this keeps the same deterministic-but-arbitrary AppId-ordering
-    // tie-break on a genuine collision GetActiveChangeKindByNameAsync above
-    // does, for the same reason (out of scope for the AppId-aware rewire the
-    // claims lookups above got -- TailAsync's own signature would need to grow
-    // an AppId parameter first). Masking must use each event's own
-    // SchemaVersion, not whichever version is currently active -- a payload's
-    // shape always matches the version it was originally validated against.
-    public async Task<IReadOnlyDictionary<int, EventTypeDefinition>> GetVersionsByNameAsync(
-        string eventTypeName, IReadOnlyCollection<int> versions, CancellationToken ct = default)
-    {
-        var normalizedName = eventTypeName.ToLowerInvariant();
-        var definitions = await db.EventTypeDefinitions
-            .AsNoTracking()
-            .Where(e => e.Name == normalizedName && versions.Contains(e.Version))
-            .OrderBy(e => e.AppId)
-            .ToListAsync(ct);
-        return definitions
-            .GroupBy(e => e.Version)
-            .ToDictionary(g => g.Key, g => g.First());
-    }
-
-    // AppId-scoped counterpart to GetVersionsByNameAsync -- Publish's own
-    // context always has an explicit AppId (the request's own field), so it
-    // never needs that method's bare-name tie-break workaround
-    // (docs/10-open-questions.md row 1).
+    // Batch, AppId-and-version lookup for Follow's per-event masking.
+    // Masking must use each event's own SchemaVersion, not whichever
+    // version is currently active -- a payload's shape always matches the
+    // version it was originally validated against. Used to be a bare-name
+    // lookup (no AppId) until both of its callers (EventTailReader.
+    // TailAsync, FollowService.ConnectAsync) grew an AppId parameter this
+    // pass, closing the same cross-application schema-resolution leak
+    // GetActiveDefinitionAsync's own comment describes.
     public async Task<IReadOnlyDictionary<int, EventTypeDefinition>> GetVersionsAsync(
         string appId, string eventTypeName, IReadOnlyCollection<int> versions, CancellationToken ct = default)
     {

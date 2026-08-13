@@ -34,6 +34,17 @@ namespace EventStore.IntegrationTests;
 // the same reasoning AuthScenarioAssertions/TicketExchangeHttpSqliteTests'
 // own HTTP-only test style already established. ADR-045 (AccessLog) has
 // its own dedicated test file.
+// [DoNotParallelize] -- this class's test methods share one static
+// _hostClient/_dbPath (ClassInitialize, not per-test), the same class of
+// interference under MSTestSettings.cs's method-level parallelism
+// already fixed this session for GraphQlHttpSqliteTests,
+// RbacProjectionWorkerHttpSqliteTests, TicketExchangeSecretRotationHttp
+// SqliteTests, EntityQueryHttpSqliteTests, and BatchPublishHttpSqliteTests
+// -- found here via two real, reproduced failures
+// (ADelegatedGrantScopedToOneEntityPassesRequiredReadClaimForThatEntityOnlyNotBlanket,
+// AFederatedTokenAugmentedWithLocalClaimsPassesRequiredReadClaimExactlyAsIfFromThePrimaryIdp)
+// in a full-suite run, both passing cleanly every time in isolation.
+[DoNotParallelize]
 [TestClass]
 public class DelegatedGrantsRbacFederationHttpSqliteTests
 {

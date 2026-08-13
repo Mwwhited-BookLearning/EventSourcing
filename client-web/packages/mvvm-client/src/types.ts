@@ -75,13 +75,18 @@ export interface ViewDefinitionCacheEntry {
 }
 
 // The server's own registered-property shape a subscription payload's
-// per-schema fields flow through -- everything that isn't one of the four
-// fixed envelope fields FollowSubscriptionTypeModule.BuildEnvelopeFlagFields
-// always adds (ADR-024/029/035, "Compatibility & Deployment Discipline").
+// per-schema fields flow through -- everything that isn't one of the fixed
+// envelope fields FollowSubscriptionTypeModule.BuildEnvelopeFlagFields
+// always adds (ADR-024/029/035, "Compatibility & Deployment Discipline";
+// eventId/sequenceNumber added later, TODO.md's resume-cursor gap --
+// String-typed on the wire, a 64-bit value JS's Number can't always
+// represent exactly).
 export interface FollowedEventEnvelope {
   conflictFlag: boolean
   lateArrivalFlag: boolean
   authorityStatus: string
   schemaVersion: number
+  eventId?: string
+  sequenceNumber?: string
   [fieldName: string]: unknown
 }

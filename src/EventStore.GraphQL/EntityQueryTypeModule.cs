@@ -43,6 +43,14 @@ public class EntityQueryTypeModule(IServiceScopeFactory scopeFactory) : ITypeMod
     // never raised.
     public event EventHandler<EventArgs>? TypesChanged;
 
+    // Must exactly match BuildEntityEnvelopeFields()'s own hardcoded field
+    // names below -- used to keep a JSON-schema-declared property from ever
+    // colliding with one of these (see the comment where this is consumed).
+    private static readonly HashSet<string> ReservedEnvelopeFieldNames = new(StringComparer.Ordinal)
+    {
+        "isAuthoritative", "authorityStatus", "version", "schemaVersion", "lateArrivalFlag", "updatedAt",
+    };
+
     public async ValueTask<IReadOnlyCollection<ITypeSystemMember>> CreateTypesAsync(IDescriptorContext context, CancellationToken cancellationToken)
     {
         using var scope = scopeFactory.CreateScope();
@@ -61,14 +69,29 @@ public class EntityQueryTypeModule(IServiceScopeFactory scopeFactory) : ITypeMod
             var entityGraphTypeName = $"{safeAppId}_{safeEntityType}_Entity";
 
             var entityConfig = new ObjectTypeConfiguration(entityGraphTypeName);
-            var seenPropertyNames = new HashSet<string>();
+            // Pre-seeded with BuildEntityEnvelopeFields()'s own hardcoded field
+            // names -- found by direct repro (AppDomain.FirstChanceException
+            // capture) that a JSON-schema property landing on one of these
+            // names (e.g. SchemaRegisteredEventType's own reserved "Version"
+            // property, auto-registered for EVERY AppId's first-ever
+            // registration) otherwise reaches ObjectType.CreateUnsafe as a
+            // literal duplicate field, throwing HotChocolate.SchemaException
+            // deep inside RequestExecutorManager's async rebuild path -- which
+            // that same manager's own consumer loop silently swallows with no
+            // logging, and which (worse) tears down its TypesChanged
+            // subscription without ever re-subscribing, permanently killing
+            // hot-reload for every AppId from that point on. Checked against
+            // the FIELD name (post-FieldNameFor), not the raw JSON property
+            // name, since that's what actually collides.
+            var seenFieldNames = new HashSet<string>(ReservedEnvelopeFieldNames);
             foreach (var definition in contributing)
                 foreach (var property in EventTypeSchemaReader.GetTopLevelProperties(definition.JsonSchema))
-                    if (seenPropertyNames.Add(property.Name)) // first contributing type wins a name collision -- rare, and the same property name folding the same entity from two types should describe the same logical field anyway
+                    if (seenFieldNames.Add(FieldNameFor(property.Name))) // envelope field names above always win; among JSON-schema properties themselves, first contributing type wins a collision -- rare, and the same property name folding the same entity from two types should describe the same logical field anyway
                         foreach (var field in BuildEntityPropertyFields(property))
                             entityConfig.Fields.Add(field);
             foreach (var field in BuildEntityEnvelopeFields())
                 entityConfig.Fields.Add(field);
+            entityConfig.Fields.Add(BuildAttachmentsField());
 
             var entityGraphType = ObjectType.CreateUnsafe(entityConfig);
             types.Add(entityGraphType);
@@ -158,6 +181,45 @@ public class EntityQueryTypeModule(IServiceScopeFactory scopeFactory) : ITypeMod
         { PureResolver = ctx => ctx.Parent<EntityQueryResult>().LateArrivalFlag };
         yield return new ObjectFieldConfiguration("updatedAt", type: TypeReference.Parse("String"))
         { PureResolver = ctx => ctx.Parent<EntityQueryResult>().UpdatedAt.ToString("O") };
+    }
+
+    // ADR-032's own Decision, verbatim: "entity(id) { attachments {
+    // contentHash, filename, mimeType, sizeBytes } }" -- TODO.md had
+    // flagged this as documented/Gherkin-tested but never built (no
+    // entity(id) field existed at all at the time). Attached to every
+    // dynamically-built entity type below, resolving AttachmentRef rows
+    // linked to THIS entity's own EntityId, joined to Attachment for the
+    // listed fields. A single shared Attachment output type, registered
+    // once in the composition root (GraphQlServiceCollectionExtensions),
+    // not duplicated per entity type the way entityConfig itself is.
+    private static ObjectFieldConfiguration BuildAttachmentsField() =>
+        new("attachments", type: TypeReference.Parse("[Attachment!]!"))
+        {
+            Resolver = async ctx => await ResolveAttachmentsAsync(ctx),
+        };
+
+    private static async ValueTask<object> ResolveAttachmentsAsync(IResolverContext ctx)
+    {
+        var db = ctx.Service<EventStoreContext>();
+        var user = ctx.Service<ClaimsPrincipal>();
+        var entityId = ctx.Parent<EntityQueryResult>().EntityId;
+
+        var linked = await db.AttachmentRefs.AsNoTracking()
+            .Where(r => r.EntityId == entityId)
+            .Join(db.Attachments.AsNoTracking(), r => r.ContentHash, a => a.ContentHash,
+                (r, a) => new { a.ContentHash, a.FileName, a.MimeType, a.SizeBytes, a.RequiredReadClaim })
+            .ToListAsync(ctx.RequestAborted);
+
+        // ADR-032 -- "a direct claim on the attachment always governs if
+        // set," the same check AttachmentEndpoints' own GET enforces for
+        // byte retrieval; here it silently excludes an inaccessible
+        // attachment from the list rather than forbidding the whole
+        // query, since this is a listing of POTENTIALLY many attachments
+        // with independent, per-item claims, not a single-resource read.
+        return linked
+            .Where(a => a.RequiredReadClaim is null || RequiredClaimEvaluator.HasClaim(user, a.RequiredReadClaim))
+            .Select(a => new Attachment(a.ContentHash, a.FileName, a.MimeType, a.SizeBytes))
+            .ToList();
     }
 
     private static object? BuildMasked(JsonObject? payload, EventPayloadProperty property)
@@ -251,6 +313,7 @@ public class EntityQueryTypeModule(IServiceScopeFactory scopeFactory) : ITypeMod
             authoritative is not null ? "Authoritative" : "Live", entityId, "read", ctx.RequestAborted);
 
         return new EntityQueryResult(
+            EntityId: entityId,
             IsAuthoritative: authoritative is not null,
             AuthorityStatus: authoritative?.AuthorityStatus ?? live!.AuthorityStatus,
             Version: authoritative?.Version,
@@ -283,5 +346,5 @@ public class EntityQueryTypeModule(IServiceScopeFactory scopeFactory) : ITypeMod
 }
 
 internal record EntityQueryResult(
-    bool IsAuthoritative, string AuthorityStatus, long? Version, int? SchemaVersion,
+    string EntityId, bool IsAuthoritative, string AuthorityStatus, long? Version, int? SchemaVersion,
     bool LateArrivalFlag, DateTimeOffset UpdatedAt, JsonObject? MaskedData);

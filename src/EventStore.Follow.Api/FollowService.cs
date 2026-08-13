@@ -48,7 +48,7 @@ public class FollowService(EventStoreContext db, SchemaRegistryService schemaReg
             if (asOfVersion < definition.Version)
             {
                 var hopVersions = Enumerable.Range(asOfVersion + 1, definition.Version - asOfVersion).ToList();
-                var hopDefinitions = await schemaRegistry.GetVersionsByNameAsync(normalizedName, hopVersions, ct);
+                var hopDefinitions = await schemaRegistry.GetVersionsAsync(request.AppId, normalizedName, hopVersions, ct);
                 var missingHop = hopVersions.FirstOrDefault(v =>
                     !hopDefinitions.TryGetValue(v, out var hopDefinition) || string.IsNullOrEmpty(hopDefinition.DowncastToPrevious));
                 if (missingHop != 0)
@@ -76,7 +76,7 @@ public class FollowService(EventStoreContext db, SchemaRegistryService schemaReg
             _ => throw new UnreachableException(),
         };
 
-        var events = tailReader.TailAsync(normalizedName, predicate, lastSeen, request.AsOfSchemaVersion, PollInterval, user, ct);
+        var events = tailReader.TailAsync(request.AppId, normalizedName, predicate, lastSeen, request.AsOfSchemaVersion, PollInterval, user, ct);
         return new FollowResult.Connected(events);
     }
 }

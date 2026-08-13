@@ -262,18 +262,19 @@ never calls `revealField` at all, keeps seeing the ordinary
 
 **`ADR-066`'s step-up-authentication refinement for `revealField` — a
 masked field requiring a *fresh* re-authentication specifically to
-reveal it, not just an ordinary claim — is still not built.** Build-plan
-item 29 ("Digital Sign-Off for Regulated Actions") wired RFC 9470
-step-up enforcement into `POST /publish/{event-type}` only
-(`PublishService.PublishAsync`'s `StepUpSatisfied` check); `x-masking`
-itself has no step-up configuration surface yet (`MaskingSchemaValidator`
-validates only `strategy`/`requiredClaim`/`regulatoryClassification`/
-`governanceBody`/`regulationReference`/`erasureScope`), and
+reveal it, not just an ordinary claim — built, later pass.** `x-masking`
+gained an optional `requiredSignature` (`{ "acrValues": [...], "maxAge":
+... }`, the same field names `EventTypeDefinition.RequiredSignature`
+already uses for publish-time enforcement — `MaskingSchemaValidator`
+structurally validates it, same shallow depth as `revealOnDemand`), and
 `RevealFieldMutation.RevealFieldAsync` (`src/EventStore.GraphQL/
-RevealFieldMutation.cs`) checks only `requiredClaim`. This gap is
-honestly flagged in the mutation's own code comment and remains open
-post-item-29 — tracked in `08-build-plan.md`, not silently implied
-closed by item 29 landing.
+RevealFieldMutation.cs`) checks it via
+`EventStore.Domain.SchemaRegistry.StepUpEvaluator` — the same RFC 9470
+check `PublishService.PublishAsync` uses for `POST /publish/{event-
+type}`, extracted so neither call site duplicates it. A caller can hold
+`requiredClaim` and still be rejected pending a fresh-enough/strong-
+enough authentication context; a field with no `requiredSignature` is
+completely unaffected.
 
 ## Lineage export and bitemporal playback (`ADR-068`)
 

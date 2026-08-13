@@ -99,7 +99,16 @@ public static class DevIdpSeeder
     // secret in plaintext (only ValidateClientSecretAsync, correctly, for
     // security), so this reads back from the SAME dev-only plaintext
     // source this file's own header comment already names, rather than a
-    // second, newly-invented secrets store.
+    // second, newly-invented secrets store. Deliberately a `static`
+    // lookup over the immutable seed data ONLY -- a per-app-instance
+    // ROTATED value is a different concern, tracked by the DI-scoped
+    // ClientSecretRotationStore instead (ADR-093), never here: this type
+    // is loaded once per TEST PROCESS, not once per WebApplicationFactory
+    // instance, so a `static` mutable override here would leak a rotation
+    // performed by one test class's own app instance into every other
+    // test class's unrelated app instance sharing the same process --
+    // found by reasoning through exactly this before it shipped, not by a
+    // failing test catching it after the fact.
     public static string? GetClientSecret(string clientId) =>
         Clients.FirstOrDefault(c => c.ClientId == clientId).ClientSecret;
 

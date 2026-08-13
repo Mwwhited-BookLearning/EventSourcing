@@ -19,6 +19,7 @@ import type { DeviceReading } from '../deviceInput/types'
 import { toOutboxEntry, type ReadingMapping } from '../deviceInput/deviceReadingOutbox'
 import { negotiateLocale } from '../api/localeClient'
 import { resolveTranslations } from '../i18n/translations'
+import { getCursor, setCursor } from '../db/subscriptionCursor'
 
 // ADR-057's reserved, lazily-registered event type -- EntityStore.Erasure/
 // EntityErasureRequestedEventType.cs's own Name, server-side. Only ever
@@ -30,6 +31,9 @@ const ERASURE_EVENT_TYPE = 'EntityErasureRequested'
 
 interface ErasureEventPayload {
   targetEntityId?: string
+  // String-typed on the wire (FollowSubscriptionTypeModule's envelope
+  // field) -- see subscribeToEntity's own identical field for why.
+  sequenceNumber?: string
 }
 
 // Which EntityType/AppId/event type/subscription target a client instance
@@ -187,16 +191,20 @@ export function useEntityViewActions(config: ClientConfig, deps: { fetchToken?: 
     const fields = introspection.__type?.fields ?? []
     if (fields.length === 0) return // nothing registered for this event type -- nothing to subscribe to yet
 
-    // REPLAY from 0, not TAIL -- EventTailReader's single poll loop keeps
-    // running past its starting cursor regardless of mode, so this
-    // delivers already-published history AND every subsequent live event
-    // through the one subscription (build-plan item "Proving-Ground
-    // Application UX"). No persisted per-instance cursor yet (TODO.md's
-    // fuller resume-cursor mechanism) -- every fresh subscribe still
-    // replays from the very start, which is the right trade-off for a
-    // demo/proving-ground instance and an honest, small scope narrowing
-    // for a long-lived production deployment with a large history.
-    const query = buildSubscriptionQuery(config.appId, config.eventType, toSubscriptionFieldSelectors(fields), config.scopeFilter, 'REPLAY', 0)
+    // REPLAY, not TAIL -- EventTailReader's single poll loop keeps running
+    // past its starting cursor regardless of mode, so this delivers
+    // already-published history AND every subsequent live event through
+    // the one subscription (build-plan item "Proving-Ground Application
+    // UX"). fromSequenceNumber is this instance's own persisted cursor
+    // (TODO.md's fuller resume-cursor mechanism, IndexedDB-backed) rather
+    // than an unconditional 0 -- a fresh instance (no cursor yet) still
+    // replays its whole history, the right trade-off for a demo/proving-
+    // ground instance and an honest, small scope narrowing for a long-
+    // lived production deployment with a large history, but a RECONNECTING
+    // instance resumes from where it left off instead of re-downloading
+    // and re-applying everything again on every reconnect.
+    const cursor = await getCursor(config.instanceId, config.appId, config.eventType)
+    const query = buildSubscriptionQuery(config.appId, config.eventType, toSubscriptionFieldSelectors(fields), config.scopeFilter, 'REPLAY', cursor)
     const fieldName = subscriptionFieldName(config.appId, config.eventType)
 
     unsubscribeEntity = graphqlSubscribe<Record<string, FollowedEventEnvelope>>(
@@ -211,6 +219,13 @@ export function useEntityViewActions(config: ClientConfig, deps: { fetchToken?: 
 
         const entityId = `${config.appId}:${config.entityType}:${uniqueId}`
         void entityCache.applyFollowedEvent(config.instanceId, config.entityType, entityId, payload).then(() => onUpdate?.(entityId))
+        // String, not the payload's own raw value re-used directly --
+        // FollowSubscriptionTypeModule's sequenceNumber envelope field is
+        // String-typed (JS's Number can't represent every 64-bit value
+        // exactly), parsed back to a number once here since IndexedDB and
+        // this comparison both want a real number, not the transport string.
+        const sequenceNumber = Number(payload.sequenceNumber)
+        if (Number.isFinite(sequenceNumber)) void setCursor(config.instanceId, config.appId, config.eventType, sequenceNumber)
       },
       (error) => {
         // Fail-open, the same posture EventTailReader's own live-read path
@@ -232,7 +247,13 @@ export function useEntityViewActions(config: ClientConfig, deps: { fetchToken?: 
   // this handler does with it: delete the named entity's cached copy right
   // away, never deferred to the next scope-eviction cycle. Named
   // limitation shared with the ADR itself: a device offline at the moment
-  // erasure fires won't purge until it reconnects and receives this event.
+  // erasure fires won't purge until it reconnects and receives this event
+  // -- REPLAY-from-cursor (not blind TAIL) is what makes that reconnect
+  // catch-up actually happen: TODO.md's own tracked gap, closed here the
+  // same way subscribeToEntity's own reconnect gap was closed above, with
+  // an independent cursor keyed by ERASURE_EVENT_TYPE (a different
+  // subscription stream than the entity one, so it needs its own cursor,
+  // not a shared one).
   async function subscribeToErasure(): Promise<void> {
     const currentToken = await ensureToken()
     const introspection = await graphqlQuery<{ __type: { fields: IntrospectedField[] } | null }>(
@@ -245,7 +266,8 @@ export function useEntityViewActions(config: ClientConfig, deps: { fetchToken?: 
     const fieldNames = introspection.__type?.fields.map((f) => f.name) ?? []
     if (fieldNames.length === 0) return // this AppId has never published a classified field -- nothing to erase yet
 
-    const query = buildSubscriptionQuery(config.appId, ERASURE_EVENT_TYPE, fieldNames)
+    const cursor = await getCursor(config.instanceId, config.appId, ERASURE_EVENT_TYPE)
+    const query = buildSubscriptionQuery(config.appId, ERASURE_EVENT_TYPE, fieldNames, undefined, 'REPLAY', cursor)
     const fieldName = subscriptionFieldName(config.appId, ERASURE_EVENT_TYPE)
 
     unsubscribeErasure = graphqlSubscribe<Record<string, ErasureEventPayload>>(
@@ -253,8 +275,11 @@ export function useEntityViewActions(config: ClientConfig, deps: { fetchToken?: 
       currentToken,
       query,
       (data) => {
-        const targetEntityId = data[fieldName]?.targetEntityId
+        const payload = data[fieldName]
+        const targetEntityId = payload?.targetEntityId
         if (targetEntityId) void entityCache.purge(config.instanceId, targetEntityId)
+        const sequenceNumber = Number(payload?.sequenceNumber)
+        if (Number.isFinite(sequenceNumber)) void setCursor(config.instanceId, config.appId, ERASURE_EVENT_TYPE, sequenceNumber)
       },
       (error) => console.error('Erasure subscription error', error),
     )

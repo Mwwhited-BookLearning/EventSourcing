@@ -48,11 +48,12 @@ if (builder.Configuration["FeatureFlags:AppId"] is { } featureFlagsAppId)
 builder.Services.AddDbContext<EventStoreContext>(options => options.UseSqlServer(
     builder.Configuration.GetConnectionString("SqlServer"),
     x => x.MigrationsAssembly("EventStore.Persistence.Migrations.SqlServer")));
+builder.AddDbReachabilityHealthCheck(); // ADR-084 -- readiness fails when THIS database is unreachable
 builder.Services.AddScoped<IJsonPathTranslator, SqlServerJsonPathTranslator>();
 builder.Services.AddScoped<IFilterableFieldIndexDdlGenerator, SqlServerFilterableFieldIndexDdlGenerator>();
 builder.Services.AddScoped<IUniqueConstraintViolationDetector, SqlServerUniqueConstraintViolationDetector>();
 builder.Services.AddScoped<IEventLineageQueryProvider, SqlServerEventLineageQueryProvider>();
-builder.Services.AddUpcasting();
+builder.Services.AddUpcasting(builder.Configuration);
 builder.Services.AddSchemaRegistry();
 builder.Services.AddFeatureFlags();
 // ADR-095 -- SQL Server Service Broker, notify-to-wake/poll-to-confirm on

@@ -918,15 +918,28 @@ Aspire's plain-HTTP `Authority` injection, a missing migrate-on-startup
 step, and a stale `EventStore.DevIdp/Properties/launchSettings.json`
 whose hardcoded port Aspire's own endpoint-reference resolution used in
 place of the real dynamically-assigned one) — each fixed and confirmed
-individually. **One further issue found this same pass is still open**:
-`AddDatabase("Postgres")`'s own documented "the database being created
-... automatically as part of the resource lifecycle" did not reliably
+individually. **A further issue found this same pass — `AddDatabase
+("Postgres")`'s own documented "the database being created ...
+automatically as part of the resource lifecycle" did not reliably
 complete before `EventStore.Host.Postgres`'s first connection attempt in
-this environment (`Aspire.Hosting.PostgreSql` 13.4.6), so the live,
-fully-orchestrated `aspire run` → real `/connect/token` → real protected
-endpoint round trip was not itself completed end-to-end, only DevIdp's
-own token issuance in isolation. Tracked in `TODO.md` rather than
-silently claimed fixed.
+this environment (`Aspire.Hosting.PostgreSql` 13.4.6) — fixed, later
+pass.** Root cause confirmed directly: Aspire creates the named database
+asynchronously off the Postgres server resource's own
+`ResourceReadyEvent`, and `WaitFor(db)` waits for the database
+*resource* to be registered, not for that `CREATE DATABASE` to have
+actually committed — a real, reproducible race, not environment-specific
+flakiness. Fixed with `EnableRetryOnFailure(errorCodesToAdd: ["3D000"])`
+(Postgres's own SQLSTATE for "database does not exist") on both
+`EventStore.Migrator`'s and `EventStore.Host.Postgres`'s `UseNpgsql`
+registrations — verified against a real, bare Postgres container with a
+deliberately-delayed `CREATE DATABASE` racing an ordinary `DbSet` query
+(the exact call shape both processes use): fails instantly without the
+fix, recovers automatically once the database lands, with it. **Not
+re-verified via a full live `aspire run` this pass** (a heavier,
+longer-running check than this targeted reproduction, given the
+orchestration's own simulators never exit) — the specific race is
+fixed and directly verified; the full end-to-end round trip noted above
+as unattempted still hasn't been separately re-run.
 
 ## Event-Type Security
 
@@ -1671,22 +1684,16 @@ honestly flagged rather than silently dropped:
   genuinely untestable, not just deferred: `ShardKey` is a logical column
   in this codebase, never a physically separate database/replica to fan
   out across.
-- **A real, found limitation, not a silent gap: registering a new event
-  type while a Host is already running does not make its Subscription
-  field appear without a process restart.** `FollowSubscriptionTypeModule`
-  (`ITypeModule`) is genuinely dynamic and correctly reflects whatever is
-  active *at schema warmup* — proven by seeding a registration directly
-  into the database before the Host starts, then subscribing successfully
-  over real HTTP. But `ISchemaChangeNotifier.NotifyChanged()` firing
-  afterward, confirmed by direct debugging to reach a real subscriber,
-  never actually triggers a second `CreateTypesAsync` invocation against
-  an already-running Host, and a periodic-timer fallback was tried and
-  hit the same wall (most likely explanation, not fully proven: whatever
-  HotChocolate-internal scope builds the schema disposes the type modules
-  it resolves once building finishes, which would silently stop a
-  `Timer` field on this same long-lived singleton). Tracked in `TODO.md`
-  as a real follow-up, not swept under the exit criteria — none of which
-  actually requires hot-registration against a live Host.
+- **Corrected, 2026-08-13, then fixed outright the same day**: registering
+  a new event type while a Host is already running now reliably makes its
+  Subscription field appear without a process restart. This went through
+  two prior diagnoses before landing on the real, fixable root cause — see
+  `docs/changes/2026-08-13.md` for the full account (an
+  `EntityQueryTypeModule` field-name collision on every AppId's own
+  `SchemaRegisteredEventType` bootstrap, not a HotChocolate-internal
+  limitation as the previous note here claimed). Not restated here per
+  this file's own citation convention; `TODO.md` no longer carries this
+  item at all now that it's fixed.
 - **Updated once "Ticket Exchange" and "Delegated Grants, RBAC,
   Federated Claims & Read Audit Logging" landed**: the RFC 8693 OAuth
   Token Exchange bridge endpoint this note originally flagged as not
@@ -1699,19 +1706,18 @@ honestly flagged rather than silently dropped:
   built**, along with its own real DID/UCAN offline chain verification —
   neither is named in any later item's own exit criteria yet, so neither
   has an obvious next home. **`revealField`'s own step-up-authentication
-  refinement (`ADR-066`) remains open even now that "Digital Sign-Off for
-  Regulated Actions" (item 29) has landed and is Done** — that item only
-  wired RFC 9470 step-up enforcement into `POST /publish/{event-type}`
-  (`PublishService.PublishAsync`'s `StepUpSatisfied` check); `x-masking`
-  itself has no step-up configuration surface, and `RevealFieldMutation.
+  refinement (`ADR-066`) — built, later pass.** `x-masking` gained an
+  optional `requiredSignature` (same field names as
+  `EventTypeDefinition.RequiredSignature`), and `RevealFieldMutation.
   RevealFieldAsync` (`src/EventStore.GraphQL/RevealFieldMutation.cs`)
-  checks only `requiredClaim`, exactly as this note originally described
-  before item 29 landed. This is a confirmed still-open gap, not
-  something item 29 already closed — see `03-api-contracts.md`,
-  "`revealField`," for the caller-facing statement of the same gap. Its
-  `ADR-045` `AccessLogEntry` audit write is no longer deferred — built in
-  "Delegated Grants, RBAC, Federated Claims & Read Audit Logging," the
-  item that actually built that table.
+  now checks it via `EventStore.Domain.SchemaRegistry.StepUpEvaluator` —
+  the same check `PublishService.PublishAsync` uses for `POST /publish/
+  {event-type}`, extracted into a shared type so neither call site
+  duplicates it. See `03-api-contracts.md`, "`revealField`," for the
+  caller-facing statement. Its `ADR-045` `AccessLogEntry` audit write is
+  no longer deferred either — built in "Delegated Grants, RBAC,
+  Federated Claims & Read Audit Logging," the item that actually built
+  that table.
 
 ## Compatibility & Deployment Discipline
 
@@ -2380,18 +2386,16 @@ receives `EntityErasureRequested` for it purges the local copy
 immediately upon receiving that event, verified distinctly from the
 scope-eviction path — **built and tested**; a client that is offline at
 the moment erasure fires still purges correctly once it reconnects and
-receives the event — **narrowed, found while verifying this exact
-criterion, not assumed satisfied**: every Subscription this client opens
-(the erasure one built here included) is hardcoded `mode: TAIL` with no
-persisted resume cursor and no `mode: Replay`/`fromSequenceNumber`
-reconnect path — a PRE-EXISTING gap in "MVVM Client" itself (item 21),
-not introduced by this item, but one this item's own exit criterion
-inherits rather than closes. A client already connected when erasure
-fires purges correctly (proven by this item's own tests); a client that
-reconnects AFTER having been offline while it fired has no guaranteed
-catch-up mechanism today and may simply miss it — narrower than this
-criterion's literal wording, tracked as a real follow-up in `TODO.md`
-rather than silently claimed done.
+receives the event — **built**: both of this client's Subscriptions
+(`subscribeToEntity` and the erasure one built here) now persist a
+per-instance last-seen `SequenceNumber` cursor (IndexedDB) and reconnect
+with `mode: Replay, fromSequenceNumber: <cursor>` rather than blind
+`Tail`, so a client that reconnects after being offline while erasure
+fired resumes exactly where it left off instead of missing the event —
+closing the gap this criterion originally narrowed itself against
+(`TODO.md`'s item, resolved; the fix and the two real, unrelated
+server-side bugs found while proving it are narrated in
+`docs/changes/2026-08-12.md`).
 
 ## Digital Sign-Off for Regulated Actions (Step-Up Authentication)
 
@@ -2579,19 +2583,27 @@ point of the decision, not silently dropped:**
   `PUT /oauth/roles` (what a role NAME bundles) and `PUT /oauth/federation-
   issuers` stay genuine DevIdp-internal configuration, unaffected — neither
   is one of `ADR-067`'s own 5 named reserved event types.
-- **The lineage-parent-linking and replay-rebuild exit criteria above are
-  NOT yet backed by a dedicated test** — `tests/EventStore.IntegrationTests/
-  DelegatedGrantsRbacFederationHttpSqliteTests.cs`'s two RBAC-mutation
-  scenarios verify the Host's real write path (scope-gated publish through
-  `/rbac/*`) and DevIdp's own fold-target methods directly, but simulate
-  the fold rather than running the live `RbacProjectionWorker` inside the
-  test process — a `WebApplicationFactory` self-reference-during-startup
-  hazard made that impractical this pass (worked around in production code
-  with a real startup delay, but never proven against a live, in-process
-  factory pair). Tracked in `TODO.md`, including the lineage-parent-linking
-  and replay-rebuild coverage gap. Verified against SQLite only, matching
-  the SPIFFE/Gateway items' own provider-agnostic precedent (this item's
-  Host-side and DevIdp-side mechanisms are equally provider-agnostic).
+- **The live `RbacProjectionWorker` itself is now exercised end-to-end —
+  built, later pass.** `tests/EventStore.IntegrationTests/
+  DelegatedGrantsRbacFederationHttpSqliteTests.cs`'s own two RBAC-mutation
+  scenarios still simulate the fold (calling `RoleService`/
+  `TrustRootService` directly) rather than running the live worker, for
+  the same `WebApplicationFactory` self-reference-during-startup hazard
+  reason as before — but `RbacProjectionWorker.CatchUpOnceAsync` (extracted
+  from `ExecuteAsync`'s own tail loop, mirroring
+  `ProjectionHost<TReadModel>.CatchUpOnceAsync`'s identical shape) can now
+  be called directly, post-`ClassInit`, entirely bypassing
+  `BackgroundService.StartAsync`/`ExecuteAsync` and the hazard along with
+  it — both `WebApplicationFactory` instances are already fully built by
+  the time a test ever calls it. `tests/EventStore.IntegrationTests/
+  RbacProjectionWorkerHttpSqliteTests.cs` (new) drives the REAL Follow
+  subscription this way — genuine `FollowClient.TailAsync` against the
+  Host's own `/follow/{eventType}` SSE endpoint, genuine DPoP-bound
+  `client_credentials` token acquisition against DevIdp itself, and the
+  real event-dispatch-by-type logic inside `ApplyAsync` — for
+  `RoleGranted`, `RoleRevoked`, and the idle-timeout-stops-consumption
+  behavior. Verified against SQLite only, matching the SPIFFE/Gateway
+  items' own provider-agnostic precedent.
 
 ## Dynamic Feature-Flag Configuration Provider
 
@@ -4159,11 +4171,26 @@ UPS," not two anonymous cells) plus a visually-hidden `<caption>`. This
 is a real, verifiable improvement to actual navigability, not a
 substitute for the literal manual pass this criterion still names as
 outstanding — recorded in `TODO.md`, not silently claimed as done.
+**Narrowed further, 2026-08-13**: `@guidepup/virtual-screen-reader` (a
+pure JS/TS accessibility-tree simulator, no OS-level screen-reader
+engine needed — confirmed running in this environment where NVDA/JAWS/
+VoiceOver themselves cannot) now proves the `<th scope="row">` claim
+above directly instead of by reasoning about markup — `a11y.
+virtualScreenReader.spec.ts`'s 5 tests confirm the actual simulated
+announcement order. Its own README states it "should not be used as a
+substitute for testing with real screen readers and with real screen
+reader users," confirmed directly, not just quoted: `FlagRow`'s `"⚠"`
+glyph carries through as literal text in the simulated tree, but
+whether a real screen reader actually pronounces that bare Unicode
+character is something only a real NVDA/JAWS/VoiceOver session could
+confirm — still tracked in `TODO.md`, still not silently claimed closed.
 
 Tests: 4 new scenarios in `a11y.spec.ts`; `GenericFallbackView.spec.ts`'s
 existing 4 scenarios re-verified passing after the `<th>`/`<caption>`
-change (they assert on text content, not tag names). Client suite:
-84/84 (20 files). `npm run build`/`npm run build:offline-player` both
+change (they assert on text content, not tag names); 5 more added
+2026-08-13 in `a11y.virtualScreenReader.spec.ts`. Client suite:
+84/84 (20 files) at the time this item was first built. `npm run
+build`/`npm run build:offline-player` both
 still succeed — `axe-core` is a devDependency only, confirmed not
 bundled into either production build (bundle size unchanged).
 

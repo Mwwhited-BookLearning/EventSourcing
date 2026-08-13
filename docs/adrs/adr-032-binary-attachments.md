@@ -79,6 +79,22 @@ ever entered the picture:
   field resolution already *is* the right standard for "list the
   children of a resource" — no separate browsing API, WebDAV or
   otherwise, needed for this either.
+  **Built, later pass**: `TODO.md` had flagged this as documented and
+  Gherkin-tested as if built when it wasn't — no generic `entity(id)`
+  field existed at the time this ADR was written. `EntityQueryTypeModule`
+  (built separately, this same session, resolving a different open
+  question) now provides a per-`(AppId, EntityType)` dynamically-named
+  entity query field rather than one literal `entity(id)` root field —
+  the exact same access shape this bullet specifies, an `attachments`
+  field on the entity's own result type, just named per the newer
+  per-type dynamic-schema convention `FollowSubscriptionTypeModule`
+  already established, not the single generic field name originally
+  envisioned here. `attachments` resolves `AttachmentRef` rows joined to
+  `Attachment` for that entity's own `EntityId`, filtering out any
+  attachment whose `RequiredReadClaim` the caller doesn't hold (silently
+  excluded from the list, not a whole-query Forbidden) — see
+  `docs/features/binary-attachments.md` for the now-current sequence
+  diagram/Gherkin.
 - **OS-native file-manager mounting** (Explorer/Finder browsing a
   WebDAV URL like a network drive) — the one access path that genuinely
   has no equivalent among what's already adopted. **Decided: skipped,

@@ -85,6 +85,20 @@ Decision:
   reach.
 
 Consequences:
+- **Built, later pass**: publish-time enforcement above only ever
+  covered `EventTypeDefinition.RequiredSignature`, not a per-field
+  reveal. `docs/03-api-contracts.md`'s `revealField` mutation
+  (`RevealFieldMutation.cs`) can now gate a specific masked field on its
+  own step-up requirement, `x-masking.requiredSignature` — same JSON
+  field names (`acrValues`/`maxAge`, camelCase to match every other
+  `x-masking` key's own casing) as `RequiredSignature`'s publish-time
+  shape, so a schema author needs no separate vocabulary. Both call
+  sites now share one implementation,
+  `EventStore.Domain.SchemaRegistry.StepUpEvaluator` (extracted from
+  `PublishService`'s own previously-private `StepUpSatisfied`, unchanged
+  in behavior) — `EventStore.Domain` is already transitively available
+  to `EventStore.GraphQL`, so no new project reference was needed. A
+  masked field with no `requiredSignature` is completely unaffected.
 - Resolves `docs/10-open-questions.md`'s electronic-signature row.
 - `docs/data/event-log.md`'s `StoredEvent` gains `Signature`;
   `docs/data/schema-registry.md`'s `EventTypeDefinition` gains

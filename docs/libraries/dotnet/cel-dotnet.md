@@ -74,10 +74,12 @@ never in question.
 `ADR-018`/`ADR-037` — the declarative half of upcast mapping (`Cel.main`
 assembly, `Cel.Tools.ScriptHost`/`Cel.Checker.Decls`), alongside GraphQL
 SDL directives (`@renamedFrom`/`@derivedFrom`) as self-describing mapping
-metadata. Registered directly (not yet the keyed, swappable-via-
-configuration seam — that ceremony, alongside `Jsonata.Net.Native` as a
-registered alternative, is "Upcast Materialization + Downcast"'s own
-scope, `ADR-053`). Implementation:
+metadata. The default registration, selected whenever `Upcasting:Engine`
+configuration is unset or not `"Jsonata"`
+(`UpcastingServiceCollectionExtensions.AddUpcasting(IConfiguration)`,
+`ADR-053`) — a plain `if`/`else` over the two implementations, not a
+keyed-service registration, matching that ADR's own "one engine active
+per deployment, never mixed" Decision. Implementation:
 [`CelUpcastExpressionEvaluator.cs`](../../../src/EventStore.Upcasting/CelUpcastExpressionEvaluator.cs),
 [`UpcastChain.cs`](../../../src/EventStore.Upcasting/UpcastChain.cs),
 [`UpcastExpressionListParser.cs`](../../../src/EventStore.Upcasting/UpcastExpressionListParser.cs).

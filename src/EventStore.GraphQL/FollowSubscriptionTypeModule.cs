@@ -41,26 +41,59 @@ namespace EventStore.GraphQL;
 // discovered dynamically at runtime).
 public class FollowSubscriptionTypeModule : ITypeModule, ISchemaChangeNotifier
 {
-    // A found, real limitation, not silently worked around -- see
-    // 08-build-plan.md's "GraphQL-Only Query Layer" Built-scope note for the
-    // full account: registering a NEW event type while a Host is already
-    // running does not currently make its Subscription field appear without
-    // a process restart. Confirmed, by direct debugging, that this is NOT a
-    // registration bug (a parallel, independent EventStoreContext against
-    // the same file sees a freshly-committed registration immediately) --
-    // CreateTypesAsync below only ever runs once, at schema warmup, no
-    // matter how many times ISchemaChangeNotifier.NotifyChanged() fires
-    // afterward or how long a periodic-timer fallback is given to retry
-    // (both tried; neither triggered a second invocation in extensive real
-    // testing). Deliberately NOT implementing IDisposable here either --
-    // this class held a System.Threading.Timer as a first attempt at a
-    // periodic-refresh fallback, and the timer never fired more than once;
-    // the most likely explanation is that whatever HotChocolate-internal
-    // scope builds the schema disposes the type modules it resolves once
-    // building finishes, which would silently stop a Timer field even
-    // though this same instance keeps living as the app's own long-lived
-    // ISchemaChangeNotifier singleton -- so nothing here holds an
-    // IDisposable resource that a premature Dispose() call could break.
+    // Went through two rounds of correction, both this session, before
+    // landing on the real, fixable root cause -- docs/changes/2026-08-13.md
+    // has the full history. An EARLIER session's own claim here
+    // ("CreateTypesAsync only ever runs once, no matter how many times
+    // TypesChanged fires") was a MISDIAGNOSIS: HotChocolate's own mechanism
+    // -- TypesChanged -> TypeModuleChangeMonitor.EvictRequestExecutor ->
+    // RequestExecutorManager.EvictExecutor (an unbounded channel write) -> a
+    // single background consumer that disposes the OLD
+    // TypeModuleChangeMonitor (unsubscribing) then calls
+    // CreateRequestExecutorAsync, which builds a BRAND NEW
+    // TypeModuleChangeMonitor and re-subscribes -- verified directly against
+    // HotChocolate v16.6.0's own source (cloned at the exact installed tag,
+    // read directly, not assumed from docs) to genuinely work: a type
+    // registered after Host warmup becomes queryable, and a real
+    // Subscription against it delivers a real published event, within
+    // about 150ms, with NO restart and NO extra code beyond what already
+    // existed (HotReloadHttpSqliteTests, EventStore.IntegrationTests, is the
+    // permanent regression coverage).
+    //
+    // What looked next like a genuine, unfixable HotChocolate-internal
+    // deadlock -- a rebuild that fails partway through
+    // (RequestExecutorManager.CreateRequestExecutorAsync's own try/catch
+    // disposes the already re-subscribed TypeModuleChangeMonitor with
+    // nothing left to ever re-subscribe it, since the only thing that
+    // triggers a rebuild attempt at all is TypesChanged, which by then has
+    // zero listeners) -- turned out to have an identifiable, fixable
+    // trigger after all: hooking AppDomain.CurrentDomain.
+    // FirstChanceException around a registration call captured the exact
+    // exception HotChocolate's own consumer loop was silently swallowing
+    // with no logging: HotChocolate.SchemaException: field 'version'
+    // declared multiple times on {AppId}_schema_Entity. EntityQueryTypeModule
+    // .CreateTypesAsync's own field-building loop didn't protect
+    // BuildEntityEnvelopeFields()'s hardcoded field names from colliding
+    // with a JSON-schema-declared property of the same name -- and every
+    // AppId's first-ever registration auto-bootstraps
+    // SchemaRegisteredEventType, whose own reserved schema declares a
+    // top-level "Version" property, deterministically colliding with the
+    // envelope's own hardcoded "version" field. Fixed in
+    // EntityQueryTypeModule.cs itself (pre-seed the per-group dedup set
+    // with the envelope's own field names) -- this class needed no changes,
+    // since the actual defect was never in its own eviction/re-subscribe
+    // logic at all, despite how the earlier symptom (a permanently dead
+    // TypesChanged subscription) looked exactly like one.
+    //
+    // The two workarounds considered during the earlier, incomplete
+    // diagnosis remain correctly rejected, now for a more precise reason:
+    // calling IRequestExecutorManager.EvictExecutor directly from this
+    // class's own code (bypassing HotChocolate's subscribe/unsubscribe
+    // dance) and a periodic Timer unconditionally re-firing TypesChanged
+    // were both tried/considered and rejected for reintroducing a worse,
+    // already-documented cross-AppId data leak under concurrent live
+    // subscriptions -- neither was ever going to be the right fix, since
+    // neither touches where the real bug actually was.
     private readonly IServiceScopeFactory _scopeFactory;
 
     public FollowSubscriptionTypeModule(IServiceScopeFactory scopeFactory) => _scopeFactory = scopeFactory;
@@ -69,12 +102,9 @@ public class FollowSubscriptionTypeModule : ITypeModule, ISchemaChangeNotifier
 
     // ISchemaChangeNotifier -- invoked by SchemaRegistryService right after a
     // successful registration (the same "invalidate immediately" discipline
-    // ADR-002's OpenAPI/AsyncAPI cache already uses). Kept even though this
-    // pass could not get it to actually trigger a rebuild against an
-    // already-running Host -- real, structurally correct, and the interface
-    // this class is expected to implement; the gap is on HotChocolate's own
-    // reload-scheduling side, not in whether this fires or reaches a
-    // subscriber (both confirmed true by direct debugging).
+    // ADR-002's OpenAPI/AsyncAPI cache already uses). Kept as a single,
+    // direct fire -- see this class's own header comment for why firing it
+    // more than once cannot help the real failure mode found this pass.
     public void NotifyChanged() => TypesChanged?.Invoke(this, EventArgs.Empty);
 
     public async ValueTask<IReadOnlyCollection<ITypeSystemMember>> CreateTypesAsync(IDescriptorContext context, CancellationToken cancellationToken)
@@ -198,6 +228,31 @@ public class FollowSubscriptionTypeModule : ITypeModule, ISchemaChangeNotifier
         {
             PureResolver = ctx => ctx.Parent<FollowedEvent>().Event.EventId.ToString(),
         };
+        // TODO.md's own persisted-resume-cursor gap -- a client needs this
+        // to know where to reconnect from (mode: REPLAY, fromSequenceNumber:
+        // <this value>; EventTailReader.TailAsync's predicate is
+        // SequenceNumber > lastSeen, so the value itself, not +1, is the
+        // correct reconnect argument) without re-downloading its entire
+        // history on every reconnect. String, not the built-in "Long"
+        // scalar this field's own fromSequenceNumber ARGUMENT already uses
+        // -- an early version of this field returned a raw long output and
+        // appeared to hang the whole SSE stream, but that was a
+        // misdiagnosis: the real causes were an off-by-one in the proving
+        // test's own reconnect math (see above) compounding with two
+        // separate, real bugs this same pass also found and fixed --
+        // EventTailReader.TailAsync's missing AppId filter (a cross-
+        // application event leak, event type names are not globally
+        // unique) and this class's own documented hot-reload gap (a type
+        // registered after the schema's first build never gets a
+        // subscription field). String is kept anyway, on its own merits --
+        // the correct choice regardless for a 64-bit sequence number
+        // reaching a JS client, which cannot represent integers above 2^53
+        // exactly, the same reasoning behind GraphQL's own common
+        // "int64-as-string" convention.
+        yield return new ObjectFieldConfiguration("sequenceNumber", type: TypeReference.Parse("String"))
+        {
+            PureResolver = ctx => ctx.Parent<FollowedEvent>().Event.SequenceNumber.ToString(),
+        };
         yield return new ObjectFieldConfiguration("conflictFlag", type: TypeReference.Parse("Boolean"))
         {
             PureResolver = ctx => ctx.Parent<FollowedEvent>().Event.ConflictFlag,
@@ -293,7 +348,7 @@ public class FollowSubscriptionTypeModule : ITypeModule, ISchemaChangeNotifier
             ? fromSequenceNumber ?? 0
             : await db.Events.AsNoTracking().MaxAsync(e => (long?)e.SequenceNumber, ctx.RequestAborted) ?? 0;
 
-        var events = tailReader.TailAsync(normalizedEventTypeName, predicate, lastSeen, asOfSchemaVersion: null, TimeSpan.FromMilliseconds(200), user, ctx.RequestAborted);
+        var events = tailReader.TailAsync(appId, normalizedEventTypeName, predicate, lastSeen, asOfSchemaVersion: null, TimeSpan.FromMilliseconds(200), user, ctx.RequestAborted);
         return new FollowedEventSourceStream(events);
     }
 

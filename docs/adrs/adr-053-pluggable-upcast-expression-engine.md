@@ -24,6 +24,17 @@ Decision:
   UpcastFromPrevious`'s expression *string* is engine-agnostic text; which
   engine parses/evaluates it is a deployment-time configuration choice,
   not baked into the registered schema itself.
+  **Corrected, later pass**: this was true of the interface *seam*, but
+  not yet true of the actual registration — `AddUpcasting()` hardcoded
+  `CelUpcastExpressionEvaluator` with no configuration input at all until
+  a `TODO.md` item caught the drift. Built now: `AddUpcasting(IConfiguration)`
+  reads `Upcasting:Engine` (`"Jsonata"`, case-insensitive, to opt in;
+  anything else, including unset, keeps the CEL default) and registers
+  exactly one implementation — an explicit `if`/`else`, not reflection,
+  matching this bullet's own "no reflection-based auto-selection" and
+  this ADR's own "one engine active per deployment" bullet below. All
+  three `EventStore.Host.<Provider>/Program.cs` composition roots now
+  pass `builder.Configuration` through.
 - **CEL is the default, registered implementation** — matching
   `docs/comparisons/upcast-transform-language.md`'s recommendation for
   the common case: narrower, safer, faster, purpose-built. A deployment

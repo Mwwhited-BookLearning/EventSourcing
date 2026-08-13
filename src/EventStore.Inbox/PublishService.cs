@@ -113,15 +113,8 @@ public class PublishService(
         string? acr = null;
         if (activeDefinition.RequiredSignature is { } requiredSignature)
         {
-            // JwtBearer's own default MapInboundClaims=true remaps the
-            // token's "acr" claim to this long-form URI before any resolver
-            // ever sees it -- confirmed against JwtSecurityTokenHandler.
-            // DefaultInboundClaimTypeMap, the exact same class of remapping
-            // AccessLogReaderContext.Resolve's own comment already
-            // documents for "sub"/ClaimTypes.NameIdentifier -- both checked
-            // so this works the same whether or not that remapping ran.
-            acr = user.FindFirst("http://schemas.microsoft.com/claims/authnclassreference")?.Value ?? user.FindFirst("acr")?.Value;
-            if (!StepUpSatisfied(user, requiredSignature, acr))
+            acr = StepUpEvaluator.ResolveAcr(user);
+            if (!StepUpEvaluator.IsSatisfied(user, requiredSignature, acr))
             {
                 logger?.PublishRejected(normalizedName, actorId, "insufficient step-up authentication");
                 return new PublishResult.StepUpRequired(requiredSignature.AcrValues, requiredSignature.MaxAge);
@@ -287,30 +280,6 @@ public class PublishService(
         existing.PayloadHash == candidateHash
             ? ToAccepted(existing)
             : new PublishResult.Conflict();
-
-    // ADR-066/RFC 9470 -- both checks are independent and additive: an
-    // AcrValues list with no matching acr claim fails regardless of MaxAge,
-    // and a MaxAge with no (or too-old) auth_time fails regardless of acr.
-    // Either half being unconfigured (empty AcrValues, null MaxAge) is
-    // simply never checked -- a RequiredSignature naming only one of the
-    // two is exactly as valid as naming both.
-    private static bool StepUpSatisfied(ClaimsPrincipal user, RequiredSignature requiredSignature, string? acr)
-    {
-        if (requiredSignature.AcrValues.Count > 0 && (acr is null || !requiredSignature.AcrValues.Contains(acr)))
-            return false;
-
-        if (requiredSignature.MaxAge is { } maxAgeSeconds)
-        {
-            var authTimeClaim = user.FindFirst("auth_time")?.Value;
-            if (!long.TryParse(authTimeClaim, out var authTimeUnixSeconds))
-                return false;
-            var authenticatedAt = DateTimeOffset.FromUnixTimeSeconds(authTimeUnixSeconds);
-            if (DateTimeOffset.UtcNow - authenticatedAt > TimeSpan.FromSeconds(maxAgeSeconds))
-                return false;
-        }
-
-        return true;
-    }
 
     // ADR-057 -- resolves EntityId the same way the Router will (activeDefinition's
     // EntityIdField/EntityType, never the declared version's -- ADR-021's identity

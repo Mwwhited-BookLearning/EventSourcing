@@ -10,6 +10,14 @@ using Testcontainers.MsSql;
 
 namespace EventStore.IntegrationTests;
 
+// [DoNotParallelize] -- isolates this class's tests from every other test
+// in the run, not just from each other. MSTest's own method-level
+// parallelism (MSTestSettings.cs) was starting many MsSqlContainers
+// concurrently, causing real, repeatable Testcontainers readiness-check
+// failures under the resulting resource contention (TODO.md's "SQL
+// Server Testcontainers resource-exhaustion test flakiness" -- a
+// baseline run failed 15 of 24 SqlServer classes before this fix).
+[DoNotParallelize]
 [TestClass]
 public class LineageSqlServerTests
 {

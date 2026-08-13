@@ -39,7 +39,15 @@ export const useEntityCacheStore = defineStore('entityCache', {
       }
     },
     async applyFollowedEvent(instanceId: string, entityType: string, entityId: string, payload: FollowedEventEnvelope) {
-      const { conflictFlag, lateArrivalFlag, authorityStatus, schemaVersion, ...schemaFields } = payload
+      // eventId/sequenceNumber are fixed envelope fields too (like the four
+      // destructured below), not part of the registered schema -- excluded
+      // here the same way, so they never pollute `data` alongside the
+      // entity's own real properties. Found while wiring sequenceNumber
+      // into the resume-cursor mechanism (TODO.md): both were already
+      // leaking into `data` unnoticed before this fix, since GraphQL
+      // introspection has no way to tell a fixed envelope field apart from
+      // a genuine schema property here -- only this destructuring can.
+      const { conflictFlag, lateArrivalFlag, authorityStatus, schemaVersion, eventId: _eventId, sequenceNumber: _sequenceNumber, ...schemaFields } = payload
       const key = keyFor(instanceId, entityId)
       const existing = this.entries[key]
       const entry: ClientEntityCacheEntry = {

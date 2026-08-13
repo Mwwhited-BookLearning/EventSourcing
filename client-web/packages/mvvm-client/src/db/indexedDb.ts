@@ -7,10 +7,19 @@
 // this project's own "buy over build" principle weighed and found not to
 // apply at this scale.
 export const DB_NAME = 'duplex-client'
-export const DB_VERSION = 1
+export const DB_VERSION = 2
 export const OUTBOX_STORE = 'outbox'
 export const ENTITY_CACHE_STORE = 'entityCache'
 export const VIEW_DEFINITION_CACHE_STORE = 'viewDefinitions'
+// TODO.md's resume-cursor gap -- one row per (instanceId, appId, eventType)
+// subscription target, keyed by a single composite string id (IndexedDB's
+// native compound-keyPath support works too, but a plain string key is
+// simpler to build than a 3-tuple every call site would otherwise need to
+// assemble consistently). Value is the last SequenceNumber this instance
+// has durably applied for that subscription -- the server's own String-
+// typed `sequenceNumber` envelope field (FollowSubscriptionTypeModule),
+// parsed once here.
+export const SUBSCRIPTION_CURSOR_STORE = 'subscriptionCursors'
 
 let dbPromise: Promise<IDBDatabase> | null = null
 
@@ -31,6 +40,9 @@ export function openDb(): Promise<IDBDatabase> {
       }
       if (!db.objectStoreNames.contains(VIEW_DEFINITION_CACHE_STORE)) {
         db.createObjectStore(VIEW_DEFINITION_CACHE_STORE, { keyPath: ['entityType', 'viewKind'] })
+      }
+      if (!db.objectStoreNames.contains(SUBSCRIPTION_CURSOR_STORE)) {
+        db.createObjectStore(SUBSCRIPTION_CURSOR_STORE, { keyPath: 'id' })
       }
     }
 

@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Net;
 using System.Net.Security;
 using EventStore.Dpop;
+using EventStore.Persistence;
 using EventStore.Spiffe;
 using EventStore.TicketExchange;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
@@ -11,6 +12,7 @@ using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Localization;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Diagnostics.HealthChecks;
 
 namespace EventStore.Host.Core;
 
@@ -134,6 +136,28 @@ public static class HostCoreExtensions
         // explicitly, the one case this registration alone can't cover.
         builder.Services.AddProblemDetails();
 
+        return builder;
+    }
+
+    // ADR-084 -- "readiness fails only for what makes the instance itself
+    // incapable of its core job -- its own primary database unreachable
+    // ... not for a peer's or a replica's condition." This is the half of
+    // that Decision TODO.md found never actually implemented:
+    // AddDefaultHealthChecks (EventStore.ServiceDefaults) only ever
+    // registered one always-healthy "self" check; no Host.<Provider> ever
+    // checked its OWN database. AddDbContextCheck<EventStoreContext>
+    // (Microsoft.Extensions.Diagnostics.HealthChecks.EntityFrameworkCore)
+    // calls EventStoreContext.Database.CanConnectAsync() underneath --
+    // provider-agnostic, so this one call works unchanged for every
+    // Host.<Provider>/Program.cs, each of which already registers
+    // EventStoreContext with its own provider before calling this.
+    // Deliberately untagged (no "live" tag): MapDefaultEndpoints' "/health"
+    // (readiness, no predicate) includes it; "/alive" (liveness, filtered
+    // to the "live" tag) does not -- exactly ADR-084's own liveness/
+    // readiness split, with no new plumbing needed to express it.
+    public static WebApplicationBuilder AddDbReachabilityHealthCheck(this WebApplicationBuilder builder)
+    {
+        builder.Services.AddHealthChecks().AddDbContextCheck<EventStoreContext>();
         return builder;
     }
 

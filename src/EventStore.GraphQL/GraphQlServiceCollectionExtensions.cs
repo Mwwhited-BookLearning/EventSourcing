@@ -51,6 +51,7 @@ public static class GraphQlServiceCollectionExtensions
             .AddType<MaskedFloat>()
             .AddType<MaskedBoolean>()
             .AddType<MaskedDateTimeOffset>()
+            .AddType<Attachment>()
             .AddType<EventFilterInput>()
             .AddType<Follow.Api.FollowMode>()
             .AddMaxExecutionDepthRule(15) // guards against unbounded hierarchical fan-out (e.g. deeply nested ancestors-of-ancestors)

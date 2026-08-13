@@ -45,14 +45,24 @@ if (builder.Configuration["FeatureFlags:AppId"] is { } featureFlagsAppId)
     ((IConfigurationBuilder)builder.Configuration).Add(new EventLogFeatureFlagConfigurationSource(() => new NpgsqlConnection(postgresConnectionString), featureFlagsAppId));
 }
 
+// TODO.md's own Postgres-database-creation-race finding -- same fix as
+// EventStore.Migrator's own identical registration; see that file's
+// comment for the full reasoning. This process starts AFTER the
+// migrator already completed (AppHost.cs's own WaitForCompletion(migrator)),
+// so this specific race is less likely to bite here in practice, but
+// there's no reason to leave this connection any less resilient than
+// the one that already needs it.
 builder.Services.AddDbContext<EventStoreContext>(options => options.UseNpgsql(
     builder.Configuration.GetConnectionString("Postgres"),
-    x => x.MigrationsAssembly("EventStore.Persistence.Migrations.Postgres")));
+    x => x
+        .MigrationsAssembly("EventStore.Persistence.Migrations.Postgres")
+        .EnableRetryOnFailure(maxRetryCount: 10, maxRetryDelay: TimeSpan.FromSeconds(2), errorCodesToAdd: ["3D000"])));
+builder.AddDbReachabilityHealthCheck(); // ADR-084 -- readiness fails when THIS database is unreachable
 builder.Services.AddScoped<IJsonPathTranslator, PostgresJsonPathTranslator>();
 builder.Services.AddScoped<IFilterableFieldIndexDdlGenerator, PostgresFilterableFieldIndexDdlGenerator>();
 builder.Services.AddScoped<IUniqueConstraintViolationDetector, PostgresUniqueConstraintViolationDetector>();
 builder.Services.AddScoped<IEventLineageQueryProvider, PostgresEventLineageQueryProvider>();
-builder.Services.AddUpcasting();
+builder.Services.AddUpcasting(builder.Configuration);
 builder.Services.AddSchemaRegistry();
 builder.Services.AddFeatureFlags();
 // ADR-095 -- Postgres LISTEN/NOTIFY, notify-to-wake/poll-to-confirm on top

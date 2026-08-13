@@ -19,11 +19,15 @@ namespace EventStore.GraphQL;
 // rejected"), plus the ADR-045 AccessLogEntry audit write (Action: "reveal",
 // per that ADR's own consequences section -- "revealField's own field-level
 // grain gives sharper audit than an ordinary bulk query already has").
-// ADR-066's optional step-up-authentication refinement for a field
-// configured to require one is still NOT built here -- depends on a later,
-// not-yet-built build-plan item (RFC 9470 step-up enforcement, "Digital
-// Sign-Off for Regulated Actions") -- honestly flagged in 08-build-plan.md
-// rather than stubbed.
+//
+// ADR-066's optional step-up-authentication refinement -- built, later
+// pass: an `x-masking` field can carry its own `requiredSignature`
+// (`{ "acrValues": [...], "maxAge": ... }`, the same shape/field names
+// EventTypeDefinition.RequiredSignature already uses for publish-time
+// enforcement, ADR-066's original Decision), checked via the SAME
+// StepUpEvaluator (EventStore.Domain.SchemaRegistry) PublishService uses --
+// extracted there specifically so this mutation doesn't duplicate that
+// logic. A field with no `requiredSignature` is completely unaffected.
 [ExtendObjectType(OperationTypeNames.Mutation)]
 public class RevealFieldMutation
 {
@@ -58,6 +62,19 @@ public class RevealFieldMutation
         if (!RequiredClaimEvaluator.HasClaimForEntity(user, requiredClaim, entityId))
             throw new GraphQLException("Forbidden -- caller lacks the required claim to reveal this field for this entity.");
 
+        if (maskingConfig["requiredSignature"] is JsonObject requiredSignatureConfig)
+        {
+            var requiredSignature = ParseRequiredSignature(requiredSignatureConfig);
+            var acr = StepUpEvaluator.ResolveAcr(user);
+            if (!StepUpEvaluator.IsSatisfied(user, requiredSignature, acr))
+            {
+                var acrValuesText = requiredSignature.AcrValues.Count > 0 ? string.Join(' ', requiredSignature.AcrValues) : "(none configured)";
+                throw new GraphQLException(
+                    $"Step-up authentication required to reveal this field -- acr_values=\"{acrValuesText}\"" +
+                    (requiredSignature.MaxAge is { } maxAge ? $", max_age=\"{maxAge}\"." : "."));
+            }
+        }
+
         var payloadNode = JsonNode.Parse(storedEvent.Payload);
         var valueNode = NavigatePayload(payloadNode, segments);
         var value = valueNode switch
@@ -73,6 +90,18 @@ public class RevealFieldMutation
 
         return new RevealFieldPayload(value);
     }
+
+    // Mirrors EventTypeDefinition.RequiredSignature's own field names
+    // (camelCase, matching every other x-masking key's own JSON casing --
+    // "acrValues"/"maxAge" rather than PascalCase) so a schema author who
+    // already knows the publish-time shape needs no separate vocabulary.
+    private static RequiredSignature ParseRequiredSignature(JsonObject config) => new()
+    {
+        AcrValues = config["acrValues"] is JsonArray acrValues
+            ? acrValues.Select(v => v!.GetValue<string>()).ToList()
+            : [],
+        MaxAge = config["maxAge"]?.GetValue<int>(),
+    };
 
     private static JsonNode? NavigateSchema(JsonNode? schemaNode, IReadOnlyList<string> segments)
     {

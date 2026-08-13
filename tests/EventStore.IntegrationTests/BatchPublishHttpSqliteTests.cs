@@ -24,6 +24,21 @@ namespace EventStore.IntegrationTests;
 // always 202" and "a malformed item's own 400-shaped rejection lives
 // inside the response body" are both properties of the actual HTTP
 // response shape, not something a direct PublishService call could prove.
+// [DoNotParallelize] -- this class's test methods share one static
+// _hostClient/_dbPath (ClassInitialize, not per-test), the same class of
+// interference under MSTestSettings.cs's method-level parallelism
+// already fixed this session for GraphQlHttpSqliteTests,
+// RbacProjectionWorkerHttpSqliteTests, TicketExchangeSecretRotationHttp
+// SqliteTests, and EntityQueryHttpSqliteTests. Kept here too, for the
+// same real reason (shared static state IS genuinely racy across
+// concurrent methods) -- but NOT the actual cause of the specific
+// flake that led here
+// (ASchemaInvalidButNotMalformedEventInsideABatchStillPersistsWithAnAdvisorySchemaStatus):
+// that one reproduced again, in a full-suite run, even WITH this
+// attribute already applied. The real cause and fix (a too-tight retry
+// budget against a genuine RouterWorker timing race, unrelated to
+// MSTest parallelism at all) are on that test method itself.
+[DoNotParallelize]
 [TestClass]
 public class BatchPublishHttpSqliteTests
 {
@@ -161,11 +176,26 @@ public class BatchPublishHttpSqliteTests
         // happens to be. Waiting explicitly, the same margin
         // AccessLogHttpSqliteTests/others already rely on, replaces a
         // timing assumption with an actual wait for the real condition.
+        //
+        // 20 attempts x 50ms (1s total) turned out to still be too tight
+        // under real load, not just theoretically -- reproduced directly,
+        // twice, in full-suite runs (never in isolation), confirming
+        // [DoNotParallelize] alone (added when this was first mistaken
+        // for the same shared-static-host interference class every other
+        // fix in this pass addressed) does NOT touch the actual cause:
+        // RouterWorker's own tick genuinely can take longer than 1s to
+        // reach this specific event when the host is busy with everything
+        // else a full suite run has in flight at once, DoNotParallelize
+        // or not. Bumped to the same 10s-deadline budget this session's
+        // own PeerSyncCursor race fix already established (150ms here,
+        // matching that one's own cadence) -- still resolves almost
+        // instantly under normal load since the loop exits the moment the
+        // condition is met, only the worst-case bound changed.
         await using var db = OpenDb();
         StoredEvent? stored = null;
-        for (var attempt = 0; attempt < 20 && stored?.SchemaStatus is null; attempt++)
+        for (var attempt = 0; attempt < 67 && stored?.SchemaStatus is null; attempt++)
         {
-            await Task.Delay(50);
+            await Task.Delay(150);
             stored = await db.Events.SingleAsync(e => e.AppId == appId && e.EventType == "orderplaced");
         }
         Assert.IsTrue(stored!.Status is "received" or "applied", "durably persisted regardless of schema conformance");

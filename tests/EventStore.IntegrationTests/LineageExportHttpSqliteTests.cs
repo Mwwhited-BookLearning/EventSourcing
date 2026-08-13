@@ -126,19 +126,60 @@ public class LineageExportHttpSqliteTests
         return body.GetProperty("correlationId").GetGuid();
     }
 
+    // Retries up to ~10s (67 x 150ms, this session's own established
+    // budget for a RouterWorker-tick race, see BatchPublishHttpSqliteTests)
+    // rather than trusting each call site's own preceding Task.Delay(500)
+    // to be enough -- reproduced directly, in full-suite runs, never in
+    // isolation, twice, in two different ways:
+    // ImportingABundleWithATamperedManifestHashIsRejectedBeforeAnyWrite
+    // threw "requires an element of type 'Object', but the target element
+    // has type 'Null'" because exportLineage was still null 500ms after
+    // publish under heavy load; AnExportedFieldMaskedBecause...
+    // got GraphQL's own "Unknown entityId." error instead, for the exact
+    // same underlying reason -- LineageExportQueries.
+    // GetExportLineageAsync's own CheckRootAsync queries the database
+    // directly for a root event, and under load that query can run before
+    // the publish it's racing against has actually landed. "Unknown
+    // entityId." is retried here specifically because it is NOT
+    // distinguishable, from this client's own perspective, from a
+    // genuinely nonexistent entity (ExportingAnUnknownEntityIdIsRejected's
+    // own scenario) -- only the retry BUDGET tells them apart: a
+    // genuinely unknown entityId still returns the identical error after
+    // the full ~10s retry window, a not-yet-landed one resolves well
+    // before it. "Forbidden", by contrast
+    // (ExportingAnEntityWhoseRootTypeTheCallerCannotReadIsRejected's own
+    // scenario), is a stable, permanent rejection that retrying can never
+    // change -- returned immediately, not retried, so that test's own
+    // failure mode stays fast.
     private static async Task<JsonElement> ExportLineageAsync(string entityId, string clientId, string clientSecret, string scope)
     {
         var (token, key) = await AuthScenarioAssertions.GetTokenAsync(_devIdpClient, clientId, clientSecret, scope);
-        using var request = new HttpRequestMessage(Query, "/graphql")
+        JsonElement result = default;
+        for (var attempt = 0; attempt < 67; attempt++)
         {
-            Content = new StringContent(JsonSerializer.Serialize(new
+            using var request = new HttpRequestMessage(Query, "/graphql")
             {
-                query = $$"""query { exportLineage(entityId: "{{entityId}}") { bundleUrl } }""",
-            }), Encoding.UTF8, "application/json"),
-        };
-        AuthScenarioAssertions.AttachAuth(request, _hostClient, token, key);
-        var response = await _hostClient.SendAsync(request);
-        return await response.Content.ReadFromJsonAsync<JsonElement>();
+                Content = new StringContent(JsonSerializer.Serialize(new
+                {
+                    query = $$"""query { exportLineage(entityId: "{{entityId}}") { bundleUrl } }""",
+                }), Encoding.UTF8, "application/json"),
+            };
+            AuthScenarioAssertions.AttachAuth(request, _hostClient, token, key);
+            var response = await _hostClient.SendAsync(request);
+            result = await response.Content.ReadFromJsonAsync<JsonElement>();
+            if (result.TryGetProperty("errors", out var errors))
+            {
+                var message = errors[0].GetProperty("message").GetString();
+                if (message != "Unknown entityId.")
+                    return result;
+            }
+            else if (result.TryGetProperty("data", out var data) && data.TryGetProperty("exportLineage", out var exportLineage) && exportLineage.ValueKind != JsonValueKind.Null)
+            {
+                return result;
+            }
+            await Task.Delay(150);
+        }
+        return result;
     }
 
     private static async Task<string> DownloadBundleAsync(string bundleUrl)

@@ -1,0 +1,22 @@
+{
+  "name": "duplex-client-web",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "dev:vitals": "vite --mode vitals",
+    "dev:meridian": "vite --mode meridian",
+    "build": "vue-tsc -b && vite build",
+    "build:offline-player": "vite build --config vite.offline-player.config.ts",
+    "embed:offline-bundle": "node scripts/embed-bundle.mjs",
+    "bridge:reference": "node native-bridge-reference/server.mjs",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "@eventstore/mvvm-client": "*",
+    "pinia": "^4.0.2",
+    "vue": "^3.5.41"
+  }
+}
