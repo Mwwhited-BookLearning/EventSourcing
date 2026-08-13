@@ -18,6 +18,7 @@
     "test:watch": "npm run test:watch --workspace=packages/reference-app"
   },
   "devDependencies": {
+    "@guidepup/virtual-screen-reader": "^0.32.1",
     "@types/ws": "^8.18.1",
     "@vitejs/plugin-vue": "^6.0.8",
     "@vue/test-utils": "^2.4.6",

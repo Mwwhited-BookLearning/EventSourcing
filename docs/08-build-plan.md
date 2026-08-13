@@ -4177,11 +4177,26 @@ UPS," not two anonymous cells) plus a visually-hidden `<caption>`. This
 is a real, verifiable improvement to actual navigability, not a
 substitute for the literal manual pass this criterion still names as
 outstanding — recorded in `TODO.md`, not silently claimed as done.
+**Narrowed further, 2026-08-13**: `@guidepup/virtual-screen-reader` (a
+pure JS/TS accessibility-tree simulator, no OS-level screen-reader
+engine needed — confirmed running in this environment where NVDA/JAWS/
+VoiceOver themselves cannot) now proves the `<th scope="row">` claim
+above directly instead of by reasoning about markup — `a11y.
+virtualScreenReader.spec.ts`'s 5 tests confirm the actual simulated
+announcement order. Its own README states it "should not be used as a
+substitute for testing with real screen readers and with real screen
+reader users," confirmed directly, not just quoted: `FlagRow`'s `"⚠"`
+glyph carries through as literal text in the simulated tree, but
+whether a real screen reader actually pronounces that bare Unicode
+character is something only a real NVDA/JAWS/VoiceOver session could
+confirm — still tracked in `TODO.md`, still not silently claimed closed.
 
 Tests: 4 new scenarios in `a11y.spec.ts`; `GenericFallbackView.spec.ts`'s
 existing 4 scenarios re-verified passing after the `<th>`/`<caption>`
-change (they assert on text content, not tag names). Client suite:
-84/84 (20 files). `npm run build`/`npm run build:offline-player` both
+change (they assert on text content, not tag names); 5 more added
+2026-08-13 in `a11y.virtualScreenReader.spec.ts`. Client suite:
+84/84 (20 files) at the time this item was first built. `npm run
+build`/`npm run build:offline-player` both
 still succeed — `axe-core` is a devDependency only, confirmed not
 bundled into either production build (bundle size unchanged).
 

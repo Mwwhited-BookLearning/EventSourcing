@@ -27,23 +27,38 @@ here instead of inlining.
 
 - **`ADR-073`/build-plan item 45's own exit criterion asks for a manual
   screen-reader pass (a real NVDA/JAWS/VoiceOver session) confirming
-  `GenericFallbackView` is fully navigable — not performed.** No screen-
-  reader software is installable/operable in this environment. Automated
-  `axe-core` conformance (zero critical/serious violations, verified
-  both under jsdom and, for `color-contrast` specifically since jsdom
-  can't determine it, a real headless-Chromium cross-check) was done
-  instead, plus one real, concrete fix found by reasoning directly about
-  screen-reader behavior (`<th scope="row">` + a visually-hidden
-  `<caption>` on the property table, closing a gap no automated tool
-  flagged). Automated conformance and a literal manual pass are
-  genuinely different checks — industry-standard automated tools catch
-  roughly 30-50% of real accessibility issues, the rest need human
-  review — so this is a real, honestly-named gap, not equivalent
-  coverage under a different name. Investigate: a real NVDA (Windows,
-  free) or VoiceOver (macOS, built-in) session against the built
-  `client-web` app, specifically tabbing through `GenericFallbackView`
-  and confirming each announced label/value pairing and the "Retry
-  sync" button's own reachability/announcement.
+  `GenericFallbackView` is fully navigable — still not literally
+  performed, no such software is installable/operable in this
+  environment, but narrowed further this session.** Previously: automated
+  `axe-core` conformance (zero critical/serious violations, verified both
+  under jsdom and, for `color-contrast` specifically, a real headless-
+  Chromium cross-check) plus one real fix found by reasoning directly
+  about screen-reader behavior (`<th scope="row">` + a visually-hidden
+  `<caption>`). **New, 2026-08-13**: `@guidepup/virtual-screen-reader`
+  (`client-web/packages/reference-app`, pure JS/TS, no OS-level screen-
+  reader engine needed) added — `a11y.virtualScreenReader.spec.ts` (5
+  tests) walks the actual simulated accessibility tree over the real
+  rendered DOM and proves, rather than reasons about, the exact claim the
+  `<th scope="row">` fix made: `GenericFallbackView`'s table announces
+  `"row, carrier UPS"` with `"rowheader, carrier"` ahead of `"cell, UPS"`
+  in the same row — a genuinely grouped label/value pair, not two
+  anonymous cells — plus the Extensions-sourced property's own visual
+  `"(Extensions)"` marker actually reaching the tree, the `Retry sync`
+  button's own accessible name, and the `ViewDefinition`-template `<dl>`
+  pairing its `term`/`definition` roles in navigation order.
+  **Still an honest gap, not closed**: this tool's own README states it
+  "should not be used as a substitute for testing with real screen
+  readers and with real screen reader users" — confirmed directly while
+  writing these tests, not just quoted: `FlagRow`'s own `"⚠"` glyph
+  carries through as literal text in the simulated tree (`"⚠
+  ConflictFlag"`), but whether a REAL screen reader actually pronounces
+  that bare Unicode character (documented as inconsistent across real
+  AT) is something only an actual NVDA/JAWS/VoiceOver session could
+  confirm one way or the other. Investigate, if this needs fully closing:
+  a real NVDA (Windows, free) or VoiceOver (macOS, built-in) session
+  against the built `client-web` app, specifically confirming the `"⚠"`
+  glyph's own pronunciation and any other real-AT-specific behavior this
+  virtual simulation can't reach.
 
 - **`FollowSubscriptionTypeModule`'s dynamic Subscription schema
   (`EventStore.GraphQL`, "GraphQL-Only Query Layer") only reflects
