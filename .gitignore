@@ -234,6 +234,17 @@ PublishScripts/
 **/[Pp]ackages/*
 # except build/, which is used as an MSBuild target.
 !**/[Pp]ackages/build/
+# client-web is an npm workspace -- its own packages/ directory (npm's
+# convention, ADR-062's "Split client-web into a published npm library +
+# reference app") is unrelated to NuGet's packages/ restore folder above,
+# but **/[Pp]ackages/* still matched it, silently blocking any NEW file
+# added under it from ever being tracked (found while adding
+# subscriptionCursor.ts -- git status never listed it as untracked at
+# all, no error, just silently absent; every file already tracked there
+# before this fix was presumably added with `git add -f`, easy to forget
+# and easy to lose real work to without noticing).
+!client-web/packages/
+!client-web/packages/**
 # Uncomment if necessary however generally it will be regenerated when needed
 #!**/[Pp]ackages/repositories.config
 # NuGet v3's project.json files produces more ignorable files

@@ -20,6 +20,7 @@ public class EventTailReader(
     UpcastChain upcastChain, DowncastChain downcastChain)
 {
     public async IAsyncEnumerable<FollowedEvent> TailAsync(
+        string appId,
         string eventTypeName,
         Expression<Func<StoredEvent, bool>> predicate,
         long lastSeen,
@@ -35,9 +36,16 @@ public class EventTailReader(
             // opt-in; a materialization is a reshaped COPY of an original
             // already delivered once, so surfacing it too would double-
             // deliver one logical fact as two distinct events.
+            //
+            // EventTypeDefinition's own primary key is (AppId, Name,
+            // Version) -- event type NAMES are explicitly not globally
+            // unique, so filtering by eventTypeName alone let one AppId's
+            // subscription see a DIFFERENT AppId's same-named event, a real
+            // cross-application data leak (found and documented in TODO.md,
+            // now fixed here rather than deferred further).
             var matching = await db.Events
                 .AsNoTracking()
-                .Where(e => e.EventType == eventTypeName && e.EventKind == EventKind.Original && e.SequenceNumber > lastSeen)
+                .Where(e => e.AppId == appId && e.EventType == eventTypeName && e.EventKind == EventKind.Original && e.SequenceNumber > lastSeen)
                 .Where(predicate)
                 .OrderBy(e => e.SequenceNumber)
                 .ToListAsync(ct);
@@ -49,12 +57,12 @@ public class EventTailReader(
                 // version, not whichever version happens to appear in this batch,
                 // so every intermediate hop's own definition is fetched too, not
                 // just the versions literally present among these events.
-                var activeDefinition = await schemaRegistry.GetActiveDefinitionByNameAsync(eventTypeName, ct);
+                var activeDefinition = await schemaRegistry.GetActiveDefinitionAsync(appId, eventTypeName, ct);
                 var activeVersion = activeDefinition?.Version ?? matching.Max(e => e.SchemaVersion);
                 var minVersion = Math.Min(matching.Min(e => e.SchemaVersion), asOfSchemaVersion ?? activeVersion);
                 var maxVersion = Math.Max(activeVersion, asOfSchemaVersion ?? activeVersion);
                 var versionsNeeded = Enumerable.Range(minVersion, Math.Max(1, maxVersion - minVersion + 1)).ToList();
-                var schemasByVersion = await schemaRegistry.GetVersionsByNameAsync(eventTypeName, versionsNeeded, ct);
+                var schemasByVersion = await schemaRegistry.GetVersionsAsync(appId, eventTypeName, versionsNeeded, ct);
 
                 // ADR-028 -- the shape ultimately served to the caller is the
                 // requested (asOfSchemaVersion) shape when one was asked for,

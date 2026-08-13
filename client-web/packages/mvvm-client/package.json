@@ -1,0 +1,17 @@
+{
+  "name": "@eventstore/mvvm-client",
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Duplex's provider-agnostic MVVM client library (ADR-039/062): API clients, composables, IndexedDB-backed outbox/entity cache, device-input sources, i18n, offline playback/bundle verification.",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "scripts": {
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "build": "vue-tsc --emitDeclarationOnly -p tsconfig.json"
+  },
+  "dependencies": {
+    "pinia": "^4.0.2",
+    "vue": "^3.5.41"
+  }
+}

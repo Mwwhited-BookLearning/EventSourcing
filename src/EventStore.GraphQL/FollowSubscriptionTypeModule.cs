@@ -219,6 +219,31 @@ public class FollowSubscriptionTypeModule : ITypeModule, ISchemaChangeNotifier
         {
             PureResolver = ctx => ctx.Parent<FollowedEvent>().Event.EventId.ToString(),
         };
+        // TODO.md's own persisted-resume-cursor gap -- a client needs this
+        // to know where to reconnect from (mode: REPLAY, fromSequenceNumber:
+        // <this value>; EventTailReader.TailAsync's predicate is
+        // SequenceNumber > lastSeen, so the value itself, not +1, is the
+        // correct reconnect argument) without re-downloading its entire
+        // history on every reconnect. String, not the built-in "Long"
+        // scalar this field's own fromSequenceNumber ARGUMENT already uses
+        // -- an early version of this field returned a raw long output and
+        // appeared to hang the whole SSE stream, but that was a
+        // misdiagnosis: the real causes were an off-by-one in the proving
+        // test's own reconnect math (see above) compounding with two
+        // separate, real bugs this same pass also found and fixed --
+        // EventTailReader.TailAsync's missing AppId filter (a cross-
+        // application event leak, event type names are not globally
+        // unique) and this class's own documented hot-reload gap (a type
+        // registered after the schema's first build never gets a
+        // subscription field). String is kept anyway, on its own merits --
+        // the correct choice regardless for a 64-bit sequence number
+        // reaching a JS client, which cannot represent integers above 2^53
+        // exactly, the same reasoning behind GraphQL's own common
+        // "int64-as-string" convention.
+        yield return new ObjectFieldConfiguration("sequenceNumber", type: TypeReference.Parse("String"))
+        {
+            PureResolver = ctx => ctx.Parent<FollowedEvent>().Event.SequenceNumber.ToString(),
+        };
         yield return new ObjectFieldConfiguration("conflictFlag", type: TypeReference.Parse("Boolean"))
         {
             PureResolver = ctx => ctx.Parent<FollowedEvent>().Event.ConflictFlag,
@@ -314,7 +339,7 @@ public class FollowSubscriptionTypeModule : ITypeModule, ISchemaChangeNotifier
             ? fromSequenceNumber ?? 0
             : await db.Events.AsNoTracking().MaxAsync(e => (long?)e.SequenceNumber, ctx.RequestAborted) ?? 0;
 
-        var events = tailReader.TailAsync(normalizedEventTypeName, predicate, lastSeen, asOfSchemaVersion: null, TimeSpan.FromMilliseconds(200), user, ctx.RequestAborted);
+        var events = tailReader.TailAsync(appId, normalizedEventTypeName, predicate, lastSeen, asOfSchemaVersion: null, TimeSpan.FromMilliseconds(200), user, ctx.RequestAborted);
         return new FollowedEventSourceStream(events);
     }
 

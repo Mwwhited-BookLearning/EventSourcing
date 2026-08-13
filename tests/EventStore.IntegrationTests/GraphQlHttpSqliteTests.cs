@@ -24,6 +24,16 @@ namespace EventStore.IntegrationTests;
 // response writing are all pipeline behavior, only provably correct end to
 // end, the same "auth is pipeline behavior" reasoning AuthSqliteTests'
 // own HTTP-only test style already established.
+// [DoNotParallelize] -- this class's test methods share one static
+// _hostClient/_dbPath (ClassInitialize, not per-test), and
+// FollowSubscriptionTypeModule's own dynamic per-AppId schema
+// construction plus EventTailReader.TailAsync's AppId-blind event-type-
+// name filter (a real, separately-tracked bug, see TODO.md) make
+// concurrent subscription tests against this shared host genuinely race
+// -- the same class of interference [DoNotParallelize] already fixed
+// twice elsewhere this session (RbacProjectionWorkerHttpSqliteTests,
+// TicketExchangeSecretRotationHttpSqliteTests).
+[DoNotParallelize]
 [TestClass]
 public class GraphQlHttpSqliteTests
 {
@@ -73,6 +83,29 @@ public class GraphQlHttpSqliteTests
                 Name = "orderplaced",
                 Version = 1,
                 JsonSchema = """{ "type": "object", "properties": { "OrderId": { "type": "string" }, "Amount": { "type": "number" } }, "required": ["OrderId", "Amount"] }""",
+                RegisteredAt = DateTimeOffset.UtcNow,
+                IsActive = true,
+                EntityIdField = "$.OrderId",
+                EntityType = "orderplaced",
+                ChangeKind = EventStore.Domain.SchemaRegistry.ChangeKind.Full,
+            });
+            // Same "seed before Host warmup" reasoning as the "graphql-http-
+            // demo-5" entry immediately above -- ReconnectingWithReplay...'s
+            // own RegisterAsync call (an ordinary runtime HTTP registration,
+            // made from inside the test method) only reliably gets its own
+            // dynamic subscription field in the schema when it happens to be
+            // the very first test to touch the GraphQL endpoint in this
+            // class's single shared, static Host; any other execution order
+            // hits the exact same hot-reload gap this class already flags,
+            // and the field is silently missing thereafter for the rest of
+            // this Host's lifetime. Seeding it here sidesteps the gap
+            // entirely rather than depending on test ordering.
+            db.EventTypeDefinitions.Add(new EventStore.Domain.SchemaRegistry.EventTypeDefinition
+            {
+                AppId = "graphql-http-demo-resume",
+                Name = "orderplaced",
+                Version = 1,
+                JsonSchema = """{ "type": "object", "properties": { "OrderId": { "type": "string" } }, "required": ["OrderId"] }""",
                 RegisteredAt = DateTimeOffset.UtcNow,
                 IsActive = true,
                 EntityIdField = "$.OrderId",
@@ -357,5 +390,74 @@ public class GraphQlHttpSqliteTests
         var orderPlaced = payload.GetProperty("data").GetProperty($"on_{appId.Replace("-", "_")}_orderplaced");
         Assert.AreEqual("http-sub-1", orderPlaced.GetProperty("orderId").GetString());
         Assert.AreEqual(12.5, orderPlaced.GetProperty("amount").GetDouble());
+    }
+
+    // TODO.md's own "client-web has no persisted resume cursor and no
+    // mode: Replay/fromSequenceNumber reconnect path" gap -- this proves
+    // the SERVER-side half the client-side fix depends on: a delivered
+    // event's own sequenceNumber envelope field (new, this pass) is real
+    // and monotonic, and reconnecting with mode: REPLAY, fromSequenceNumber:
+    // <lastSeen> (EventTailReader.TailAsync's own predicate is
+    // SequenceNumber > lastSeen, so fromSequenceNumber is inclusive-of-
+    // already-seen, exclusive-of-the-filter -- passing the last-seen value
+    // itself, not +1, is what picks up exactly the next event) skips a
+    // duplicate of one already seen.
+    [TestMethod]
+    public async Task ReconnectingWithReplayFromLastSeenSkipsAlreadyDeliveredEventsAndPicksUpTheNext()
+    {
+        // Registered in ClassInit, before Host warmup -- see that seed
+        // entry's own comment for why a runtime RegisterAsync call here
+        // would be unreliable under this class's shared, static Host.
+        const string appId = "graphql-http-demo-resume";
+        await PublishAsync(appId, "OrderPlaced", """{ "OrderId": "resume-1" }""");
+
+        var (token, key) = await AuthScenarioAssertions.GetTokenAsync(_devIdpClient, "follower-client", "follower-client-secret", "events:follow");
+        var fieldName = $"on_{appId.Replace("-", "_")}_orderplaced";
+
+        async Task<(string OrderId, long SequenceNumber)> ReadOneAsync(string query)
+        {
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(15));
+            using var request = new HttpRequestMessage(Query, "/graphql")
+            {
+                Content = new StringContent(JsonSerializer.Serialize(new { query }), Encoding.UTF8, "application/json"),
+            };
+            AuthScenarioAssertions.AttachAuth(request, _hostClient, token, key);
+            // The token must be passed to SendAsync itself, not just to the
+            // later ReadLineAsync calls -- that's what TestServer's in-memory
+            // transport ties to HttpContext.RequestAborted, so the prior
+            // subscription's EventTailReader.TailAsync poll loop actually
+            // stops once this connection is done reading, instead of running
+            // forever in the background.
+            using var response = await _hostClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cts.Token);
+            using var reader = new StreamReader(await response.Content.ReadAsStreamAsync(cts.Token));
+            while (!cts.IsCancellationRequested)
+            {
+                var line = await reader.ReadLineAsync(cts.Token);
+                if (line is null)
+                    break;
+                if (!line.StartsWith("data: ", StringComparison.Ordinal))
+                    continue;
+                var payload = JsonDocument.Parse(line["data: ".Length..]).RootElement;
+                Assert.IsFalse(payload.TryGetProperty("errors", out _), payload.ToString());
+                var data = payload.GetProperty("data").GetProperty(fieldName);
+                var result = (data.GetProperty("orderId").GetString()!, long.Parse(data.GetProperty("sequenceNumber").GetString()!));
+                await cts.CancelAsync();
+                return result;
+            }
+            throw new TimeoutException("expected at least one SSE data frame carrying the published event");
+        }
+
+        // First connection: REPLAY from 0 (a fresh instance, no cursor yet).
+        var first = await ReadOneAsync($$"""subscription { {{fieldName}}(mode: REPLAY, fromSequenceNumber: 0) { orderId sequenceNumber } }""");
+        Assert.AreEqual("resume-1", first.OrderId);
+
+        // Simulates a reconnect: a SECOND event was published while this
+        // instance was disconnected, and it reconnects with the persisted
+        // cursor (first.SequenceNumber) rather than blind TAIL or a full
+        // replay from 0 again.
+        await PublishAsync(appId, "OrderPlaced", """{ "OrderId": "resume-2" }""");
+        var second = await ReadOneAsync($$"""subscription { {{fieldName}}(mode: REPLAY, fromSequenceNumber: {{first.SequenceNumber}}) { orderId sequenceNumber } }""");
+        Assert.AreEqual("resume-2", second.OrderId, "expected the resumed connection to skip the already-seen first event and deliver only the new one");
+        Assert.IsTrue(second.SequenceNumber > first.SequenceNumber);
     }
 }

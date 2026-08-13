@@ -256,4 +256,82 @@ describe('useEntityViewActions (docs/patterns/mvvm-client-architecture.md\'s "Ac
       expect(entityCache.get('instance-a', 'mvvm-demo:orderplaced:o-1')).toBeDefined()
     })
   })
+
+  // TODO.md's resume-cursor gap -- a fresh instance still replays its whole
+  // history from 0 (the right trade-off, per subscribeToEntity's own
+  // comment), but a RECONNECTING instance (a page reload, a dropped
+  // connection) should resume from its own last-applied SequenceNumber
+  // instead of either re-downloading everything again (unconditional
+  // REPLAY-from-0) or silently missing whatever was published while
+  // disconnected (blind TAIL).
+  describe('persisted resume cursor (TODO.md)', () => {
+    function mockIntrospection(fieldsByType: { entity: string[]; erasure: string[] }) {
+      vi.mocked(graphqlClientModule.graphqlQuery).mockImplementation(async (_host, _token, query) => {
+        const fields = (query as string).includes('entityerasurerequested') ? fieldsByType.erasure : fieldsByType.entity
+        return { __type: { fields: fields.map((name) => ({ name })) } }
+      })
+    }
+
+    it('a fresh instance subscribes from fromSequenceNumber: 0, with no cursor persisted yet', async () => {
+      mockIntrospection({ entity: ['orderId'], erasure: ['targetEntityId'] })
+      const subscribedQueries: string[] = []
+      vi.mocked(graphqlClientModule.graphqlSubscribe).mockImplementation((_host, _token, query) => {
+        subscribedQueries.push(query as string)
+        return () => {}
+      })
+      const fetchToken = vi.fn().mockResolvedValue('token-123')
+      const actions = useEntityViewActions(config, { fetchToken })
+
+      await actions.subscribe()
+
+      expect(subscribedQueries[0]).toContain('fromSequenceNumber: 0')
+      expect(subscribedQueries[1]).toContain('fromSequenceNumber: 0')
+    })
+
+    it('reconnecting after receiving an event resumes from that event\'s own sequenceNumber, not 0 again', async () => {
+      mockIntrospection({ entity: ['orderId', 'sequenceNumber'], erasure: ['targetEntityId'] })
+      let entityOnMessage: ((data: Record<string, { orderId?: string; sequenceNumber?: string }>) => void) | undefined
+      vi.mocked(graphqlClientModule.graphqlSubscribe).mockImplementation((_host, _token, query, onMessage) => {
+        if (!(query as string).includes('entityerasurerequested')) entityOnMessage = onMessage as typeof entityOnMessage
+        return () => {}
+      })
+      const fetchToken = vi.fn().mockResolvedValue('token-123')
+      const actions = useEntityViewActions(config, { fetchToken })
+
+      await actions.subscribe()
+      entityOnMessage!({ on_mvvm_demo_orderplaced: { orderId: 'o-1', sequenceNumber: '7' } })
+      // applyFollowedEvent/setCursor both fire fire-and-forget inside the
+      // onMessage handler -- a real Subscription delivery is likewise
+      // asynchronous from the caller's perspective, so this awaits a tick
+      // the same way the erasure-purge tests above already rely on
+      // Promise microtask ordering rather than an explicit synchronization
+      // primitive.
+      await Promise.resolve()
+      await Promise.resolve()
+
+      const subscribedQueries: string[] = []
+      vi.mocked(graphqlClientModule.graphqlSubscribe).mockImplementation((_host, _token, query) => {
+        subscribedQueries.push(query as string)
+        return () => {}
+      })
+      await actions.subscribe()
+
+      expect(subscribedQueries[0]).toContain('fromSequenceNumber: 7')
+    })
+
+    it('eventId/sequenceNumber never leak into the entity cache\'s own rendered data, only the four registered schema fields do', async () => {
+      const entityCache = useEntityCacheStore()
+      await entityCache.applyFollowedEvent('instance-a', 'orderplaced', 'mvvm-demo:orderplaced:o-1', {
+        conflictFlag: false,
+        lateArrivalFlag: false,
+        authorityStatus: 'accepted',
+        schemaVersion: 1,
+        eventId: 'e-1',
+        sequenceNumber: '7',
+        orderId: 'o-1',
+      })
+
+      expect(entityCache.get('instance-a', 'mvvm-demo:orderplaced:o-1')?.data).toEqual({ orderId: 'o-1' })
+    })
+  })
 })

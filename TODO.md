@@ -86,42 +86,6 @@ here instead of inlining.
   whether it's expected to survive a mid-flight eviction safely (it
   apparently isn't, as configured/used here), or find a way to defer
   eviction until no subscriptions are active.
-- **A more serious, separate bug found WHILE investigating the item
-  above: `EventTailReader.TailAsync` (`src/EventStore.Follow.Api/
-  EventTailReader.cs:38-41`) filters Follow/Subscription delivery by
-  `EventType` name ALONE — `db.Events.Where(e => e.EventType ==
-  eventTypeName && ...)` — with no `AppId` filter anywhere in the query
-  or in `TailAsync`'s own parameter list.** Two different `AppId`s
-  registering the same event type name (an explicitly normal,
-  explicitly supported scenario, `ADR-030`) will cross-deliver events to
-  each other's Follow subscribers, even though the GraphQL field itself
-  is `AppId`-qualified (`on_{appId}_{eventType}`) and looks isolated at
-  the schema level. **Reproduced concretely, not theorized**: running
-  `GraphQlHttpSqliteTests` repeatedly (no code changes of mine in
-  effect — this is present on a clean checkout) shows
-  `SubscribingOverRealHttpStreamsAMatchingEventAsSse`
-  (`AppId "graphql-http-demo-5"`) intermittently receiving
-  `LineageQueryWalksParentsOverRealHttpAndRejectsWithoutTheLineageScope`'s
-  own published event (`AppId "graphql-http-demo-2"`, same event type
-  name `"OrderPlaced"`) — about 1 run in 6 in local testing, higher under
-  more concurrent load. **This is a real cross-application data leak
-  within one deployment, not test flakiness** — confirmed against
-  `EventTypeDefinition`'s own primary key, `(AppId, Name, Version)`
-  (`EventStoreContext.cs`): two different `AppId`s registering the
-  identical `Name` is explicitly allowed by the data model, not an edge
-  case this bug happens to hit by accident. `FollowService.
-  ConnectAsync`'s own non-GraphQL Follow path likely has the identical
-  gap (same `TailAsync` call), not checked yet. Compounds further:
-  `TailAsync`'s own schema-version lookups
-  (`SchemaRegistryService.GetActiveDefinitionByNameAsync`/
-  `GetVersionsByNameAsync`, both name-only, no `AppId` parameter) mean a
-  name collision could also resolve upcast/downcast against the WRONG
-  AppId's schema definition, not just deliver the wrong event — a
-  potential shape-corruption path, not only a confidentiality one. Fix:
-  add an `AppId` parameter to `TailAsync` (and the two schema lookups it
-  calls) and filter on it directly — the "are names unique" question is
-  already settled by the data model, in the direction that makes this a
-  real bug, not an open design question to resolve first.
 - **`dotnet test tests/EventStore.IntegrationTests` intermittently fails
   one or two SQL Server test classes per full run, a different class (or
   pair) failing each time** (seen: `DerivationSqlServerTests`, then
@@ -157,26 +121,6 @@ here instead of inlining.
   environment specifically when many `MsSqlContainer`s start back-to-back
   with no other work between them, not a regression to chase per-item.
 
-- **`client-web`'s `useEntityViewActions.subscribe()` opens every
-  Subscription (the main entity one, and "Local/Edge Active-Scope Caching
-  & Erasure Invalidation"'s new `EntityErasureRequested` one) hardcoded
-  `mode: TAIL`, with no persisted resume cursor and no `mode: Replay`/
-  `fromSequenceNumber` reconnect path at all.** Found while verifying
-  item 28's own "a client offline at the moment erasure fires still
-  purges correctly once it reconnects" exit criterion — a client that
-  reconnects AFTER missing an event while disconnected (not just one
-  already connected when it fires) has no guaranteed catch-up today and
-  may simply never see it, contradicting `ADR-039`'s own "offline is the
-  default assumption" framing for exactly the reconnect case that matters
-  most. Pre-existing since "MVVM Client" (item 21) built the subscription
-  mechanism, not introduced by item 28 — surfaced here because this is
-  the first item whose own exit criteria explicitly depend on reconnect
-  behavior being correct. Investigate: persist a per-instance last-seen
-  `SequenceNumber` cursor (IndexedDB, alongside the existing outbox/entity-
-  cache stores) and reconnect with `mode: Replay&fromSequenceNumber=
-  <cursor+1>` instead of blind `Tail` whenever a stopped subscription is
-  restarted, the same tail-then-replay-cursor shape `EventTailReader`
-  already uses server-side.
 - **The full SQLite regression suite's own known load-induced flakiness
   (see `.claude/context.md`'s repeated notes on
   `SubscribingOverRealHttpStreamsAMatchingEventAsSse` and the leader-

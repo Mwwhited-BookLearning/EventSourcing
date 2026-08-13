@@ -2392,18 +2392,16 @@ receives `EntityErasureRequested` for it purges the local copy
 immediately upon receiving that event, verified distinctly from the
 scope-eviction path — **built and tested**; a client that is offline at
 the moment erasure fires still purges correctly once it reconnects and
-receives the event — **narrowed, found while verifying this exact
-criterion, not assumed satisfied**: every Subscription this client opens
-(the erasure one built here included) is hardcoded `mode: TAIL` with no
-persisted resume cursor and no `mode: Replay`/`fromSequenceNumber`
-reconnect path — a PRE-EXISTING gap in "MVVM Client" itself (item 21),
-not introduced by this item, but one this item's own exit criterion
-inherits rather than closes. A client already connected when erasure
-fires purges correctly (proven by this item's own tests); a client that
-reconnects AFTER having been offline while it fired has no guaranteed
-catch-up mechanism today and may simply miss it — narrower than this
-criterion's literal wording, tracked as a real follow-up in `TODO.md`
-rather than silently claimed done.
+receives the event — **built**: both of this client's Subscriptions
+(`subscribeToEntity` and the erasure one built here) now persist a
+per-instance last-seen `SequenceNumber` cursor (IndexedDB) and reconnect
+with `mode: Replay, fromSequenceNumber: <cursor>` rather than blind
+`Tail`, so a client that reconnects after being offline while erasure
+fired resumes exactly where it left off instead of missing the event —
+closing the gap this criterion originally narrowed itself against
+(`TODO.md`'s item, resolved; the fix and the two real, unrelated
+server-side bugs found while proving it are narrated in
+`docs/changes/2026-08-12.md`).
 
 ## Digital Sign-Off for Regulated Actions (Step-Up Authentication)
 
