@@ -41,74 +41,59 @@ namespace EventStore.GraphQL;
 // discovered dynamically at runtime).
 public class FollowSubscriptionTypeModule : ITypeModule, ISchemaChangeNotifier
 {
-    // A found, real gap -- root-caused against HotChocolate v16.6.0's own
-    // actual source this pass (RequestExecutorManager.cs, cloned at the
-    // exact installed tag and read directly, not assumed from docs or
-    // guessed at from symptoms). An EARLIER session's own claim here
+    // Went through two rounds of correction, both this session, before
+    // landing on the real, fixable root cause -- docs/changes/2026-08-13.md
+    // has the full history. An EARLIER session's own claim here
     // ("CreateTypesAsync only ever runs once, no matter how many times
-    // TypesChanged fires") was a MISDIAGNOSIS, corrected this pass after a
-    // live repro directly contradicted it: a type registered after Host
-    // warmup, in ISOLATION, becomes queryable -- and a real Subscription
-    // against it delivers a real published event -- within about 150ms,
-    // with NO extra code beyond what already existed
-    // (HotReloadDiagnosticTests.ARealSubscriptionConnectionActually
-    // ReceivesAnEventOnAHotRegisteredType proves this, kept as permanent
-    // coverage). HotChocolate's own mechanism -- TypesChanged ->
-    // TypeModuleChangeMonitor.EvictRequestExecutor -> RequestExecutorManager
-    // .EvictExecutor (an unbounded channel write) -> a single background
-    // consumer that disposes the OLD TypeModuleChangeMonitor (unsubscribing)
-    // then calls CreateRequestExecutorAsync, which builds a BRAND NEW
-    // TypeModuleChangeMonitor and re-subscribes -- already works correctly
-    // for the common case, with NO restart needed.
+    // TypesChanged fires") was a MISDIAGNOSIS: HotChocolate's own mechanism
+    // -- TypesChanged -> TypeModuleChangeMonitor.EvictRequestExecutor ->
+    // RequestExecutorManager.EvictExecutor (an unbounded channel write) -> a
+    // single background consumer that disposes the OLD
+    // TypeModuleChangeMonitor (unsubscribing) then calls
+    // CreateRequestExecutorAsync, which builds a BRAND NEW
+    // TypeModuleChangeMonitor and re-subscribes -- verified directly against
+    // HotChocolate v16.6.0's own source (cloned at the exact installed tag,
+    // read directly, not assumed from docs) to genuinely work: a type
+    // registered after Host warmup becomes queryable, and a real
+    // Subscription against it delivers a real published event, within
+    // about 150ms, with NO restart and NO extra code beyond what already
+    // existed (HotReloadHttpSqliteTests, EventStore.IntegrationTests, is the
+    // permanent regression coverage).
     //
-    // The REAL gap, found only by testing TWO overlapping registrations
-    // firing concurrently (this suite's own MSTestSettings.cs method-level
-    // parallelism, not a contrived case) is more serious than a momentary
-    // race, and NOT fixable from this class's own code:
-    // RequestExecutorManager.CreateRequestExecutorAsync's own try/catch
-    // disposes the (already re-subscribed) TypeModuleChangeMonitor if
-    // ANYTHING throws later in that same method -- schema-build validation
-    // (e.g. the "type reference not yet bound" ordering quirk
-    // EntityQueryTypeModule's own BuildEntityEnvelopeFields comment already
-    // documents once for a different symptom), warmup, whatever -- and
-    // NOTHING ever re-subscribes afterward, because the ONLY thing that
-    // calls Register() again is ANOTHER successful rebuild, and the ONLY
-    // thing that triggers a rebuild attempt at all is TypesChanged, which
-    // now has ZERO listeners. This is a genuine chicken-and-egg deadlock:
-    // once one rebuild attempt fails partway through, hot-reload is
-    // PERMANENTLY disabled for the rest of the process's life, with no
-    // self-healing possible from application code -- confirmed directly,
-    // not theorized: a concurrently-registered type never appeared across
-    // 20 retries spanning 3+ seconds, and NO further CreateTypesAsync
-    // invocation happened at all after the point of failure, even after
-    // deliberately re-firing TypesChanged again (pointless once there are
-    // zero listeners to convert that call into anything).
+    // What looked next like a genuine, unfixable HotChocolate-internal
+    // deadlock -- a rebuild that fails partway through
+    // (RequestExecutorManager.CreateRequestExecutorAsync's own try/catch
+    // disposes the already re-subscribed TypeModuleChangeMonitor with
+    // nothing left to ever re-subscribe it, since the only thing that
+    // triggers a rebuild attempt at all is TypesChanged, which by then has
+    // zero listeners) -- turned out to have an identifiable, fixable
+    // trigger after all: hooking AppDomain.CurrentDomain.
+    // FirstChanceException around a registration call captured the exact
+    // exception HotChocolate's own consumer loop was silently swallowing
+    // with no logging: HotChocolate.SchemaException: field 'version'
+    // declared multiple times on {AppId}_schema_Entity. EntityQueryTypeModule
+    // .CreateTypesAsync's own field-building loop didn't protect
+    // BuildEntityEnvelopeFields()'s hardcoded field names from colliding
+    // with a JSON-schema-declared property of the same name -- and every
+    // AppId's first-ever registration auto-bootstraps
+    // SchemaRegisteredEventType, whose own reserved schema declares a
+    // top-level "Version" property, deterministically colliding with the
+    // envelope's own hardcoded "version" field. Fixed in
+    // EntityQueryTypeModule.cs itself (pre-seed the per-group dedup set
+    // with the envelope's own field names) -- this class needed no changes,
+    // since the actual defect was never in its own eviction/re-subscribe
+    // logic at all, despite how the earlier symptom (a permanently dead
+    // TypesChanged subscription) looked exactly like one.
     //
-    // Why this isn't fixed here: the only lever this class has is firing
-    // TypesChanged, and firing it again cannot help once nobody is
-    // listening. The other lever -- calling IRequestExecutorManager.
-    // EvictExecutor directly from this class's own code, bypassing
-    // HotChocolate's fragile subscribe/unsubscribe dance entirely -- was
-    // tried, this same session, and reverted: it closes THIS gap but
-    // reintroduces a worse, already-documented one (evicting the cached
-    // executor while a DIFFERENT subscription is still live can rebuild
-    // the schema mid-flight and cross-deliver an event published under one
-    // AppId to a different AppId's own subscription -- see
-    // docs/changes/{date}.md). A real fix needs eviction deferred until no
-    // subscription may be live against the current executor, which this
-    // codebase has no mechanism to track -- a materially harder problem
-    // than "retry a dropped notification," not solved this pass either.
-    // Do not re-add EvictExecutor here without solving THAT first.
-    //
-    // The EARLIER Timer-based fallback attempt (abandoned, per this
-    // class's own prior history, because "the timer never fired more than
-    // once") most likely hit the classic System.Threading.Timer pitfall --
-    // a Timer with no other strong reference keeping it rooted can be
-    // garbage-collected mid-flight even while its owning object is still
-    // alive. A periodic Timer unconditionally re-firing TypesChanged would
-    // ALSO reintroduce the cross-AppId eviction-while-subscribed risk
-    // above, continuously rather than only at real registration moments --
-    // considered and rejected this pass, not merely unattempted.
+    // The two workarounds considered during the earlier, incomplete
+    // diagnosis remain correctly rejected, now for a more precise reason:
+    // calling IRequestExecutorManager.EvictExecutor directly from this
+    // class's own code (bypassing HotChocolate's subscribe/unsubscribe
+    // dance) and a periodic Timer unconditionally re-firing TypesChanged
+    // were both tried/considered and rejected for reintroducing a worse,
+    // already-documented cross-AppId data leak under concurrent live
+    // subscriptions -- neither was ever going to be the right fix, since
+    // neither touches where the real bug actually was.
     private readonly IServiceScopeFactory _scopeFactory;
 
     public FollowSubscriptionTypeModule(IServiceScopeFactory scopeFactory) => _scopeFactory = scopeFactory;

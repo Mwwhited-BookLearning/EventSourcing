@@ -43,6 +43,14 @@ public class EntityQueryTypeModule(IServiceScopeFactory scopeFactory) : ITypeMod
     // never raised.
     public event EventHandler<EventArgs>? TypesChanged;
 
+    // Must exactly match BuildEntityEnvelopeFields()'s own hardcoded field
+    // names below -- used to keep a JSON-schema-declared property from ever
+    // colliding with one of these (see the comment where this is consumed).
+    private static readonly HashSet<string> ReservedEnvelopeFieldNames = new(StringComparer.Ordinal)
+    {
+        "isAuthoritative", "authorityStatus", "version", "schemaVersion", "lateArrivalFlag", "updatedAt",
+    };
+
     public async ValueTask<IReadOnlyCollection<ITypeSystemMember>> CreateTypesAsync(IDescriptorContext context, CancellationToken cancellationToken)
     {
         using var scope = scopeFactory.CreateScope();
@@ -61,10 +69,24 @@ public class EntityQueryTypeModule(IServiceScopeFactory scopeFactory) : ITypeMod
             var entityGraphTypeName = $"{safeAppId}_{safeEntityType}_Entity";
 
             var entityConfig = new ObjectTypeConfiguration(entityGraphTypeName);
-            var seenPropertyNames = new HashSet<string>();
+            // Pre-seeded with BuildEntityEnvelopeFields()'s own hardcoded field
+            // names -- found by direct repro (AppDomain.FirstChanceException
+            // capture) that a JSON-schema property landing on one of these
+            // names (e.g. SchemaRegisteredEventType's own reserved "Version"
+            // property, auto-registered for EVERY AppId's first-ever
+            // registration) otherwise reaches ObjectType.CreateUnsafe as a
+            // literal duplicate field, throwing HotChocolate.SchemaException
+            // deep inside RequestExecutorManager's async rebuild path -- which
+            // that same manager's own consumer loop silently swallows with no
+            // logging, and which (worse) tears down its TypesChanged
+            // subscription without ever re-subscribing, permanently killing
+            // hot-reload for every AppId from that point on. Checked against
+            // the FIELD name (post-FieldNameFor), not the raw JSON property
+            // name, since that's what actually collides.
+            var seenFieldNames = new HashSet<string>(ReservedEnvelopeFieldNames);
             foreach (var definition in contributing)
                 foreach (var property in EventTypeSchemaReader.GetTopLevelProperties(definition.JsonSchema))
-                    if (seenPropertyNames.Add(property.Name)) // first contributing type wins a name collision -- rare, and the same property name folding the same entity from two types should describe the same logical field anyway
+                    if (seenFieldNames.Add(FieldNameFor(property.Name))) // envelope field names above always win; among JSON-schema properties themselves, first contributing type wins a collision -- rare, and the same property name folding the same entity from two types should describe the same logical field anyway
                         foreach (var field in BuildEntityPropertyFields(property))
                             entityConfig.Fields.Add(field);
             foreach (var field in BuildEntityEnvelopeFields())

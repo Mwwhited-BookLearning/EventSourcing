@@ -133,11 +133,43 @@ public class HotReloadHttpSqliteTests
     public async Task ARealSubscriptionConnectionActuallyReceivesAnEventOnAHotRegisteredType()
     {
         await RegisterAsync("hotreload-demo-new", "HotRegisteredForSub", """{ "type": "object", "properties": { "Id": { "type": "string" } }, "required": ["Id"] }""", "$.Id");
-
-        var (token, key) = await AuthScenarioAssertions.GetTokenAsync(_devIdpClient, "follower-client", "follower-client-secret", "events:follow");
-        var fieldName = "on_hotreload_demo_new_hotregisteredforsub";
-        var query = $$"""subscription { {{fieldName}}(mode: REPLAY, fromSequenceNumber: 0) { id } }""";
         await PublishAsync("hotreload-demo-new", "HotRegisteredForSub", """{ "Id": "hot-1" }""");
+        await AssertSubscriptionDeliversAsync("hotreload-demo-new", "HotRegisteredForSub", "hot-1");
+    }
+
+    // EntityQueryTypeModule's own header/field-building comments have the
+    // full account: every brand-new AppId's first-ever registration also
+    // bootstraps that AppId's own reserved SchemaRegisteredEventType, whose
+    // JSON schema declares a top-level "Version" property. Before the fix,
+    // that property's own GraphQL field name ("version") collided with
+    // BuildEntityEnvelopeFields()'s own hardcoded "version" envelope field,
+    // throwing HotChocolate.SchemaException on the very next rebuild --
+    // silently swallowed by RequestExecutorManager's own consumer loop, and
+    // fatal to it: TypeModuleChangeMonitor gets disposed (unsubscribed) on
+    // that failure with nothing left to ever re-subscribe it, permanently
+    // killing hot-reload for every AppId from that point forward. A single
+    // hot registration (the test above) could still accidentally succeed on
+    // a lucky race (its own rebuild beating the bootstrap event's), so this
+    // test's real point is TWO SEQUENTIAL, independent new AppIds: if the
+    // first one's own bootstrap permanently broke eviction, the second's
+    // field would never appear no matter how long this waits.
+    [TestMethod]
+    public async Task ASecondIndependentHotRegistrationStillWorksAfterAnEarlierAppIdsOwnSchemaBootstrap()
+    {
+        await RegisterAsync("hotreload-demo-first", "FirstHotType", """{ "type": "object", "properties": { "Id": { "type": "string" } }, "required": ["Id"] }""", "$.Id");
+        await PublishAsync("hotreload-demo-first", "FirstHotType", """{ "Id": "first-1" }""");
+        await AssertSubscriptionDeliversAsync("hotreload-demo-first", "FirstHotType", "first-1");
+
+        await RegisterAsync("hotreload-demo-second", "SecondHotType", """{ "type": "object", "properties": { "Id": { "type": "string" } }, "required": ["Id"] }""", "$.Id");
+        await PublishAsync("hotreload-demo-second", "SecondHotType", """{ "Id": "second-1" }""");
+        await AssertSubscriptionDeliversAsync("hotreload-demo-second", "SecondHotType", "second-1");
+    }
+
+    private static async Task AssertSubscriptionDeliversAsync(string appId, string eventType, string expectedId)
+    {
+        var (token, key) = await AuthScenarioAssertions.GetTokenAsync(_devIdpClient, "follower-client", "follower-client-secret", "events:follow");
+        var fieldName = $"on_{appId.Replace('-', '_')}_{eventType.ToLowerInvariant()}";
+        var query = $$"""subscription { {{fieldName}}(mode: REPLAY, fromSequenceNumber: 0) { id } }""";
 
         // The rebuild HotChocolate's own TypesChanged -> EvictExecutor ->
         // background channel consumer triggers is asynchronous and its
@@ -181,9 +213,9 @@ public class HotReloadHttpSqliteTests
             }
         }
 
-        Assert.IsNotNull(dataLine, "expected the hot-registered type's own subscription to actually deliver the published event within ~10s, with no process restart");
+        Assert.IsNotNull(dataLine, $"expected {fieldName}'s own subscription to actually deliver the published event within ~10s, with no process restart");
         var payload = JsonDocument.Parse(dataLine!["data: ".Length..]).RootElement;
         Assert.IsFalse(payload.TryGetProperty("errors", out _), payload.ToString());
-        Assert.AreEqual("hot-1", payload.GetProperty("data").GetProperty(fieldName).GetProperty("id").GetString());
+        Assert.AreEqual(expectedId, payload.GetProperty("data").GetProperty(fieldName).GetProperty("id").GetString());
     }
 }

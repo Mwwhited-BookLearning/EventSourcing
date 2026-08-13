@@ -1684,22 +1684,16 @@ honestly flagged rather than silently dropped:
   genuinely untestable, not just deferred: `ShardKey` is a logical column
   in this codebase, never a physically separate database/replica to fan
   out across.
-- **Corrected, 2026-08-13**: registering a new event type while a Host is
-  already running DOES make its Subscription field appear without a
-  process restart, reliably, under normal load — the "never" claim
-  originally recorded here was a misdiagnosis, found and corrected after
-  cloning HotChocolate v16.6.0's own source directly and testing against
-  it rather than continuing to reason from symptoms
-  (`HotReloadHttpSqliteTests`, new, proves the working case as permanent
-  regression coverage). A real, narrower gap remains under heavy
-  concurrent/ambient load — a rebuild attempt that fails partway through
-  can permanently disable further hot-reload for the process's remaining
-  life, a genuine chicken-and-egg deadlock inside HotChocolate's own
-  plumbing this codebase cannot safely work around (the one available
-  workaround, calling `EvictExecutor` directly, was tried and reverted
-  for causing a worse, cross-AppId data-leak bug under concurrent live
-  subscriptions). `TODO.md`'s own entry has the full, corrected account —
-  not restated here per this file's own citation convention.
+- **Corrected, 2026-08-13, then fixed outright the same day**: registering
+  a new event type while a Host is already running now reliably makes its
+  Subscription field appear without a process restart. This went through
+  two prior diagnoses before landing on the real, fixable root cause — see
+  `docs/changes/2026-08-13.md` for the full account (an
+  `EntityQueryTypeModule` field-name collision on every AppId's own
+  `SchemaRegisteredEventType` bootstrap, not a HotChocolate-internal
+  limitation as the previous note here claimed). Not restated here per
+  this file's own citation convention; `TODO.md` no longer carries this
+  item at all now that it's fixed.
 - **Updated once "Ticket Exchange" and "Delegated Grants, RBAC,
   Federated Claims & Read Audit Logging" landed**: the RFC 8693 OAuth
   Token Exchange bridge endpoint this note originally flagged as not
