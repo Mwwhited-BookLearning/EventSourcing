@@ -171,19 +171,6 @@ here instead of inlining.
   flake, zero `DataResidencyHttpSqliteTests` failures) — no reproduction
   of either this race or the original 21-failure anomaly above.
 
-- **`client-web`'s own devDependencies (vitest/vite/esbuild) carry a
-  known moderate/high/critical vulnerability chain** (`npm audit`, found
-  while building "Release Engineering, Packaging & Supply Chain," item
-  39) with no non-breaking fix available — `npm audit fix --force` would
-  bump vitest across a major version (2.x → 4.x), real risk to that
-  client's own test suite/config that wasn't attempted this pass. Every
-  affected package is dev-only (the Vite dev server / Vitest UI server),
-  never shipped in a production build; `npm audit --omit=dev` reports
-  clean, and `.github/workflows/ci.yml`'s own vulnerability-scan job is
-  scoped to that flag for exactly this reason, not to hide the finding.
-  If this needs closing later: attempt the vitest 4.x upgrade in its own
-  isolated pass, run the full client-web test suite before/after to
-  isolate any breakage from the version bump itself.
 - **`.github/workflows/ci.yml`/`.github/dependabot.yml` have never
   actually been run by GitHub Actions** (item 39) — this environment has
   no push access to trigger a real run, an explicit, deliberate scope
