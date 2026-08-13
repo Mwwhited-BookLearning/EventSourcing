@@ -86,41 +86,6 @@ here instead of inlining.
   whether it's expected to survive a mid-flight eviction safely (it
   apparently isn't, as configured/used here), or find a way to defer
   eviction until no subscriptions are active.
-- **`dotnet test tests/EventStore.IntegrationTests` intermittently fails
-  one or two SQL Server test classes per full run, a different class (or
-  pair) failing each time** (seen: `DerivationSqlServerTests`, then
-  `AllUpcastMaterializationScenarios`/`UpcastMaterializationSqlServerTests`,
-  then `AllStreamingScenarios`/`StreamingSqlServerTests` +
-  `InsertAndReadBackStoredEvent`/`SqlServerRoundTripTests` together in one
-  run) — a Testcontainers `MsSqlContainer` readiness-check timeout, a Docker
-  exec-call error, or (the clearest evidence yet, this pass) the container
-  itself crashing on startup with exit code 134/1 and stderr `"Unable to
-  create a new asynchronous I/O context. Please increase sysctl
-  fs.aio-max-nr"` — a Linux/WSL2 kernel-wide AIO-context limit exhausted by
-  however many `MsSqlContainer`s this session has cumulatively started,
-  not any one test's fault. Every failing class passes cleanly when run
-  alone (confirmed four separate times now, across four different
-  classes), and which class(es) fail rotates run to run — conclusively a
-  host resource-exhaustion issue, not a code defect in any item. First
-  noticed during "Sharding & Replication" (item 17)'s own full-suite
-  regression run; the `fs.aio-max-nr` evidence surfaced during "Non-
-  Authoritative Capture" (item 18)'s. Investigate: raise the host/WSL2
-  `fs.aio-max-nr` sysctl, run SQL Server test classes with reduced
-  parallelism, or a longer/more tolerant wait strategy on `MsSqlBuilder`,
-  if this keeps costing re-run time in future sessions.
-  **Severity update, "Lineage Export & Bitemporal Playback" (item 41)**:
-  running the SqlServer-only subset three times in immediate succession
-  (`--filter FullyQualifiedName~SqlServer`, no other-provider tests
-  interleaved to give Docker breathing room) failed 10-12 of 21 classes
-  every single time, each visibly timing out its own container-readiness
-  `sqlcmd -Q "SELECT 1"` poll around 28-29s before the container was torn
-  down — worse than the "one or two classes" this entry originally
-  described, but the SAME root cause (every failing class passes alone;
-  zero failures ever named a class this item, or any recent item, added).
-  Confirms this is a real, worsening resource-contention ceiling in this
-  environment specifically when many `MsSqlContainer`s start back-to-back
-  with no other work between them, not a regression to chase per-item.
-
 - **The full SQLite regression suite's own known load-induced flakiness
   (see `.claude/context.md`'s repeated notes on
   `SubscribingOverRealHttpStreamsAMatchingEventAsSse` and the leader-

@@ -27,6 +27,15 @@ namespace EventStore.IntegrationTests;
 // FollowSubscriptionTypeModule before it) only builds its dynamic fields once,
 // at schema warmup, the same pre-existing hot-reload limitation
 // MvvmClientGraphQlHttpSqliteTests already works around the identical way.
+// [DoNotParallelize] -- this class's test methods share one static
+// _hostClient/_dbPath (ClassInitialize, not per-test), the same class of
+// interference under MSTestSettings.cs's method-level parallelism
+// already fixed this session for GraphQlHttpSqliteTests,
+// RbacProjectionWorkerHttpSqliteTests, and
+// TicketExchangeSecretRotationHttpSqliteTests -- found here via a real,
+// reproduced failure (AnEntityWithNoAttachmentsReturnsAnEmptyList failed
+// as part of a full-suite run, passed cleanly every time in isolation).
+[DoNotParallelize]
 [TestClass]
 public class EntityQueryHttpSqliteTests
 {
