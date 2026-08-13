@@ -213,6 +213,21 @@ re-derive the process from scratch:
   `.claude/protocols/verify-before-citing.md` for the full rule and why
   it matters — this is this project's single most repeated standing
   instruction.
+- **A build/`dotnet build`/unit-test pass succeeding is not the same bar
+  as actually running the thing — against every provider it's built for,
+  and through the real orchestration layer, not just the code path a
+  test happens to exercise.** Real, otherwise-invisible bugs found only
+  this way, repeatedly: SQL Server-only recursive-CTE/`TRY_CAST` type
+  mismatches no SQLite/PostgreSQL run could ever surface; `aspire run`
+  finding 5 real bugs `dotnet build` couldn't (`WaitFor(db)` missing, a
+  stray scaffold file, etc.); and, freshest, three real Postgres bugs
+  found only by running the real `AppHost` under genuine concurrent
+  write load (`EnableRetryOnFailure` incompatible with a manual
+  transaction, then a silent hash-chain-corrupting fix for that, then an
+  insufficient retry budget) plus a `client-web` port-passing bug
+  invisible to any `dotnet`-side check at all (`docs/changes/
+  2026-08-13.md`). None of these were reachable by reading the code back
+  or by a green test suite alone.
 - **Never invent a bespoke mechanism when a real standard already
   fits; prefer buy over build for libraries the same way.** Record the
   reason explicitly in `references.md` either way (adopted, or
