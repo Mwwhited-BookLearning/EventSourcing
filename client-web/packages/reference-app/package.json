@@ -16,7 +16,7 @@
   },
   "dependencies": {
     "@eventstore/mvvm-client": "*",
-    "pinia": "^4.0.2",
+    "pinia": "^4.0.3",
     "vue": "^3.5.41"
   }
 }
