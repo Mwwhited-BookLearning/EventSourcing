@@ -5,7 +5,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="Cel.NET" Version="1.1.0" />
+    <PackageReference Include="Cel.NET" Version="2.0.0" />
     <PackageReference Include="Jsonata.Net.Native" Version="3.0.0" />
     <PackageReference Include="Microsoft.Extensions.Configuration.Abstractions" Version="10.0.11" />
     <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.11" />
