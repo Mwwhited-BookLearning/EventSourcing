@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- net48, matching the SQLCLR project under test, not net10.0 like
+       every other test project in this solution: the whole point is
+       verifying DecryptAndCompareCore under the SAME runtime SQL Server's
+       CLR host actually loads (ADR-098). -->
+  <PropertyGroup>
+    <TargetFramework>net48</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <Nullable>disable</Nullable>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="MSTest" Version="4.3.3" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Using Include="Microsoft.VisualStudio.TestTools.UnitTesting" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\EventStore.SqlClr.SqlServer\EventStore.SqlClr.SqlServer.csproj" />
+  </ItemGroup>
+
+</Project>

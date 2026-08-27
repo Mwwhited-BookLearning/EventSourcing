@@ -36,43 +36,44 @@ whole section, don't just bump the date)*
 
 All 95 pre-existing ADRs Accepted; `ADR-096`/`097`/`098` added this
 session. `08-build-plan.md` now has 56 items: the original 53 Done, item
-54 Done, item 55 built but explicitly not marked Done (its own exit
-criteria require a dedicated security review not performed this
-session), item 56 Not started. `TODO.md` and `docs/10-open-questions.md`
-are both still empty.
+54 Done, item 55 built but not Done (own exit criteria need a dedicated
+security review, not performed), item 56 SQL Server built+verified /
+PostgreSQL written+unverified (not Done). `TODO.md` and
+`docs/10-open-questions.md` are both still empty.
 
-This session (full narrative split across two passes in
-`docs/changes/2026-08-27.md`): first designed searchable equality/range
+This session (full narrative split across three passes in
+`docs/changes/2026-08-27.md`): designed searchable equality/range
 queries over `ADR-057`'s crypto-shredded fields (comparison doc + `ADR-
-096`/`097`/`098` + every supporting doc), then — direct request, same
-day — built and tested items 54 and most of 55 against that design.
-**Real prerequisite bug found and fixed**: `PayloadEncryptor` (`ADR-057`'s
-own encryption) was never registered in any Host's DI before this
-session — classified-field encryption was inert in production,
-exercised only by test code, until this pass's `AddErasure` fix. New
-code: `src/EventStore.Domain/SchemaRegistry/{SearchableIndexConfig,
-EncryptedFieldIndexEntry,SearchIndexKey}.cs`, `src/EventStore.
-Abstractions/{ISearchIndexKeyStore,IEncryptedPredicateEvaluator}.cs`,
-`src/EventStore.Erasure/{LocalSearchIndexKeyStore,SearchIndexKeyService,
-PayloadIndexer,RangeBucketing,OrderRevealingEncryption,
-AppTierEncryptedPredicateEvaluator}.cs`, plus
-`GraphQlFilterPredicateBuilder.Build` becoming async to route encrypted-
-field clauses. Migrated across all three providers. Verified: new
-`OrderRevealingEncryptionTests` (unit) and `SearchableEncryptionSqliteTests`
-(integration), plus the full pre-existing Sqlite suite (150/150) and
-`ErasurePostgresTests`/`ErasureSqlServerTests` against real Testcontainers
-Postgres/SQL Server — no regressions found.
+096`/`097`/`098`), then built and tested items 54/55 (`PayloadIndexer`,
+`EncryptedFieldIndexEntry`, `OrderRevealingEncryption`, async
+`GraphQlFilterPredicateBuilder` routing — **found and fixed a real
+prerequisite bug**: `PayloadEncryptor`/`ADR-057`'s own encryption was
+never wired into any Host's DI before this session, inert in
+production until now), then built `ADR-098`'s two native predicate
+evaluators. New code lives in `src/EventStore.Domain/SchemaRegistry/`,
+`src/EventStore.Abstractions/`, `src/EventStore.Erasure/`, and a new
+`net48` project `src/EventStore.SqlClr.SqlServer/` (SQL Server's CLR
+host never loads .NET Core/.NET 5+, a real confirmed constraint — the
+one deliberate break from this solution's otherwise-uniform net10.0
+targeting). Migrated across all three providers. Verified: new unit/
+integration tests including a genuine cross-runtime check (the SQLCLR
+decrypt logic tested against a golden ciphertext fixture generated from
+the real net10.0 `EnvelopeAesGcm.Encrypt`), the full pre-existing Sqlite
+suite (150/150), and `ErasurePostgresTests`/`ErasureSqlServerTests`
+against real Testcontainers Postgres/SQL Server — no regressions found
+anywhere.
 
 ## Actively in flight
 
-`TODO.md` is empty. The real next step is item 56 (In-Database Native
-Predicate Evaluator Seam — a SQL Server SQLCLR assembly and a PostgreSQL
-native function, explicitly scoped as separate, optional sub-items) —
-Not started, deliberately not rushed into the same session as 54/55
-given the real infrastructure setup involved. Item 55's own required
-security review is also still outstanding. `dev/cryptoshredding` is not
-yet merged to `main` or opened as a PR — a fresh session should confirm
-with the user before assuming either is wanted.
+`TODO.md` is empty. What's left, named honestly rather than implied
+done: item 55's required security review; item 56's PostgreSQL
+`plpython3u` function is written but unverified (no `plpython3u`/
+`cryptography` in the standard Testcontainers `postgres` image — a
+custom Postgres image would be needed to close that gap); both native
+evaluators in item 56 are scoped to the `Local` backend only, never a
+real KMS/Vault. `dev/cryptoshredding` has two commits ahead of `main`,
+not yet merged or opened as a PR — a fresh session should confirm with
+the user before assuming either is wanted.
 
 ## How to resume cold
 

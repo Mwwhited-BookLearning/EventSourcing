@@ -94,3 +94,44 @@ Consequences:
   per `CLAUDE.md`'s own distinction between `TODO.md`/build-plan
   priority calls and `docs/10-open-questions.md`'s genuinely undecided
   forks, this ADR does not get a row in the latter.
+
+**Implementation note, added 2026-08-27**: both native evaluators built
+this session, `08-build-plan.md` item 56 — with genuinely different
+confidence levels, stated plainly rather than glossed over.
+- **SQL Server (`src/EventStore.SqlClr.SqlServer/`), built and verified.**
+  A real technical constraint confirmed against Microsoft's own docs
+  before writing any code: SQL Server's CLR host only ever loads .NET
+  Framework assemblies, never .NET Core/.NET 5+ — this project targets
+  `net48`, the one deliberate break from this solution's otherwise
+  uniform `net10.0` targeting. `AesGcm` itself is .NET Standard 2.1+
+  only and unavailable in classic .NET Framework — made usable here via
+  [`Microsoft.Bcl.Cryptography`](https://www.nuget.org/packages/Microsoft.Bcl.Cryptography),
+  a real first-party Microsoft package, verified this session to build
+  and run correctly under `net48`. `EncryptedPredicateFunctions.
+  DecryptAndCompareCore` is cross-verified against **real ciphertext
+  produced by `EnvelopeAesGcm.Encrypt` under `net10.0`** (a golden fixture
+  generated this session, not invented to match this file's own logic) —
+  `tests/EventStore.SqlClr.SqlServer.Tests` passes against it, proving
+  genuine cross-runtime interoperability, not mere self-consistency.
+  Deployment script: `scripts/sql-clr/deploy-sql-server-encrypted-
+  predicate-function.sql`, using `sys.sp_add_trusted_assembly` (the
+  modern, SQL Server 2017 CU12+/2019+ mechanism for CLR strict security)
+  rather than disabling that protection deployment-wide.
+- **PostgreSQL (`scripts/sql-clr/deploy-postgres-encrypted-predicate-
+  function.sql`), written but NOT verified.** Confirmed this session
+  against PostgreSQL's own current docs: `pgcrypto`'s raw encrypt/decrypt
+  functions support only CBC/ECB, no GCM/AEAD mode at all — genuine
+  AES-256-GCM decrypt needs `plpython3u` (an untrusted procedural
+  language) and Python's `cryptography` package, since hand-rolling
+  AES-GCM's Galois-field multiplication in PL/pgSQL isn't practical.
+  Unlike the SQL Server side, neither `plpython3u` nor the `cryptography`
+  package exists in the standard Testcontainers `postgres` image this
+  project's own integration tests already use — verifying this function
+  end-to-end would mean building and maintaining a custom Postgres image,
+  named here as real, separate, not-yet-done infrastructure work rather
+  than silently assumed working by analogy to the verified SQL Server
+  side.
+- Both remain scoped to the `Local` `IErasureKeyStore`/
+  `ISearchIndexKeyStore` backend only, per this ADR's own Decision — a
+  Shared/`PerEntity` field backed by a real KMS/Vault cannot use either
+  native evaluator without a different mechanism this ADR does not build.

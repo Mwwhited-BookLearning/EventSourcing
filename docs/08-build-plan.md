@@ -114,7 +114,7 @@ provider they apply to — not "code written."
 | 53 | [Push-Notification Wake-Up Layer](#push-notification-wake-up-layer) | Publish API, Entity-Centric Core Rebuild | Done (all 6 background workers) |
 | 54 | [Searchable Blind-Index & Bucketed-Range Encrypted-Field Indexes](#searchable-blind-index--bucketed-range-encrypted-field-indexes) | GDPR/CCPA Erasure, Property-Level Masking, Follow API + Filter Pushdown | Done |
 | 55 | [Order-Revealing Encryption Range Index (opt-in)](#order-revealing-encryption-range-index-opt-in) | Searchable Blind-Index & Bucketed-Range Encrypted-Field Indexes | Built, pending required security review (not Done) |
-| 56 | [In-Database Native Predicate Evaluator Seam](#in-database-native-predicate-evaluator-seam) | Searchable Blind-Index & Bucketed-Range Encrypted-Field Indexes | Not started |
+| 56 | [In-Database Native Predicate Evaluator Seam](#in-database-native-predicate-evaluator-seam) | Searchable Blind-Index & Bucketed-Range Encrypted-Field Indexes | SQL Server built and verified; PostgreSQL written, not verified (not Done) |
 
 Two groups worth naming up front, since they explain most of the
 ordering below:
@@ -246,7 +246,7 @@ state "Local Services" as tierLocal {
   state "Expected-Response\nTracking" as a26 #palegreen
   state "Searchable Blind-Index &\nBucketed-Range Indexes" as a31 #palegreen
   state "Order-Revealing\nEncryption Range Index" as a32 #palegoldenrod
-  state "In-Database Native\nPredicate Evaluator Seam" as a33
+  state "In-Database Native\nPredicate Evaluator Seam" as a33 #palegoldenrod
 }
 state "UI" as tierUi {
   state "MVVM Client" as p20 #palegreen
@@ -5284,7 +5284,24 @@ same candidate set; the database engine process's own new dependency
 backend) is documented as a real, accepted operational change, not
 silently introduced.
 
-**Status: Not started.**
+**Status: SQL Server built and verified; PostgreSQL written, not
+verified (not Done).** 2026-08-27, `ADR-098`'s own "Implementation note"
+has the full detail. `src/EventStore.SqlClr.SqlServer/` (net48, the one
+deliberate break from this solution's net10.0 targeting — confirmed
+required, since SQL Server's CLR host never loads .NET Core/.NET 5+
+assemblies) + `scripts/sql-clr/deploy-sql-server-encrypted-predicate-
+function.sql`. Cross-verified against real `EnvelopeAesGcm`-produced
+ciphertext (a golden fixture generated from the actual net10.0
+production code, not invented) via `tests/EventStore.SqlClr.SqlServer.
+Tests`, all passing. `scripts/sql-clr/deploy-postgres-encrypted-
+predicate-function.sql` (a `plpython3u` function, since `pgcrypto` has no
+GCM support at all — confirmed against current PostgreSQL docs) is
+written but explicitly **not** verified: neither `plpython3u` nor
+Python's `cryptography` package exists in the standard Testcontainers
+`postgres` image this project's other tests already use, and building/
+maintaining a custom Postgres image for this one function is real,
+separate infrastructure work, not done this pass. Both evaluators remain
+scoped to the `Local` backend only, per `ADR-098`'s own Decision.
 
 ## Suggested References
 

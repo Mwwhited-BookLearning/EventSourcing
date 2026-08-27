@@ -1,0 +1,27 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- ADR-098: SQL Server's CLR host only ever loads .NET Framework
+       assemblies (never .NET Core/.NET 5+, confirmed this session against
+       Microsoft's own docs), which is why this one project deliberately
+       breaks from the rest of the solution's net10.0 targeting; not an
+       oversight, a hard platform constraint. Microsoft.Bcl.Cryptography
+       (a real, first-party Microsoft package, verified working under net48
+       on this machine this session) is what makes AesGcm, otherwise
+       .NET Standard 2.1+ only and unavailable in classic .NET Framework,
+       usable here at all, so EnvelopeAesGcm's exact algorithm and wire
+       format can be replicated without inventing a second scheme. -->
+  <PropertyGroup>
+    <TargetFramework>net48</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <Nullable>disable</Nullable> <!-- SQLCLR's Microsoft.SqlServer.Server attribute types predate nullable annotations -->
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Bcl.Cryptography" Version="10.0.2" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Reference Include="System.Data" />
+  </ItemGroup>
+
+</Project>
