@@ -112,8 +112,8 @@ provider they apply to — not "code written."
 | 51 | [Domain Decision Queues](#domain-decision-queues) | Proving-Ground Application UX, Digital Sign-Off for Regulated Actions, Non-Authoritative Capture | Done |
 | 52 | [Generic Entity/Live-View Query](#generic-entitylive-view-query) | GraphQL-Only Query Layer, Non-Authoritative Capture, Property-Level Masking, Delegated Grants/RBAC/Read Audit Logging | Done |
 | 53 | [Push-Notification Wake-Up Layer](#push-notification-wake-up-layer) | Publish API, Entity-Centric Core Rebuild | Done (all 6 background workers) |
-| 54 | [Searchable Blind-Index & Bucketed-Range Encrypted-Field Indexes](#searchable-blind-index--bucketed-range-encrypted-field-indexes) | GDPR/CCPA Erasure, Property-Level Masking, Follow API + Filter Pushdown | Not started |
-| 55 | [Order-Revealing Encryption Range Index (opt-in)](#order-revealing-encryption-range-index-opt-in) | Searchable Blind-Index & Bucketed-Range Encrypted-Field Indexes | Not started |
+| 54 | [Searchable Blind-Index & Bucketed-Range Encrypted-Field Indexes](#searchable-blind-index--bucketed-range-encrypted-field-indexes) | GDPR/CCPA Erasure, Property-Level Masking, Follow API + Filter Pushdown | Done |
+| 55 | [Order-Revealing Encryption Range Index (opt-in)](#order-revealing-encryption-range-index-opt-in) | Searchable Blind-Index & Bucketed-Range Encrypted-Field Indexes | Built, pending required security review (not Done) |
 | 56 | [In-Database Native Predicate Evaluator Seam](#in-database-native-predicate-evaluator-seam) | Searchable Blind-Index & Bucketed-Range Encrypted-Field Indexes | Not started |
 
 Two groups worth naming up front, since they explain most of the
@@ -244,8 +244,8 @@ state "Local Services" as tierLocal {
   state "Lineage Export +\nBitemporal Playback" as a17 #palegreen
   state "Mechanism-Level\nOTel Instrumentation" as a23 #palegreen
   state "Expected-Response\nTracking" as a26 #palegreen
-  state "Searchable Blind-Index &\nBucketed-Range Indexes" as a31
-  state "Order-Revealing\nEncryption Range Index" as a32
+  state "Searchable Blind-Index &\nBucketed-Range Indexes" as a31 #palegreen
+  state "Order-Revealing\nEncryption Range Index" as a32 #palegoldenrod
   state "In-Database Native\nPredicate Evaluator Seam" as a33
 }
 state "UI" as tierUi {
@@ -5202,7 +5202,25 @@ its own `Shared`-scope `EncryptedFieldIndexEntry` rows and a subsequent
 query no longer matches that entity, while `ChainHash` before/after the
 erasure is provably unchanged.
 
-**Status: Not started.**
+**Status: Done.** 2026-08-27. Built exactly as scoped, plus one real
+prerequisite bug fix and a few implementation-level corrections found
+along the way — see `ADR-096`'s own "Implementation note" for the full
+list (most notably: `PayloadEncryptor`, `ADR-057`'s own encryption, was
+never wired into any Host's DI before this pass, so classified-field
+encryption was inert in production until now). New: `src/EventStore.
+Domain/SchemaRegistry/{SearchableIndexConfig,EncryptedFieldIndexEntry,
+SearchIndexKey}.cs`, `src/EventStore.Abstractions/ISearchIndexKeyStore.cs`,
+`src/EventStore.Erasure/{LocalSearchIndexKeyStore,SearchIndexKeyService,
+SearchIndexOptions,PayloadIndexer,RangeBucketing,
+AppTierEncryptedPredicateEvaluator}.cs`. Migrated across all three
+providers (`AddEncryptedFieldIndexAndSearchIndexKeys`, clean on Sqlite/
+Postgres/SqlServer). Verified: `EventStore.IntegrationTests.
+SearchableEncryptionSqliteTests` (equality query never touches plaintext;
+erasure removes `Shared`-scope rows, `ChainHash` unchanged; both
+registration guardrails refuse correctly) — all passing, alongside the
+full pre-existing Sqlite suite (150/150) confirming no regression from
+the `GraphQlFilterPredicateBuilder.Build` signature change or the
+`PayloadEncryptor` DI fix.
 
 ## Order-Revealing Encryption Range Index (opt-in)
 
@@ -5227,7 +5245,21 @@ unconditionally (no override accepted, unlike the sibling item above);
 the dedicated security review (above) has actually happened and is
 recorded, not merely implied by tests passing.
 
-**Status: Not started.**
+**Status: Built, pending required security review (not Done).**
+2026-08-27. `src/EventStore.Erasure/OrderRevealingEncryption.cs` — see
+its own header for the honest scope statement (a from-scratch, tested
+realization of the same high-level CLWW/Lewi-Wu idea, not a verified
+byte-for-byte implementation of either paper). Order-preservation
+correctness verified across many Number/DateTimeOffset pairs
+(`EventStore.UnitTests.OrderRevealingEncryptionTests`); the no-override
+guardrail verified (`SearchableEncryptionSqliteTests`). **Not marked
+Done**, matching this item's own exit criteria literally: no dedicated
+security review has happened, and — found while building the query
+side, see `ADR-097`'s own "Implementation note" — the default app-tier
+evaluator compares ciphertext in application memory across a field's own
+indexed rows, not yet via a true native SQL comparison operator (that
+needs `ADR-098`'s own native evaluator seam, item 56 below, not yet
+built for any provider).
 
 ## In-Database Native Predicate Evaluator Seam
 

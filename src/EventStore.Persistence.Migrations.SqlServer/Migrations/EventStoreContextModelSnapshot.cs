@@ -545,6 +545,52 @@ namespace EventStore.Persistence.Migrations.SqlServer.Migrations
                     b.ToTable("DerivationDefinitions");
                 });
 
+            modelBuilder.Entity("EventStore.Domain.SchemaRegistry.EncryptedFieldIndexEntry", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("Id"));
+
+                    b.Property<string>("AppId")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<string>("EntityId")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<string>("EventTypeName")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<string>("FieldJsonPath")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<string>("Granularity")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<int>("IndexKind")
+                        .HasColumnType("int");
+
+                    b.Property<long>("StoredEventSequenceNumber")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("Token")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(450)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("EntityId");
+
+                    b.HasIndex("AppId", "EventTypeName", "FieldJsonPath", "Token");
+
+                    b.ToTable("EncryptedFieldIndexEntries");
+                });
+
             modelBuilder.Entity("EventStore.Domain.SchemaRegistry.EventTypeDefinition", b =>
                 {
                     b.Property<string>("AppId")
@@ -662,6 +708,9 @@ namespace EventStore.Persistence.Migrations.SqlServer.Migrations
                     b.Property<int>("EventTypeVersion")
                         .HasColumnType("int");
 
+                    b.Property<int>("IndexKind")
+                        .HasColumnType("int");
+
                     b.Property<bool>("IsIndexed")
                         .HasColumnType("bit");
 
@@ -669,11 +718,28 @@ namespace EventStore.Persistence.Migrations.SqlServer.Migrations
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");
 
+                    b.Property<string>("SearchableConfig")
+                        .HasColumnType("nvarchar(max)");
+
                     b.HasKey("Id");
 
                     b.HasIndex("EventTypeAppId", "EventTypeName", "EventTypeVersion");
 
                     b.ToTable("FilterableFields");
+                });
+
+            modelBuilder.Entity("EventStore.Domain.SchemaRegistry.LocalSearchIndexKeyMaterial", b =>
+                {
+                    b.Property<string>("KeyReference")
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<byte[]>("Key")
+                        .IsRequired()
+                        .HasColumnType("varbinary(max)");
+
+                    b.HasKey("KeyReference");
+
+                    b.ToTable("LocalSearchIndexKeyMaterials");
                 });
 
             modelBuilder.Entity("EventStore.Domain.SchemaRegistry.PendingJoinState", b =>
@@ -714,6 +780,33 @@ namespace EventStore.Persistence.Migrations.SqlServer.Migrations
                     b.HasIndex("AppId", "DerivationName", "JoinKeyValue");
 
                     b.ToTable("PendingJoinStates");
+                });
+
+            modelBuilder.Entity("EventStore.Domain.SchemaRegistry.SearchIndexKey", b =>
+                {
+                    b.Property<string>("AppId")
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<string>("EventTypeName")
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<string>("FieldJsonPath")
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<string>("BackendName")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("KeyReference")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.HasKey("AppId", "EventTypeName", "FieldJsonPath");
+
+                    b.ToTable("SearchIndexKeys");
                 });
 
             modelBuilder.Entity("EventStore.Domain.Streaming.Attachment", b =>

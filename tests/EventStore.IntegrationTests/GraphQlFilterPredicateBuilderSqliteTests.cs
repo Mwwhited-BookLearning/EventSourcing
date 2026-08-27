@@ -68,7 +68,10 @@ public class GraphQlFilterPredicateBuilderSqliteTests
         await publish.PublishAsync("OrderPlaced", new PublishEventRequest(appId, 1, """{ "OrderId": "f-2", "Amount": 75 }""", null, null), TestClaimsPrincipal.None);
 
         var definition = await registry.GetActiveAsync(appId, "OrderPlaced");
-        var predicate = GraphQlFilterPredicateBuilder.Build(definition!.FilterableFields, [new EventFilterInput("Amount", null, null, "50", null, null, null, null)]);
+        var (_, searchIndexKeyService, predicateEvaluator) = ErasureTestSupport.CreateSearchIndexStack(db, registry);
+        var predicate = await GraphQlFilterPredicateBuilder.Build(
+            db, appId, "orderplaced", searchIndexKeyService, predicateEvaluator, definition!.FilterableFields,
+            [new EventFilterInput("Amount", null, null, "50", null, null, null, null)], CancellationToken.None);
 
         var matches = await db.Events.AsNoTracking()
             .Where(e => e.AppId == appId && e.EventType == "orderplaced")
@@ -98,11 +101,13 @@ public class GraphQlFilterPredicateBuilderSqliteTests
         await publish.PublishAsync("OrderPlaced", new PublishEventRequest(appId, 1, """{ "OrderId": "f-4", "Amount": 75, "Status": "Pending" }""", null, null), TestClaimsPrincipal.None);
 
         var definition = await registry.GetActiveAsync(appId, "OrderPlaced");
-        var predicate = GraphQlFilterPredicateBuilder.Build(definition!.FilterableFields,
+        var (_, searchIndexKeyService, predicateEvaluator) = ErasureTestSupport.CreateSearchIndexStack(db, registry);
+        var predicate = await GraphQlFilterPredicateBuilder.Build(
+            db, appId, "orderplaced", searchIndexKeyService, predicateEvaluator, definition!.FilterableFields,
         [
             new EventFilterInput("Amount", null, null, "50", null, null, null, null),
             new EventFilterInput("Status", "Shipped", null, null, null, null, null, null),
-        ]);
+        ], CancellationToken.None);
 
         var matches = await db.Events.AsNoTracking()
             .Where(e => e.AppId == appId && e.EventType == "orderplaced")
@@ -127,7 +132,10 @@ public class GraphQlFilterPredicateBuilderSqliteTests
             ParentValidationMode: null, RequiredClaims: null, UpcastFromPrevious: null, DowncastToPrevious: null));
 
         var definition = await registry.GetActiveAsync(appId, "OrderPlaced");
-        Assert.ThrowsExactly<HotChocolate.GraphQLException>(() =>
-            GraphQlFilterPredicateBuilder.Build(definition!.FilterableFields, [new EventFilterInput("NotDeclared", "x", null, null, null, null, null, null)]));
+        var (_, searchIndexKeyService, predicateEvaluator) = ErasureTestSupport.CreateSearchIndexStack(db, registry);
+        await Assert.ThrowsExactlyAsync<HotChocolate.GraphQLException>(() =>
+            GraphQlFilterPredicateBuilder.Build(
+                db, appId, "orderplaced", searchIndexKeyService, predicateEvaluator, definition!.FilterableFields,
+                [new EventFilterInput("NotDeclared", "x", null, null, null, null, null, null)], CancellationToken.None));
     }
 }

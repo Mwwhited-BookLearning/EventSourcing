@@ -31,43 +31,48 @@ lose or corrupt data.
 
 ## Current state
 
-*(as of 2026-08-27, branch `dev/cryptoshredding` off `main` (HEAD
-`4d41393` when branched) — update this whole section, don't just bump
-the date)*
+*(as of 2026-08-27, branch `dev/cryptoshredding` off `main` — update this
+whole section, don't just bump the date)*
 
 All 95 pre-existing ADRs Accepted; `ADR-096`/`097`/`098` added this
-session (also Accepted — design work, not proposals). `08-build-plan.md`
-now has 56 items: the original 53 Done, three new ones (54–56) Not
-started. `TODO.md` and `docs/10-open-questions.md` are both still empty
-— nothing from this session belongs in either (see this session's own
-`docs/changes/2026-08-27.md`).
+session. `08-build-plan.md` now has 56 items: the original 53 Done, item
+54 Done, item 55 built but explicitly not marked Done (its own exit
+criteria require a dedicated security review not performed this
+session), item 56 Not started. `TODO.md` and `docs/10-open-questions.md`
+are both still empty.
 
-This session's real work — full narrative in
-`docs/changes/2026-08-27.md`, not repeated here: designed searchable
-equality/range queries over `ADR-057`'s crypto-shredded fields — a
-comparison doc, three ADRs (`096` blind index + bucketed range, `097`
-opt-in Order-Revealing Encryption, `098` an in-database native
-predicate-evaluator seam, designed not built), and every supporting doc
-this repo's own conventions require in the same pass (data model,
-patterns, references, glossary, extensibility points, build plan).
-**Docs only — no code.** Two research findings shaped the design:
-`EnvelopeAesGcm`'s already-deterministic nonce gives free intra-entity
-equality but nothing cross-entity; the property-preserving-encryption
-leakage-abuse attack (Naveed/Kamara/Wright, CCS 2015) recovers exact
-plaintext for low-cardinality fields specifically (verified directly
-this session after the user asked whether a name is as recoverable as a
-birthdate — it isn't, which is why `ADR-096`'s guardrail is
-cardinality-aware, not a blanket classification rule).
+This session (full narrative split across two passes in
+`docs/changes/2026-08-27.md`): first designed searchable equality/range
+queries over `ADR-057`'s crypto-shredded fields (comparison doc + `ADR-
+096`/`097`/`098` + every supporting doc), then — direct request, same
+day — built and tested items 54 and most of 55 against that design.
+**Real prerequisite bug found and fixed**: `PayloadEncryptor` (`ADR-057`'s
+own encryption) was never registered in any Host's DI before this
+session — classified-field encryption was inert in production,
+exercised only by test code, until this pass's `AddErasure` fix. New
+code: `src/EventStore.Domain/SchemaRegistry/{SearchableIndexConfig,
+EncryptedFieldIndexEntry,SearchIndexKey}.cs`, `src/EventStore.
+Abstractions/{ISearchIndexKeyStore,IEncryptedPredicateEvaluator}.cs`,
+`src/EventStore.Erasure/{LocalSearchIndexKeyStore,SearchIndexKeyService,
+PayloadIndexer,RangeBucketing,OrderRevealingEncryption,
+AppTierEncryptedPredicateEvaluator}.cs`, plus
+`GraphQlFilterPredicateBuilder.Build` becoming async to route encrypted-
+field clauses. Migrated across all three providers. Verified: new
+`OrderRevealingEncryptionTests` (unit) and `SearchableEncryptionSqliteTests`
+(integration), plus the full pre-existing Sqlite suite (150/150) and
+`ErasurePostgresTests`/`ErasureSqlServerTests` against real Testcontainers
+Postgres/SQL Server — no regressions found.
 
 ## Actively in flight
 
-`TODO.md` is empty. The real next step is the implementation pass
-against `08-build-plan.md` items 54–56 (Searchable Blind-Index &
-Bucketed-Range Indexes → Order-Revealing Encryption Range Index → 
-In-Database Native Predicate Evaluator Seam) — not started, and a fresh
-session should confirm with the user before starting the code rather
-than assuming it's next. `dev/cryptoshredding` is not yet merged to
-`main` or opened as a PR.
+`TODO.md` is empty. The real next step is item 56 (In-Database Native
+Predicate Evaluator Seam — a SQL Server SQLCLR assembly and a PostgreSQL
+native function, explicitly scoped as separate, optional sub-items) —
+Not started, deliberately not rushed into the same session as 54/55
+given the real infrastructure setup involved. Item 55's own required
+security review is also still outstanding. `dev/cryptoshredding` is not
+yet merged to `main` or opened as a PR — a fresh session should confirm
+with the user before assuming either is wanted.
 
 ## How to resume cold
 

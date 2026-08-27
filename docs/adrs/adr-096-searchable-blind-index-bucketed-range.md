@@ -166,3 +166,51 @@ device telemetry) proving-ground domain would otherwise create —
 birthdate, a classic HIPAA Safe Harbor identifier (`45 CFR
 §164.514(b)(2)`, cited in `ADR-052`), is exactly the low-cardinality
 shape the underlying attack fully recovers.
+
+**Implementation note, added 2026-08-27**: built this session
+(`08-build-plan.md` item 54). Two real corrections found only by actually
+building it, neither changing the Decision above, both landed the same
+pass:
+- **`ISearchIndexKeyStore`'s real shape is `ComputeHmacAsync(keyReference,
+  data) -> byte[]`, not an envelope encrypt/decrypt pair.** A Shared-scope
+  index key computes a deterministic MAC over arbitrary future values
+  (identically at publish and query time) — it never encrypts data at
+  rest, so there's no confidentiality reason to hide it behind
+  `IErasureKeyStore`'s envelope indirection. Mirrors a real KMS primitive
+  that exists for exactly this (Vault Transit's `/hmac` endpoint, AWS
+  KMS's `GenerateMac`), not a hypothetical shape invented for this ADR.
+- **`PerEntity` key derivation, concretely**: `IErasureKeyStore` never
+  exposes raw DEK bytes (by design). The actual mechanism is
+  `SHA-256(backend.EncryptAsync(keyReference, a fixed info string))` —
+  deterministic, entity-key-dependent, and permanently uncomputable the
+  instant `EncryptAsync` under a destroyed `keyReference` starts failing,
+  which is exactly the "destroyed alongside the DEK" property this scope
+  requires, through the real interface shape rather than a literal HKDF.
+- `EncryptedFieldIndexEntry.Token` is a base64 `string`, not `byte[]` —
+  matches this codebase's existing base64-ciphertext convention
+  (`PayloadEncryptor` already stores ciphertext this way) and is portable
+  across all three providers as an ordinary indexed text column.
+- **Found and fixed as a prerequisite, not a scope addition**:
+  `PayloadEncryptor` (`ADR-057`'s own encryption) was never actually
+  registered in any Host's DI — every real `PublishService` resolved it
+  as `null`, so classified-field encryption was inert in production,
+  exercised only by test code that constructs it directly. Fixed inside
+  `ErasureServiceCollectionExtensions.AddErasure`, the one place every
+  Host already calls for this wiring.
+- `GraphQlFilterPredicateBuilder.Build` became `async` — resolving
+  matches from `EncryptedFieldIndexEntry` needs a database query, which
+  the pre-existing synchronous signature couldn't accommodate.
+- **A bucketed range query requires both a lower and upper bound in the
+  same clause.** A one-sided range (`gt` alone, no `lt`/`lte`) would
+  require enumerating an unbounded number of buckets — refused with a
+  clear error instead of attempting it, rather than silently accepting a
+  pathological query.
+- Only the `Local` `ISearchIndexKeyStore` backend is built this pass —
+  the same "cloud/Vault backends named but not yet built" gap `ADR-057`'s
+  own history already has, not a new one.
+- Correctness verified via `EventStore.IntegrationTests`
+  (`SearchableEncryptionSqliteTests`): an equality query matches without
+  ever extracting `Payload` as plaintext; the registration guardrail
+  refuses a `Low`-cardinality classified field without
+  `acknowledgeLeakageRisk`; erasure removes a `Shared`-scope entity's own
+  index rows with `ChainHash` provably unchanged before/after.

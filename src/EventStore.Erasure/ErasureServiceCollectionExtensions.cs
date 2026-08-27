@@ -1,6 +1,7 @@
 using Amazon.KeyManagementService;
 using Azure.Identity;
 using Azure.Security.KeyVault.Keys;
+using EventStore.Abstractions;
 using Google.Cloud.Kms.V1;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -24,6 +25,24 @@ public static class ErasureServiceCollectionExtensions
         services.Configure<ErasureOptions>(o => configuration.GetSection("Erasure").Bind(o));
         services.AddScoped<ErasureKeyService>();
         services.AddKeyedScoped<IErasureKeyStore, LocalErasureKeyStore>("Local");
+
+        // Found this session while implementing ADR-096/097: PayloadEncryptor
+        // (ADR-057's own encryption) was never registered anywhere -- every
+        // real Host's PublishService constructor resolved its optional
+        // PayloadEncryptor? param as null, so classified-field encryption
+        // was inert in production, only ever exercised by test code that
+        // constructs PayloadEncryptor directly. Fixed here, the one place
+        // every Host already calls into for erasure wiring.
+        services.AddScoped<PayloadEncryptor>();
+
+        // ADR-096/097 -- searchable-index wiring, alongside crypto-shredding
+        // since PayloadIndexer needs ErasureKeyService for PerEntity-scope
+        // key derivation (see PayloadIndexer's own header comment).
+        services.Configure<SearchIndexOptions>(o => configuration.GetSection("SearchIndex").Bind(o));
+        services.AddScoped<SearchIndexKeyService>();
+        services.AddKeyedScoped<ISearchIndexKeyStore, LocalSearchIndexKeyStore>("Local");
+        services.AddScoped<PayloadIndexer>();
+        services.AddScoped<IEncryptedPredicateEvaluator, AppTierEncryptedPredicateEvaluator>();
 
         var vaultAddress = configuration["Erasure:Vault:Address"];
         if (vaultAddress is not null)

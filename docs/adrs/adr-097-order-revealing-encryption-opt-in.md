@@ -88,6 +88,31 @@ Consequences:
   `ADR-096`'s own item (shares the `x-masking-searchable` schema
   extension and `EncryptedFieldIndexEntry`-adjacent data model).
 
+**Implementation note, added 2026-08-27**: the CLWW/Lewi-Wu-inspired
+construction, the no-override registration refusal, `PayloadIndexer`'s
+`OrderRevealing` branch, and query routing are all built this session
+(`src/EventStore.Erasure/OrderRevealingEncryption.cs`) — see that file's
+own header for the honest, explicit statement of what this is and isn't
+(a from-scratch, testable realization of the same high-level idea, not a
+verified byte-for-byte implementation of either paper). Order-preservation
+correctness is verified by `EventStore.UnitTests.
+OrderRevealingEncryptionTests` across many Number/DateTimeOffset pairs;
+the no-override guardrail is verified by
+`SearchableEncryptionSqliteTests`. **One real, named scope limit found
+while building the query side**: the default app-tier evaluator
+(`GraphQlFilterPredicateBuilder.ResolveOrderRevealingMatchesAsync`)
+compares ciphertext **in application memory** across a field's own
+indexed rows, not via a native SQL comparison operator — `Compare` is a
+custom byte-array function no provider's query engine understands
+natively. This is still a genuine win over the bucketed approach (only
+small ciphertext tokens are read, never `Payload`, and nothing is ever
+decrypted to filter), but it is not yet "the database evaluates the
+predicate" in the fullest sense this ADR's own Decision describes — that
+requires `ADR-098`'s native evaluator seam, not yet built for any
+provider. **This item is built but not marked Done in `08-build-plan.md`**
+— its own exit criteria require a dedicated security review this pass
+did not perform, named explicitly rather than implied by tests passing.
+
 **Compliance note**: the no-override guardrail is a direct, deliberate
 answer to the same HIPAA Safe Harbor exposure `ADR-096`'s compliance note
 names — this ADR judges the exact-recovery risk on a regulated

@@ -693,7 +693,7 @@ public class EncryptedFieldIndexEntry
     public string FieldJsonPath { get; set; } = default!;
     public SearchableIndexKind IndexKind { get; set; }           // Equality | Range | OrderRevealing
     public string? Granularity { get; set; }                     // Range only -- which bucketGranularities entry this row's Token is computed at; null for Equality/OrderRevealing
-    public byte[] Token { get; set; } = default!;                 // HMAC token (Equality/Range) or ORE ciphertext (OrderRevealing) -- indexed, compared, never decrypted to search
+    public string Token { get; set; } = default!;                 // base64 HMAC token (Equality/Range) or base64 ORE ciphertext (OrderRevealing) -- indexed, compared, never decrypted to search. Corrected from an earlier byte[] sketch once actually built: a string column matches this codebase's existing base64-ciphertext convention (PayloadEncryptor already stores ciphertext as base64 text) and is portable across all three providers as an ordinary indexed text column.
     public long StoredEventSequenceNumber { get; set; }           // FK -> StoredEvent.SequenceNumber, the event this token was computed from
 }
 ```
