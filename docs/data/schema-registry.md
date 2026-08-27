@@ -74,9 +74,25 @@ public class FilterableField
     public string JsonPath { get; set; } = default!;    // e.g. "$.Amount"
     public FilterableFieldType DataType { get; set; }   // String, Number, Boolean, DateTimeOffset
     public bool IsIndexed { get; set; }                 // whether a DB index/computed column exists
+    public FilterableFieldIndexKind IndexKind { get; set; } = FilterableFieldIndexKind.PlaintextExpression; // ADR-096 -- routes GraphQlFilterPredicateBuilder to plaintext json_extract/->>/JSON_VALUE (default, unchanged) vs. an EncryptedFieldIndexEntry token lookup
 }
 
 public enum FilterableFieldType { String, Number, Boolean, DateTimeOffset }
+
+// ADR-096/ADR-097 -- which mechanism a filter predicate against this field
+// compiles to. PlaintextExpression is every FilterableField registered
+// before this ADR and every ordinary (non-x-masking-searchable) field
+// since -- completely unchanged behavior. The other two only ever apply to
+// a field whose schema also declares x-masking-searchable (below); a field
+// classified encrypted routes here instead of extracting straight from
+// Payload, since that would only ever compare opaque ciphertext bytes.
+public enum FilterableFieldIndexKind
+{
+    PlaintextExpression, // default -- today's json_extract/->>/JSON_VALUE mechanism, unchanged
+    EncryptedBlindIndex,   // ADR-096 -- eq comparisons route to EncryptedFieldIndexEntry.Token
+    EncryptedRangeBucket,  // ADR-096 -- gt/gte/lt/lte comparisons narrow via EncryptedFieldIndexEntry.Token at the coarsest useful Granularity, then an exact decrypt-and-compare step (IEncryptedPredicateEvaluator, ADR-098)
+    OrderRevealing,        // ADR-097 -- gt/gte/lt/lte comparisons compile to a native ciphertext comparison, no decryption needed to evaluate the predicate
+}
 ```
 
 ## Application-defined permission trust roots (`ADR-044`)
@@ -397,6 +413,17 @@ issues a provider-specific migration to add a computed/expression index:
 | PostgreSQL | Expression index: `CREATE INDEX ... ON "Events" ((("Payload"::jsonb) ->> 'Amount'))` |
 | SQL Server | Computed column + index: `ALTER TABLE Events ADD Amount AS JSON_VALUE(Payload, '$.Amount'); CREATE INDEX ... ON Events(Amount)` |
 
+**`FilterableFieldIndexKind.EncryptedBlindIndex`/`EncryptedRangeBucket`/
+`OrderRevealing` (`ADR-096`/`ADR-097`) index a different column entirely** —
+`EncryptedFieldIndexEntry.Token` (below), never `Payload` itself, since a
+classified field's `Payload` value is ciphertext. The index/expression
+mechanism on that separate table is the same ordinary technique as any
+other indexed column on every provider (`CREATE INDEX` on `Token`,
+scoped by `(AppId, EventTypeName, FieldJsonPath, Granularity)`) — nothing
+provider-specific is needed here, unlike the JSON-extraction rows above,
+because `Token` is a plain indexed string/byte column, not something
+extracted from a JSON document at query time.
+
 **`JsonPath` is restricted to a safe dotted-identifier chain** (`$.Amount`,
 `$.Order.Id` — `^\$(\.[A-Za-z_][A-Za-z0-9_]*)+$`), rejected `400` at
 registration otherwise, added this pass while implementing the Schema
@@ -619,3 +646,71 @@ via crypto-shredding — a classified field's *value* is encrypted before
 it's first stored, so "erasure" destroys the key that makes existing
 ciphertext readable rather than ever touching `Payload` itself. See
 `ADR-057` and `ADR-009`'s own updated closing note.
+
+## Searchable encryption indexes (`ADR-096`/`ADR-097`)
+
+A second, optional schema extension alongside `x-masking`, for a
+classified field that also needs to support equality/range queries
+without decrypting to search:
+
+```json
+"CustomerEmail": {
+  "type": "string",
+  "x-masking": { "requiredClaim": "pii:view", "regulatoryClassification": "PII" },
+  "x-masking-searchable": { "indexKind": "Equality", "keyScope": "Shared" }
+}
+```
+
+```csharp
+public class SearchableIndexConfig
+{
+    public SearchableIndexKind IndexKind { get; set; }        // Equality | Range | OrderRevealing
+    public SearchIndexKeyScope KeyScope { get; set; }          // Shared | PerEntity
+    public List<string>? BucketGranularities { get; set; }     // Range only -- e.g. ["Year","Month","Day"] or numeric bucket widths
+    public FieldCardinality? Cardinality { get; set; }          // required for Range -- Low | High, drives the ADR-096 registration guardrail
+    public bool AcknowledgeLeakageRisk { get; set; }            // Range + Low cardinality + regulatoryClassification present: required to register at all (ADR-096). Never accepted for OrderRevealing (ADR-097) -- that combination is refused outright, no override.
+}
+
+public enum SearchableIndexKind { Equality, Range, OrderRevealing }
+public enum SearchIndexKeyScope { Shared, PerEntity }
+public enum FieldCardinality { Low, High }
+```
+
+A field with no `x-masking-searchable` is entirely unaffected — this is
+purely additive to `ADR-057`'s existing encrypt-at-rest behavior, and
+`FilterableFieldIndexKind` above stays `PlaintextExpression` unless a
+schema author explicitly opts a field into one of the other three kinds.
+
+### `EncryptedFieldIndexEntry` (`ADR-096`)
+
+```csharp
+public class EncryptedFieldIndexEntry
+{
+    public long Id { get; set; }
+    public string AppId { get; set; } = default!;              // part of the composite key (ADR-030)
+    public string EntityId { get; set; } = default!;            // the entity this token belongs to -- deleted wholesale on that entity's erasure, Shared scope only (see below)
+    public string EventTypeName { get; set; } = default!;
+    public string FieldJsonPath { get; set; } = default!;
+    public SearchableIndexKind IndexKind { get; set; }           // Equality | Range | OrderRevealing
+    public string? Granularity { get; set; }                     // Range only -- which bucketGranularities entry this row's Token is computed at; null for Equality/OrderRevealing
+    public byte[] Token { get; set; } = default!;                 // HMAC token (Equality/Range) or ORE ciphertext (OrderRevealing) -- indexed, compared, never decrypted to search
+    public long StoredEventSequenceNumber { get; set; }           // FK -> StoredEvent.SequenceNumber, the event this token was computed from
+}
+```
+
+**Derived, rebuildable, and deliberately outside both this design's
+integrity mechanisms** — confirmed directly against `ADR-019`
+(`ChainHash`) and `ADR-033` (Merkle-tree replication-sync), both computed
+only over `StoredEvent`/`Payload`; this table exists in the same
+category as an ordinary CQRS read model (`patterns/cqrs-and-materialized-
+views.md`), never the source of truth. **Erasure cleanup differs by
+`KeyScope`**: `Shared`-scope rows are explicitly deleted by
+`EntityErasureResolver`'s erasure side-effect (a real delete of a
+derived structure, not cryptographic destruction — `Payload` itself
+stays crypto-shredded via `ADR-057`, completely unchanged); `PerEntity`-
+scope rows need no separate delete step, since their `Token` becomes
+permanently uncomputable the instant the owning entity's DEK is
+destroyed (the same HKDF-derived-key relationship `ADR-096` describes).
+Indexed by `(AppId, EventTypeName, FieldJsonPath, Granularity, Token)`
+for `GraphQlFilterPredicateBuilder`'s lookup — see "Per-provider index
+strategy for filterable fields" above.

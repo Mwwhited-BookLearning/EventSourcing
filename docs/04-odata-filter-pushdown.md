@@ -226,6 +226,25 @@ provider-specific expression index / computed column (see
 predicate translator does not need to know whether a field is indexed —
 that's a storage-layer optimization, transparent to query translation.
 
+## Encrypted fields — a different `FilterableFieldIndexKind` skips extraction entirely (`ADR-096`/`ADR-097`)
+
+A classified field's `Payload` value is ciphertext (`ADR-057`) —
+extracting it via `json_extract`/`->>`/`JSON_VALUE` as above would only
+ever compare opaque bytes. `FilterableField.IndexKind` (added by
+`ADR-096`) tells `GraphQlFilterPredicateBuilder` to skip steps 2–4 of
+the Pipeline above entirely for such a field and instead compare against
+`EncryptedFieldIndexEntry.Token` (`docs/data/schema-registry.md`): an
+`eq` clause against an `EncryptedBlindIndex` field is one equality
+lookup; a range clause against an `EncryptedRangeBucket` field narrows
+via the coarsest useful `Granularity`, then an exact decrypt-and-compare
+step over the small remaining candidate set (`IEncryptedPredicateEvaluator`,
+`ADR-098`); a range clause against an `OrderRevealing` field (`ADR-097`)
+compiles to a native comparison over the stored ORE ciphertext column
+directly, no extraction or decryption needed to evaluate the predicate
+at all. `IndexKind = PlaintextExpression` (the default, and every
+`FilterableField` registered before this ADR) is the pipeline exactly as
+described above, completely unchanged.
+
 ## Explicitly out of scope
 
 - Filtering inside JSON arrays (`any`/`all`-shaped lambda operators) —

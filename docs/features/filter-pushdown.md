@@ -214,4 +214,29 @@ Feature: GraphQL filter pushdown to the database
       subscription { on_demo_OrderPlaced(where: [{ field: "Amount", gt: "100" }]) { orderId } }
       """
     Then the query execution plan should reference the index created for "$.Amount"
+
+  # ADR-096/ADR-097 -- a classified field's Payload value is ciphertext, so
+  # an encrypted-kind FilterableField skips json_extract/->>/JSON_VALUE
+  # entirely and compares against EncryptedFieldIndexEntry.Token instead.
+  # See docs/comparisons/searchable-encryption-for-crypto-shredded-fields.md
+  # for the full mechanism and its accepted leakage trade-offs -- not yet
+  # built (08-build-plan.md's matching item is Not started).
+
+  Scenario: Equality query against a blind-indexed encrypted field never extracts Payload as plaintext
+    Given the event type "CustomerRegistered" is registered with filterable field "$.Email" of type "String", indexed, EncryptedBlindIndex
+    And a "CustomerRegistered" event exists with Email "alice@example.com", encrypted at rest under the entity's own crypto-shredding key
+    When I open a GraphQL Subscription connection with document:
+      """
+      subscription { on_demo_CustomerRegistered(where: [{ field: "Email", eq: "alice@example.com" }]) { customerId } }
+      """
+    Then I should receive the matching event
+    And the generated SQL should compare against EncryptedFieldIndexEntry.Token, never json_extract/->>/JSON_VALUE against Payload
+
+  Scenario: Entity erasure removes that entity's own Shared-scope index tokens without touching the hash chain
+    Given the event type "CustomerRegistered" is registered with filterable field "$.Email" of type "String", indexed, EncryptedBlindIndex, Shared key scope
+    And a "CustomerRegistered" event exists with Email "alice@example.com" for entity "demo:Customer:alice"
+    When entity "demo:Customer:alice" is erased
+    Then the EncryptedFieldIndexEntry rows for entity "demo:Customer:alice" should no longer exist
+    And a subsequent equality query for Email "alice@example.com" should not match that entity
+    And the event's ChainHash and every ChainHash after it should be unchanged
 ```

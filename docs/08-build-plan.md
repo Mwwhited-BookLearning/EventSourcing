@@ -112,6 +112,9 @@ provider they apply to — not "code written."
 | 51 | [Domain Decision Queues](#domain-decision-queues) | Proving-Ground Application UX, Digital Sign-Off for Regulated Actions, Non-Authoritative Capture | Done |
 | 52 | [Generic Entity/Live-View Query](#generic-entitylive-view-query) | GraphQL-Only Query Layer, Non-Authoritative Capture, Property-Level Masking, Delegated Grants/RBAC/Read Audit Logging | Done |
 | 53 | [Push-Notification Wake-Up Layer](#push-notification-wake-up-layer) | Publish API, Entity-Centric Core Rebuild | Done (all 6 background workers) |
+| 54 | [Searchable Blind-Index & Bucketed-Range Encrypted-Field Indexes](#searchable-blind-index--bucketed-range-encrypted-field-indexes) | GDPR/CCPA Erasure, Property-Level Masking, Follow API + Filter Pushdown | Not started |
+| 55 | [Order-Revealing Encryption Range Index (opt-in)](#order-revealing-encryption-range-index-opt-in) | Searchable Blind-Index & Bucketed-Range Encrypted-Field Indexes | Not started |
+| 56 | [In-Database Native Predicate Evaluator Seam](#in-database-native-predicate-evaluator-seam) | Searchable Blind-Index & Bucketed-Range Encrypted-Field Indexes | Not started |
 
 Two groups worth naming up front, since they explain most of the
 ordering below:
@@ -241,6 +244,9 @@ state "Local Services" as tierLocal {
   state "Lineage Export +\nBitemporal Playback" as a17 #palegreen
   state "Mechanism-Level\nOTel Instrumentation" as a23 #palegreen
   state "Expected-Response\nTracking" as a26 #palegreen
+  state "Searchable Blind-Index &\nBucketed-Range Indexes" as a31
+  state "Order-Revealing\nEncryption Range Index" as a32
+  state "In-Database Native\nPredicate Evaluator Seam" as a33
 }
 state "UI" as tierUi {
   state "MVVM Client" as p20 #palegreen
@@ -383,6 +389,11 @@ p8 --> a29
 p22 --> a29
 p2 --> a30
 p11 --> a30
+a2 --> a31
+p8 --> a31
+p4 --> a31
+a31 --> a32
+a31 --> a33
 @enduml
 ```
 
@@ -5156,6 +5167,92 @@ pre-existing/unrelated on isolated re-run.
   otherwise are Accepted and built/verified by the items above named for
   each, or folded into an earlier item/this cross-cutting section as
   noted at the top of the `ADR-050`+ section.
+
+## Searchable Blind-Index & Bucketed-Range Encrypted-Field Indexes
+
+**Scope**: `ADR-096` — the `x-masking-searchable` schema extension
+(`Equality`/`Range` kinds, `Shared`/`PerEntity` key scope), the new
+`EncryptedFieldIndexEntry` table, `FilterableField.IndexKind`, and
+`GraphQlFilterPredicateBuilder` routing an encrypted-kind field's
+comparison to `EncryptedFieldIndexEntry.Token` instead of extracting
+from ciphertext-filled `Payload`. Includes the cardinality-aware
+registration guardrail and `EntityErasureResolver`'s new erasure
+side-effect step (deleting an erased entity's own `Shared`-scope index
+rows). The default `IEncryptedPredicateEvaluator` implementation
+(`ADR-098`, app-tier, over the already-narrowed candidate set only) is
+built as part of this item, not deferred to `ADR-098`'s own item, since
+`ADR-096`'s range routing has nothing to fall back to without it.
+
+**Depends on**: GDPR/CCPA Erasure via Crypto-Shredding (the per-entity
+DEK and `IErasureKeyStore` this reuses/derives from), Property-Level
+Masking (`x-masking` itself, the schema extension point this attaches
+alongside), Follow API + Filter Pushdown (`FilterableField`,
+`GraphQlFilterPredicateBuilder`, `IJsonPathTranslator` — the pipeline
+this item's new `IndexKind` values route around).
+
+**Exit criteria**: an equality query against an `EncryptedBlindIndex`
+field returns the correct matching event(s) on every provider without
+ever extracting `Payload` as plaintext for the comparison; a range query
+against an `EncryptedRangeBucket` field returns the correct set,
+narrowed via bucket lookup then an exact decrypt-compare over a
+provably small candidate set (not a full-table decrypt); registering a
+`Low`-cardinality `Range` field with `regulatoryClassification` set and
+no `acknowledgeLeakageRisk` is rejected `400`; erasing an entity removes
+its own `Shared`-scope `EncryptedFieldIndexEntry` rows and a subsequent
+query no longer matches that entity, while `ChainHash` before/after the
+erasure is provably unchanged.
+
+**Status: Not started.**
+
+## Order-Revealing Encryption Range Index (opt-in)
+
+**Scope**: `ADR-097` — the CLWW/Lewi-Wu ORE construction as a real,
+working `OrderRevealing` `x-masking-searchable` kind: key derivation
+(`Shared`/`PerEntity`, same choice as the item above), the compare
+function, the ciphertext storage/indexing shape, and the no-override
+registration refusal on any classified field. This bespoke cryptographic
+primitive needs its own dedicated correctness/security review before
+this item can be marked Done — named here as a real, separate gate, not
+assumed satisfied by landing the code.
+
+**Depends on**: Searchable Blind-Index & Bucketed-Range Encrypted-Field
+Indexes (shares the `x-masking-searchable` schema extension and
+`EncryptedFieldIndexEntry`-adjacent erasure-cleanup shape).
+
+**Exit criteria**: a range query against an `OrderRevealing` field
+compiles to a native ciphertext comparison with no decryption performed
+to evaluate the predicate; registering `OrderRevealing` on any field
+that also carries `x-masking.regulatoryClassification` is rejected `400`
+unconditionally (no override accepted, unlike the sibling item above);
+the dedicated security review (above) has actually happened and is
+recorded, not merely implied by tests passing.
+
+**Status: Not started.**
+
+## In-Database Native Predicate Evaluator Seam
+
+**Scope**: `ADR-098` — concrete per-provider `IEncryptedPredicateEvaluator`
+implementations beyond the default app-tier one (already built as part
+of the Searchable Blind-Index item above): a SQL Server SQLCLR scalar
+function, and a PostgreSQL native function (a small custom function or
+extension, since `pgcrypto`'s own primitives don't speak
+`EnvelopeAesGcm`'s raw AES-GCM format directly). Each is its own,
+explicitly optional sub-item — a deployment may run the default app-tier
+evaluator indefinitely and never build either. SQLite is explicitly not
+planned here, per `ADR-098`'s own honest assessment that an app-registered
+function there wins nothing over the default (same process either way).
+
+**Depends on**: Searchable Blind-Index & Bucketed-Range Encrypted-Field
+Indexes (the seam and its default implementation).
+
+**Exit criteria**, per provider actually built: the native evaluator
+returns identical results to the default app-tier evaluator against the
+same candidate set; the database engine process's own new dependency
+(network access and credentials to the configured `IErasureKeyStore`
+backend) is documented as a real, accepted operational change, not
+silently introduced.
+
+**Status: Not started.**
 
 ## Suggested References
 

@@ -31,50 +31,43 @@ lose or corrupt data.
 
 ## Current state
 
-*(as of 2026-08-13, branch `fix/postgres-retry-strategy-and-otel-metrics`,
-HEAD `39f2bd7` — update this whole section, don't just bump the date)*
+*(as of 2026-08-27, branch `dev/cryptoshredding` off `main` (HEAD
+`4d41393` when branched) — update this whole section, don't just bump
+the date)*
 
-All 95 ADRs Accepted; all 52 `docs/08-build-plan.md` items Done. `TODO.md`
-and `docs/10-open-questions.md` are both empty. `EventStore.
-IntegrationTests` has 231 `[TestMethod]`s (`grep -rc "\[TestMethod\]"
-tests/EventStore.IntegrationTests/*.cs | awk -F: '{sum+=$2} END
-{print sum}'` — the reliable way to recheck, don't hand-thread a running
-tally through prose).
+All 95 pre-existing ADRs Accepted; `ADR-096`/`097`/`098` added this
+session (also Accepted — design work, not proposals). `08-build-plan.md`
+now has 56 items: the original 53 Done, three new ones (54–56) Not
+started. `TODO.md` and `docs/10-open-questions.md` are both still empty
+— nothing from this session belongs in either (see this session's own
+`docs/changes/2026-08-27.md`).
 
-This session's real work — full narrative in `docs/changes/2026-08-13.md`,
-not repeated here:
-- Three real Postgres bugs, found by actually running the AppHost under
-  concurrent write load, fixed in sequence (each one blocked the next
-  from being reachable): `EventAppender`/`AccessLogAppender`/
-  `SchemaRegistryService` calling `BeginTransactionAsync` directly,
-  incompatible with `EnableRetryOnFailure`; the obvious fix silently
-  corrupting the hash chain under real retries (a shared entity reused
-  across attempts); and an insufficient `maxRetryCount` under sustained
-  load. Regression-tested in `RetryOnFailurePostgresTests.cs`.
-- OTel metrics extended beyond `ADR-088`'s original four mechanisms
-  (publish, GraphQL, derivation, archival, simulators, process) — see
-  that ADR's own "Extended, 2026-08-13" note.
-- A real `client-web`/`client-web-vitals`/`client-web-meridian` bug: a
-  missing `--` separator in nested `npm run --workspace=` scripts
-  silently swallowed Aspire's `--port` flag, so every instance was
-  always listening on the wrong port. Fixed in `client-web/package.json`.
-- Four new Aspire dashboard links on the `eventstore` resource (Scalar
-  UI, raw OpenAPI/AsyncAPI JSON, AsyncAPI viewer).
-- `EventTailReader.TailAsync` (Follow/GraphQL Subscriptions) now ends
-  the stream cleanly on client disconnect instead of throwing an
-  unhandled `TaskCanceledException` — regression-tested in
-  `FollowScenarioAssertions.
-  DisconnectingMidTailEndsTheStreamGracefullyRatherThanThrowing`.
-- This file itself, purged from ~2372 lines of duplicated build-item
-  narrative down to this snapshot (protocol violation caught and fixed
-  the same session it was noticed).
+This session's real work — full narrative in
+`docs/changes/2026-08-27.md`, not repeated here: designed searchable
+equality/range queries over `ADR-057`'s crypto-shredded fields — a
+comparison doc, three ADRs (`096` blind index + bucketed range, `097`
+opt-in Order-Revealing Encryption, `098` an in-database native
+predicate-evaluator seam, designed not built), and every supporting doc
+this repo's own conventions require in the same pass (data model,
+patterns, references, glossary, extensibility points, build plan).
+**Docs only — no code.** Two research findings shaped the design:
+`EnvelopeAesGcm`'s already-deterministic nonce gives free intra-entity
+equality but nothing cross-entity; the property-preserving-encryption
+leakage-abuse attack (Naveed/Kamara/Wright, CCS 2015) recovers exact
+plaintext for low-cardinality fields specifically (verified directly
+this session after the user asked whether a name is as recoverable as a
+birthdate — it isn't, which is why `ADR-096`'s guardrail is
+cardinality-aware, not a blanket classification rule).
 
 ## Actively in flight
 
-`TODO.md` is empty — nothing queued. The branch above is 5 commits ahead
-of `main` (`f271b26`, `abbc3b4`, `e078b3f`, `786bc10`, `39f2bd7`), not yet
-merged or opened as a PR — a fresh session should ask the user before
-assuming that's the next step.
+`TODO.md` is empty. The real next step is the implementation pass
+against `08-build-plan.md` items 54–56 (Searchable Blind-Index &
+Bucketed-Range Indexes → Order-Revealing Encryption Range Index → 
+In-Database Native Predicate Evaluator Seam) — not started, and a fresh
+session should confirm with the user before starting the code rather
+than assuming it's next. `dev/cryptoshredding` is not yet merged to
+`main` or opened as a PR.
 
 ## How to resume cold
 
