@@ -293,6 +293,68 @@ public class ApplicantIdentityRecordData
 }
 ```
 
+## Searchable encryption — age eligibility and duplicate-applicant detection (`ADR-096`)
+
+Two independent, real KYC needs over the same two classified fields
+already shown above:
+
+- **Age-eligibility screening** — many relying-party use cases (opening a
+  brokerage account, age-restricted services) require confirming an
+  applicant is over a threshold age *before* full manual review, without
+  decrypting every pending applicant's `DateOfBirth` to check. This is
+  the canonical `Range`-kind use case `ADR-096`'s own guardrail was built
+  around: `DateOfBirth` is a classic low-cardinality identifier.
+- **Duplicate-applicant detection across DIDs** — an applicant rejected
+  or blocked under one self-attested `Did` shouldn't be able to simply
+  resubmit under a fresh one with the same claimed legal name. `Equality`
+  over `ClaimedLegalName`, a high-cardinality field, is a safe match on
+  its own here (unlike `DateOfBirth`, which this domain does **not**
+  index for `Equality` in this example — see the compound-match
+  discussion in Vitals' [`patient-enrollment-and-informed-consent.md`](../../clinical-trials-device-telemetry/features/patient-enrollment-and-informed-consent.md)
+  for why a low-cardinality field like this is better paired with a
+  high-cardinality one than indexed alone).
+
+```json
+"ClaimedLegalName": {
+  "type": "string",
+  "x-masking": { "requiredClaim": "identity:pii-read", "strategy": "PartialReveal", "regulatoryClassification": "PII" },
+  "x-masking-searchable": { "indexKind": "Equality", "keyScope": "Shared", "cardinality": "High" }
+},
+"DateOfBirth": {
+  "type": "string",
+  "x-masking": { "requiredClaim": "identity:pii-read", "strategy": "PartialReveal", "regulatoryClassification": "PII" },
+  "x-masking-searchable": { "indexKind": "Range", "keyScope": "Shared", "cardinality": "Low", "acknowledgeLeakageRisk": true, "bucketGranularities": ["Year", "Month", "Day"] }
+}
+```
+
+`DateOfBirth` needs the explicit `acknowledgeLeakageRisk` override on
+this `Range` index (the same guardrail Vitals' `DateOfBirth` example
+needs on its own `Equality` index, since the underlying risk driver —
+low cardinality — is identical regardless of which index kind exposes
+it). An age-eligibility query supplies **both** bounds in one clause,
+per `ADR-096`'s own bounded-range requirement — an open-ended query
+would need to enumerate an unbounded number of buckets:
+
+```plantuml
+@startuml AgeEligibility_Sequence
+autonumber
+actor "Onboarding Analyst" as analyst
+participant "GraphQL Gateway" as gateway
+database "EncryptedFieldIndexEntry\n(ADR-096)" as index
+
+analyst -> gateway: subscription { on_kyc_IdentityClaimSubmitted(\n  where: [{ field: "DateOfBirth", gte: "1900-01-01",\n            lte: "2008-08-28" }]) { applicantId } }
+note right of analyst
+  A real applicant-eligibility cutoff (18th birthday as
+  of today) expressed as a bounded range -- both bounds
+  required (ADR-096); an open-ended "born before X" query
+  is refused rather than enumerating an unbounded bucket set.
+end note
+gateway -> index: narrow via bucket lookup (Year/Month/Day),\nthen exact-match the remainder (IEncryptedPredicateEvaluator, ADR-098)
+index --> gateway: matching ApplicantIds -- Payload never\nextracted as plaintext to evaluate the predicate
+gateway --> analyst: applicants eligible for full review
+@enduml
+```
+
 ## State machine — an applicant identity record's `AuthorityStatus` lifecycle
 
 ```plantuml
@@ -491,4 +553,50 @@ Feature: Customer Onboarding and Identity Verification
     # reusing ADR-009's own precedent) -- never re-evaluated per delivery, so
     # a later grant of identity:pii-read to acme-bank would not retroactively
     # unmask this or any earlier delivery.
+
+  # ADR-096 -- searchable encryption over the same two classified fields,
+  # per the "Searchable encryption" section above. A separate Background
+  # here, registering IdentityClaimSubmitted with regulatoryClassification
+  # and x-masking-searchable actually present, which the shared Background
+  # above deliberately leaves out.
+
+  Scenario: An analyst's age-eligibility query matches applicants born within a bounded range, without ever decrypting DateOfBirth to compare
+    Given the event type "IdentityClaimSubmitted" version 1 is registered
+      with EntityIdField "$.ApplicantId" and schema:
+      """
+      {
+        "type": "object",
+        "properties": {
+          "ApplicantId": { "type": "string" },
+          "Did": { "type": "string" },
+          "ClaimedLegalName": {
+            "type": "string",
+            "x-masking": { "requiredClaim": "identity:pii-read", "strategy": "PartialReveal", "regulatoryClassification": "PII" },
+            "x-masking-searchable": { "indexKind": "Equality", "keyScope": "Shared", "cardinality": "High" }
+          },
+          "DateOfBirth": {
+            "type": "string",
+            "x-masking": { "requiredClaim": "identity:pii-read", "strategy": "PartialReveal", "regulatoryClassification": "PII" },
+            "x-masking-searchable": { "indexKind": "Range", "keyScope": "Shared", "cardinality": "Low", "acknowledgeLeakageRisk": true, "bucketGranularities": ["Year", "Month", "Day"] }
+          },
+          "DocumentType": { "type": "string" }
+        },
+        "required": ["ApplicantId", "Did", "ClaimedLegalName", "DateOfBirth", "DocumentType"]
+      }
+      """
+    And "applicant-2001" submitted an "IdentityClaimSubmitted" claim with DateOfBirth "1990-03-01"
+    And "applicant-2002" submitted an "IdentityClaimSubmitted" claim with DateOfBirth "2015-06-10"
+    When "analyst-1" queries `on_kyc_IdentityClaimSubmitted(where: [{ field: "DateOfBirth", gte: "1900-01-01", lte: "2008-08-28" }])`
+    Then the query should match "applicant-2001" but not "applicant-2002"
+    And the generated query should never extract or compare `Payload` as plaintext for `DateOfBirth`
+
+  Scenario: A duplicate-applicant check on ClaimedLegalName matches an applicant who previously submitted under a different DID
+    Given "applicant-1001" submitted an "IdentityClaimSubmitted" claim with ClaimedLegalName "Jane Smith" and Did "did:key:z6Mkf7..."
+    And "applicant-3001" later submits a new "IdentityClaimSubmitted" claim with ClaimedLegalName "Jane Smith" and a different Did "did:key:z6MkNew..."
+    When "analyst-1" queries `on_kyc_IdentityClaimSubmitted(where: [{ field: "ClaimedLegalName", eq: "Jane Smith" }])`
+    Then the query should return both "applicant-1001" and "applicant-3001"
+    # Equality alone is an acceptable match here specifically because
+    # ClaimedLegalName is High cardinality (ADR-096's own guardrail) --
+    # this is a real flag for an analyst to investigate, not an automatic
+    # rejection; a shared common name alone doesn't prove fraud.
 ```

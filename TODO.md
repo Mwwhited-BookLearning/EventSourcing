@@ -25,36 +25,6 @@ here instead of inlining.
 
 ## Active
 
-- [ ] **Add real `x-masking-searchable` examples to Vitals' `Patient
-  Enrollment and Informed Consent`** (`docs/domains/clinical-trials-
-  device-telemetry/features/patient-enrollment-and-informed-consent.md`):
-  `LegalName` (`Equality`, `High` cardinality, `Shared` scope) and
-  `DateOfBirth` (`Equality`, `Low` cardinality, `Shared` scope — needs
-  the guardrail fix above landed first, or an explicit
-  `acknowledgeLeakageRisk` in the example). Document the **compound-
-  match** mitigation explicitly: a real duplicate-subject-detection or
-  subject-rights-intake query should require both `LegalName` AND
-  `DateOfBirth` to match, never `DateOfBirth` alone — meaningfully
-  raises the bar against frequency analysis on the low-cardinality half.
-  Cross-reference from `trial-data-export-and-subject-rights.md`, where
-  the "caller identifies themselves by name/DOB, not their internal
-  `SubjectId`" workflow actually lives.
-- [ ] **Add real `x-masking-searchable` examples to Meridian's
-  `Customer Onboarding and Identity Verification`** (`docs/domains/
-  digital-identity-kyc/features/customer-onboarding-and-identity-
-  verification.md`): `DateOfBirth` (`Range`, `Low` cardinality — the
-  canonical guardrail example, a real age-eligibility query) and
-  `ClaimedLegalName` (`Equality`, `High` cardinality — duplicate-
-  applicant detection across DIDs).
-- [ ] **Add real `x-masking-searchable` examples to Meridian's remaining
-  two feature docs**: `document-and-biometric-capture.md`'s
-  `ExtractedDocumentNumber` (`Equality`, `High` cardinality — real
-  fraud-detection need: has this exact document number already onboarded
-  a *different* applicant); `periodic-screening-and-sar-escalation.md`'s
-  `MatchedListEntryId` (`Equality`, likely `Low` cardinality — a bounded,
-  enumerable sanctions-list domain, a second real instance of the
-  guardrail-fix item above — a compliance officer searching "every
-  current applicant flagged against this specific sanctions entry").
 - [ ] **Build automated Playwright UI playbooks with screenshots,
   assembled into markdown user guides — direct request, confirmed this
   session that nothing like this exists yet.** `ADR-055` already decided
@@ -65,7 +35,12 @@ here instead of inlining.
   "Proving-Ground Application UX" item), with no screenshots committed
   anywhere and no markdown produced. This is a **new mechanism**, not
   just "finally build the named project" — needs its own small design
-  pass before code:
+  pass before code. **Must be scripted/re-runnable, not a one-off** —
+  direct request: the whole point is that a playbook can be updated and
+  extended as the UI changes, not hand-assembled once and left stale, so
+  the screenshot-capture-to-markdown-assembly step needs a real script/
+  CLI entry point (an npm script, a `dotnet run` target, or similar),
+  not a manual copy-paste process:
   - Finally stand up `tests/EventStore.E2ETests` per `ADR-055`'s own
     already-decided shape.
   - Each test walks one real user workflow step-by-step (matching a

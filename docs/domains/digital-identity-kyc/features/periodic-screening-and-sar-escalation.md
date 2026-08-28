@@ -297,6 +297,35 @@ public class SarFilingRecordedPayload
 // Role { AppId: "kyc", RoleName: "ComplianceOfficer", Permissions: ["identity:aml-review"] }
 ```
 
+## Searchable encryption — cross-applicant investigation by matched list entry (`ADR-096`)
+
+A real compliance-investigation need once a periodic re-screening run
+produces hits: "every current applicant flagged against *this specific*
+sanctions-list entry," e.g. when a list entry is corrected/clarified by
+OFAC and compliance needs to re-review every applicant it previously
+matched. This is a cross-entity `Equality` search over `MatchedListEntryId`
+— but that field's own value domain is a **bounded, enumerable list**
+(a specific sanctions list has a finite, knowable set of entries), the
+same `Low`-cardinality shape `ADR-096`'s guardrail exists for, not a
+free-text value like `ExtractedDocumentNumber` elsewhere in this domain:
+
+```json
+"MatchedListEntryId": {
+  "type": "string",
+  "x-masking": { "requiredClaim": "identity:aml-review", "strategy": "FixedValue", "regulatoryClassification": "PII" },
+  "x-masking-searchable": { "indexKind": "Equality", "keyScope": "Shared", "cardinality": "Low", "acknowledgeLeakageRisk": true }
+}
+```
+
+**`MatchedName` is deliberately *not* indexed here.** Unlike the
+document-reuse and duplicate-applicant checks elsewhere in this domain,
+`MatchedName` is already a detector's own output (`ISanctionsScreeningProvider`,
+`ADR-079`) copied from the external sanctions list itself, not an
+independent applicant-supplied fact worth cross-referencing on its own —
+searching by the *list entry ID* it resolved to is the actually useful,
+already-normalized key, and doesn't carry the same free-text-name
+matching ambiguity `MatchedName` would.
+
 ## State machine — one screening cycle's lifecycle
 
 ```plantuml
@@ -547,4 +576,34 @@ Feature: Periodic Screening and SAR Escalation
     And the actual FinCEN BSA E-Filing submission is explicitly out of scope here (ADR-072)
     # Non-repudiation reuses the existing hash chain (ADR-019/ADR-066) --
     # no new tamper-evidence primitive for this filing record.
+
+  # ADR-096 -- cross-applicant investigation by matched list entry, per
+  # the "Searchable encryption" section above. A separate Background
+  # registration, since the shared one above doesn't declare
+  # x-masking-searchable.
+
+  Scenario: A compliance officer finds every current applicant matched against a corrected sanctions-list entry
+    Given the event type "SanctionsScreeningPerformed" version 1 is registered
+      with EntityIdField "$.ApplicantId" and schema:
+      """
+      {
+        "type": "object",
+        "properties": {
+          "ApplicantId": { "type": "string" },
+          "ScreeningDate": { "type": "string" },
+          "MatchFound": { "type": "boolean" },
+          "MatchedListEntryId": {
+            "type": "string",
+            "x-masking": { "requiredClaim": "identity:aml-review", "strategy": "FixedValue", "regulatoryClassification": "PII" },
+            "x-masking-searchable": { "indexKind": "Equality", "keyScope": "Shared", "cardinality": "Low", "acknowledgeLeakageRisk": true }
+          }
+        },
+        "required": ["ApplicantId", "ScreeningDate", "MatchFound"]
+      }
+      """
+    And "applicant-1001" and "applicant-5001" were both previously flagged with MatchedListEntryId "OFAC-SDN-14829"
+    And "applicant-5002" was flagged against a different entry, "OFAC-SDN-99012"
+    When "compliance-officer-1" queries `on_kyc_SanctionsScreeningPerformed(where: [{ field: "MatchedListEntryId", eq: "OFAC-SDN-14829" }])`
+    Then the query should match "applicant-1001" and "applicant-5001", but not "applicant-5002"
+    And the generated query should never extract or compare `Payload` as plaintext for `MatchedListEntryId`
 ```
