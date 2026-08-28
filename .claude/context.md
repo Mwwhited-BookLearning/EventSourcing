@@ -72,17 +72,24 @@ against `LocalErasureKeyStore` (provider-agnostic logic).
 
 ## Actively in flight
 
-`TODO.md` is empty. What's left, named honestly rather than implied
-done: item 55's required security review; item 56's PostgreSQL
-`plpython3u` function is written but unverified (no `plpython3u`/
-`cryptography` in the standard Testcontainers `postgres` image — a
-custom Postgres image would be needed to close that gap); both native
-evaluators in item 56 are still scoped to the `Local` backend only (the
-cloud `ISearchIndexKeyStore` backends don't help here — the evaluators
-themselves would still need network access to reach a real KMS/Vault).
-`dev/cryptoshredding` has three commits ahead of `main`, not yet merged
-or opened as a PR — a fresh session should confirm with the user before
-assuming either is wanted.
+`TODO.md` has four items, added while reviewing Vitals/Meridian for real
+`x-masking-searchable` candidates: a real guardrail gap found (`ADR-096`'s
+cardinality check only gates `Range`, not `Equality`, though the same
+paper it cites names deterministic encryption — what `Equality` is — as
+frequency-analysis-vulnerable too), plus three domain-doc propagation
+items (Vitals' `Patient Enrollment`, Meridian's `Customer Onboarding`,
+Meridian's `Document Capture`/`Periodic Screening`). See `TODO.md` for
+the concrete file-by-file detail, not repeated here.
+
+Also still open, not yet in `TODO.md` (build-plan sequencing calls, not
+"decided, just undone" doc/fix items): item 55's required security
+review; item 56's PostgreSQL `plpython3u` function is written but
+unverified (needs a custom Postgres image); both item 56 evaluators stay
+`Local`-backend-only regardless of the cloud `ISearchIndexKeyStore` work
+(the evaluators themselves would still need their own network access to
+a real KMS/Vault). `dev/cryptoshredding` has four commits ahead of
+`main`, not yet merged or opened as a PR — a fresh session should
+confirm with the user before assuming either is wanted.
 
 ## How to resume cold
 
