@@ -25,12 +25,41 @@ here instead of inlining.
 
 ## Active
 
-- [ ] **Extend UI-playbook coverage beyond Vitals' Workflow A.** The
-  screenshot-to-markdown mechanism itself is built and proven this
-  session (`ADR-055`'s "Implementation note," `tests/EventStore.
-  E2ETests/PlaybookRecorder.cs`, `docs/playbooks/README.md`'s catalog) —
-  only one workflow is actually recorded so far. Add one
-  `[TestMethod]` per remaining workflow (Vitals' B–D, Meridian's A–C, or
-  a core-engine `docs/features/*.md` walkthrough), reusing
-  `PlaybookRecorder` unchanged, and add a matching row to `docs/
-  playbooks/README.md`'s catalog in the same pass each one lands.
+- [ ] **UI-playbook coverage is capped by `ADR-039`'s one-event-type-
+  per-instance model — needs new client instances, not more
+  `[TestMethod]`s.** Extended this session from one playbook (Vitals'
+  Workflow A) to three (adding Meridian's Workflow A, both feature
+  docs) — `docs/playbooks/README.md`'s catalog. Confirmed by reading
+  `client-web/packages/mvvm-client/src/api/subscriptionBuilder.ts`
+  directly: a client instance's GraphQL subscription is fixed to one
+  `(AppId, EventType)` pair at launch (`EventStore.AppHost/AppHost.cs`'s
+  `VITE_EVENT_TYPE`/`VITE_ENTITY_TYPE` env vars), so an entity that
+  never published that exact event type never reaches that instance's
+  Browse cache no matter how long a REPLAY-mode subscription waits.
+  Concretely blocked by this: Vitals' Workflows B–D (`client-web-vitals`
+  is locked to `PatientScreened`/`patient` — `Device`/`AdverseEvent`/
+  `IonmAlert` entities are unreachable from it) and Meridian's Workflow
+  C (`SarFilingRecorded` needs a step-up-auth flow `Samples.Meridian.
+  Seed` deliberately doesn't perform, so no SAR entity is ever
+  published to browse). Meridian's Workflow B has a deeper gap still —
+  no `MeridianWorkflowB.cs`/seed data exists in `Samples.Meridian` at
+  all, so there's no relying-party-access sample to walk through yet,
+  UI-reachable or not. Extending coverage further needs either a new
+  Aspire-hosted `client-web-*` instance per additional event type to
+  browse, or a real relying-party sample workflow built first — real
+  infra/sample work, not `PlaybookRecorder` reuse.
+- [ ] **Registered `ViewDefinition`s never actually resolve at runtime —
+  root cause not yet found.** Both Vitals' `Patient` and Meridian's
+  `ApplicantIdentity` Detail `ViewDefinition`s are registered by their
+  respective seeders (`Samples.Vitals.Seed`/`Samples.Meridian.Seed`,
+  `ViewDefinitionService.RegisterAsync`) and confirmed present in the
+  database, yet every live screenshot taken this session and the prior
+  one shows `client-web`'s generic fallback (`"(no registered
+  ViewDefinition -- generic fallback)"`) instead, for both entities,
+  across two separate seeders. Checked and ruled out: `ViewDefinitionService`
+  itself lowercases `EntityType` symmetrically on both register and
+  lookup (`ViewDefinitionService.cs`), so a register/lookup casing
+  mismatch is not the cause. Needs an actual network-trace/log
+  investigation of `useEntityViewActions.loadViewDefinition`'s real
+  GraphQL round trip against a live instance to find the actual cause —
+  don't guess again without checking.
