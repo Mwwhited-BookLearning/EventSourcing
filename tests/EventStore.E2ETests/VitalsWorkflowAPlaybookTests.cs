@@ -122,7 +122,7 @@ public class VitalsWorkflowAPlaybookTests
         // taken). Wait for the real templated render before capturing.
         var templatedView = _page.GetByLabel("Entity (ViewDefinition-rendered)");
         await Assertions.Expect(templatedView).ToBeVisibleAsync();
-        await recorder.RecordStepAsync(_page, "Selecting S-0091 from the browser opens its Detail view, rendered from the Patient Detail ViewDefinition Samples.Vitals.Seed registers (ADR-039) -- subject/site/protocol IDs, eligibility status, and the masked legal name/date of birth fields. The bracketed labels (\"[subject_id]\" etc.) are this template's own {{ t:key }} translation placeholders rendering unresolved -- no translation resource registers these particular keys yet, a real, separate gap from the ViewDefinition mechanism itself, which is working correctly here.");
+        await recorder.RecordStepAsync(_page, "Selecting S-0091 from the browser opens its Detail view, rendered from the Patient Detail ViewDefinition Samples.Vitals.Seed registers (ADR-039) -- subject/site/protocol IDs, eligibility status, and the masked legal name/date of birth fields (translated via translations.ts's placeholderTranslations, ADR-087).");
 
         await recorder.WriteMarkdownAsync("Vitals -- Workflow A: Patient Enrollment and Informed Consent");
 

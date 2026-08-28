@@ -99,7 +99,7 @@ public class MeridianWorkflowACustomerOnboardingPlaybookTests
         // CapturePlaybookTests's own comment for the full correction history).
         var templatedView = _page.GetByLabel("Entity (ViewDefinition-rendered)");
         await Assertions.Expect(templatedView).ToBeVisibleAsync();
-        await recorder.RecordStepAsync(_page, "The Detail view, rendered from the registered ApplicantIdentity ViewDefinition, shows the IdentityClaimSubmitted payload itself (masked ClaimedLegalName/DateOfBirth, ADR-009) plus AuthorityStatus: accepted, this workflow's own end state: an analyst's review (ADR-035/ADR-042/ADR-046) has accepted the self-attested claim into the record. The bracketed labels are this template's own unresolved {{ t:key }} translation placeholders -- a real, separate i18n-resource gap, not a masking or review-status defect.");
+        await recorder.RecordStepAsync(_page, "The Detail view, rendered from the registered ApplicantIdentity ViewDefinition, shows the IdentityClaimSubmitted payload itself (masked ClaimedLegalName/DateOfBirth, ADR-009) plus AuthorityStatus: accepted, this workflow's own end state: an analyst's review (ADR-035/ADR-042/ADR-046) has accepted the self-attested claim into the record.");
 
         await recorder.WriteMarkdownAsync("Meridian -- Workflow A: Customer Onboarding and Identity Verification");
 

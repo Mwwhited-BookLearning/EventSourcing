@@ -115,7 +115,7 @@ public class MeridianWorkflowADocumentAndBiometricCapturePlaybookTests
         // as the ApplicantIdentity ViewDefinition never resolving at all.
         var templatedView = _page.GetByLabel("Entity (ViewDefinition-rendered)");
         await Assertions.Expect(templatedView).ToBeVisibleAsync();
-        await recorder.RecordStepAsync(_page, "Selecting applicant-1001 opens its Detail view, rendered from the ApplicantIdentity Detail ViewDefinition Samples.Meridian.Seed registers (ADR-039). This subscription's own payload type is IdentityClaimSubmitted's, so only that event's fields (DID, claimed legal name, date of birth, document type) render -- ExtractedDocumentNumber/biometric fields from the upstream capture events aren't part of this payload shape, even though all three events fold onto the same entity in the Entity Store itself. The bracketed labels (\"[applicant_id]\" etc.) are this template's own unresolved {{ t:key }} translation placeholders -- the same real, separate i18n-resource gap seen on Vitals' Patient template.");
+        await recorder.RecordStepAsync(_page, "Selecting applicant-1001 opens its Detail view, rendered from the ApplicantIdentity Detail ViewDefinition Samples.Meridian.Seed registers (ADR-039). This subscription's own payload type is IdentityClaimSubmitted's, so only that event's fields (DID, claimed legal name, date of birth, document type) render -- ExtractedDocumentNumber/biometric fields from the upstream capture events aren't part of this payload shape, even though all three events fold onto the same entity in the Entity Store itself.");
 
         await recorder.WriteMarkdownAsync("Meridian -- Workflow A: Document and Biometric Capture");
 
