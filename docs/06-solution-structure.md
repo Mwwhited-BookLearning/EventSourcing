@@ -194,10 +194,11 @@ EventStore.sln
     EventStore.IntegrationTests/    -- runs against all three providers (see below); ALSO where every "unit test" actually
                                      -- lives -- descriptively-named MSTest [TestMethod]s / shared *ScenarioAssertions.cs
                                      -- helper classes calling services directly, not a separate fast/slow test-project split
-    EventStore.E2ETests/             -- NEVER BUILT -- no Playwright package reference exists anywhere in this solution's
-                                      -- own .csproj files. client-web's own a11y.spec.ts (Vitest, real axe-core) and the
-                                      -- headless-Edge cross-checks used while building several items are the closest real
-                                      -- equivalent, neither of them a literal Playwright E2E suite (ADR-055)
+    EventStore.E2ETests/             -- Built 2026-08-28 (ADR-055's own "Implementation note"): plain Microsoft.Playwright
+                                      -- (not Microsoft.Playwright.MSTest -- see that ADR note for the real MSTest-version
+                                      -- conflict found by actually running it), Aspire.Hosting.Testing boots the real
+                                      -- AppHost. Also generates docs/playbooks/ -- see PlaybookRecorder.cs and
+                                      -- docs/playbooks/README.md's own catalog.
     EventStore.Bdd/                 -- NEVER BUILT -- no Reqnroll/SpecFlow package reference exists anywhere either. Every
                                      -- feature doc's own fenced Gherkin block stays documentation-only; the corresponding
                                      -- real test is a same-intent MSTest [TestMethod] in EventStore.IntegrationTests above,

@@ -51,6 +51,7 @@
     <Project Path="src/EventStore.WorkerWakeSignal/EventStore.WorkerWakeSignal.csproj" />
   </Folder>
   <Folder Name="/tests/">
+    <Project Path="tests/EventStore.E2ETests/EventStore.E2ETests.csproj" />
     <Project Path="tests/EventStore.IntegrationTests/EventStore.IntegrationTests.csproj" />
     <Project Path="tests/EventStore.SqlClr.SqlServer.Tests/EventStore.SqlClr.SqlServer.Tests.csproj" />
     <Project Path="tests/EventStore.UnitTests/EventStore.UnitTests.csproj" />

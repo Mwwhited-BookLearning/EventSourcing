@@ -25,41 +25,23 @@ here instead of inlining.
 
 ## Active
 
-- [ ] **Build automated Playwright UI playbooks with screenshots,
-  assembled into markdown user guides — direct request, confirmed this
-  session that nothing like this exists yet.** `ADR-055` already decided
-  Playwright (.NET, MSTest base classes) for UI action tests and named a
-  `EventStore.E2ETests` project — never actually built; the one real
-  Playwright run this project has done was a single throwaway Docker
-  container used once for an ad-hoc visual spot-check (`08-build-plan.md`,
-  "Proving-Ground Application UX" item), with no screenshots committed
-  anywhere and no markdown produced. This is a **new mechanism**, not
-  just "finally build the named project" — needs its own small design
-  pass before code. **Must be scripted/re-runnable, not a one-off** —
-  direct request: the whole point is that a playbook can be updated and
-  extended as the UI changes, not hand-assembled once and left stale, so
-  the screenshot-capture-to-markdown-assembly step needs a real script/
-  CLI entry point (an npm script, a `dotnet run` target, or similar),
-  not a manual copy-paste process:
-  - Finally stand up `tests/EventStore.E2ETests` per `ADR-055`'s own
-    already-decided shape.
-  - Each test walks one real user workflow step-by-step (matching a
-    domain's `Workflow` + feature doc — Vitals' Workflows A–D, Meridian's
-    A–C — or a core-engine `docs/features/*.md` doc for non-domain-
-    specific UI), capturing a screenshot at each meaningful step via
-    Playwright's own screenshot API.
-  - Screenshots get assembled into a markdown playbook, **named for the
-    epic and feature** per direct request — this project's closest
-    existing "epic" concept is a domain's own `Workflow` letter (e.g.
-    Vitals Workflow A), so the natural mapping is `{Workflow}-{Feature
-    doc name}.md`, e.g. `docs/playbooks/vitals/workflow-a-patient-
-    enrollment-and-informed-consent.md` — needs confirming with the user
-    rather than assumed, since "epic" isn't literally this project's own
-    term anywhere yet.
-  - Needs a small new pattern doc (`docs/patterns/`) or ADR describing
-    the actual mechanism (screenshot-capture-to-markdown-assembly
-    pipeline, where playbooks/screenshot assets physically live, the
-    naming convention once confirmed) — per this project's own "search
-    for prior art / write the decision down before building a new
-    mechanism" standing convention, not skipped just because the ask is
-    small in scope.
+- [ ] **Extend UI-playbook coverage beyond Vitals' Workflow A.** The
+  screenshot-to-markdown mechanism itself is built and proven this
+  session (`ADR-055`'s "Implementation note," `tests/EventStore.
+  E2ETests/PlaybookRecorder.cs`, `docs/playbooks/README.md`'s catalog) —
+  only one workflow is actually recorded so far. Add one
+  `[TestMethod]` per remaining workflow (Vitals' B–D, Meridian's A–C, or
+  a core-engine `docs/features/*.md` walkthrough), reusing
+  `PlaybookRecorder` unchanged, and add a matching row to `docs/
+  playbooks/README.md`'s catalog in the same pass each one lands.
+- [ ] **Doc/reality drift found in passing, not yet fixed**: `docs/06-
+  solution-structure.md`'s `tests/` layout still describes
+  `EventStore.UnitTests/` as "NEVER BUILT as its own project... every
+  test in this solution lives in the ONE project below [
+  `EventStore.IntegrationTests`] instead" — but `tests/EventStore.
+  UnitTests/` genuinely exists and has real tests (17, as of this
+  session's own `CloudSearchIndexKeyStoreAdapterTests`/
+  `OrderRevealingEncryptionTests`). Needs reconciling: either that
+  doc's own claim is stale and should be corrected, or there's a real,
+  undocumented split in what belongs in which project that should be
+  stated explicitly instead of contradicted by the file tree itself.
