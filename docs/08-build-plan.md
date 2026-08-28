@@ -5220,7 +5220,13 @@ erasure removes `Shared`-scope rows, `ChainHash` unchanged; both
 registration guardrails refuse correctly) — all passing, alongside the
 full pre-existing Sqlite suite (150/150) confirming no regression from
 the `GraphQlFilterPredicateBuilder.Build` signature change or the
-`PayloadEncryptor` DI fix.
+`PayloadEncryptor` DI fix. **Extended later the same day**: the four
+cloud/Vault `ISearchIndexKeyStore` backends, via `CloudSearchIndexKeyStoreAdapter`
+wrapping the existing `IErasureKeyStore` cloud backends rather than a
+second SDK integration per provider — see `ADR-096`'s own "Implementation
+note" addendum. Verified against `LocalErasureKeyStore` (the adapter's
+logic is provider-agnostic) via `EventStore.UnitTests.
+CloudSearchIndexKeyStoreAdapterTests`.
 
 ## Order-Revealing Encryption Range Index (opt-in)
 

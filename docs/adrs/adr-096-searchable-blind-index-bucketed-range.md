@@ -205,9 +205,25 @@ pass:
   require enumerating an unbounded number of buckets — refused with a
   clear error instead of attempting it, rather than silently accepting a
   pathological query.
-- Only the `Local` `ISearchIndexKeyStore` backend is built this pass —
-  the same "cloud/Vault backends named but not yet built" gap `ADR-057`'s
-  own history already has, not a new one.
+- **Cloud/Vault `ISearchIndexKeyStore` backends, added later the same
+  day**: rather than reimplementing four cloud SDKs a second time,
+  `CloudSearchIndexKeyStoreAdapter` wraps any existing `IErasureKeyStore`
+  backend (Azure Key Vault, AWS KMS, Google Cloud KMS, HashiCorp Vault —
+  all four already expose exactly `CreateKeyAsync`/`EncryptAsync`, the two
+  primitives a search-index key needs) via the same key-derivation trick
+  `PerEntity` scope already uses: encrypt a fixed label under the
+  cloud-managed key, hash the ciphertext into a local, single-use derived
+  key, HMAC the caller's real data with that. One mechanism, not four
+  bespoke ones — registered in `ErasureServiceCollectionExtensions`
+  alongside each corresponding erasure backend, sharing the same SDK
+  client instance, with its own independent `SearchIndexKey` reference
+  (no lifecycle coupling with any entity's own DEK despite sharing the
+  underlying client). Verified against `LocalErasureKeyStore` (provider-
+  agnostic logic, no real cloud credentials needed to test it):
+  deterministic per `(keyReference, data)`, different for different keys
+  or data, and fails once the wrapped key is destroyed — the same
+  "destroyed alongside the DEK" property `PerEntity` scope's own direct
+  use of this trick already relies on.
 - Correctness verified via `EventStore.IntegrationTests`
   (`SearchableEncryptionSqliteTests`): an equality query matches without
   ever extracting `Payload` as plaintext; the registration guardrail

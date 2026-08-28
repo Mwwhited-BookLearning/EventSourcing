@@ -63,6 +63,13 @@ suite (150/150), and `ErasurePostgresTests`/`ErasureSqlServerTests`
 against real Testcontainers Postgres/SQL Server — no regressions found
 anywhere.
 
+`ISearchIndexKeyStore`'s cloud/Vault gap is also now closed:
+`CloudSearchIndexKeyStoreAdapter` wraps any existing `IErasureKeyStore`
+cloud backend (Azure Key Vault/AWS KMS/Google Cloud KMS/HashiCorp Vault)
+into a search-index key store via the same derivation trick `PerEntity`
+scope uses, rather than a fourth bespoke SDK integration — verified
+against `LocalErasureKeyStore` (provider-agnostic logic).
+
 ## Actively in flight
 
 `TODO.md` is empty. What's left, named honestly rather than implied
@@ -70,10 +77,12 @@ done: item 55's required security review; item 56's PostgreSQL
 `plpython3u` function is written but unverified (no `plpython3u`/
 `cryptography` in the standard Testcontainers `postgres` image — a
 custom Postgres image would be needed to close that gap); both native
-evaluators in item 56 are scoped to the `Local` backend only, never a
-real KMS/Vault. `dev/cryptoshredding` has two commits ahead of `main`,
-not yet merged or opened as a PR — a fresh session should confirm with
-the user before assuming either is wanted.
+evaluators in item 56 are still scoped to the `Local` backend only (the
+cloud `ISearchIndexKeyStore` backends don't help here — the evaluators
+themselves would still need network access to reach a real KMS/Vault).
+`dev/cryptoshredding` has three commits ahead of `main`, not yet merged
+or opened as a PR — a fresh session should confirm with the user before
+assuming either is wanted.
 
 ## How to resume cold
 
