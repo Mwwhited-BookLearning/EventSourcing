@@ -657,7 +657,7 @@ without decrypting to search:
 "CustomerEmail": {
   "type": "string",
   "x-masking": { "requiredClaim": "pii:view", "regulatoryClassification": "PII" },
-  "x-masking-searchable": { "indexKind": "Equality", "keyScope": "Shared" }
+  "x-masking-searchable": { "indexKind": "Equality", "keyScope": "Shared", "cardinality": "High" }
 }
 ```
 
@@ -667,8 +667,8 @@ public class SearchableIndexConfig
     public SearchableIndexKind IndexKind { get; set; }        // Equality | Range | OrderRevealing
     public SearchIndexKeyScope KeyScope { get; set; }          // Shared | PerEntity
     public List<string>? BucketGranularities { get; set; }     // Range only -- e.g. ["Year","Month","Day"] or numeric bucket widths
-    public FieldCardinality? Cardinality { get; set; }          // required for Range -- Low | High, drives the ADR-096 registration guardrail
-    public bool AcknowledgeLeakageRisk { get; set; }            // Range + Low cardinality + regulatoryClassification present: required to register at all (ADR-096). Never accepted for OrderRevealing (ADR-097) -- that combination is refused outright, no override.
+    public FieldCardinality? Cardinality { get; set; }          // required for Equality AND Range (corrected this pass -- originally Range-only; a blind Equality index is deterministic encryption, the same frequency-analysis-vulnerable shape the guardrail exists for) -- Low | High, drives the ADR-096 registration guardrail
+    public bool AcknowledgeLeakageRisk { get; set; }            // Equality/Range + Low cardinality + regulatoryClassification present: required to register at all (ADR-096). Never accepted for OrderRevealing (ADR-097) -- that combination is refused outright, no override.
 }
 
 public enum SearchableIndexKind { Equality, Range, OrderRevealing }

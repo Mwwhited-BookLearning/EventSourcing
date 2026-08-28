@@ -54,7 +54,7 @@ public class SearchableEncryptionSqliteTests
             "Email": {
               "type": "string",
               "x-masking": { "requiredClaim": "pii:view", "strategy": "FixedValue", "regulatoryClassification": "PII" },
-              "x-masking-searchable": { "indexKind": "Equality", "keyScope": "Shared" }
+              "x-masking-searchable": { "indexKind": "Equality", "keyScope": "Shared", "cardinality": "High" }
             }
           },
           "required": ["CustomerId", "Email"]
@@ -163,6 +163,103 @@ public class SearchableEncryptionSqliteTests
 
         var failure = (RegisterEventTypeResult.ValidationFailed)result;
         Assert.IsTrue(failure.Errors.Any(e => e.Contains("acknowledgeLeakageRisk")));
+    }
+
+    // Regression test for the guardrail gap found while reviewing Vitals/
+    // Meridian for real x-masking-searchable candidates: a Low-cardinality
+    // classified field indexed for Equality (not just Range) is exactly
+    // the deterministic-encryption shape Naveed/Kamara/Wright names as
+    // frequency-analysis-vulnerable -- this must be gated the same way
+    // Range already is.
+    [TestMethod]
+    public async Task RegisteringALowCardinalityEqualityIndexOnAClassifiedFieldWithoutAcknowledgingTheRiskIsRejected()
+    {
+        using var db = CreateContext();
+        var registry = new SchemaRegistryService(db, new SqliteFilterableFieldIndexDdlGenerator(), new MemoryCache(new MemoryCacheOptions()), UpcastingTestSupport.CreateEvaluator());
+
+        const string schema = """
+            {
+              "type": "object",
+              "properties": {
+                "PatientId": { "type": "string" },
+                "BirthDate": {
+                  "type": "string",
+                  "x-masking": { "requiredClaim": "phi:view", "strategy": "FixedValue", "regulatoryClassification": "PHI" },
+                  "x-masking-searchable": { "indexKind": "Equality", "keyScope": "Shared", "cardinality": "Low" }
+                }
+              },
+              "required": ["PatientId", "BirthDate"]
+            }
+            """;
+
+        var result = await registry.RegisterAsync("PatientEnrolledEq", new RegisterEventTypeRequest(
+            AppId: "searchable-encryption-guardrail-eq", JsonSchema: schema,
+            FilterableFields: [new FilterableFieldRequest("$.BirthDate", "String", true)],
+            ChangeKind: "Full", EntityIdField: "$.PatientId",
+            ParentValidationMode: null, RequiredClaims: null, UpcastFromPrevious: null, DowncastToPrevious: null));
+
+        var failure = (RegisterEventTypeResult.ValidationFailed)result;
+        Assert.IsTrue(failure.Errors.Any(e => e.Contains("acknowledgeLeakageRisk")));
+    }
+
+    [TestMethod]
+    public async Task RegisteringALowCardinalityEqualityIndexWithAcknowledgeLeakageRiskSucceeds()
+    {
+        using var db = CreateContext();
+        var registry = new SchemaRegistryService(db, new SqliteFilterableFieldIndexDdlGenerator(), new MemoryCache(new MemoryCacheOptions()), UpcastingTestSupport.CreateEvaluator());
+
+        const string schema = """
+            {
+              "type": "object",
+              "properties": {
+                "PatientId": { "type": "string" },
+                "BirthDate": {
+                  "type": "string",
+                  "x-masking": { "requiredClaim": "phi:view", "strategy": "FixedValue", "regulatoryClassification": "PHI" },
+                  "x-masking-searchable": { "indexKind": "Equality", "keyScope": "Shared", "cardinality": "Low", "acknowledgeLeakageRisk": true }
+                }
+              },
+              "required": ["PatientId", "BirthDate"]
+            }
+            """;
+
+        var result = await registry.RegisterAsync("PatientEnrolledEqAck", new RegisterEventTypeRequest(
+            AppId: "searchable-encryption-guardrail-eq-ack", JsonSchema: schema,
+            FilterableFields: [new FilterableFieldRequest("$.BirthDate", "String", true)],
+            ChangeKind: "Full", EntityIdField: "$.PatientId",
+            ParentValidationMode: null, RequiredClaims: null, UpcastFromPrevious: null, DowncastToPrevious: null));
+
+        Assert.IsInstanceOfType<RegisterEventTypeResult.Success>(result);
+    }
+
+    [TestMethod]
+    public async Task RegisteringEqualityWithNoCardinalityDeclaredIsRejectedRegardlessOfClassification()
+    {
+        using var db = CreateContext();
+        var registry = new SchemaRegistryService(db, new SqliteFilterableFieldIndexDdlGenerator(), new MemoryCache(new MemoryCacheOptions()), UpcastingTestSupport.CreateEvaluator());
+
+        const string schema = """
+            {
+              "type": "object",
+              "properties": {
+                "OrderId": { "type": "string" },
+                "CorrelationId": {
+                  "type": "string",
+                  "x-masking-searchable": { "indexKind": "Equality", "keyScope": "Shared" }
+                }
+              },
+              "required": ["OrderId", "CorrelationId"]
+            }
+            """;
+
+        var result = await registry.RegisterAsync("OrderCorrelated", new RegisterEventTypeRequest(
+            AppId: "searchable-encryption-guardrail-no-cardinality", JsonSchema: schema,
+            FilterableFields: [new FilterableFieldRequest("$.CorrelationId", "String", true)],
+            ChangeKind: "Full", EntityIdField: "$.OrderId",
+            ParentValidationMode: null, RequiredClaims: null, UpcastFromPrevious: null, DowncastToPrevious: null));
+
+        var failure = (RegisterEventTypeResult.ValidationFailed)result;
+        Assert.IsTrue(failure.Errors.Any(e => e.Contains("cardinality is required")));
     }
 
     [TestMethod]

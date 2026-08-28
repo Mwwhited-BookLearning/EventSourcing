@@ -121,24 +121,33 @@ Decision:
   narrowed candidate set. That exact-match step is the seam `ADR-098`
   names — its default app-tier implementation only ever runs over this
   already-narrowed set, never a full-table decrypt.
-- **Registration-time guardrail, cardinality-aware.** The real risk
-  driver, verified against the actual attack paper this session, is a
-  small, guessable value domain — a birthdate/zip-code/diagnosis-code
-  column is fully recoverable via frequency+order analysis against
-  public auxiliary distributions once bucket membership is visible; a
-  high-cardinality field (a name, a long free-text value) is
-  meaningfully more resistant to the identical attack. `x-masking-
-  searchable` on a `Range`-kind field requires a declared `cardinality:
-  "Low" | "High"` hint. `Low` cardinality combined with `x-masking.
-  regulatoryClassification` present refuses registration (`400`) unless
-  `acknowledgeLeakageRisk: true` is also set on the same extension object
-  — mirrors `ADR-071`'s PCI-SAD registration-time refusal precedent for a
-  mechanism that structurally undermines a classification's own purpose.
-  `High`-cardinality classified fields are permitted without the
-  override, since the bucketed approach's leakage against them is far
-  weaker — a blanket rule would over-restrict a name field while
-  under-warning on a birthdate field, which this cardinality split is
-  specifically written to avoid.
+- **Registration-time guardrail, cardinality-aware, applies to `Equality`
+  and `Range` alike.** The real risk driver, verified against the actual
+  attack paper this session, is a small, guessable value domain — a
+  birthdate/zip-code/diagnosis-code column is fully recoverable via
+  frequency (+ order, for `Range`) analysis against public auxiliary
+  distributions; a high-cardinality field (a name, a long free-text
+  value) is meaningfully more resistant to the identical attack. **A
+  `Range`-only guardrail was the original scope here; corrected the same
+  day it shipped**, found while reviewing this project's own two
+  proving-ground domains for real candidate fields (Meridian's
+  `MatchedListEntryId` — a bounded, enumerable sanctions-list domain —
+  wanted `Equality`, not `Range`, and had no guardrail coverage at all).
+  A blind `Equality` index is deterministic encryption in exactly the
+  shape Naveed/Kamara/Wright names as frequency-analysis-vulnerable —
+  that attack needs no order information at all, only that the same
+  plaintext always produces the same ciphertext, which any `Equality`
+  blind index is by definition. `x-masking-searchable` on an `Equality`-
+  or `Range`-kind field requires a declared `cardinality: "Low" | "High"`
+  hint. `Low` cardinality combined with `x-masking.regulatoryClassification`
+  present refuses registration (`400`) unless `acknowledgeLeakageRisk:
+  true` is also set on the same extension object — mirrors `ADR-071`'s
+  PCI-SAD registration-time refusal precedent for a mechanism that
+  structurally undermines a classification's own purpose. `High`-
+  cardinality classified fields are permitted without the override,
+  since the attack's power against them is far weaker — a blanket rule
+  would over-restrict a name field while under-warning on a birthdate
+  field, which this cardinality split is specifically written to avoid.
 
 Consequences:
 - Extends `ADR-057`'s crypto-shredding without changing anything about

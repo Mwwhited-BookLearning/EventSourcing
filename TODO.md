@@ -25,27 +25,6 @@ here instead of inlining.
 
 ## Active
 
-- [ ] **Fix `ADR-096`'s registration guardrail: extend the cardinality
-  check to `Equality`-kind fields, not just `Range`.** Found while
-  reviewing the two proving-ground domains for real
-  `x-masking-searchable` candidates (Vitals' `DateOfBirth`, Meridian's
-  `MatchedListEntryId` — both low-cardinality, both wanted as
-  `Equality`, neither currently gated). The paper the guardrail already
-  cites ([Naveed/Kamara/Wright, CCS 2015](https://www.microsoft.com/en-us/research/publication/inference-attacks-property-preserving-encrypted-databases/))
-  names **deterministic encryption** — exactly what an `Equality` blind
-  index is, functionally — as vulnerable to frequency analysis, not
-  only order-preserving encryption; the current guardrail only checks
-  `if (indexKind == "Range")`, so a `Low`-cardinality classified field
-  can register `Equality` with no warning at all. Fix:
-  `src/EventStore.SchemaRegistry/MaskingSchemaValidator.cs`'s
-  `ValidateSearchableConfig` — require `cardinality` and the
-  `acknowledgeLeakageRisk`-gated check for `Equality` too, not only
-  `Range`. Update in the same pass: `docs/adrs/adr-096-searchable-blind-
-  index-bucketed-range.md`'s Decision text (currently states the
-  guardrail as Range-only), `docs/data/schema-registry.md`'s
-  `SearchableIndexConfig` description, and add a regression test
-  alongside the existing ones in
-  `tests/EventStore.IntegrationTests/SearchableEncryptionSqliteTests.cs`.
 - [ ] **Add real `x-masking-searchable` examples to Vitals' `Patient
   Enrollment and Informed Consent`** (`docs/domains/clinical-trials-
   device-telemetry/features/patient-enrollment-and-informed-consent.md`):
@@ -76,3 +55,36 @@ here instead of inlining.
   enumerable sanctions-list domain, a second real instance of the
   guardrail-fix item above — a compliance officer searching "every
   current applicant flagged against this specific sanctions entry").
+- [ ] **Build automated Playwright UI playbooks with screenshots,
+  assembled into markdown user guides — direct request, confirmed this
+  session that nothing like this exists yet.** `ADR-055` already decided
+  Playwright (.NET, MSTest base classes) for UI action tests and named a
+  `EventStore.E2ETests` project — never actually built; the one real
+  Playwright run this project has done was a single throwaway Docker
+  container used once for an ad-hoc visual spot-check (`08-build-plan.md`,
+  "Proving-Ground Application UX" item), with no screenshots committed
+  anywhere and no markdown produced. This is a **new mechanism**, not
+  just "finally build the named project" — needs its own small design
+  pass before code:
+  - Finally stand up `tests/EventStore.E2ETests` per `ADR-055`'s own
+    already-decided shape.
+  - Each test walks one real user workflow step-by-step (matching a
+    domain's `Workflow` + feature doc — Vitals' Workflows A–D, Meridian's
+    A–C — or a core-engine `docs/features/*.md` doc for non-domain-
+    specific UI), capturing a screenshot at each meaningful step via
+    Playwright's own screenshot API.
+  - Screenshots get assembled into a markdown playbook, **named for the
+    epic and feature** per direct request — this project's closest
+    existing "epic" concept is a domain's own `Workflow` letter (e.g.
+    Vitals Workflow A), so the natural mapping is `{Workflow}-{Feature
+    doc name}.md`, e.g. `docs/playbooks/vitals/workflow-a-patient-
+    enrollment-and-informed-consent.md` — needs confirming with the user
+    rather than assumed, since "epic" isn't literally this project's own
+    term anywhere yet.
+  - Needs a small new pattern doc (`docs/patterns/`) or ADR describing
+    the actual mechanism (screenshot-capture-to-markdown-assembly
+    pipeline, where playbooks/screenshot assets physically live, the
+    naming convention once confirmed) — per this project's own "search
+    for prior art / write the decision down before building a new
+    mechanism" standing convention, not skipped just because the ask is
+    small in scope.
