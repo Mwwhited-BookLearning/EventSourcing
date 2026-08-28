@@ -107,9 +107,15 @@ public class MeridianWorkflowADocumentAndBiometricCapturePlaybookTests
         await recorder.RecordStepAsync(_page, "Switching to the Browse tab. The continuity applicant applicant-1001 (Samples.Meridian.Seed) is already present, having published IdentityDocumentUploaded, BiometricCaptureRecorded, and IdentityClaimSubmitted -- all folded onto the one kyc:ApplicantIdentity:applicant-1001 entity.");
 
         await applicantRow.GetByRole(AriaRole.Button, new() { Name = "View" }).ClickAsync();
-        var detailHeading = _page.GetByRole(AriaRole.Heading).Filter(new() { HasText = "applicant-1001" });
-        await Assertions.Expect(detailHeading).ToBeVisibleAsync();
-        await recorder.RecordStepAsync(_page, "Selecting applicant-1001 opens its Detail view -- rendered generically, via GenericFallbackView (ADR-039); the registered ApplicantIdentity ViewDefinition doesn't resolve at runtime here (a real, unexplained gap -- TODO.md), matching the same symptom already seen for Vitals' Patient. This subscription's own payload type is IdentityClaimSubmitted's, so only that event's fields (DID, claimed legal name, date of birth, document type) render -- ExtractedDocumentNumber/biometric fields from the upstream capture events aren't part of this payload shape, even though all three events fold onto the same entity in the Entity Store itself.");
+        // Briefly renders GenericFallbackView before useEntityViewActions.
+        // loadViewDefinition's async GraphQL round trip resolves (~500ms,
+        // measured directly) -- wait for the real templated render, the same
+        // fix applied to VitalsWorkflowAPlaybookTests after an earlier pass of
+        // this file screenshot that transient state and wrongly wrote it up
+        // as the ApplicantIdentity ViewDefinition never resolving at all.
+        var templatedView = _page.GetByLabel("Entity (ViewDefinition-rendered)");
+        await Assertions.Expect(templatedView).ToBeVisibleAsync();
+        await recorder.RecordStepAsync(_page, "Selecting applicant-1001 opens its Detail view, rendered from the ApplicantIdentity Detail ViewDefinition Samples.Meridian.Seed registers (ADR-039). This subscription's own payload type is IdentityClaimSubmitted's, so only that event's fields (DID, claimed legal name, date of birth, document type) render -- ExtractedDocumentNumber/biometric fields from the upstream capture events aren't part of this payload shape, even though all three events fold onto the same entity in the Entity Store itself. The bracketed labels (\"[applicant_id]\" etc.) are this template's own unresolved {{ t:key }} translation placeholders -- the same real, separate i18n-resource gap seen on Vitals' Patient template.");
 
         await recorder.WriteMarkdownAsync("Meridian -- Workflow A: Document and Biometric Capture");
 

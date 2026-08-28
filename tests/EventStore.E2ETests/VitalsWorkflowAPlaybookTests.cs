@@ -112,9 +112,17 @@ public class VitalsWorkflowAPlaybookTests
         await recorder.RecordStepAsync(_page, "Switching to the Browse tab. The continuity subject S-0091 (Samples.Vitals.Seed) is already present -- REPLAY mode (not TAIL) means the full historical PatientScreened stream is caught up on first subscribe, not just new arrivals.");
 
         await patientRow.GetByRole(AriaRole.Button, new() { Name = "View" }).ClickAsync();
-        var detailHeading = _page.GetByRole(AriaRole.Heading).Filter(new() { HasText = "S-0091" });
-        await Assertions.Expect(detailHeading).ToBeVisibleAsync();
-        await recorder.RecordStepAsync(_page, "Selecting S-0091 from the browser opens its Detail view -- rendered generically, via GenericFallbackView (ADR-039), since this proving-ground worked example has no ViewDefinition registered yet for the \"patient\" EntityType.");
+        // The Detail view briefly renders GenericFallbackView (ADR-039) before
+        // useEntityViewActions.loadViewDefinition's own async GraphQL round
+        // trip resolves, ~500ms later in practice -- confirmed by direct
+        // measurement, not assumed (an earlier pass of this playbook screenshot
+        // that transient fallback and mistakenly wrote it up as the entity type
+        // having "no ViewDefinition registered," which was never true: the
+        // seeder registers one, it just hadn't loaded yet when the shot was
+        // taken). Wait for the real templated render before capturing.
+        var templatedView = _page.GetByLabel("Entity (ViewDefinition-rendered)");
+        await Assertions.Expect(templatedView).ToBeVisibleAsync();
+        await recorder.RecordStepAsync(_page, "Selecting S-0091 from the browser opens its Detail view, rendered from the Patient Detail ViewDefinition Samples.Vitals.Seed registers (ADR-039) -- subject/site/protocol IDs, eligibility status, and the masked legal name/date of birth fields. The bracketed labels (\"[subject_id]\" etc.) are this template's own {{ t:key }} translation placeholders rendering unresolved -- no translation resource registers these particular keys yet, a real, separate gap from the ViewDefinition mechanism itself, which is working correctly here.");
 
         await recorder.WriteMarkdownAsync("Vitals -- Workflow A: Patient Enrollment and Informed Consent");
 

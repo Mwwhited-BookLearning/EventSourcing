@@ -48,18 +48,20 @@ here instead of inlining.
   Aspire-hosted `client-web-*` instance per additional event type to
   browse, or a real relying-party sample workflow built first — real
   infra/sample work, not `PlaybookRecorder` reuse.
-- [ ] **Registered `ViewDefinition`s never actually resolve at runtime —
-  root cause not yet found.** Both Vitals' `Patient` and Meridian's
-  `ApplicantIdentity` Detail `ViewDefinition`s are registered by their
-  respective seeders (`Samples.Vitals.Seed`/`Samples.Meridian.Seed`,
-  `ViewDefinitionService.RegisterAsync`) and confirmed present in the
-  database, yet every live screenshot taken this session and the prior
-  one shows `client-web`'s generic fallback (`"(no registered
-  ViewDefinition -- generic fallback)"`) instead, for both entities,
-  across two separate seeders. Checked and ruled out: `ViewDefinitionService`
-  itself lowercases `EntityType` symmetrically on both register and
-  lookup (`ViewDefinitionService.cs`), so a register/lookup casing
-  mismatch is not the cause. Needs an actual network-trace/log
-  investigation of `useEntityViewActions.loadViewDefinition`'s real
-  GraphQL round trip against a live instance to find the actual cause —
-  don't guess again without checking.
+- [ ] **`ViewDefinition` templates render with unresolved `{{ t:key }}`
+  translation placeholders — no translation resource registers the
+  keys they use.** Found while fixing the playbook tests' own screenshot
+  timing (see today's `docs/changes/2026-08-28.md` entry — the
+  registered-ViewDefinition-never-resolves theory that entry corrects
+  was a false alarm, not this). Confirmed via live screenshot: Vitals'
+  Patient template (`patient_detail_title`, `subject_id`, `site_id`,
+  `protocol_id`, `eligibility_status`, `legal_name`, `date_of_birth`)
+  and Meridian's ApplicantIdentity template (`applicant_detail_title`,
+  `applicant_id`, `document_type`, `claimed_legal_name`,
+  `date_of_birth`, `did`) both render every label as a literal
+  `[key]` bracket — `TemplateRenderer.vue`'s own documented fallback
+  for a key with no entry in the `translations` map it's given
+  (`interpolate`'s `translations[translationKey] ?? \`[${translationKey}]\``).
+  Needs either registering these keys' translations (`ADR-087`'s i18n
+  mechanism) or, if none exist yet at all for either proving-ground
+  domain, building that resource file for the first time.
