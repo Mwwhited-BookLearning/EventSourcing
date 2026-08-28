@@ -262,6 +262,42 @@ var clientWebMeridian = builder.AddViteApp("client-web-meridian", "../../client-
     .WithHttpEndpoint(port: Port("ClientWebMeridian", 5175))
     .WithExternalHttpEndpoints();
 
+// Two more Vitals instances, same shape as clientWebVitals above --
+// ADR-039's one-event-type-per-instance model means Workflow B's Device
+// entities and Workflow D's IonmAlert entities need their own dedicated
+// subscriptions to ever be Browse-reachable at all (confirmed by reading
+// subscriptionBuilder.ts: a GraphQL Subscription field is built per
+// (AppId, EventType), never per EntityType -- TODO.md's own tracked gap
+// before this pair existed). DeviceOnboarded/IonmAlertRaised both declare
+// RequiredClaims: null (Samples.Vitals/VitalsWorkflowB.cs/VitalsWorkflowD.cs),
+// so no additional claim beyond the DevIdp login every other instance
+// already gets is needed to browse either.
+var clientWebVitalsDevice = builder.AddViteApp("client-web-vitals-device", "../../client-web")
+    .WithReference(eventstore)
+    .WaitFor(eventstore)
+    .WithReference(devIdp)
+    .WithEnvironment("VITE_HOST_BASE_URL", eventstore.GetEndpoint("https"))
+    .WithEnvironment("VITE_AUTH_BASE_URL", devIdp.GetEndpoint("http"))
+    .WithEnvironment("VITE_APP_ID", "trial1")
+    .WithEnvironment("VITE_ENTITY_TYPE", "device")
+    .WithEnvironment("VITE_EVENT_TYPE", "DeviceOnboarded")
+    .WithEnvironment("VITE_ENTITY_ID_FIELD", "deviceId")
+    .WithHttpEndpoint(port: Port("ClientWebVitalsDevice", 5176))
+    .WithExternalHttpEndpoints();
+
+var clientWebVitalsIonmAlert = builder.AddViteApp("client-web-vitals-ionmalert", "../../client-web")
+    .WithReference(eventstore)
+    .WaitFor(eventstore)
+    .WithReference(devIdp)
+    .WithEnvironment("VITE_HOST_BASE_URL", eventstore.GetEndpoint("https"))
+    .WithEnvironment("VITE_AUTH_BASE_URL", devIdp.GetEndpoint("http"))
+    .WithEnvironment("VITE_APP_ID", "trial1")
+    .WithEnvironment("VITE_ENTITY_TYPE", "ionmalert")
+    .WithEnvironment("VITE_EVENT_TYPE", "IonmAlertRaised")
+    .WithEnvironment("VITE_ENTITY_ID_FIELD", "alertId")
+    .WithHttpEndpoint(port: Port("ClientWebVitalsIonmAlert", 5177))
+    .WithExternalHttpEndpoints();
+
 // Every client-web instance's browser-side JS calls devIdp's /connect/token
 // and eventstore's GraphQL/registry endpoints directly, cross-origin (each
 // Vite dev server has its own dynamically-assigned port) -- ADR-014's own
@@ -276,10 +312,14 @@ var clientWebMeridian = builder.AddViteApp("client-web-meridian", "../../client-
 // which is why this couldn't be inlined into their own definitions above.
 devIdp.WithEnvironment("Cors__AllowedOrigins__0", clientWeb.GetEndpoint("http"))
     .WithEnvironment("Cors__AllowedOrigins__1", clientWebVitals.GetEndpoint("http"))
-    .WithEnvironment("Cors__AllowedOrigins__2", clientWebMeridian.GetEndpoint("http"));
+    .WithEnvironment("Cors__AllowedOrigins__2", clientWebMeridian.GetEndpoint("http"))
+    .WithEnvironment("Cors__AllowedOrigins__3", clientWebVitalsDevice.GetEndpoint("http"))
+    .WithEnvironment("Cors__AllowedOrigins__4", clientWebVitalsIonmAlert.GetEndpoint("http"));
 eventstore.WithEnvironment("Cors__AllowedOrigins__0", clientWeb.GetEndpoint("http"))
     .WithEnvironment("Cors__AllowedOrigins__1", clientWebVitals.GetEndpoint("http"))
-    .WithEnvironment("Cors__AllowedOrigins__2", clientWebMeridian.GetEndpoint("http"));
+    .WithEnvironment("Cors__AllowedOrigins__2", clientWebMeridian.GetEndpoint("http"))
+    .WithEnvironment("Cors__AllowedOrigins__3", clientWebVitalsDevice.GetEndpoint("http"))
+    .WithEnvironment("Cors__AllowedOrigins__4", clientWebVitalsIonmAlert.GetEndpoint("http"));
 
 // Dashboard-only grouping (WithParentRelationship carries no lifecycle/
 // dependency meaning of its own -- that's WithReference/WaitFor's job
@@ -302,6 +342,8 @@ migrator.WithParentRelationship(eventstore);
 devIdp.WithParentRelationship(eventstore);
 clientWeb.WithParentRelationship(eventstore);
 clientWebVitals.WithParentRelationship(vitalsSeed);
+clientWebVitalsDevice.WithParentRelationship(vitalsSeed);
+clientWebVitalsIonmAlert.WithParentRelationship(vitalsSeed);
 clientWebMeridian.WithParentRelationship(meridianSeed);
 vitalsSimulator.WithParentRelationship(vitalsSeed);
 meridianSimulator.WithParentRelationship(meridianSeed);

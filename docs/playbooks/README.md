@@ -36,22 +36,26 @@ the prose and its images move or delete together as one unit.
 | [Workflow A: Patient Enrollment and Informed Consent](vitals/workflow-a-patient-enrollment-and-informed-consent.md) | Vitals | [`patient-enrollment-and-informed-consent.md`](../domains/clinical-trials-device-telemetry/features/patient-enrollment-and-informed-consent.md) | `VitalsWorkflowAPlaybookTests.RecordPatientEnrollmentAndInformedConsentPlaybook` |
 | [Workflow A: Document and Biometric Capture](meridian/workflow-a-document-and-biometric-capture.md) | Meridian | [`document-and-biometric-capture.md`](../domains/digital-identity-kyc/features/document-and-biometric-capture.md) | `MeridianWorkflowADocumentAndBiometricCapturePlaybookTests.RecordDocumentAndBiometricCapturePlaybook` |
 | [Workflow A: Customer Onboarding and Identity Verification](meridian/workflow-a-customer-onboarding-and-identity-verification.md) | Meridian | [`customer-onboarding-and-identity-verification.md`](../domains/digital-identity-kyc/features/customer-onboarding-and-identity-verification.md) | `MeridianWorkflowACustomerOnboardingPlaybookTests.RecordCustomerOnboardingAndIdentityVerificationPlaybook` |
+| [Workflow B: Device Onboarding and Continuous Monitoring](vitals/workflow-b-device-onboarding-and-continuous-monitoring.md) | Vitals | [`device-onboarding-and-continuous-monitoring.md`](../domains/clinical-trials-device-telemetry/features/device-onboarding-and-continuous-monitoring.md) | `VitalsWorkflowBDeviceOnboardingPlaybookTests.RecordDeviceOnboardingAndContinuousMonitoringPlaybook` |
+| [Workflow D: Intraoperative Monitoring and Alert Response](vitals/workflow-d-intraoperative-monitoring-and-alert-response.md) | Vitals | [`intraoperative-monitoring-and-alert-response.md`](../domains/clinical-trials-device-telemetry/features/intraoperative-monitoring-and-alert-response.md) | `VitalsWorkflowDIntraoperativeMonitoringPlaybookTests.RecordIntraoperativeMonitoringAndAlertResponsePlaybook` |
 
-Two of Meridian's own workflows still have no client instance able to
-reach them at all, and Vitals' Workflows B–D are blocked by the same
-root cause: see `TODO.md`'s "UI-playbook coverage is capped by
-`ADR-039`'s one-event-type-per-instance model" entry for the real,
-verified reason (not a test-writing gap — confirmed by reading
-`subscriptionBuilder.ts` directly: a client instance's GraphQL
-subscription is fixed to one `(AppId, EventType)` pair at launch,
-so an entity that never published that exact event type never reaches
-that instance's Browse cache, no matter how long a REPLAY-mode
-subscription waits). Extending further coverage needs new Aspire-hosted
-client instances (one per additional event type to browse), which is
-real infrastructure work, not an additional `[TestMethod]` reusing the
-same `PlaybookRecorder` helper (`tests/EventStore.E2ETests/
-PlaybookRecorder.cs`) unchanged the way the three rows above did — add a
-row here in the same pass a new playbook test is added, matching this
-repo's own "keep the catalog in sync" convention for every other
-consolidated index (`docs/patterns/README.md`, `docs/libraries/
-README.md`, `docs/references.md`).
+`EventStore.AppHost` now runs two more Vitals client instances,
+`client-web-vitals-device` (subscribed to `DeviceOnboarded`) and
+`client-web-vitals-ionmalert` (subscribed to `IonmAlertRaised`), purely
+to make the two rows above Browse-reachable at all — the original
+`client-web-vitals` instance is permanently locked to `PatientScreened`
+(`ADR-039`'s one-event-type-per-instance model; confirmed by reading
+`subscriptionBuilder.ts` directly, a client instance's GraphQL
+subscription is fixed to one `(AppId, EventType)` pair at launch).
+
+Two real gaps remain, tracked in `TODO.md`: Vitals' Workflow B
+downstream half (Adverse Event Capture and Review) has no seed data
+published for the `AdverseEvent` entity type at all, so a new client
+instance alone wouldn't be enough; and both Meridian's Workflow B
+(no `MeridianWorkflowB.cs`/sample exists yet) and Workflow C
+(`SarFilingRecorded` needs a step-up-auth flow the seeder can't
+perform) need real sample-workflow work before a playbook is even
+possible, UI-reachable or not. Add a row here in the same pass a new
+playbook test lands, matching this repo's own "keep the catalog in
+sync" convention for every other consolidated index (`docs/patterns/
+README.md`, `docs/libraries/README.md`, `docs/references.md`).

@@ -25,26 +25,26 @@ here instead of inlining.
 
 ## Active
 
-- [ ] **UI-playbook coverage is capped by `ADR-039`'s one-event-type-
-  per-instance model — needs new client instances, not more
-  `[TestMethod]`s.** Extended this session from one playbook (Vitals'
-  Workflow A) to three (adding Meridian's Workflow A, both feature
-  docs) — `docs/playbooks/README.md`'s catalog. Confirmed by reading
-  `client-web/packages/mvvm-client/src/api/subscriptionBuilder.ts`
-  directly: a client instance's GraphQL subscription is fixed to one
-  `(AppId, EventType)` pair at launch (`EventStore.AppHost/AppHost.cs`'s
-  `VITE_EVENT_TYPE`/`VITE_ENTITY_TYPE` env vars), so an entity that
-  never published that exact event type never reaches that instance's
-  Browse cache no matter how long a REPLAY-mode subscription waits.
-  Concretely blocked by this: Vitals' Workflows B–D (`client-web-vitals`
-  is locked to `PatientScreened`/`patient` — `Device`/`AdverseEvent`/
-  `IonmAlert` entities are unreachable from it) and Meridian's Workflow
-  C (`SarFilingRecorded` needs a step-up-auth flow `Samples.Meridian.
-  Seed` deliberately doesn't perform, so no SAR entity is ever
-  published to browse). Meridian's Workflow B has a deeper gap still —
-  no `MeridianWorkflowB.cs`/seed data exists in `Samples.Meridian` at
-  all, so there's no relying-party-access sample to walk through yet,
-  UI-reachable or not. Extending coverage further needs either a new
-  Aspire-hosted `client-web-*` instance per additional event type to
-  browse, or a real relying-party sample workflow built first — real
-  infra/sample work, not `PlaybookRecorder` reuse.
+- [ ] **Three UI-playbook gaps remain, each needing real sample-data/
+  infra work first, not just a new `[TestMethod]`.** Extended this
+  session from one playbook (Vitals' Workflow A) to five — Meridian's
+  Workflow A (both feature docs), plus Vitals' Workflows B (upstream
+  half) and D, the latter two unblocked by adding `client-web-vitals-
+  device`/`client-web-vitals-ionmalert` to `EventStore.AppHost`
+  (`ADR-039`'s one-event-type-per-instance model meant the original
+  `client-web-vitals` instance, locked to `PatientScreened`, could never
+  Browse those entities — confirmed by reading `subscriptionBuilder.ts`
+  directly). `docs/playbooks/README.md`'s catalog has all five. Still
+  open:
+  1. **Vitals' Workflow B downstream half** (Adverse Event Capture and
+     Review) — `Samples.Vitals.Seed` never publishes an event that
+     creates an `AdverseEvent` entity at all, so a new client instance
+     alone wouldn't be enough; needs a seed event added first.
+  2. **Meridian's Workflow B** (Relying-Party Verification Request) —
+     no `MeridianWorkflowB.cs`/seed data exists in `Samples.Meridian`
+     at all; needs a real sample workflow built, not just a client
+     instance.
+  3. **Meridian's Workflow C** (Periodic Screening and SAR Escalation)
+     — `SarFilingRecorded` needs a step-up-auth flow `Samples.Meridian.
+     Seed` deliberately doesn't perform, so no SAR entity is ever
+     published to browse.
