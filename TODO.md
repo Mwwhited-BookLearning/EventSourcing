@@ -34,14 +34,3 @@ here instead of inlining.
   a core-engine `docs/features/*.md` walkthrough), reusing
   `PlaybookRecorder` unchanged, and add a matching row to `docs/
   playbooks/README.md`'s catalog in the same pass each one lands.
-- [ ] **Doc/reality drift found in passing, not yet fixed**: `docs/06-
-  solution-structure.md`'s `tests/` layout still describes
-  `EventStore.UnitTests/` as "NEVER BUILT as its own project... every
-  test in this solution lives in the ONE project below [
-  `EventStore.IntegrationTests`] instead" — but `tests/EventStore.
-  UnitTests/` genuinely exists and has real tests (17, as of this
-  session's own `CloudSearchIndexKeyStoreAdapterTests`/
-  `OrderRevealingEncryptionTests`). Needs reconciling: either that
-  doc's own claim is stale and should be corrected, or there's a real,
-  undocumented split in what belongs in which project that should be
-  stated explicitly instead of contradicted by the file tree itself.

@@ -55,6 +55,13 @@ Decision:
   (`TODO.md`, this ADR's own `ADR-063` escalation) — `Moq` itself just
   wasn't named there specifically until now. Resolves once `EventStore.
   UnitTests` is either built for real or that item is formally descoped.
+  **Resolved, 2026-08-28**: `EventStore.UnitTests` was built per
+  `ADR-063`'s own decision ("adopt now, alongside `ADR-055`'s
+  `EventStore.UnitTests`") — FsCheck property tests, Polly+Simmy fault
+  injection, plus ordinary pure-logic unit tests added since. `docs/06-
+  solution-structure.md`'s own stale "NEVER BUILT" line for it (found
+  the same day, independently, while reconciling the file tree against
+  this ADR) is corrected in the same pass.
 - **Frontend unit tests: [Vitest](../libraries/web/vitest.md) + [Vue Test Utils](../libraries/web/vue-test-utils.md).** `Vitest` is
   maintained by the Vue/Vite team itself, needs zero additional config
   since `ADR-039`'s client is already Vite-based, and has solidified as
