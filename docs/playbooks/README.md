@@ -39,21 +39,30 @@ the prose and its images move or delete together as one unit.
 | [Workflow B: Device Onboarding and Continuous Monitoring](vitals/workflow-b-device-onboarding-and-continuous-monitoring.md) | Vitals | [`device-onboarding-and-continuous-monitoring.md`](../domains/clinical-trials-device-telemetry/features/device-onboarding-and-continuous-monitoring.md) | `VitalsWorkflowBDeviceOnboardingPlaybookTests.RecordDeviceOnboardingAndContinuousMonitoringPlaybook` |
 | [Workflow D: Intraoperative Monitoring and Alert Response](vitals/workflow-d-intraoperative-monitoring-and-alert-response.md) | Vitals | [`intraoperative-monitoring-and-alert-response.md`](../domains/clinical-trials-device-telemetry/features/intraoperative-monitoring-and-alert-response.md) | `VitalsWorkflowDIntraoperativeMonitoringPlaybookTests.RecordIntraoperativeMonitoringAndAlertResponsePlaybook` |
 | [Workflow B: Adverse Event Capture and Review](vitals/workflow-b-adverse-event-capture-and-review.md) | Vitals | [`adverse-event-capture-and-review.md`](../domains/clinical-trials-device-telemetry/features/adverse-event-capture-and-review.md) | `VitalsWorkflowBAdverseEventPlaybookTests.RecordAdverseEventCaptureAndReviewPlaybook` |
-| [Workflow C: Periodic Screening and SAR Escalation](meridian/workflow-c-periodic-screening-and-sar-escalation.md) (screening half only) | Meridian | [`periodic-screening-and-sar-escalation.md`](../domains/digital-identity-kyc/features/periodic-screening-and-sar-escalation.md) | `MeridianWorkflowCPeriodicScreeningPlaybookTests.RecordPeriodicScreeningPlaybook` |
+| [Workflow C: Periodic Screening and SAR Escalation](meridian/workflow-c-periodic-screening-and-sar-escalation.md) (screening half) | Meridian | [`periodic-screening-and-sar-escalation.md`](../domains/digital-identity-kyc/features/periodic-screening-and-sar-escalation.md) | `MeridianWorkflowCPeriodicScreeningPlaybookTests.RecordPeriodicScreeningPlaybook` |
+| [Workflow C: SAR Filing](meridian/workflow-c-sar-filing.md) (escalation half) | Meridian | [`periodic-screening-and-sar-escalation.md`](../domains/digital-identity-kyc/features/periodic-screening-and-sar-escalation.md) | `MeridianWorkflowCSarFilingPlaybookTests.RecordSarFilingPlaybook` |
 
 `EventStore.AppHost` now runs three more Vitals client instances
 (`client-web-vitals-device`/`DeviceOnboarded`, `client-web-vitals-
 ionmalert`/`IonmAlertRaised`, `client-web-vitals-adverseevent`/
-`AdverseEventReported`) and one more Meridian instance
-(`client-web-meridian-screening`/`SanctionsScreeningPerformed`), purely
-to make the rows above Browse-reachable at all — `ADR-039`'s
-one-event-type-per-instance model means the original `client-web-
-vitals`/`client-web-meridian` instances can never see any event type
-but the one each was launched with (confirmed by reading
-`subscriptionBuilder.ts` directly). `Samples.Vitals.Seed` also now
-publishes an `AdverseEventReported` event (`ae-1042`) it never did
-before — there was no `AdverseEvent` entity to browse at all until
-this pass.
+`AdverseEventReported`) and two more Meridian instances
+(`client-web-meridian-screening`/`SanctionsScreeningPerformed`,
+`client-web-meridian-sarfiling`/`SarFilingRecorded`), purely to make the
+rows above Browse-reachable at all — `ADR-039`'s one-event-type-per-
+instance model means the original `client-web-vitals`/`client-web-
+meridian` instances can never see any event type but the one each was
+launched with (confirmed by reading `subscriptionBuilder.ts` directly).
+`Samples.Vitals.Seed` also now publishes an `AdverseEventReported` event
+(`ae-1042`) it never did before, and `Samples.Meridian.Seed` now
+performs the full SAR-escalation chain (a second, matched
+`SanctionsScreeningPerformed`, a compliance officer's `authorityDecision`
+accepting it, then a real step-up-authenticated `SarFilingRecorded` —
+the officer's `ClaimsPrincipal` carries `acr`/`auth_time` claims
+directly, the same mechanism `MeridianWorkflowCScenarioAssertions.cs`'s
+own test already proves, satisfied without a real DevIdp round trip
+since this seeder talks to `PublishService` in-process like every other
+seed publish) — there was no `AdverseEvent` entity and no SAR ever
+filed at all until this pass.
 
 **A genuinely interesting, separate finding surfaced building the
 screening playbook**: the registered `ApplicantIdentity` `ViewDefinition`
@@ -70,15 +79,13 @@ template is a real content decision, out of this pass's scope) —
 flagged plainly in the playbook's own caption instead of quietly
 producing a misleadingly sparse screenshot.
 
-Two real gaps remain, tracked in `TODO.md`: Meridian's Workflow B
+One real gap remains, tracked in `TODO.md`: Meridian's Workflow B
 (Relying-Party Access) has a real, tested mechanism
 (`MeridianWorkflowBHttpSqliteTests.cs`) but it's a token-exchange +
 `revealField` GraphQL mutation, not a browsable entity — there is no
 `client-web` UI surface for it at all, and building one would be a new
-production UI feature, not a wiring change. Workflow C's SAR-escalation
-half (`SarFilingRecorded`) needs a real RFC 9470 step-up authentication
-flow `Samples.Meridian.Seed` doesn't perform. Add a row here in the
-same pass a new playbook test lands, matching this repo's own "keep the
-catalog in sync" convention for every other consolidated index
-(`docs/patterns/README.md`, `docs/libraries/README.md`, `docs/
-references.md`).
+production UI feature, not a wiring change (deliberately not built —
+see `TODO.md`). Add a row here in the same pass a new playbook test
+lands, matching this repo's own "keep the catalog in sync" convention
+for every other consolidated index (`docs/patterns/README.md`,
+`docs/libraries/README.md`, `docs/references.md`).

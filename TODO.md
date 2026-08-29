@@ -27,11 +27,11 @@ here instead of inlining.
 
 - [ ] **Meridian's Workflow B (Relying-Party Access) has no `client-web`
   UI surface at all — building one is a real new UI feature, not
-  wiring.** UI-playbook coverage now spans 7 of the two domains'
-  workflows (`docs/playbooks/README.md`'s catalog) — every remaining
-  gap this session found either has no UI to walk through
-  (this item) or needs an authentication flow the seeder can't perform
-  (the next item). Confirmed the mechanism itself is real and already
+  wiring.** UI-playbook coverage now spans 8 of the two domains'
+  workflows (`docs/playbooks/README.md`'s catalog) — this is the one
+  remaining gap, and it's categorically different from every other one
+  closed this session: there's no missing seed data or client instance
+  that would fix it. Confirmed the mechanism itself is real and already
   proven — `MeridianWorkflowBHttpSqliteTests.cs` exercises a full
   UcanDelegation + OAuth Token Exchange + `revealField` round trip
   end to end — but it's a delegation token used for a GraphQL
@@ -46,19 +46,21 @@ here instead of inlining.
   features beyond what the task requires" rule. Revisit only if a real
   product reason for that UI surfaces independently of the playbook
   initiative.
-- [ ] **Meridian's Workflow C SAR-escalation half needs a step-up
-  authentication flow `Samples.Meridian.Seed` doesn't perform.**
-  The periodic-screening half is now covered (`docs/playbooks/
-  meridian/workflow-c-periodic-screening-and-sar-escalation.md`,
-  screening only) — `SarFilingRecorded` itself
-  (`MeridianWorkflowC.cs`) declares `RequiredSignature: ["urn:kyc:acr:
-  step-up"]`, a real RFC 9470 step-up-authentication gate the seed
-  script has no mechanism to satisfy. A second, independent, real
-  finding from building that playbook: the registered `ApplicantIdentity`
-  `ViewDefinition` template's own bound fields don't match `Sanctions
-  ScreeningPerformed`'s payload shape at all, so only `applicantId`
-  renders — `ScreeningDate`/`MatchFound`/etc. are genuinely published
-  but never appear on screen through that template. Not fixed (a real
-  content decision, out of this pass's scope) — flagged in the
-  playbook's own caption and `docs/playbooks/README.md` instead of
-  producing a silently misleading screenshot.
+- [ ] **Registered `ViewDefinition` templates can silently mismatch the
+  payload shape actually available to a given client instance —
+  cosmetic, not a defect, but worth a real fix eventually.** Found
+  building both Meridian Workflow C playbooks: the `ApplicantIdentity`
+  template's bound fields (`applicantId`/`documentType`/
+  `claimedLegalName`/`dateOfBirth`/`did`) don't cover
+  `SanctionsScreeningPerformed`'s or `SarFilingRecorded`'s own payload
+  shape at all, so only `applicantId` ever renders through it for
+  either — `ScreeningDate`/`MatchFound`/`FilingReferenceId`/`Narrative`
+  are genuinely published but never appear on screen through that
+  template, because a `ViewDefinition` is scoped to an `EntityType`
+  while the data actually available in a given client instance is
+  scoped to the one `EventType` it subscribes to, and nothing
+  reconciles the two. Not fixed (redesigning the template, or teaching
+  `TemplateRenderer` to fall back per-field, is a real content/design
+  decision) — flagged in both playbooks' own captions and `docs/
+  playbooks/README.md` instead of silently shipping a misleadingly
+  sparse screenshot.

@@ -85,11 +85,48 @@ await PublishSeedEventAsync("SanctionsScreeningPerformed", MeridianWorkflowA.App
     Guid.Parse("b0000004-0000-0000-0000-000000001001"),
     $$"""{"ApplicantId":"{{ApplicantId}}","ScreeningDate":"2026-02-01","ListsChecked":["OFAC","EU-CFSP"],"MatchFound":false}""");
 
+// Workflow C's SAR-escalation half -- a second, later screening that DOES
+// match (same field values the feature doc's own worked example uses:
+// docs/domains/digital-identity-kyc/features/periodic-screening-and-sar-
+// escalation.md), a compliance officer's authorityDecision accepting the
+// hit, then the SAR filing itself. SarFilingRecorded declares
+// RequiredSignature: ["urn:kyc:acr:step-up"] (MeridianWorkflowC.cs) --
+// satisfied here the same way MeridianWorkflowCScenarioAssertions.cs's own
+// "AfterSteppingUp..." test does it: an "acr"/"auth_time" claim pair
+// directly on the ClaimsPrincipal, no real DevIdp round trip needed, since
+// this seeder (like Samples.Vitals.Seed) talks to PublishService directly
+// rather than over HTTP.
+var officerPrincipal = new ClaimsPrincipal(new ClaimsIdentity(
+    [
+        new Claim("sub", "compliance-officer-1"),
+        new Claim("identity", "aml-review"),
+        new Claim("acr", "urn:kyc:acr:step-up"),
+        new Claim("auth_time", DateTimeOffset.UtcNow.ToUnixTimeSeconds().ToString()),
+    ], "seed"));
+
+var matchedScreeningEventId = Guid.Parse("b0000005-0000-0000-0000-000000001001");
+await PublishSeedEventAsync("SanctionsScreeningPerformed", MeridianWorkflowA.AppId,
+    matchedScreeningEventId,
+    $$"""{"ApplicantId":"{{ApplicantId}}","ScreeningDate":"2026-07-30","ListsChecked":["OFAC-SDN"],"MatchFound":true,"MatchConfidence":0.87,"MatchedName":"Jane Smith","MatchedListEntryId":"SDN-44291"}""",
+    seedUser, reviewPending: true);
+
+await PublishSeedEventAsync("authorityDecision", MeridianWorkflowA.AppId,
+    Guid.Parse("b0000006-0000-0000-0000-000000001001"),
+    $$"""{"targetEventId":"{{matchedScreeningEventId}}","decision":"accepted","decidingActorId":"compliance-officer-1","reason":"confirmed match against SDN-44291"}""",
+    officerPrincipal);
+
+await PublishSeedEventAsync("SarFilingRecorded", MeridianWorkflowA.AppId,
+    Guid.Parse("b0000007-0000-0000-0000-000000001001"),
+    $$"""{"ApplicantId":"{{ApplicantId}}","TargetScreeningEventId":"{{matchedScreeningEventId}}","FilingReferenceId":"SAR-2026-00417","Narrative":"confirmed OFAC-SDN match, filed per BSA requirements"}""",
+    officerPrincipal, meaning: "approved filing");
+
 Console.WriteLine("Samples.Meridian.Seed complete.");
 
-async Task PublishSeedEventAsync(string eventType, string appId, Guid eventId, string payload)
+async Task PublishSeedEventAsync(string eventType, string appId, Guid eventId, string payload, ClaimsPrincipal? principal = null, bool reviewPending = false, string? meaning = null)
 {
-    var result = await publisher.PublishAsync(eventType, new PublishEventRequest(appId, 1, payload, null, eventId), seedUser);
+    var result = await publisher.PublishAsync(eventType,
+        new PublishEventRequest(appId, 1, payload, null, eventId, ReviewPending: reviewPending, Meaning: meaning),
+        principal ?? seedUser);
     if (result is not PublishResult.Accepted accepted)
         throw new InvalidOperationException($"Seeding {eventType} failed: {result}");
     Console.WriteLine($"Published {eventType} -> {accepted.EntityId} ({accepted.Status})");

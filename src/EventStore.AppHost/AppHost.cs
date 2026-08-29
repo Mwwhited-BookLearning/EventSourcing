@@ -284,6 +284,26 @@ var clientWebMeridianScreening = builder.AddViteApp("client-web-meridian-screeni
     .WithHttpEndpoint(port: Port("ClientWebMeridianScreening", 5179))
     .WithExternalHttpEndpoints();
 
+// Workflow C's SAR-escalation half -- Samples.Meridian.Seed now performs
+// the real step-up-authenticated SarFilingRecorded publish (a compliance
+// officer's ClaimsPrincipal carrying "acr"/"auth_time" directly, the same
+// mechanism MeridianWorkflowCScenarioAssertions.cs's own passing test
+// already proves, satisfied without a real DevIdp round trip since this
+// seeder talks to PublishService in-process). This instance is what makes
+// the resulting SarFilingRecorded event Browse-reachable at all.
+var clientWebMeridianSarFiling = builder.AddViteApp("client-web-meridian-sarfiling", "../../client-web")
+    .WithReference(eventstore)
+    .WaitFor(eventstore)
+    .WithReference(devIdp)
+    .WithEnvironment("VITE_HOST_BASE_URL", eventstore.GetEndpoint("https"))
+    .WithEnvironment("VITE_AUTH_BASE_URL", devIdp.GetEndpoint("http"))
+    .WithEnvironment("VITE_APP_ID", "kyc")
+    .WithEnvironment("VITE_ENTITY_TYPE", "applicantidentity")
+    .WithEnvironment("VITE_EVENT_TYPE", "SarFilingRecorded")
+    .WithEnvironment("VITE_ENTITY_ID_FIELD", "applicantId")
+    .WithHttpEndpoint(port: Port("ClientWebMeridianSarFiling", 5180))
+    .WithExternalHttpEndpoints();
+
 // Two more Vitals instances, same shape as clientWebVitals above --
 // ADR-039's one-event-type-per-instance model means Workflow B's Device
 // entities and Workflow D's IonmAlert entities need their own dedicated
@@ -356,14 +376,16 @@ devIdp.WithEnvironment("Cors__AllowedOrigins__0", clientWeb.GetEndpoint("http"))
     .WithEnvironment("Cors__AllowedOrigins__3", clientWebVitalsDevice.GetEndpoint("http"))
     .WithEnvironment("Cors__AllowedOrigins__4", clientWebVitalsIonmAlert.GetEndpoint("http"))
     .WithEnvironment("Cors__AllowedOrigins__5", clientWebVitalsAdverseEvent.GetEndpoint("http"))
-    .WithEnvironment("Cors__AllowedOrigins__6", clientWebMeridianScreening.GetEndpoint("http"));
+    .WithEnvironment("Cors__AllowedOrigins__6", clientWebMeridianScreening.GetEndpoint("http"))
+    .WithEnvironment("Cors__AllowedOrigins__7", clientWebMeridianSarFiling.GetEndpoint("http"));
 eventstore.WithEnvironment("Cors__AllowedOrigins__0", clientWeb.GetEndpoint("http"))
     .WithEnvironment("Cors__AllowedOrigins__1", clientWebVitals.GetEndpoint("http"))
     .WithEnvironment("Cors__AllowedOrigins__2", clientWebMeridian.GetEndpoint("http"))
     .WithEnvironment("Cors__AllowedOrigins__3", clientWebVitalsDevice.GetEndpoint("http"))
     .WithEnvironment("Cors__AllowedOrigins__4", clientWebVitalsIonmAlert.GetEndpoint("http"))
     .WithEnvironment("Cors__AllowedOrigins__5", clientWebVitalsAdverseEvent.GetEndpoint("http"))
-    .WithEnvironment("Cors__AllowedOrigins__6", clientWebMeridianScreening.GetEndpoint("http"));
+    .WithEnvironment("Cors__AllowedOrigins__6", clientWebMeridianScreening.GetEndpoint("http"))
+    .WithEnvironment("Cors__AllowedOrigins__7", clientWebMeridianSarFiling.GetEndpoint("http"));
 
 // Dashboard-only grouping (WithParentRelationship carries no lifecycle/
 // dependency meaning of its own -- that's WithReference/WaitFor's job
@@ -391,6 +413,7 @@ clientWebVitalsIonmAlert.WithParentRelationship(vitalsSeed);
 clientWebVitalsAdverseEvent.WithParentRelationship(vitalsSeed);
 clientWebMeridian.WithParentRelationship(meridianSeed);
 clientWebMeridianScreening.WithParentRelationship(meridianSeed);
+clientWebMeridianSarFiling.WithParentRelationship(meridianSeed);
 vitalsSimulator.WithParentRelationship(vitalsSeed);
 meridianSimulator.WithParentRelationship(meridianSeed);
 
