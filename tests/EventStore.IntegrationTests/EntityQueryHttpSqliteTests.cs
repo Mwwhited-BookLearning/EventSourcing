@@ -311,6 +311,124 @@ public class EntityQueryHttpSqliteTests
         Assert.AreEqual(4, onlyAttachment.GetProperty("sizeBytes").GetInt64());
     }
 
+    // TODO.md, "Data grids: a real paged server query" -- entities_{...}/
+    // entityCount_{...}, a real server-side page over LiveEntityStore
+    // (first/skip, not a Relay Connection -- see EntityQueryTypeModule's
+    // own comment for why, matching LineageQueries' already-established
+    // precedent in this exact schema).
+    [TestMethod]
+    public async Task PagedEntityListReturnsTheRequestedSliceInEntityIdOrder()
+    {
+        await PublishAsync("GadgetCreated", """{ "GadgetId": "zzpage-1", "Label": "First" }""");
+        await PublishAsync("GadgetCreated", """{ "GadgetId": "zzpage-2", "Label": "Second" }""");
+        await PublishAsync("GadgetCreated", """{ "GadgetId": "zzpage-3", "Label": "Third" }""");
+        await Task.Delay(500);
+
+        // "zz"-prefixed IDs sort after every other gadget this shared-class
+        // fixture's OTHER tests publish (plain "g-"/"page-log-" IDs) -- first
+        // enough to cover the whole real set (this class never publishes
+        // anywhere near 1000 gadgets), then filtered down client-side to
+        // just these three, so this test's own paging assertions can't be
+        // thrown off by however many gadgets another test method happened
+        // to publish first into this same shared AppId/EntityType.
+        async Task<string[]> FetchOwnPageAsync(int first, int skip)
+        {
+            var response = await ExecuteGraphQlAsync(
+                $$"""query { entities_entityquery_demo_1_gadget(first: {{first}}, skip: {{skip}}) { entityId label } }""",
+                "follower-client", "follower-client-secret", "events:follow");
+            Assert.IsFalse(response.TryGetProperty("errors", out _), response.ToString());
+            return response.GetProperty("data").GetProperty("entities_entityquery_demo_1_gadget")
+                .EnumerateArray().Select(e => e.GetProperty("entityId").GetString()!)
+                .Where(id => id.Contains(":gadget:zzpage-"))
+                .ToArray();
+        }
+
+        var wholeSet = await FetchOwnPageAsync(first: 1000, skip: 0);
+        CollectionAssert.AreEqual(
+            new[] { $"{AppId}:gadget:zzpage-1", $"{AppId}:gadget:zzpage-2", $"{AppId}:gadget:zzpage-3" }, wholeSet,
+            "ordered by EntityId -- zzpage-1 before zzpage-2 before zzpage-3");
+
+        // first: 2 slices the FULL (contaminated-by-other-tests) result set
+        // server-side, not this test's own already-filtered view of it --
+        // assert against the position each zzpage-N id lands at within
+        // that full ordering, not against a fixed page size of "our" 3.
+        var page1 = await ExecuteGraphQlAsync(
+            """query { entities_entityquery_demo_1_gadget(first: 1000, skip: 0) { entityId } }""",
+            "follower-client", "follower-client-secret", "events:follow");
+        var fullOrderedIds = page1.GetProperty("data").GetProperty("entities_entityquery_demo_1_gadget")
+            .EnumerateArray().Select(e => e.GetProperty("entityId").GetString()!).ToArray();
+        var zzpage1Index = Array.IndexOf(fullOrderedIds, $"{AppId}:gadget:zzpage-1");
+        Assert.IsTrue(zzpage1Index >= 0, "zzpage-1 must appear somewhere in the full ordered set");
+
+        var narrowPage = await FetchOwnPageAsync(first: 2, skip: zzpage1Index);
+        CollectionAssert.AreEqual(
+            new[] { $"{AppId}:gadget:zzpage-1", $"{AppId}:gadget:zzpage-2" }, narrowPage,
+            "skip: <zzpage-1's own real position>, first: 2 -- a real server-side slice, not a client-side re-filter");
+    }
+
+    [TestMethod]
+    public async Task EntityCountReflectsTheFullMatchingSetRegardlessOfPageSize()
+    {
+        await PublishAsync("GadgetCreated", """{ "GadgetId": "count-1", "Label": "A" }""");
+        await PublishAsync("GadgetCreated", """{ "GadgetId": "count-2", "Label": "B" }""");
+        await Task.Delay(500);
+
+        var result = await ExecuteGraphQlAsync(
+            """query { entityCount_entityquery_demo_1_gadget }""",
+            "follower-client", "follower-client-secret", "events:follow");
+        Assert.IsFalse(result.TryGetProperty("errors", out _), result.ToString());
+        // >= not == -- prior tests in this class also publish "gadget" entities
+        // (g-1) into the same shared AppId; this only proves the count reflects
+        // the real matching set, not a hardcoded/paged-size number.
+        Assert.IsTrue(result.GetProperty("data").GetProperty("entityCount_entityquery_demo_1_gadget").GetInt32() >= 2);
+    }
+
+    [TestMethod]
+    public async Task PagedEntityListMasksEachRowPerCallerExactlyLikeTheSingleEntityQuery()
+    {
+        await PublishAsync("WidgetCreated", """{ "WidgetId": "page-mask-1", "Name": "Masked", "Secret": "topsecret" }""");
+        await Task.Delay(500);
+
+        var result = await ExecuteGraphQlAsync(
+            """query { entities_entityquery_demo_1_widget(first: 50, skip: 0) { entityId secret { value masked erased } } }""",
+            "projections-client", "projections-client-secret", "events:follow");
+        Assert.IsFalse(result.TryGetProperty("errors", out _), result.ToString());
+        var items = result.GetProperty("data").GetProperty("entities_entityquery_demo_1_widget");
+        var row = items.EnumerateArray().Single(e => e.GetProperty("entityId").GetString() == $"{AppId}:widget:page-mask-1");
+        Assert.AreEqual(JsonValueKind.Null, row.GetProperty("secret").GetProperty("value").ValueKind, "projections-client holds no pii:view -- same masking as the single-entity query");
+        Assert.AreEqual("REDACTED", row.GetProperty("secret").GetProperty("masked").GetString());
+    }
+
+    [TestMethod]
+    public async Task PagedEntityListIsForbiddenWithoutTheRequiredReadClaim()
+    {
+        await PublishAsync("RestrictedThing", """{ "ThingId": "page-restricted-1", "Value": "classified" }""");
+        await Task.Delay(500);
+
+        var result = await ExecuteGraphQlAsync(
+            """query { entities_entityquery_demo_1_restrictedthing(first: 10, skip: 0) { entityId } }""",
+            "follower-client", "follower-client-secret", "events:follow");
+        Assert.IsTrue(result.TryGetProperty("errors", out _), "follower-client holds no vault:access claim -- expected a Forbidden GraphQL error");
+    }
+
+    [TestMethod]
+    public async Task PagedEntityListWritesOneBrowseAccessLogEntryNotOnePerRow()
+    {
+        await PublishAsync("GadgetCreated", """{ "GadgetId": "browse-log-1", "Label": "X" }""");
+        await PublishAsync("GadgetCreated", """{ "GadgetId": "browse-log-2", "Label": "Y" }""");
+        await Task.Delay(500);
+
+        await using var db = OpenDirectDb();
+        var before = await db.AccessLogEntries.CountAsync(e => e.Action == "browse" && e.ResourceRef == $"{AppId}:gadget");
+
+        await ExecuteGraphQlAsync(
+            """query { entities_entityquery_demo_1_gadget(first: 50, skip: 0) { entityId } }""",
+            "follower-client", "follower-client-secret", "events:follow");
+
+        var after = await db.AccessLogEntries.CountAsync(e => e.Action == "browse" && e.ResourceRef == $"{AppId}:gadget");
+        Assert.AreEqual(before + 1, after, "one AccessLogEntry for the browse action itself, never one per row returned (ADR-045, and avoids multiplying Postgres append contention)");
+    }
+
     [TestMethod]
     public async Task AnEntityWithNoAttachmentsReturnsAnEmptyList()
     {

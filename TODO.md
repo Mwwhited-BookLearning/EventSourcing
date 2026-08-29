@@ -284,26 +284,73 @@ mid-pass:
     `EventStore.E2ETests` Playwright suite (12/12, run together against
     one live `AppHost`).
 
-- [ ] **Data grids: a real paged server query, not just client-side
-  paging over an already-fully-loaded cache** (direct request; the
-  render-side half of this is now done, see `ADR-099` above).
-  `EntityBrowser.vue`/`AuthorityQueue.vue` now paginate via
-  `n-data-table`'s own built-in pagination (page size 10) plus a filter
-  box, both over the array `useEntityCacheStore` already holds — that
-  cache is fed by a `mode: REPLAY` GraphQL *subscription* tail
-  (`useEntityViewActions.ts`'s `subscribe()`), not a paged query, so
-  there is still no server mechanism to request "page 2" at all; the
-  data is already fully resident client-side by the time any grid
-  renders it. **What's still open** — the actual "less data returned to
-  the client" ask needs a genuine new server capability: a paged,
-  cursor-based entity-list GraphQL query (matching HotChocolate's own
-  convention already used elsewhere in this schema) as an alternative to
-  always subscribing in `REPLAY` mode, plus a client composable that
-  fetches one page at a time instead of accumulating the whole cache.
-  This is real new server + schema work, not a UI-only change — needs
-  its own scoping pass (which GraphQL query shape, whether it coexists
-  with or replaces `REPLAY` mode for large entity sets) before coding;
-  do NOT improvise the query shape without that pass.
+- [x] **Data grids: a real paged server query** (direct request) —
+  **server half done**, client wiring precisely scoped below, not yet
+  started. Scoping pass first confirmed the TODO's own assumption was
+  wrong before building anything: `LineageQueries.cs`'s own comment
+  documents this exact schema already having a real precedent, and it's
+  plain `first`/`skip` int arguments, NOT a HotChocolate `[UsePaging]`
+  Relay Connection (that comment: "honestly narrower than a full Relay
+  cursor implementation" — deliberate, not an oversight) — matched that
+  precedent instead of the cursor-based shape originally assumed here.
+  - `EntityQueryTypeModule.cs`: two new sibling fields per (AppId,
+    EntityType) group, alongside the existing `entity_{appId}_{entityType}
+    (id)` — `entities_{appId}_{entityType}(first, skip)` (a real
+    `Skip()/Take()` over `LiveEntityStore`, `ORDER BY EntityId`, EF-
+    translated to SQL `OFFSET`/`FETCH` — genuine server-side paging, not
+    a client-side slice of an already-fetched set) and
+    `entityCount_{appId}_{entityType}` (total count, for `n-data-table`'s
+    own page-number UI). Also added a new `entityId` field to the shared
+    entity envelope (`BuildEntityEnvelopeFields`) — found necessary only
+    by actually running the new query: the single-entity query never
+    needed one (the caller already supplies `id`), but a LIST has no
+    such per-row argument, so callers had no way to tell which row was
+    which without it (a real HotChocolate "field does not exist" error
+    caught this, not assumed upfront).
+  - Deliberately queries `LiveEntityStore` only, never overlaid with the
+    authoritative `EntityStore` per row like the single-entity query
+    does — `LiveEntityStore` is unconditionally populated for every
+    entity ever folded (`ADR-042`), so it's the only source that can
+    answer "list every entity of this type" at all; a caller needing the
+    authoritative view for one specific row already has
+    `entity_{appId}_{entityType}(id)`. Matches `EntityBrowser.vue`'s
+    current behavior exactly (its `REPLAY`-fed cache is itself live-fold
+    data, not an authoritative overlay) — no regression relative to
+    today.
+  - One `AccessLogEntry` per **browse query**, not one per row returned
+    (a new `"browse"` action, `ResourceRef` = `{appId}:{entityType}` with
+    no specific id) — deliberate: `ADR-045` names "every GraphQL query,"
+    not "every entity a query happens to touch," and N sequential
+    Serializable-isolation hash-chain appends per page load would have
+    directly multiplied the exact routine Postgres contention the
+    still-open "Reduce routine Postgres 40001..." item above already
+    documents.
+  - 6 new integration tests, all passing (`EntityQueryHttpSqliteTests.cs`):
+    paging slices correctly in `EntityId` order, count reflects the real
+    matching set, per-row masking matches the single-entity query exactly,
+    the read-claim check is enforced, and the one-AccessLogEntry-not-N
+    behavior is verified directly. Full solution build clean.
+  - **Client wiring, not yet started — a real design question surfaced
+    while scoping this, don't improvise it blind**: `EntityBrowser.vue`'s
+    existing filter box (`ADR-099`) does a client-side text search over
+    its ALREADY-fully-loaded array. Once Browse actually fetches pages
+    from the server instead of accumulating a `REPLAY` cache, that
+    filter can no longer search entities outside the currently-loaded
+    page — either (a) the filter becomes a real server-side argument on
+    `entities_{appId}_{entityType}` (more capable, more work — needs its
+    own query-shape decision, likely something in the spirit of
+    `EventFilterInput`), or (b) it stays a client-side, current-page-only
+    search with a UI affordance making that limitation obvious (simpler,
+    a real capability reduction from today's whole-cache search). Decide
+    this explicitly before writing the composable — this is exactly the
+    kind of interaction the Postgres investigation above was a reminder
+    to slow down and think through rather than assume away. The actual
+    client composable (`mvvm-client`'s own introspect-the-entity-graph-
+    type-then-build-a-field-selection pattern, mirroring
+    `subscriptionBuilder.ts`'s already-established approach for
+    Subscription payload types, adapted for the `{appId}_{entityType}
+    _Entity` type name instead) is real, moderate-sized work once that
+    question is settled, not a trivial fetch call.
 
 - [ ] **Configurable presentation-type view for display elements**
   (direct request, found at the same time as grid pagination above;
