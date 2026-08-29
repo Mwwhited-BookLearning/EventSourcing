@@ -75,18 +75,27 @@ mid-pass:
      `EntityBrowser.vue`'s own already-correct `"[masked/complex]"`
      handling; new regression test added
      (`AuthorityQueue.spec.ts`).
-- [ ] **Vitals' Workflow C (Trial Data Export and Subject Rights) is
-  still entirely uncovered** — the proving ground's own defined use case
-  most worth adding next, but a bigger lift than the two queue playbooks
-  above: `BitemporalPlaybackControl.vue`/`OfflineBundleViewer.vue`
-  already exist but are wired into no route/tab anywhere in `client-web`
-  (confirmed by grep, same shape as the Relying-Party Access gap closed
-  this session) — needs a new tab built and wired into `App.vue` before
-  a real playbook is possible, the same pattern
-  `RelyingPartyAccessPanel.vue` already established. The erasure half of
-  this workflow (`EntityErasureRequested`) may be reachable via the
-  already-generic Event Composer tab with no new UI at all -- worth
-  checking before assuming it needs the same treatment.
+- [x] **Vitals' Workflow C (Trial Data Export and Subject Rights)** —
+  done: `LineageExportAndPlaybackPanel.vue`, a new domain-agnostic
+  "Lineage & Playback" tab wiring `BitemporalPlaybackControl.vue`/
+  `OfflineBundleViewer.vue` together with `exportLineage`/
+  `downloadBundle`/`playbackAsOf` (all of which already existed, unused).
+  `VitalsWorkflowCLineageExportAndPlaybackPlaybookTests` verified against
+  a live `AppHost` — export, bundle verification, full event list, and a
+  real System-Time Playback reconstruction all demonstrated for real.
+  Found and fixed two more real bugs the same way as the queue playbooks'
+  own two: `parseNdjson` (`bundle.ts`) never actually remapped the
+  server's real PascalCase NDJSON output to the camelCase shape every
+  downstream consumer assumed (a bare, unchecked type assertion) — every
+  field was silently `undefined` until `verifyBundle`'s own date parsing
+  threw; and `PlaybookRecorder.RecordStepAsync`'s screenshot was
+  viewport-only, silently cropping this panel's own playback result
+  (which sat below the fold on a page taller than one screen) despite
+  its own visibility assertion passing — fixed to `FullPage: true`, all
+  12 playbooks regenerated under it. The erasure half of this workflow
+  (`EntityErasureRequested`) was not investigated this pass — worth
+  checking whether the already-generic Event Composer tab already
+  reaches it before assuming it needs its own UI too.
 - [ ] **Create `docs/playbooks/vitals/README.md` and `docs/playbooks/
   meridian/README.md`** (direct request) — one per "application," each
   listing that application's workflows, linking to its own (renamed)

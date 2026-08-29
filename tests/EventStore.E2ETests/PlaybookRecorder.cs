@@ -40,7 +40,16 @@ public class PlaybookRecorder
     {
         Directory.CreateDirectory(_assetDirectoryPath);
         var fileName = $"step-{_steps.Count + 1:D2}.png";
-        await page.ScreenshotAsync(new PageScreenshotOptions { Path = Path.Combine(_assetDirectoryPath, fileName) });
+        // FullPage: true -- a viewport-only screenshot silently crops
+        // whatever's currently scrolled out of view. Found only by
+        // actually reviewing a real screenshot: the Lineage & Playback
+        // panel's own reconstructed-data result rendered successfully
+        // (the test's own ToBeVisibleAsync assertion passed -- Playwright's
+        // "visible" doesn't require being within the current scroll
+        // position) but sat entirely below the fold on a page that grew
+        // taller than one viewport, so the captured image never showed it
+        // at all despite the step genuinely having worked.
+        await page.ScreenshotAsync(new PageScreenshotOptions { Path = Path.Combine(_assetDirectoryPath, fileName), FullPage = true });
         _steps.Add((fileName, caption));
     }
 

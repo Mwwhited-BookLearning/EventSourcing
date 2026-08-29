@@ -19,6 +19,7 @@ export * from './api/ucan'
 
 export * from './composables/useEntityViewActions'
 export * from './composables/useEventComposer'
+export * from './composables/useLineageExportAndPlayback'
 export * from './composables/useOnlineStatus'
 export * from './composables/usePendingAuthorityQueue'
 export * from './composables/useRelyingPartyAccess'

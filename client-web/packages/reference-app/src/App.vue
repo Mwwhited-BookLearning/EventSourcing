@@ -7,6 +7,7 @@ import EventComposer from './components/composer/EventComposer.vue'
 import VitalsPiQueue from './components/queue/VitalsPiQueue.vue'
 import MeridianAnalystQueue from './components/queue/MeridianAnalystQueue.vue'
 import RelyingPartyAccessPanel from './components/relyingParty/RelyingPartyAccessPanel.vue'
+import LineageExportAndPlaybackPanel from './components/playback/LineageExportAndPlaybackPanel.vue'
 
 // Per-instance launch configuration (ADR-039: "which EntityType/AppId/
 // subscription target an instance follows is per-instance launch
@@ -60,7 +61,7 @@ const statusMessage = ref('')
 // (ADR-039's own per-instance launch configuration, unchanged), these are
 // different VIEWS over that same subscription/outbox state, not
 // different routes/pages.
-const activeTab = ref<'detail' | 'browser' | 'composer' | 'queue' | 'relyingParty'>('detail')
+const activeTab = ref<'detail' | 'browser' | 'composer' | 'queue' | 'relyingParty' | 'lineage'>('detail')
 
 // "Domain Decision Queues" -- the one place in this otherwise domain-
 // agnostic shell that knows Vitals is "trial1" and Meridian is "kyc"
@@ -124,6 +125,7 @@ const pendingCount = computed(() => outbox.pendingFor(config.instanceId).length)
       <button type="button" :aria-pressed="activeTab === 'composer'" @click="activeTab = 'composer'">Compose</button>
       <button v-if="queueDomain" type="button" :aria-pressed="activeTab === 'queue'" @click="activeTab = 'queue'">Queue</button>
       <button v-if="queueDomain === 'meridian'" type="button" :aria-pressed="activeTab === 'relyingParty'" @click="activeTab = 'relyingParty'">Relying-Party Access</button>
+      <button type="button" :aria-pressed="activeTab === 'lineage'" @click="activeTab = 'lineage'">Lineage &amp; Playback</button>
     </nav>
 
     <template v-if="activeTab === 'detail'">
@@ -155,6 +157,8 @@ const pendingCount = computed(() => outbox.pendingFor(config.instanceId).length)
     </template>
 
     <RelyingPartyAccessPanel v-else-if="activeTab === 'relyingParty' && queueDomain === 'meridian'" :host-base-url="config.hostBaseUrl" :auth-base-url="config.authBaseUrl" :app-id="config.appId" />
+
+    <LineageExportAndPlaybackPanel v-else-if="activeTab === 'lineage'" :host-base-url="config.hostBaseUrl" :auth-base-url="config.authBaseUrl" />
   </main>
 </template>
 

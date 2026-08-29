@@ -47,6 +47,7 @@ longer carry that grouping themselves.
 | [Capture and Review Adverse Event](vitals/site-coordinator/capture-and-review-adverse-event.md) | Site Coordinator | B (downstream) | [`adverse-event-capture-and-review.md`](../domains/clinical-trials-device-telemetry/features/adverse-event-capture-and-review.md) | `VitalsWorkflowBAdverseEventPlaybookTests.RecordAdverseEventCaptureAndReviewPlaybook` |
 | [Decide a Pending IONM Alert](vitals/principal-investigator/decide-pending-alert.md) | Principal Investigator | D (queue) | [`intraoperative-monitoring-and-alert-response.md`](../domains/clinical-trials-device-telemetry/features/intraoperative-monitoring-and-alert-response.md) | `VitalsPrincipalInvestigatorQueuePlaybookTests.RecordDecidePendingAlertPlaybook` |
 | [Monitor and Respond to Alert](vitals/neurotechnologist/monitor-and-respond-to-alert.md) | Neurotechnologist | D | [`intraoperative-monitoring-and-alert-response.md`](../domains/clinical-trials-device-telemetry/features/intraoperative-monitoring-and-alert-response.md) | `VitalsWorkflowDIntraoperativeMonitoringPlaybookTests.RecordIntraoperativeMonitoringAndAlertResponsePlaybook` |
+| [Export and Playback Lineage](vitals/sponsor-auditor/export-and-playback-lineage.md) | Sponsor Auditor | C | [`trial-data-export-and-subject-rights.md`](../domains/clinical-trials-device-telemetry/features/trial-data-export-and-subject-rights.md) | `VitalsWorkflowCLineageExportAndPlaybackPlaybookTests.RecordExportAndPlaybackPlaybook` |
 
 ### Meridian
 
@@ -146,3 +147,35 @@ method explicitly, never the real `BackgroundService` inside a genuinely
 running `AppHost` — and `revealField`'s `eventId` argument needed the
 `UUID` GraphQL scalar, not the generic `ID` scalar HotChocolate's
 default `Guid` binding doesn't use.
+
+**Vitals' Workflow C (Trial Data Export and Subject Rights) needed the
+same treatment — the last of this session's proving-ground use cases
+with no UI surface at all.** `BitemporalPlaybackControl.vue`/
+`OfflineBundleViewer.vue` and their own API client functions
+(`exportLineage`/`downloadBundle`/`playbackAsOf`) already existed, fully
+built and unit-tested, but nothing in `App.vue` ever wired them together
+into a reachable screen. New `LineageExportAndPlaybackPanel.vue` — a
+domain-agnostic "Lineage & Playback" tab, reachable from any client
+instance, unlike the Relying-Party/Queue tabs — is the missing glue,
+mirroring the feature doc's own Salt mockup exactly (one Entity ID field
+feeds Export; a separate As-of SequenceNumber field feeds Playback).
+Building and running it for real found a third genuine, previously-
+undiscovered bug in the same family as the two above: `parseNdjson`
+(`bundle.ts`) did a bare `JSON.parse(...) as ExportManifest` type
+assertion against the server's own NDJSON output, but
+`LineageExportBundle.ToNdjson()` calls `System.Text.Json.JsonSerializer.
+Serialize()` with no options at all, which defaults to PascalCase (the
+C# property names verbatim — `EntityId`, `ExportedAt`, ...), never the
+camelCase the client's own `ExportManifest`/`ExportedEventLine`
+interfaces (and the comment directly above `parseNdjson`, which had
+claimed "same field names/casing as the server's... output") assumed.
+Every field read against a real bundle was silently `undefined` until
+`verifyBundle`'s own date parsing finally threw — fixed with an explicit
+shallow PascalCase-to-camelCase remap, `bundle.spec.ts`'s own mocks
+corrected to the real server shape in the same pass. A fourth, smaller
+finding from the same playbook: `PlaybookRecorder.RecordStepAsync`'s own
+screenshot was viewport-only, silently cropping a step's real result
+whenever a page grew taller than one screen (this panel's own playback
+result did, and passed its own visibility assertion while sitting
+entirely below the fold) — fixed to `FullPage: true`, and every existing
+playbook regenerated under the new capture, not just this one.
