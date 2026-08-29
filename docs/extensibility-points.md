@@ -49,7 +49,11 @@ rather than following the table's own per-seam structure): `IMaskingStrategy`,
 `EventStore.Abstractions` package (`ADR-062`, `08-build-plan.md` item 39) —
 a hosting team's custom implementation of any of these six references
 only that one small assembly, never the framework's own larger internal
-projects. `ITimestampAuthorityClient`'s own default implementation
+projects. `ISearchIndexKeyStore` (`ADR-096`) and `IEncryptedPredicateEvaluator`
+(`ADR-098`) ship in the same package, bringing the total to eight —
+`PackagingScenarioAssertions.EventStoreAbstractionsCarriesEveryCurrentlyBuiltImplementerFacingSeam`
+(`tests/EventStore.IntegrationTests`) is the automated check keeping this
+count and this doc in sync going forward. `ITimestampAuthorityClient`'s own default implementation
 (`HttpTimestampAuthorityClient`, a real RFC 3161 HTTP client using the
 BCL's `System.Security.Cryptography.Pkcs` types) ships in a separate new
 `EventStore.Timestamping` package instead, the same "interface in

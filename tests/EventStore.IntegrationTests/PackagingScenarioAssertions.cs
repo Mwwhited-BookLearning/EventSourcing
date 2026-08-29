@@ -36,12 +36,16 @@ public class PackagingScenarioAssertions
     [TestMethod]
     public void EventStoreAbstractionsCarriesEveryCurrentlyBuiltImplementerFacingSeam()
     {
-        // The 6 catalogued interfaces (docs/extensibility-points.md) that
+        // The 8 catalogued interfaces (docs/extensibility-points.md) that
         // are genuinely implementer-facing with no back-reference into the
         // engine's own internals -- see EventStore.Abstractions.csproj's
         // own header comment for why IEventLineageQueryProvider/
         // IJsonPathTranslator and IProjection<T>/IInterchangeFormatAdapter
-        // are deliberately NOT here.
+        // are deliberately NOT here. ISearchIndexKeyStore/
+        // IEncryptedPredicateEvaluator (ADR-096/098) added to this list --
+        // found stale (still listing only the original 6) by this exact
+        // test failing once those two interfaces actually shipped, not
+        // caught proactively.
         var assembly = typeof(IMaskingStrategy).Assembly;
         var interfaceNames = assembly.GetExportedTypes().Where(t => t.IsInterface).Select(t => t.Name).ToHashSet();
 
@@ -53,6 +57,8 @@ public class PackagingScenarioAssertions
             nameof(IErasureKeyStore),
             nameof(IAttachmentContentStore),
             nameof(ITimestampAuthorityClient),
+            nameof(ISearchIndexKeyStore),
+            nameof(IEncryptedPredicateEvaluator),
         };
         foreach (var name in expected)
             Assert.IsTrue(interfaceNames.Contains(name), $"expected {name} in EventStore.Abstractions");
