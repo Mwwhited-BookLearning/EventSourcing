@@ -121,28 +121,85 @@ mid-pass:
   (Azure Portal/Azure DevOps-style), replacing `client-web`'s current
   plain-HTML tab-button styling entirely — direct request, deliberately
   sequenced AFTER the diagram/rename/README/expansion work above, not
-  alongside it.** Every Playwright playbook test currently in flight
-  locates elements by role/label text against the CURRENT plain markup
-  (`GetByRole(AriaRole.Button, new() { Name = "Browse" })`, etc.) — a
-  navigation-pattern rewrite touches that same markup across every tab,
-  so doing it mid-batch would mean re-verifying every playbook a second
-  time, not once. Real work this item actually needs, not yet scoped in
-  detail: (1) research Naive UI's own Vue 3 compatibility and pull in
-  the library per `docs/libraries/README.md`'s existing "one file per
-  adopted framework" convention (this project's own standing "buy over
-  build," "verify before citing" rules apply to a new UI dependency the
-  same as anything else) — no such doc exists for it yet; (2) redesign
-  `App.vue`'s current top-nav tab-button shell into a left-hand
-  navigation rail (collapsible sections, matching the Azure Portal/DevOps
-  pattern named) — a real layout and routing-model change, not a drop-in
-  style swap, since today's shell is a plain tab switcher with no router
-  at all (ADR-039's own "no Vue Router dependency" decision may need
-  revisiting, or may not — worth checking before assuming); (3) once the
-  shell is rebuilt, every existing Vitest component test AND every
-  Playwright playbook test's own selectors will likely need updating to
-  match the new markup, in the same pass, not deferred; (4) decide
-  whether `EntityBrowser.vue`/`GenericFallbackView.vue`/`EventComposer.vue`/
-  the two Queue components/`RelyingPartyAccessPanel.vue` get restyled
-  with Naive UI's own components (`n-table`, `n-form`, `n-button`, etc.)
-  in the same pass or as follow-on work per component -- a real scope
-  decision, not yet made.
+  alongside it.** In progress: `naive-ui@2.45.3` + `vue-router@5.3.0`
+  installed (`npm audit` clean), user confirmed via `AskUserQuestion`
+  both (a) restyle every existing component with real Naive UI
+  components in the same pass as the shell, not just the shell, and (b)
+  introduce real Vue Router routes rather than staying tab-switcher/
+  router-free. Corrected a misattribution made while scoping this: the
+  "plain tab switcher, not a router dependency" note is a code comment
+  in `App.vue` citing the "Proving-Ground Application UX" build-plan
+  item, NOT `ADR-039` — `ADR-039` never mentions routing at all, so the
+  new ADR below documents this as a fresh decision, not an `ADR-039`
+  revision. `docs/libraries/README.md` already carries a Naive UI row
+  (citing `docs/patterns/mvvm-client-architecture.md`'s Styling layer,
+  `theme/tokens.js` + `themeOverrides`) — that row describes the
+  **theming** layer only, predates any actual install, and doesn't
+  mention navigation/routing/data-grids at all, so it needs its "Adopted
+  in" column updated to the new ADR, not replacing/contradicting it.
+  Remaining work: (1) write the new ADR (next number `ADR-099`) covering
+  Naive UI adoption, Vue Router adoption, the left-nav shell, AND the two
+  new items below (grid pagination, chart-view configuration) as one
+  coherent client-architecture decision; add its index row to
+  `docs/07-adrs.md`; (2) redesign `App.vue`'s top-nav tab-button shell
+  into a left-hand navigation rail with real routes for Detail/Browse/
+  Composer/Queue/Relying-Party/Lineage; (3) restyle every existing
+  component (`EntityView`/`GenericFallbackView`, `EntityBrowser`,
+  `EventComposer`, the two Queue components, `RelyingPartyAccessPanel`,
+  `LineageExportAndPlaybackPanel`, `BitemporalPlaybackControl`,
+  `OfflineBundleViewer`) with real Naive UI components in the same pass;
+  (4) update every Vitest component spec whose selectors break against
+  the new markup; (5) update every one of the 12 Playwright playbook
+  tests' own navigation selectors to match the new left-nav/router
+  markup, then re-verify all 12 together against a live `AppHost`; (6)
+  full solution build + full Vitest suite + full Playwright suite
+  regression, commit, push.
+
+- [ ] **Data grids: real pagination, not just client-side paging over an
+  already-fully-loaded cache** (direct request, found while starting the
+  Naive UI pass above). `EntityBrowser.vue` (and both Queue components)
+  render 100% of `useEntityCacheStore`'s in-memory cache today — that
+  cache is fed by a `mode: REPLAY` GraphQL *subscription* tail
+  (`useEntityViewActions.ts`'s `subscribe()`), not a paged query, so
+  there is currently no server mechanism to request "page 2" at all; the
+  data is already fully resident client-side by the time any grid
+  renders it. Two distinct halves, sequenced together but worth keeping
+  separate in the writeup: (a) **near-term, in the Naive UI pass itself**
+  — use `n-data-table`'s built-in pagination prop against the existing
+  in-memory array, which at least bounds DOM/render cost per page (real,
+  but does NOT reduce what's sent over the wire, since REPLAY mode
+  already streamed everything); (b) **the actual "less data returned to
+  the client" ask** needs a genuine new server capability — a paged
+  entity-list GraphQL query (cursor-based, matching HotChocolate's own
+  convention already used elsewhere in this schema) as an alternative to
+  always subscribing in `REPLAY` mode, plus a client composable that
+  fetches one page at a time instead of accumulating the whole cache.
+  This is real new server + schema work, not a UI-only change — needs
+  its own scoping pass (which GraphQL query shape, whether it coexists
+  with or replaces `REPLAY` mode for large entity sets) before coding;
+  do NOT improvise the query shape without that pass. Covered by the
+  same `ADR-099` as the Naive UI shell (one client-architecture
+  decision), but (b)'s query-shape design is real, separate work, not a
+  restyle.
+
+- [ ] **Configurable charting view for display elements** (direct
+  request, found at the same time as grid pagination above). Some
+  fields/views (the user named "graphs" — likely this project's own
+  time-series-shaped data, e.g. Vitals' IONM alert telemetry or
+  screening-history trends, not a literal existing "graph" component,
+  since none exists yet) would read better as a chart than as a table
+  row. Needs: (1) a charting library decision — Naive UI ships no
+  charting components of its own, so this is a new dependency choice,
+  same "buy over build"/"verify before citing" bar as Naive UI itself,
+  with its own `docs/libraries/web/{library}.md` entry once chosen; (2)
+  a declarative way to mark a field/view as chart-renderable (a
+  `chartable`/`chartType` config alongside the existing `.columns.js`/
+  `.fields.js` ViewModel-structure convention `docs/patterns/mvvm-
+  client-architecture.md` already establishes, not a one-off per
+  component); (3) at least one real example wired against real data
+  (Vitals' IONM/device telemetry is the natural first candidate, given
+  its own time-series shape already discussed in `docs/domains/
+  clinical-trials-device-telemetry/`). Deliberately sequenced as
+  follow-on work after the Naive UI shell/restyle lands, not folded into
+  it blind — picking a charting library and a config schema is its own
+  real decision, not a restyle detail.

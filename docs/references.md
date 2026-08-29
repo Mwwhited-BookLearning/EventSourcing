@@ -49,7 +49,8 @@ comprehensive index, organized by whether the concept was actually
 | Request-Reply / Correlation Identifier | [Hohpe & Woolf — Enterprise Integration Patterns: Correlation Identifier](https://www.enterpriseintegrationpatterns.com/patterns/messaging/CorrelationIdentifier.html) | `ADR-094` — `RespondsToEventId` envelope field; same authors' Idempotent Receiver/Inbox/Dead Letter Channel already inform `ADR-011`/`ADR-020`/`ADR-023` (`docs/patterns/idempotent-receiver-and-inbox.md`) |
 | Vue 3 | [vuejs.org](https://vuejs.org/) | `ADR-039`, `mvvm-client-architecture.md` — see `docs/libraries/web/vue.md` |
 | Pinia | [pinia.vuejs.org](https://pinia.vuejs.org/) | `mvvm-client-architecture.md` — see `docs/libraries/web/pinia.md` |
-| Naive UI | [naiveui.com](https://www.naiveui.com/) | `mvvm-client-architecture.md` — see `docs/libraries/web/naive-ui.md` |
+| Naive UI | [naiveui.com](https://www.naiveui.com/) | `ADR-099`, `mvvm-client-architecture.md` — see `docs/libraries/web/naive-ui.md` |
+| Vue Router | [router.vuejs.org](https://router.vuejs.org/) | `ADR-099` — see `docs/libraries/web/vue-router.md` |
 | OpenTelemetry | [opentelemetry.io](https://opentelemetry.io/), via .NET Aspire's `ServiceDefaults` | `ADR-026` — logging, tracing, and metrics for every service; `ADR-088` — mechanism-level custom `Meter`/`ActivitySource` instrumentation (`Duplex.Core`) for the framework's own async mechanisms (router fold lag, peer-sync outbox depth/age, webhook delivery lag, hash-chain verification outcomes) |
 | axe-core | [github.com/dequelabs/axe-core](https://github.com/dequelabs/axe-core) | `ADR-073` — automated WCAG 2.1/2.2 A/AA conformance checks (`wcag2a`/`wcag2aa`/`wcag21a`/`wcag21aa` rulesets) against the MVVM client's actually-rendered DOM — see `docs/libraries/web/axe-core.md` |
 | Docker Compose | [docs.docker.com/compose](https://docs.docker.com/compose/) | `ADR-026` — production deployment path |
