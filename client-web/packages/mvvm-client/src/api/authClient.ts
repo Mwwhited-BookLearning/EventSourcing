@@ -37,3 +37,39 @@ export async function fetchToken(
   const body = (await response.json()) as { access_token: string }
   return body.access_token
 }
+
+// RFC 8693 OAuth 2.0 Token Exchange, ADR-043/044's own mechanism for
+// redeeming a UCAN delegation -- mirrors MeridianWorkflowBHttpSqliteTests.cs's
+// own ExchangeAsync exactly. `subjectToken` is a self-signed UcanDelegation
+// JWT (ucan.ts's own signUcanDelegation); "urn:eventstore:token-type:
+// external-subject" is the fixed subject_token_type EventStore.DevIdp
+// registers this grant type under -- not a real IANA-registered URN, this
+// dev/POC IdP's own literal string. The resulting access token is bound
+// (RFC 9449 cnf.jkt) to whichever key signs this call's own DPoP proof --
+// createDpopProof's module-level singleton key here, the same key every
+// other call from this page already proves possession of, so the granted
+// token can be used immediately by any other client in this module
+// without a second key to track.
+export async function exchangeUcanDelegationForToken(authBaseUrl: string, appId: string, clientId: string, clientSecret: string, subjectToken: string): Promise<string> {
+  const url = `${authBaseUrl}/connect/token`
+  const params: Record<string, string> = {
+    grant_type: 'urn:ietf:params:oauth:grant-type:token-exchange',
+    subject_token: subjectToken,
+    subject_token_type: 'urn:eventstore:token-type:external-subject',
+    requested_token_type: 'urn:ietf:params:oauth:token-type:access_token',
+    app_id: appId,
+    client_id: clientId,
+    client_secret: clientSecret,
+  }
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/x-www-form-urlencoded',
+      DPoP: await createDpopProof('POST', url),
+    },
+    body: new URLSearchParams(params),
+  })
+  if (!response.ok) throw new Error(`Token exchange failed: ${response.status} ${await response.text()}`)
+  const body = (await response.json()) as { access_token: string }
+  return body.access_token
+}

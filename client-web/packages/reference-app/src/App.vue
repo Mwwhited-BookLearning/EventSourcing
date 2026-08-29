@@ -6,6 +6,7 @@ import EntityBrowser from './components/entity/EntityBrowser.vue'
 import EventComposer from './components/composer/EventComposer.vue'
 import VitalsPiQueue from './components/queue/VitalsPiQueue.vue'
 import MeridianAnalystQueue from './components/queue/MeridianAnalystQueue.vue'
+import RelyingPartyAccessPanel from './components/relyingParty/RelyingPartyAccessPanel.vue'
 
 // Per-instance launch configuration (ADR-039: "which EntityType/AppId/
 // subscription target an instance follows is per-instance launch
@@ -59,7 +60,7 @@ const statusMessage = ref('')
 // (ADR-039's own per-instance launch configuration, unchanged), these are
 // different VIEWS over that same subscription/outbox state, not
 // different routes/pages.
-const activeTab = ref<'detail' | 'browser' | 'composer' | 'queue'>('detail')
+const activeTab = ref<'detail' | 'browser' | 'composer' | 'queue' | 'relyingParty'>('detail')
 
 // "Domain Decision Queues" -- the one place in this otherwise domain-
 // agnostic shell that knows Vitals is "trial1" and Meridian is "kyc"
@@ -122,6 +123,7 @@ const pendingCount = computed(() => outbox.pendingFor(config.instanceId).length)
       <button type="button" :aria-pressed="activeTab === 'browser'" @click="activeTab = 'browser'">Browse</button>
       <button type="button" :aria-pressed="activeTab === 'composer'" @click="activeTab = 'composer'">Compose</button>
       <button v-if="queueDomain" type="button" :aria-pressed="activeTab === 'queue'" @click="activeTab = 'queue'">Queue</button>
+      <button v-if="queueDomain === 'meridian'" type="button" :aria-pressed="activeTab === 'relyingParty'" @click="activeTab = 'relyingParty'">Relying-Party Access</button>
     </nav>
 
     <template v-if="activeTab === 'detail'">
@@ -151,6 +153,8 @@ const pendingCount = computed(() => outbox.pendingFor(config.instanceId).length)
       <VitalsPiQueue v-if="queueDomain === 'vitals'" :host-base-url="config.hostBaseUrl" :auth-base-url="config.authBaseUrl" :app-id="config.appId" />
       <MeridianAnalystQueue v-else :host-base-url="config.hostBaseUrl" :auth-base-url="config.authBaseUrl" :app-id="config.appId" />
     </template>
+
+    <RelyingPartyAccessPanel v-else-if="activeTab === 'relyingParty' && queueDomain === 'meridian'" :host-base-url="config.hostBaseUrl" :auth-base-url="config.authBaseUrl" :app-id="config.appId" />
   </main>
 </template>
 

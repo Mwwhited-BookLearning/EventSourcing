@@ -41,6 +41,7 @@ the prose and its images move or delete together as one unit.
 | [Workflow B: Adverse Event Capture and Review](vitals/workflow-b-adverse-event-capture-and-review.md) | Vitals | [`adverse-event-capture-and-review.md`](../domains/clinical-trials-device-telemetry/features/adverse-event-capture-and-review.md) | `VitalsWorkflowBAdverseEventPlaybookTests.RecordAdverseEventCaptureAndReviewPlaybook` |
 | [Workflow C: Periodic Screening and SAR Escalation](meridian/workflow-c-periodic-screening-and-sar-escalation.md) (screening half) | Meridian | [`periodic-screening-and-sar-escalation.md`](../domains/digital-identity-kyc/features/periodic-screening-and-sar-escalation.md) | `MeridianWorkflowCPeriodicScreeningPlaybookTests.RecordPeriodicScreeningPlaybook` |
 | [Workflow C: SAR Filing](meridian/workflow-c-sar-filing.md) (escalation half) | Meridian | [`periodic-screening-and-sar-escalation.md`](../domains/digital-identity-kyc/features/periodic-screening-and-sar-escalation.md) | `MeridianWorkflowCSarFilingPlaybookTests.RecordSarFilingPlaybook` |
+| [Workflow B: Relying-Party Access](meridian/workflow-b-relying-party-access.md) | Meridian | [`relying-party-verification-request.md`](../domains/digital-identity-kyc/features/relying-party-verification-request.md) | `MeridianWorkflowBRelyingPartyAccessPlaybookTests.RecordRelyingPartyAccessPlaybook` |
 
 `EventStore.AppHost` now runs three more Vitals client instances
 (`client-web-vitals-device`/`DeviceOnboarded`, `client-web-vitals-
@@ -64,28 +65,36 @@ since this seeder talks to `PublishService` in-process like every other
 seed publish) — there was no `AdverseEvent` entity and no SAR ever
 filed at all until this pass.
 
-**A genuinely interesting, separate finding surfaced building the
-screening playbook**: the registered `ApplicantIdentity` `ViewDefinition`
-template's own bound fields (`applicantId`/`documentType`/
-`claimedLegalName`/`dateOfBirth`/`did`) don't match `SanctionsScreening
-Performed`'s payload shape at all — only `applicantId` renders, every
-other field on screen is blank, and the actually-useful screening data
-(`ScreeningDate`/`ListsChecked`/`MatchFound`) never appears through this
-template even though it's genuinely published. A `ViewDefinition` is
-scoped to an `EntityType`, but the data actually available in any given
-client instance is scoped to the one `EventType` it subscribes to —
-nothing currently reconciles the two. Not fixed here (redesigning the
-template is a real content decision, out of this pass's scope) —
-flagged plainly in the playbook's own caption instead of quietly
-producing a misleadingly sparse screenshot.
+The `ApplicantIdentity` `ViewDefinition` template's own bound fields
+originally only covered Workflow A's five (`applicantId`/`documentType`/
+`claimedLegalName`/`dateOfBirth`/`did`), so the screening/SAR-filing
+playbooks above briefly rendered almost entirely blank. Fixed by
+extending that one shared template with `screeningDate`/`listsChecked`/
+`matchFound`/`filingReferenceId`/`narrative` bindings (an unbound field
+already renders `''` harmlessly, so this cost nothing for instances that
+don't have those fields) — both playbooks now show real data.
+`ListsChecked` still renders blank, but for an already-known, accepted
+reason: `EventTypeSchemaReader.cs` deliberately skips top-level
+array-typed properties when building an event type's GraphQL payload at
+all, not a new gap.
 
-One real gap remains, tracked in `TODO.md`: Meridian's Workflow B
-(Relying-Party Access) has a real, tested mechanism
-(`MeridianWorkflowBHttpSqliteTests.cs`) but it's a token-exchange +
-`revealField` GraphQL mutation, not a browsable entity — there is no
-`client-web` UI surface for it at all, and building one would be a new
-production UI feature, not a wiring change (deliberately not built —
-see `TODO.md`). Add a row here in the same pass a new playbook test
-lands, matching this repo's own "keep the catalog in sync" convention
-for every other consolidated index (`docs/patterns/README.md`,
-`docs/libraries/README.md`, `docs/references.md`).
+**Workflow B (Relying-Party Access) needed a real, new `client-web` UI
+feature, not just infra wiring — built this pass, on direct request.**
+`RelyingPartyAccessPanel.vue` (Meridian-only, a new "Relying-Party
+Access" tab) runs `ADR-043`/`044`'s whole delegated-access mechanism
+live in the browser: a freshly-generated customer DID key (WebCrypto
+ECDSA P-256, `ucan.ts`) is registered as an `AppTrustRoot`, signs a UCAN
+delegation naming one field for one entity, exchanges it for a scoped
+access token (RFC 8693), then reveals the field with it — the same
+sequence `MeridianWorkflowBHttpSqliteTests.cs` already proved
+server-side, now with a real UI surface for the first time. Building and
+running this for real found and fixed two genuine bugs neither unit
+tests nor any prior isolated integration test could have caught:
+`RbacProjectionWorker` (`ADR-067`) was registered but never actually
+configured anywhere in `EventStore.AppHost` — a permanent no-op in the
+real running app, invisible to every existing test since each one
+either applies the fold directly or drives the worker's own catch-up
+method explicitly, never the real `BackgroundService` inside a genuinely
+running `AppHost` — and `revealField`'s `eventId` argument needed the
+`UUID` GraphQL scalar, not the generic `ID` scalar HotChocolate's
+default `Guid` binding doesn't use.

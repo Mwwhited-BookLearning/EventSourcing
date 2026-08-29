@@ -25,24 +25,6 @@ here instead of inlining.
 
 ## Active
 
-- [ ] **Meridian's Workflow B (Relying-Party Access) has no `client-web`
-  UI surface at all — building one is a real new UI feature, not
-  wiring.** UI-playbook coverage now spans 8 of the two domains'
-  workflows (`docs/playbooks/README.md`'s catalog) — this is the one
-  remaining gap, and it's categorically different from every other one
-  closed this session: there's no missing seed data or client instance
-  that would fix it. Confirmed the mechanism itself is real and already
-  proven — `MeridianWorkflowBHttpSqliteTests.cs` exercises a full
-  UcanDelegation + OAuth Token Exchange + `revealField` round trip
-  end to end — but it's a delegation token used for a GraphQL
-  mutation, never a `StoredEvent`/browsable entity (confirmed in that
-  test file's own header comment). `client-web`'s only screens are
-  generic entity Browse/Detail and event Compose; there is no delegation-
-  request or field-reveal screen anywhere in `client-web/packages/
-  reference-app`. A playbook here needs a real, new Vue UI feature built
-  first (a relying-party access request panel) — deliberately not built
-  this pass, since inventing UI whose only purpose is to make a
-  screenshot possible would invert this project's own "don't add
-  features beyond what the task requires" rule. Revisit only if a real
-  product reason for that UI surfaces independently of the playbook
-  initiative.
+Nothing open right now — the last item (Meridian's Workflow B UI) was
+closed by building the `Relying-Party Access` panel, on direct request;
+see `docs/changes/2026-08-28.md` for what that involved.

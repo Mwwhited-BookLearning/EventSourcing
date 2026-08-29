@@ -387,6 +387,29 @@ eventstore.WithEnvironment("Cors__AllowedOrigins__0", clientWeb.GetEndpoint("htt
     .WithEnvironment("Cors__AllowedOrigins__6", clientWebMeridianScreening.GetEndpoint("http"))
     .WithEnvironment("Cors__AllowedOrigins__7", clientWebMeridianSarFiling.GetEndpoint("http"));
 
+// ADR-067's RbacProjectionWorker (EventStore.DevIdp) -- registered
+// unconditionally (Program.cs) but a permanent no-op whenever Rbac:AppIds
+// is empty, which it always was here: this AppHost never configured it at
+// all until now. Found only by actually driving a real UcanDelegation
+// through the live app's own trust-root registration (client-web's new
+// Relying-Party Access panel, TODO.md) -- every prior exercise of this
+// mechanism was an isolated WebApplicationFactory test that either
+// applied TrustRootService's own fold method directly
+// (DelegatedGrantsRbacFederationHttpSqliteTests.cs) or drove
+// RbacProjectionWorker.CatchUpOnceAsync explicitly
+// (RbacProjectionWorkerHttpSqliteTests.cs), never the real
+// BackgroundService wired into a genuinely running AppHost -- so this gap
+// had no way to surface before. Config keys/values match that second
+// test's own already-proven configuration exactly (RbacProjectionOptions/
+// FollowClientOptions, EventStore.DevIdp/Program.cs).
+devIdp.WithEnvironment("Rbac__AppIds__0", "trial1")
+    .WithEnvironment("Rbac__AppIds__1", "kyc")
+    .WithEnvironment("Rbac__HostBaseUrl", eventstore.GetEndpoint("https"))
+    .WithEnvironment("Rbac__DevIdpBaseAddress", devIdp.GetEndpoint("http"))
+    .WithEnvironment("Rbac__Client__ClientId", "devidp-rbac-follower-client")
+    .WithEnvironment("Rbac__Client__ClientSecret", "devidp-rbac-follower-client-secret")
+    .WithEnvironment("Rbac__Client__Scope", "events:follow");
+
 // Dashboard-only grouping (WithParentRelationship carries no lifecycle/
 // dependency meaning of its own -- that's WithReference/WaitFor's job
 // above, unaffected by this). This Aspire version (13.4.6) has no
