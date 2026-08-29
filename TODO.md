@@ -185,70 +185,110 @@ mid-pass:
   the TARGET UI/UX would need rewriting the moment that adoption lands
   if written against today's plain-HTML shell first. Not yet started.
 
-- [ ] **Adopt Naive UI (`naiveui.com`) and a left-hand-nav shell
+- [x] **Adopt Naive UI (`naiveui.com`) and a left-hand-nav shell
   (Azure Portal/Azure DevOps-style), replacing `client-web`'s current
-  plain-HTML tab-button styling entirely — direct request, deliberately
-  sequenced AFTER the diagram/rename/README/expansion work above, not
-  alongside it.** In progress: `naive-ui@2.45.3` + `vue-router@5.3.0`
-  installed (`npm audit` clean), user confirmed via `AskUserQuestion`
-  both (a) restyle every existing component with real Naive UI
-  components in the same pass as the shell, not just the shell, and (b)
-  introduce real Vue Router routes rather than staying tab-switcher/
-  router-free. Corrected a misattribution made while scoping this: the
-  "plain tab switcher, not a router dependency" note is a code comment
-  in `App.vue` citing the "Proving-Ground Application UX" build-plan
-  item, NOT `ADR-039` — `ADR-039` never mentions routing at all, so the
-  new ADR below documents this as a fresh decision, not an `ADR-039`
-  revision. `docs/libraries/README.md` already carries a Naive UI row
-  (citing `docs/patterns/mvvm-client-architecture.md`'s Styling layer,
-  `theme/tokens.js` + `themeOverrides`) — that row describes the
-  **theming** layer only, predates any actual install, and doesn't
-  mention navigation/routing/data-grids at all, so it needs its "Adopted
-  in" column updated to the new ADR, not replacing/contradicting it.
-  Remaining work: (1) write the new ADR (next number `ADR-099`) covering
-  Naive UI adoption, Vue Router adoption, the left-nav shell, AND the two
-  new items below (grid pagination, chart-view configuration) as one
-  coherent client-architecture decision; add its index row to
-  `docs/07-adrs.md`; (2) redesign `App.vue`'s top-nav tab-button shell
-  into a left-hand navigation rail with real routes for Detail/Browse/
-  Composer/Queue/Relying-Party/Lineage; (3) restyle every existing
-  component (`EntityView`/`GenericFallbackView`, `EntityBrowser`,
-  `EventComposer`, the two Queue components, `RelyingPartyAccessPanel`,
-  `LineageExportAndPlaybackPanel`, `BitemporalPlaybackControl`,
-  `OfflineBundleViewer`) with real Naive UI components in the same pass;
-  (4) update every Vitest component spec whose selectors break against
-  the new markup; (5) update every one of the 12 Playwright playbook
-  tests' own navigation selectors to match the new left-nav/router
-  markup, then re-verify all 12 together against a live `AppHost`; (6)
-  full solution build + full Vitest suite + full Playwright suite
-  regression, commit, push.
+  plain-HTML tab-button styling entirely** — done, `ADR-099`
+  (`docs/adrs/adr-099-naive-ui-router-left-nav-shell.md`, indexed in
+  `docs/07-adrs.md`). `docs/libraries/README.md`'s Naive UI row's
+  "Adopted in" updated to cite it (theming-layer description kept, since
+  it was already correct); a new Vue Router row added
+  (`docs/libraries/web/vue-router.md`).
+  - `App.vue` rewritten: `appConfig.ts`/`appState.ts` extracted (config/
+    `queueDomain` at module scope so `router.ts`'s navigation guard can
+    read them without depending on component setup timing; business
+    state provided via `provide`/`inject` to six new route-view
+    components under `src/views/`). `n-config-provider` +
+    `n-layout`/`n-layout-sider`/`n-menu` left-hand rail replaces the top
+    tab-button row; `n-menu` items are render-function `RouterLink`s
+    (real `<a href>`, not a plain click handler) so deep-linking and
+    screen-reader link semantics both work. Sidebar collapse persisted
+    to `localStorage` (try/catch-wrapped). Vue Router installed with one
+    route per former tab; domain-gated routes (`/queue`, `/relying-
+    party`) redirect to `/detail` via `router.beforeEach` when
+    `queueDomain` doesn't match, replacing the old template `v-if` gates.
+  - Every existing component restyled with real Naive UI components in
+    the same pass, per the user's confirmed choice:
+    `GenericFallbackView`/`EntityBrowser`/both Queue components (via
+    `AuthorityQueue.vue`)/`EventComposer`/`RelyingPartyAccessPanel`/
+    `LineageExportAndPlaybackPanel`/`BitemporalPlaybackControl`/
+    `OfflineBundleViewer`. `EntityBrowser` and `AuthorityQueue` use
+    `n-data-table` with its own built-in pagination (page size 10) —
+    `AuthorityQueue`'s per-row Reason/Meaning inputs and Accept/Reject
+    buttons are column render functions (`h(NInput, ...)`/`h(NButton,
+    ...)`), not plain cell text. The event-type `<select>` in
+    `EventComposer` and the numeric amount field deliberately stayed
+    native HTML (documented inline) — `n-select`'s teleported dropdown
+    and a numeric `n-input` variant would have needed a disproportionate
+    test rewrite for no real UX gain here.
+  - Every Vitest spec whose selectors broke against the new markup
+    fixed (`GenericFallbackView`, `EventComposer`, `AuthorityQueue`,
+    `EntityBrowser`); all 9 reference-app spec files / 42 tests plus
+    `mvvm-client`'s own 121 pass. All 12 Playwright playbooks' nav clicks
+    updated from `GetByRole(AriaRole.Button, Name: "Browse")`-style
+    top-tab clicks to `GetByRole(AriaRole.Link, ...)` (confirmed via a
+    real run's own captured ARIA snapshot: `n-menu` items render as
+    `menuitem > link`, not buttons); all 12 pass together against a live
+    `AppHost` (`dotnet test tests/EventStore.E2ETests`, ~5.5 min).
+  - **Five real bugs found only by actually running things, not by
+    reading the code back** (this project's own most-repeated lesson,
+    holding again):
+    1. `n-card`'s `title`/`header` renders `role="heading"` with no
+       `aria-level` in this Naive UI version — a genuine axe-core
+       critical violation, caught by `a11y.spec.ts`'s own real
+       `GenericFallbackView` check. Fixed by using a real `<h2>` instead
+       of the `title` prop everywhere a heading was needed.
+    2. `aria-label` on `n-card`'s own root `<div>` (no ARIA role) is a
+       real axe-core `aria-prohibited-attr` finding — moved to a
+       wrapping `<section aria-label="...">` instead, everywhere this
+       pattern occurred.
+    3. `n-form-item`'s `label` prop never actually associates via `for`/
+       `htmlFor` in this Naive UI version (confirmed by reading
+       `node_modules/naive-ui`'s own `FormItem.mjs` — no such wiring
+       exists) — `label-for` is not a real prop and silently no-ops;
+       `RelyingPartyAccessPanel`'s own Playwright playbook (`GetByLabel`)
+       caught this for real. Fixed with an explicit `aria-label` on each
+       input matching its visible label text, everywhere this pattern
+       occurred, not just the one field the test happened to touch.
+    4. Naive UI's `input-props`/`inputProps` TypeScript type has no
+       index signature for arbitrary attributes (`data-testid`, `id`,
+       `aria-label` all rejected at compile time by `vue-tsc`) — worked
+       around with an explicit `as any` cast at each call site.
+    5. Adding `n-data-table` pagination to `EntityBrowser` made a
+       specific, already-known `EntityId` (the seed data's own
+       continuity subject) genuinely undiscoverable once the
+       long-running proving-ground simulator pushed more than a page of
+       newer entities in front of it — caught by
+       `VitalsWorkflowAPlaybookTests` failing for real against a live
+       simulator, not a static fixture. Fixed with a client-side filter
+       box (`EntityBrowser.vue`) over the same already-loaded array — the
+       minimum fix that makes pagination usable rather than just
+       smaller; 8 of the 12 playbooks' own row-lookup steps updated to
+       fill the filter before asserting a specific row is visible.
+  - Full regression green: `dotnet build EventStore.slnx` (0 errors),
+    full `client-web` Vitest suite both workspaces (63 tests), full
+    `EventStore.E2ETests` Playwright suite (12/12, run together against
+    one live `AppHost`).
 
-- [ ] **Data grids: real pagination, not just client-side paging over an
-  already-fully-loaded cache** (direct request, found while starting the
-  Naive UI pass above). `EntityBrowser.vue` (and both Queue components)
-  render 100% of `useEntityCacheStore`'s in-memory cache today — that
+- [ ] **Data grids: a real paged server query, not just client-side
+  paging over an already-fully-loaded cache** (direct request; the
+  render-side half of this is now done, see `ADR-099` above).
+  `EntityBrowser.vue`/`AuthorityQueue.vue` now paginate via
+  `n-data-table`'s own built-in pagination (page size 10) plus a filter
+  box, both over the array `useEntityCacheStore` already holds — that
   cache is fed by a `mode: REPLAY` GraphQL *subscription* tail
   (`useEntityViewActions.ts`'s `subscribe()`), not a paged query, so
-  there is currently no server mechanism to request "page 2" at all; the
+  there is still no server mechanism to request "page 2" at all; the
   data is already fully resident client-side by the time any grid
-  renders it. Two distinct halves, sequenced together but worth keeping
-  separate in the writeup: (a) **near-term, in the Naive UI pass itself**
-  — use `n-data-table`'s built-in pagination prop against the existing
-  in-memory array, which at least bounds DOM/render cost per page (real,
-  but does NOT reduce what's sent over the wire, since REPLAY mode
-  already streamed everything); (b) **the actual "less data returned to
-  the client" ask** needs a genuine new server capability — a paged
-  entity-list GraphQL query (cursor-based, matching HotChocolate's own
+  renders it. **What's still open** — the actual "less data returned to
+  the client" ask needs a genuine new server capability: a paged,
+  cursor-based entity-list GraphQL query (matching HotChocolate's own
   convention already used elsewhere in this schema) as an alternative to
   always subscribing in `REPLAY` mode, plus a client composable that
   fetches one page at a time instead of accumulating the whole cache.
   This is real new server + schema work, not a UI-only change — needs
   its own scoping pass (which GraphQL query shape, whether it coexists
   with or replaces `REPLAY` mode for large entity sets) before coding;
-  do NOT improvise the query shape without that pass. Covered by the
-  same `ADR-099` as the Naive UI shell (one client-architecture
-  decision), but (b)'s query-shape design is real, separate work, not a
-  restyle.
+  do NOT improvise the query shape without that pass.
 
 - [ ] **Configurable charting view for display elements** (direct
   request, found at the same time as grid pagination above). Some

@@ -31,15 +31,27 @@ lose or corrupt data.
 
 ## Current state
 
-*(as of 2026-08-27, branch `dev/cryptoshredding` off `main` — update this
+*(as of 2026-08-29, branch `dev/cryptoshredding` off `main` — update this
 whole section, don't just bump the date)*
 
-All 95 pre-existing ADRs Accepted; `ADR-096`/`097`/`098` added this
-session. `08-build-plan.md` now has 56 items: the original 53 Done, item
-54 Done, item 55 built but not Done (own exit criteria need a dedicated
-security review, not performed), item 56 SQL Server built+verified /
-PostgreSQL written+unverified (not Done). `TODO.md` and
-`docs/10-open-questions.md` are both still empty.
+All 95 pre-existing ADRs Accepted; `ADR-096`–`099` added since. `08-build-
+plan.md` has 56 items: the original 53 Done, item 54 Done, item 55 built
+but not Done (own exit criteria need a dedicated security review, not
+performed), item 56 SQL Server built+verified / PostgreSQL
+written+unverified (not Done). `client-web`'s reference app grew from one
+generic entity view into 8 tabs across 12 real, Playwright-verified
+playbooks (`docs/playbooks/README.md`), then `ADR-099` replaced its
+plain-HTML tab-button shell with Naive UI + Vue Router behind a
+left-hand-nav rail, restyling every existing component in the same pass
+(`docs/changes/2026-08-29.md` has the full build narrative, including 5
+real bugs found only by running things — Naive UI's own `n-card`/
+`n-form-item` accessibility gaps, and `n-data-table` pagination breaking
+findability of a known `EntityId` under live simulator load). `TODO.md`
+has one Postgres-noise item (investigated, two fix attempts tried and
+reverted, real fix not yet built — read it before touching that code
+path) plus two smaller, fully-scoped UI follow-ons (a real paged server
+query for entity lists; a charting-library decision). `docs/10-open-
+questions.md` is empty.
 
 This session (full narrative split across three passes in
 `docs/changes/2026-08-27.md`): designed searchable equality/range
