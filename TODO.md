@@ -49,10 +49,10 @@ mid-pass:
   plain `rm` for the untracked intermediate flat `{role}-{task}.md` set
   that never got committed) is gone. `docs/playbooks/README.md`'s
   catalog rewritten to the new paths, split into per-domain tables.
-- [ ] **Add 2 new playbooks using already-built Queue UI** — genuine
-  additional proving-ground use-case coverage that needs no new
+- [x] **Add 2 new playbooks using already-built Queue UI** — done, both.
+  Genuine additional proving-ground use-case coverage that needed no new
   production UI, unlike the Relying-Party Access panel:
-  1. Vitals' Principal Investigator Queue (`VitalsPiQueue.vue`) — **done**,
+  1. Vitals' Principal Investigator Queue (`VitalsPiQueue.vue`) —
      `VitalsPrincipalInvestigatorQueuePlaybookTests`, verified against a
      live `AppHost`. Found and fixed a real, previously-undiscovered bug
      doing it: `publishClient.ts`'s RFC 9470 step-up-retry check read
@@ -62,13 +62,19 @@ mid-pass:
      silently fell through to an ordinary failure before this fix. Also
      corrected `useEventComposer.spec.ts`'s own mock, which had been
      matching the bug's assumption, not the real server response.
-  2. Meridian's KYC Analyst Queue (`MeridianAnalystQueue.vue`) — still
-     open. Accept/reject a pending `SanctionsScreeningPerformed` match
-     `Samples.Meridian.Simulator` publishes every ~25s. Needs a new test
-     class against `client-web-meridian` or `client-web-meridian-
-     screening` (either already exists) — same shape as the PI Queue
-     test just built, reuse its structure directly. Give it its own
-     sequence diagram (`alt` for accept vs. reject) in the same pass.
+  2. Meridian's KYC Analyst Queue (`MeridianAnalystQueue.vue`) —
+     `MeridianKycAnalystQueuePlaybookTests`, verified against a live
+     `AppHost` (accept/reject a pending `SanctionsScreeningPerformed`
+     match `Samples.Meridian.Simulator` publishes every ~25s, alternating
+     matches roughly 1 in 3 ticks). Found and fixed a second real bug in
+     the same family: `AuthorityQueue.vue`'s own `summarize()` rendered a
+     masked field (`MatchedName`/`MatchedListEntryId`'s `{value, masked,
+     erased}` wrapper) as the literal, useless string `"[object Object]"`
+     — the first time this queue was ever exercised with a masked field
+     actually present in the payload. Fixed to match
+     `EntityBrowser.vue`'s own already-correct `"[masked/complex]"`
+     handling; new regression test added
+     (`AuthorityQueue.spec.ts`).
 - [ ] **Vitals' Workflow C (Trial Data Export and Subject Rights) is
   still entirely uncovered** — the proving ground's own defined use case
   most worth adding next, but a bigger lift than the two queue playbooks

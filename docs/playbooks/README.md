@@ -57,6 +57,7 @@ longer carry that grouping themselves.
 | [Request Delegated Access](meridian/relying-party/request-delegated-access.md) | Relying Party | B | [`relying-party-verification-request.md`](../domains/digital-identity-kyc/features/relying-party-verification-request.md) | `MeridianWorkflowBRelyingPartyAccessPlaybookTests.RecordRelyingPartyAccessPlaybook` |
 | [Review Periodic Screening](meridian/compliance-officer/review-periodic-screening.md) | Compliance Officer | C (screening) | [`periodic-screening-and-sar-escalation.md`](../domains/digital-identity-kyc/features/periodic-screening-and-sar-escalation.md) | `MeridianWorkflowCPeriodicScreeningPlaybookTests.RecordPeriodicScreeningPlaybook` |
 | [File SAR](meridian/compliance-officer/file-sar.md) | Compliance Officer | C (escalation) | [`periodic-screening-and-sar-escalation.md`](../domains/digital-identity-kyc/features/periodic-screening-and-sar-escalation.md) | `MeridianWorkflowCSarFilingPlaybookTests.RecordSarFilingPlaybook` |
+| [Decide a Pending Match](meridian/compliance-officer/decide-pending-match.md) | Compliance Officer | C (queue) | [`periodic-screening-and-sar-escalation.md`](../domains/digital-identity-kyc/features/periodic-screening-and-sar-escalation.md) | `MeridianKycAnalystQueuePlaybookTests.RecordDecidePendingMatchPlaybook` |
 
 `EventStore.AppHost` now runs three more Vitals client instances
 (`client-web-vitals-device`/`DeviceOnboarded`, `client-web-vitals-
@@ -106,15 +107,24 @@ is authored rather than derived mechanically from a page's own DOM.
 Two new playbooks reuse already-built UI that never had one before —
 genuine proving-ground use-case coverage needing no new production code,
 unlike Relying-Party Access below: **Decide a Pending IONM Alert**
-(Vitals' Principal Investigator Queue, `VitalsPiQueue.vue`) is in the
-catalog above. Building and running it for real found and fixed a
-genuine, previously-undiscovered bug: `publishClient.ts`'s RFC 9470
-step-up-retry check read a `body.error` field that the server's actual
-401 response (an RFC 7807 `ProblemDetails` body) never populates — the
-real field is `title` — so every step-up retry through this client
-silently failed before this fix, for every `RequiredSignature`-gated
-event type, not just this one. The matching Meridian KYC Analyst Queue
-playbook (`MeridianAnalystQueue.vue`) is still open (`TODO.md`).
+(Vitals' Principal Investigator Queue, `VitalsPiQueue.vue`) and
+**Decide a Pending Match** (Meridian's KYC Analyst Queue,
+`MeridianAnalystQueue.vue`), both in the catalog above. Building and
+running them for real found and fixed two genuine, previously-
+undiscovered bugs, both in code every existing unit/integration test had
+somehow never exercised for real:
+- `publishClient.ts`'s RFC 9470 step-up-retry check read a `body.error`
+  field that the server's actual 401 response (an RFC 7807
+  `ProblemDetails` body) never populates — the real field is `title` —
+  so every step-up retry through this client silently failed before
+  this fix, for every `RequiredSignature`-gated event type, not just
+  these two queues' own `authorityDecision`.
+- `AuthorityQueue.vue`'s own `summarize()` rendered a masked field
+  (`MatchedName`/`MatchedListEntryId`'s `{value, masked, erased}`
+  wrapper) as the literal, useless string `"[object Object]"` — the
+  first time this queue was ever exercised with a masked field actually
+  present in the payload. Fixed to match `EntityBrowser.vue`'s own
+  already-correct `"[masked/complex]"` handling.
 
 **Workflow B (Relying-Party Access) needed a real, new `client-web` UI
 feature, not just infra wiring — built this pass, on direct request.**

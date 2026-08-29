@@ -74,4 +74,46 @@ describe('AuthorityQueue', () => {
 
     vi.restoreAllMocks()
   })
+
+  // Found via a real playbook screenshot (MeridianKycAnalystQueuePlaybookTests)
+  // -- a masked field (x-masking's { value, masked, erased } wrapper) rendered
+  // as the literal, useless string "[object Object]" before this fix.
+  it('renders a masked field as "[masked/complex]", never "[object Object]"', async () => {
+    let raiserOnMessage: ((data: Record<string, Record<string, unknown>>) => void) | undefined
+    global.fetch = vi.fn().mockImplementation(async (url: string, init?: RequestInit) => {
+      if (url.includes('/connect/token')) return jsonResponse({ access_token: 'follower-token' })
+      const body = init?.body ? (JSON.parse(init.body as string) as { query: string }) : { query: '' }
+      if (body.query.includes('__type')) {
+        const fields = body.query.includes('authoritydecision') ? ['targetEventId'] : ['eventId', 'applicantId', 'matchFound', 'matchedName']
+        return jsonResponse({ data: { __type: { fields: fields.map((name) => ({ name })) } } })
+      }
+      throw new Error(`unexpected fetch: ${url}`)
+    })
+
+    const graphqlClientModule = await import('@eventstore/mvvm-client/src/api/graphqlClient')
+    vi.spyOn(graphqlClientModule, 'graphqlSubscribe').mockImplementation((_host, _token, query, onMessage) => {
+      if ((query as string).includes('sanctionsscreeningperformed')) raiserOnMessage = onMessage as typeof raiserOnMessage
+      return () => {}
+    })
+
+    const wrapper = mount(AuthorityQueue, {
+      props: { ...props, raiserEventType: 'SanctionsScreeningPerformed', isPending: (payload: Record<string, unknown>) => payload.matchFound === true },
+    })
+    await flushAll()
+
+    raiserOnMessage!({
+      on_trial1_sanctionsscreeningperformed: {
+        eventId: 'evt-2',
+        applicantId: 'applicant-1',
+        matchFound: true,
+        matchedName: { value: null, masked: 'JXXX', erased: null },
+      },
+    })
+    await flushAll()
+
+    expect(wrapper.text()).toContain('matchedName: [masked/complex]')
+    expect(wrapper.text()).not.toContain('[object Object]')
+
+    vi.restoreAllMocks()
+  })
 })

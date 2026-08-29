@@ -41,10 +41,18 @@ function draftFor(eventId: string): { reason: string; meaning: string } {
   return drafts[eventId]
 }
 
+// A masked field (x-masking, ADR-009) arrives as the same three-way
+// { value, masked, erased } wrapper object masking produces everywhere
+// else -- a bare template-literal interpolation of that object renders
+// the useless literal string "[object Object]" (found via a real
+// playbook screenshot, the first one to ever exercise this queue against
+// a payload with a masked field present -- MeridianWorkflowC's own
+// MatchedName/MatchedListEntryId). EntityBrowser.vue's own summarize()
+// already established the fix for this exact shape; mirrored here.
 function summarize(payload: Record<string, unknown>): string {
   return Object.entries(payload)
     .filter(([key]) => key !== 'eventId')
-    .map(([key, value]) => `${key}: ${value}`)
+    .map(([key, value]) => `${key}: ${typeof value === 'object' && value !== null ? '[masked/complex]' : String(value)}`)
     .join(', ')
 }
 
