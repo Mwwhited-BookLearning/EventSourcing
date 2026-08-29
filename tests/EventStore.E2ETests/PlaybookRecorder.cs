@@ -27,7 +27,18 @@ public class PlaybookRecorder
     private readonly string _markdownPath;
     private readonly string _assetDirectoryName;
     private readonly string _assetDirectoryPath;
-    private readonly List<(string ScreenshotFileName, string Caption)> _steps = [];
+    private readonly List<Entry> _entries = [];
+
+    // A playbook is screenshot-steps only; style-guide.md (direct request,
+    // reusing this exact mechanism rather than a bespoke writer) also needs
+    // prose sections with no screenshot of their own (design tokens,
+    // accessibility conventions -- already visible across every OTHER
+    // section's own screenshot, not a screen in their own right). One
+    // ordered list of either kind keeps assembly order = insertion order
+    // for both writers, rather than forcing all prose after all screenshots.
+    private abstract record Entry;
+    private sealed record ScreenshotEntry(string FileName, string Caption) : Entry;
+    private sealed record ProseEntry(string Heading, string Markdown) : Entry;
 
     public PlaybookRecorder(string markdownPath)
     {
@@ -39,7 +50,7 @@ public class PlaybookRecorder
     public async Task RecordStepAsync(IPage page, string caption)
     {
         Directory.CreateDirectory(_assetDirectoryPath);
-        var fileName = $"step-{_steps.Count + 1:D2}.png";
+        var fileName = $"step-{_entries.OfType<ScreenshotEntry>().Count() + 1:D2}.png";
         // FullPage: true -- a viewport-only screenshot silently crops
         // whatever's currently scrolled out of view. Found only by
         // actually reviewing a real screenshot: the Lineage & Playback
@@ -50,8 +61,14 @@ public class PlaybookRecorder
         // taller than one viewport, so the captured image never showed it
         // at all despite the step genuinely having worked.
         await page.ScreenshotAsync(new PageScreenshotOptions { Path = Path.Combine(_assetDirectoryPath, fileName), FullPage = true });
-        _steps.Add((fileName, caption));
+        _entries.Add(new ScreenshotEntry(fileName, caption));
     }
+
+    // A prose-only section, positioned in the file wherever it's added
+    // relative to RecordStepAsync calls -- no screenshot of its own, no
+    // "Step N" numbering (that would misleadingly imply a procedure).
+    public void AddSection(string heading, string markdown) =>
+        _entries.Add(new ProseEntry(heading, markdown));
 
     // Optional -- a PlantUML sequence diagram showing the general
     // business-process flow this playbook's own screenshots walk
@@ -69,8 +86,8 @@ public class PlaybookRecorder
     // `!include`, ever.
     public async Task WriteMarkdownAsync(string title, string? sequenceDiagramPlantUml = null)
     {
-        if (_steps.Count == 0)
-            throw new InvalidOperationException("No steps recorded -- RecordStepAsync must be called at least once before WriteMarkdownAsync.");
+        if (_entries.Count == 0)
+            throw new InvalidOperationException("No steps/sections recorded -- RecordStepAsync or AddSection must be called at least once before WriteMarkdownAsync.");
 
         var sb = new StringBuilder();
         sb.AppendLine($"# {title}");
@@ -91,13 +108,25 @@ public class PlaybookRecorder
             sb.AppendLine();
         }
 
-        for (var i = 0; i < _steps.Count; i++)
+        var stepNumber = 0;
+        foreach (var entry in _entries)
         {
-            var (screenshotFileName, caption) = _steps[i];
-            sb.AppendLine($"## Step {i + 1}. {caption}");
-            sb.AppendLine();
-            sb.AppendLine($"![{caption}]({_assetDirectoryName}/{screenshotFileName})");
-            sb.AppendLine();
+            switch (entry)
+            {
+                case ScreenshotEntry(var fileName, var caption):
+                    stepNumber++;
+                    sb.AppendLine($"## Step {stepNumber}. {caption}");
+                    sb.AppendLine();
+                    sb.AppendLine($"![{caption}]({_assetDirectoryName}/{fileName})");
+                    sb.AppendLine();
+                    break;
+                case ProseEntry(var heading, var markdown):
+                    sb.AppendLine($"## {heading}");
+                    sb.AppendLine();
+                    sb.AppendLine(markdown.Trim());
+                    sb.AppendLine();
+                    break;
+            }
         }
 
         Directory.CreateDirectory(Path.GetDirectoryName(_markdownPath)!);

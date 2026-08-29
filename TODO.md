@@ -176,14 +176,29 @@ mid-pass:
   a shared subject. `docs/playbooks/README.md`'s own catalog now points
   to both rather than restating their content.
 
-- [ ] **Create `style-guide.md` describing how `client-web`'s UI/UX
-  should work** (direct request), with example screens either as
-  PlantUML+Salt mockups or as real pages captured via a Playwright
-  script that keeps the file updated (this project's own established
-  `PlaybookRecorder` mechanism, reused). Deliberately sequenced AFTER
-  the Naive UI/left-nav item below, not before: a style guide describing
-  the TARGET UI/UX would need rewriting the moment that adoption lands
-  if written against today's plain-HTML shell first. Not yet started.
+- [x] **Create `style-guide.md` describing how `client-web`'s UI/UX
+  should work** — done. `docs/style-guide.md`, real pages captured via a
+  new `StyleGuideTests.RecordStyleGuide` (`tests/EventStore.E2ETests/
+  StyleGuideTests.cs`), not PlantUML+Salt mockups — ADR-099 already built
+  the real target UI, so a hand-drawn mockup would just be a less
+  accurate second copy. Reused `PlaybookRecorder` exactly as directed,
+  extending it with one new `AddSection(heading, markdown)` method for
+  prose-only sections with no screenshot of their own (design tokens,
+  accessibility conventions) — backward-compatible, every existing
+  playbook's own `RecordStepAsync`/`WriteMarkdownAsync` call is
+  unchanged. Six sections: left-hand nav shell, design tokens/theming,
+  data tables with pagination, forms, cards/panels, property tables
+  (deliberately still plain HTML), accessibility baseline — covering
+  every Naive UI component family this app actually uses via one
+  `client-web-vitals` instance (Meridian's Relying-Party panel skipped as
+  a screenshot subject: same `n-card`/`n-form`/`n-button` primitives
+  already shown, not a new pattern). Found and fixed one real bug doing
+  it: the Compose screen's capture originally waited only for the
+  "Event Composer" heading, which is present even during "Loading
+  registered event types..." — caught by actually reviewing the
+  screenshot (blank form), fixed by waiting for the real `<select>`
+  instead, matching this project's own repeated "verify by looking at
+  the actual output" lesson.
 
 - [x] **Adopt Naive UI (`naiveui.com`) and a left-hand-nav shell
   (Azure Portal/Azure DevOps-style), replacing `client-web`'s current
@@ -311,3 +326,18 @@ mid-pass:
   follow-on work after the Naive UI shell/restyle lands, not folded into
   it blind — picking a charting library and a config schema is its own
   real decision, not a restyle detail.
+
+## User Requested Tasks
+
+These should be reviewed as they may not included all of the technical details.  They may also be duplicates of features already requested
+
+- [ ] Extend the entity schema metadata
+  - [ ] Provide field level validation and datatype rules
+  - [ ] Define custom field valdiations that include mappings and dependant fields
+  - [ ] Define calculated fields
+  - [ ] Defined expected presentation types per object/child set
+- [ ] Migrate embedded plantuml diagrams to their own .puml files (Low Priority)
+  - [ ] there should be a plantuml docker instance configured for rendering out the images
+  - [ ] after diagrams are generated there should be a script to convert them from .puml to .svg
+    - [ ] the outputs of the script should be validated to ensure the diagrams may be rendered correctly 
+- [ ] searching for good DSLs to use to define user flows, validations, approvals and so on
