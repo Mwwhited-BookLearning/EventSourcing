@@ -342,7 +342,13 @@ public class FollowSubscriptionTypeModule : ITypeModule, ISchemaChangeNotifier
         var fromSequenceNumber = ctx.ArgumentValue<long?>("fromSequenceNumber");
         var whereClauses = ctx.ArgumentValue<IReadOnlyList<EventFilterInput>?>("where");
 
-        var predicate = GraphQlFilterPredicateBuilder.Build(definition.FilterableFields, whereClauses);
+        // ADR-096/097 -- resolved via DI the same way db/tailReader/user
+        // above are; only actually used when a clause names an encrypted-kind
+        // FilterableField (see GraphQlFilterPredicateBuilder.Build itself).
+        var searchIndexKeyService = ctx.Service<EventStore.Erasure.SearchIndexKeyService>();
+        var predicateEvaluator = ctx.Service<EventStore.Abstractions.IEncryptedPredicateEvaluator>();
+        var predicate = await GraphQlFilterPredicateBuilder.Build(
+            db, appId, normalizedEventTypeName, searchIndexKeyService, predicateEvaluator, definition.FilterableFields, whereClauses, ctx.RequestAborted);
 
         long lastSeen = mode == FollowMode.Replay
             ? fromSequenceNumber ?? 0

@@ -20,6 +20,36 @@ public enum RejectionBehavior
 
 public enum FilterableFieldType { String, Number, Boolean, DateTimeOffset }
 
+// ADR-096/ADR-097 -- which mechanism a filter predicate against this field
+// compiles to. PlaintextExpression is the default and every FilterableField
+// registered before these ADRs -- completely unchanged json_extract/->>/
+// JSON_VALUE behavior. The other three only ever apply to a field whose
+// schema also declares x-masking-searchable.
+public enum FilterableFieldIndexKind
+{
+    PlaintextExpression,   // default -- today's json_extract/->>/JSON_VALUE mechanism, unchanged
+    EncryptedBlindIndex,   // ADR-096 -- eq comparisons route to EncryptedFieldIndexEntry.Token
+    EncryptedRangeBucket,  // ADR-096 -- gt/gte/lt/lte comparisons narrow via EncryptedFieldIndexEntry.Token bucket lookups, then an exact decrypt-and-compare step (IEncryptedPredicateEvaluator, ADR-098)
+    OrderRevealing,        // ADR-097 -- gt/gte/lt/lte comparisons compile to a native ciphertext comparison, no decryption needed to evaluate the predicate
+}
+
+// ADR-096 -- x-masking-searchable's own indexKind value, distinct from
+// FilterableFieldIndexKind: this is what a schema author declares; that
+// enum is what SchemaRegistryService derives it into for query routing.
+public enum SearchableIndexKind { Equality, Range, OrderRevealing }
+
+// ADR-096 -- Shared: one HMAC key per (AppId, EventTypeName, FieldJsonPath),
+// enables real cross-entity search, cleaned up by deleting index rows on
+// erasure. PerEntity: token derived from the entity's own DEK, destroyed
+// automatically alongside it (true crypto-shredding), but only ever
+// answers "does this one known entity have value V."
+public enum SearchIndexKeyScope { Shared, PerEntity }
+
+// ADR-096 -- required on a Range-kind field; drives the cardinality-aware
+// registration guardrail (a Low-cardinality classified field needs an
+// explicit acknowledgeLeakageRisk; a High-cardinality one doesn't).
+public enum FieldCardinality { Low, High }
+
 public enum JoinTriggerMode
 {
     FireOnce,             // wait for one event per source per join key, emit once, key closes (ADR-007)

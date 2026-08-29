@@ -532,6 +532,50 @@ namespace EventStore.Persistence.Migrations.Sqlite.Migrations
                     b.ToTable("DerivationDefinitions");
                 });
 
+            modelBuilder.Entity("EventStore.Domain.SchemaRegistry.EncryptedFieldIndexEntry", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("AppId")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("EntityId")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("EventTypeName")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("FieldJsonPath")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Granularity")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("IndexKind")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<long>("StoredEventSequenceNumber")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Token")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("EntityId");
+
+                    b.HasIndex("AppId", "EventTypeName", "FieldJsonPath", "Token");
+
+                    b.ToTable("EncryptedFieldIndexEntries");
+                });
+
             modelBuilder.Entity("EventStore.Domain.SchemaRegistry.EventTypeDefinition", b =>
                 {
                     b.Property<string>("AppId")
@@ -647,6 +691,9 @@ namespace EventStore.Persistence.Migrations.Sqlite.Migrations
                     b.Property<int>("EventTypeVersion")
                         .HasColumnType("INTEGER");
 
+                    b.Property<int>("IndexKind")
+                        .HasColumnType("INTEGER");
+
                     b.Property<bool>("IsIndexed")
                         .HasColumnType("INTEGER");
 
@@ -654,11 +701,28 @@ namespace EventStore.Persistence.Migrations.Sqlite.Migrations
                         .IsRequired()
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("SearchableConfig")
+                        .HasColumnType("TEXT");
+
                     b.HasKey("Id");
 
                     b.HasIndex("EventTypeAppId", "EventTypeName", "EventTypeVersion");
 
                     b.ToTable("FilterableFields");
+                });
+
+            modelBuilder.Entity("EventStore.Domain.SchemaRegistry.LocalSearchIndexKeyMaterial", b =>
+                {
+                    b.Property<string>("KeyReference")
+                        .HasColumnType("TEXT");
+
+                    b.Property<byte[]>("Key")
+                        .IsRequired()
+                        .HasColumnType("BLOB");
+
+                    b.HasKey("KeyReference");
+
+                    b.ToTable("LocalSearchIndexKeyMaterials");
                 });
 
             modelBuilder.Entity("EventStore.Domain.SchemaRegistry.PendingJoinState", b =>
@@ -699,6 +763,33 @@ namespace EventStore.Persistence.Migrations.Sqlite.Migrations
                     b.HasIndex("AppId", "DerivationName", "JoinKeyValue");
 
                     b.ToTable("PendingJoinStates");
+                });
+
+            modelBuilder.Entity("EventStore.Domain.SchemaRegistry.SearchIndexKey", b =>
+                {
+                    b.Property<string>("AppId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("EventTypeName")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("FieldJsonPath")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("BackendName")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("KeyReference")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("AppId", "EventTypeName", "FieldJsonPath");
+
+                    b.ToTable("SearchIndexKeys");
                 });
 
             modelBuilder.Entity("EventStore.Domain.Streaming.Attachment", b =>

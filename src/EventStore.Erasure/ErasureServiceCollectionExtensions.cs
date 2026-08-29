@@ -1,6 +1,7 @@
 using Amazon.KeyManagementService;
 using Azure.Identity;
 using Azure.Security.KeyVault.Keys;
+using EventStore.Abstractions;
 using Google.Cloud.Kms.V1;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -25,13 +26,41 @@ public static class ErasureServiceCollectionExtensions
         services.AddScoped<ErasureKeyService>();
         services.AddKeyedScoped<IErasureKeyStore, LocalErasureKeyStore>("Local");
 
+        // Found this session while implementing ADR-096/097: PayloadEncryptor
+        // (ADR-057's own encryption) was never registered anywhere -- every
+        // real Host's PublishService constructor resolved its optional
+        // PayloadEncryptor? param as null, so classified-field encryption
+        // was inert in production, only ever exercised by test code that
+        // constructs PayloadEncryptor directly. Fixed here, the one place
+        // every Host already calls into for erasure wiring.
+        services.AddScoped<PayloadEncryptor>();
+
+        // ADR-096/097 -- searchable-index wiring, alongside crypto-shredding
+        // since PayloadIndexer needs ErasureKeyService for PerEntity-scope
+        // key derivation (see PayloadIndexer's own header comment).
+        services.Configure<SearchIndexOptions>(o => configuration.GetSection("SearchIndex").Bind(o));
+        services.AddScoped<SearchIndexKeyService>();
+        services.AddKeyedScoped<ISearchIndexKeyStore, LocalSearchIndexKeyStore>("Local");
+        services.AddScoped<PayloadIndexer>();
+        services.AddScoped<IEncryptedPredicateEvaluator, AppTierEncryptedPredicateEvaluator>();
+
         var vaultAddress = configuration["Erasure:Vault:Address"];
         if (vaultAddress is not null)
         {
             var vaultToken = configuration["Erasure:Vault:Token"]!;
             IAuthMethodInfo authMethod = new TokenAuthMethodInfo(vaultToken);
             var vaultClient = new VaultClient(new VaultClientSettings(vaultAddress, authMethod));
-            services.AddKeyedSingleton<IErasureKeyStore>("HashiCorpVault", (_, _) => new HashiCorpVaultErasureKeyStore(vaultClient));
+            var backend = new HashiCorpVaultErasureKeyStore(vaultClient);
+            services.AddKeyedSingleton<IErasureKeyStore>("HashiCorpVault", backend);
+            // ADR-096 -- the same backend instance doubles as a
+            // Shared-scope ISearchIndexKeyStore via CloudSearchIndexKeyStoreAdapter
+            // (see that class's own header for why this reuses the erasure
+            // backend's CreateKeyAsync/EncryptAsync rather than a fourth
+            // bespoke SDK integration); a completely separate KeyReference/
+            // key name from any entity's own DEK, tracked in its own
+            // SearchIndexKey table, so there is no lifecycle coupling
+            // despite sharing the underlying client/backend class.
+            services.AddKeyedSingleton<ISearchIndexKeyStore>("HashiCorpVault", (_, _) => new CloudSearchIndexKeyStoreAdapter(backend));
         }
 
         // Same "only registered when its own connection info is actually
@@ -44,7 +73,9 @@ public static class ErasureServiceCollectionExtensions
         if (azureKeyVaultUri is not null)
         {
             var keyClient = new KeyClient(new Uri(azureKeyVaultUri), new DefaultAzureCredential());
-            services.AddKeyedSingleton<IErasureKeyStore>("AzureKeyVault", (_, _) => new AzureKeyVaultErasureKeyStore(keyClient));
+            var backend = new AzureKeyVaultErasureKeyStore(keyClient);
+            services.AddKeyedSingleton<IErasureKeyStore>("AzureKeyVault", backend);
+            services.AddKeyedSingleton<ISearchIndexKeyStore>("AzureKeyVault", (_, _) => new CloudSearchIndexKeyStoreAdapter(backend));
         }
 
         // AWSSDK's own AmazonKeyManagementServiceClient resolves credentials
@@ -56,7 +87,9 @@ public static class ErasureServiceCollectionExtensions
         if (awsRegion is not null)
         {
             var kmsClient = new AmazonKeyManagementServiceClient(Amazon.RegionEndpoint.GetBySystemName(awsRegion));
-            services.AddKeyedSingleton<IErasureKeyStore>("AwsKms", (_, _) => new AwsKmsErasureKeyStore(kmsClient));
+            var backend = new AwsKmsErasureKeyStore(kmsClient);
+            services.AddKeyedSingleton<IErasureKeyStore>("AwsKms", backend);
+            services.AddKeyedSingleton<ISearchIndexKeyStore>("AwsKms", (_, _) => new CloudSearchIndexKeyStoreAdapter(backend));
         }
 
         // Google.Cloud.Kms.V1's own KeyManagementServiceClient.Create()
@@ -69,7 +102,9 @@ public static class ErasureServiceCollectionExtensions
             var locationId = configuration["Erasure:GoogleCloudKms:LocationId"]!;
             var keyRingId = configuration["Erasure:GoogleCloudKms:KeyRingId"]!;
             var kmsClient = KeyManagementServiceClient.Create();
-            services.AddKeyedSingleton<IErasureKeyStore>("GoogleCloudKms", (_, _) => new GoogleCloudKmsErasureKeyStore(kmsClient, gcpProjectId, locationId, keyRingId));
+            var backend = new GoogleCloudKmsErasureKeyStore(kmsClient, gcpProjectId, locationId, keyRingId);
+            services.AddKeyedSingleton<IErasureKeyStore>("GoogleCloudKms", backend);
+            services.AddKeyedSingleton<ISearchIndexKeyStore>("GoogleCloudKms", (_, _) => new CloudSearchIndexKeyStoreAdapter(backend));
         }
 
         return services;

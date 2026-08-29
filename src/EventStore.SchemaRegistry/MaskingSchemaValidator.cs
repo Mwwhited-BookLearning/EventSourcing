@@ -15,6 +15,8 @@ namespace EventStore.SchemaRegistry;
 internal static class MaskingSchemaValidator
 {
     private static readonly string[] ValidStrategies = ["FixedValue", "PartialReveal", "Hash"];
+    private static readonly string[] ValidIndexKinds = ["Equality", "Range", "OrderRevealing"];
+    private static readonly string[] ValidKeyScopes = ["Shared", "PerEntity"];
 
     public static void Validate(JsonObject? node, List<string> errors)
     {
@@ -22,14 +24,33 @@ internal static class MaskingSchemaValidator
 
         var type = node["type"]?.GetValue<string>();
 
+        JsonObject? masking = null;
         if (node.TryGetPropertyValue("x-masking", out var maskingNode))
         {
             if (type is "object" or "array")
                 errors.Add($"x-masking cannot be placed directly on an {type}-typed property");
-            else if (maskingNode is JsonObject masking)
-                ValidateMaskingConfig(masking, errors);
+            else if (maskingNode is JsonObject maskingObject)
+            {
+                masking = maskingObject;
+                ValidateMaskingConfig(maskingObject, errors);
+            }
             else
                 errors.Add("x-masking must be an object");
+        }
+
+        // ADR-096/ADR-097 -- a sibling extension on the same node, checked
+        // against the SAME x-masking object above (masking may be null if
+        // this field isn't also classified, which is fine -- a searchable
+        // field need not be encrypted, though every real schema in this
+        // design pairs the two).
+        if (node.TryGetPropertyValue("x-masking-searchable", out var searchableNode))
+        {
+            if (type is "object" or "array")
+                errors.Add($"x-masking-searchable cannot be placed directly on an {type}-typed property");
+            else if (searchableNode is JsonObject searchableObject)
+                ValidateSearchableConfig(searchableObject, masking, errors);
+            else
+                errors.Add("x-masking-searchable must be an object");
         }
 
         if (node["properties"] is JsonObject properties)
@@ -38,6 +59,66 @@ internal static class MaskingSchemaValidator
 
         if (node["items"] is JsonObject items)
             Validate(items, errors);
+    }
+
+    private static void ValidateSearchableConfig(JsonObject searchable, JsonObject? masking, List<string> errors)
+    {
+        var indexKind = searchable["indexKind"]?.GetValue<string>();
+        if (indexKind is null || !ValidIndexKinds.Contains(indexKind))
+        {
+            errors.Add($"x-masking-searchable.indexKind must be one of {string.Join(", ", ValidIndexKinds)} (got: {indexKind ?? "<missing>"})");
+            return;
+        }
+
+        var keyScope = searchable["keyScope"]?.GetValue<string>();
+        if (keyScope is null || !ValidKeyScopes.Contains(keyScope))
+            errors.Add($"x-masking-searchable.keyScope must be one of {string.Join(", ", ValidKeyScopes)} (got: {keyScope ?? "<missing>"})");
+
+        // ADR-096 -- cardinality-aware, not a blanket classification rule,
+        // and required for BOTH Equality and Range (corrected this pass --
+        // originally Range-only, found gapped while reviewing the two
+        // proving-ground domains' own real candidate fields: a
+        // low-cardinality sanctions-list-entry ID wanted as Equality had no
+        // guardrail at all). A blind Equality index is deterministic
+        // encryption in exactly the shape Naveed/Kamara/Wright (CCS 2015)
+        // names as frequency-analysis-vulnerable -- that attack doesn't
+        // need ORDER information (Range's own extra exposure), only that
+        // the SAME plaintext always produces the SAME ciphertext, which an
+        // Equality blind index is by definition. A blanket rule would
+        // over-restrict a high-cardinality field (a name) while
+        // under-warning on a low-cardinality one (a birthdate) -- the
+        // cardinality split is what avoids that, for either index kind.
+        if (indexKind is "Equality" or "Range")
+        {
+            var cardinality = searchable["cardinality"]?.GetValue<string>();
+            if (cardinality is not ("Low" or "High"))
+            {
+                errors.Add($"x-masking-searchable.cardinality is required for {indexKind} indexKind, and must be \"Low\" or \"High\" (got: {cardinality ?? "<missing>"})");
+            }
+            else if (cardinality == "Low" && masking?["regulatoryClassification"] is not null &&
+                     searchable["acknowledgeLeakageRisk"]?.GetValue<bool>() != true)
+            {
+                errors.Add($"x-masking-searchable: a Low-cardinality {indexKind} index on a field that also " +
+                    "carries x-masking.regulatoryClassification requires acknowledgeLeakageRisk: true -- " +
+                    "see ADR-096 (frequency analysis against public auxiliary distributions can recover a " +
+                    "low-cardinality classified value's exact plaintext, whether the index is Equality or Range)");
+            }
+
+            if (indexKind == "Range" && searchable["bucketGranularities"] is not JsonArray { Count: > 0 })
+                errors.Add("x-masking-searchable.bucketGranularities must be a non-empty array for Range indexKind");
+        }
+
+        // ADR-097 -- stricter, no-override guardrail than Range's above: the
+        // exact-recovery risk on a low-entropy classified field is judged
+        // too severe for an acknowledgeLeakageRisk-style override to
+        // responsibly gate, given ORE's own dedicated leakage-abuse break
+        // (Grubbs/Sekniqi/Bindschaedler/Naveed/Ristenpart, 2016) on top of
+        // the general property-preserving-encryption one.
+        if (indexKind == "OrderRevealing" && masking?["regulatoryClassification"] is not null)
+        {
+            errors.Add("x-masking-searchable.indexKind \"OrderRevealing\" can never be registered on a field that " +
+                "also carries x-masking.regulatoryClassification -- see ADR-097 (no override accepted, unlike Range's acknowledgeLeakageRisk)");
+        }
     }
 
     private static void ValidateMaskingConfig(JsonObject masking, List<string> errors)

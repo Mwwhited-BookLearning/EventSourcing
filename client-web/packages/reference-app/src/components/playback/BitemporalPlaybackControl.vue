@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref } from 'vue'
+import { NButton, NCard } from 'naive-ui'
 import { playbackAsOf, type PlaybackResult } from '@eventstore/mvvm-client'
 
 // docs/features/lineage-export-and-playback.md, Screen 2 -- VCR-style
@@ -48,19 +49,21 @@ void loadCurrent()
 
 <template>
   <section class="playback-control" aria-label="Bitemporal system-time playback">
-    <h2>Bitemporal Playback — {{ entityId }}</h2>
-    <div class="controls">
-      <span data-testid="sequence-number">SequenceNumber {{ asOfSequenceNumber }}</span>
-      <button type="button" :disabled="loading" data-testid="rewind" @click="rewind">&lt;</button>
-      <button type="button" :disabled="loading" data-testid="advance" @click="advance">&gt;</button>
-    </div>
-    <p v-if="notFound" data-testid="not-found">No reconstruction exists at or before this SequenceNumber.</p>
-    <template v-else-if="result">
-      <pre data-testid="playback-data">{{ result.data }}</pre>
-      <p v-if="result.lateArrivalCorrectionShown" data-testid="late-arrival-notice">
-        ⚠ A late-arriving correction is shown landing exactly here — never smoothed away.
-      </p>
-    </template>
+    <n-card>
+      <h2>Bitemporal Playback — {{ entityId }}</h2>
+      <div class="controls">
+        <span data-testid="sequence-number">SequenceNumber {{ asOfSequenceNumber }}</span>
+        <n-button :disabled="loading" data-testid="rewind" @click="rewind">&lt;</n-button>
+        <n-button :disabled="loading" data-testid="advance" @click="advance">&gt;</n-button>
+      </div>
+      <p v-if="notFound" data-testid="not-found">No reconstruction exists at or before this SequenceNumber.</p>
+      <template v-else-if="result">
+        <pre data-testid="playback-data">{{ result.data }}</pre>
+        <p v-if="result.lateArrivalCorrectionShown" data-testid="late-arrival-notice">
+          ⚠ A late-arriving correction is shown landing exactly here — never smoothed away.
+        </p>
+      </template>
+    </n-card>
   </section>
 </template>
 

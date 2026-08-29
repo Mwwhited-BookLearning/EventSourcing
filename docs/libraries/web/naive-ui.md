@@ -32,7 +32,11 @@ export const themeOverrides = {
 [The MVVM pattern doc](../../patterns/mvvm-client-architecture.md)'s
 **Styling** layer (`src/theme/tokens.js`) — no component overrides its
 own colors/spacing locally; every value flows from this one theme
-config.
+config. [`ADR-099`](../../adrs/adr-099-naive-ui-router-left-nav-shell.md)
+landed the actual adoption: `n-layout`/`n-layout-sider`/`n-menu` for the
+left-hand-nav shell, plus `n-data-table` (with its own built-in
+pagination), `n-form`, `n-descriptions`, and `n-card`/`n-steps` across
+every existing `client-web` component.
 
 ## Links
 

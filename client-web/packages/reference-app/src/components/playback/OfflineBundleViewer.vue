@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { ref, watchEffect } from 'vue'
-import { parseNdjson, type LineageExportBundle, verifyBundle, type BundleVerificationResult } from '@eventstore/mvvm-client'
+import { h, ref, watchEffect } from 'vue'
+import { NAlert, NButton, NCard, NDataTable, type DataTableColumns } from 'naive-ui'
+import { parseNdjson, type LineageExportBundle, verifyBundle, type BundleVerificationResult, type ExportedEventLine } from '@eventstore/mvvm-client'
 
 // docs/features/lineage-export-and-playback.md, Screen 3 -- the self-
 // contained offline player's own verification-result screen. Runs
@@ -22,6 +23,14 @@ const verification = ref<BundleVerificationResult | null>(null)
 const parseError = ref<string | null>(null)
 const showEventList = ref(false)
 
+const eventListColumns: DataTableColumns<ExportedEventLine> = [
+  { title: 'SequenceNumber', key: 'sequenceNumber' },
+  { title: 'EventType', key: 'eventType' },
+  { title: 'OccurredAt', key: 'occurredAt' },
+  { title: 'LateArrivalFlag', key: 'lateArrivalFlag', render: (row) => String(row.lateArrivalFlag) },
+  { title: 'Payload', key: 'payload', render: (row) => h('code', row.payload) },
+]
+
 watchEffect(async () => {
   parseError.value = null
   verification.value = null
@@ -38,56 +47,45 @@ watchEffect(async () => {
 
 <template>
   <section class="offline-player" aria-label="Offline lineage export player">
-    <h2 v-if="bundle">Offline Player — {{ bundle.manifest.entityId }}</h2>
-    <p v-if="parseError" data-testid="parse-error">{{ parseError }}</p>
-    <template v-else-if="verification">
-      <p v-if="verification.fullyVerified" data-testid="verdict-full">
-        ✔ Fully independently verified — manifest hash matches, no masked or erased fields.
-      </p>
-      <p v-else-if="verification.manifestHashVerified" data-testid="verdict-partial">
-        ⚠ Verified except {{ verification.maskedFieldCount + verification.erasedFieldCount }} masked/erased field(s) —
-        manifest hash intact; chain linkage unaffected by masking.
-      </p>
-      <p v-else data-testid="verdict-failed">
-        ✘ Manifest hash does not match a recomputation over this bundle's own ChainHash values — this bundle may have
-        been tampered with or corrupted since export.
-      </p>
-      <table v-if="verification.maskedFieldCount > 0 || verification.erasedFieldCount > 0" data-testid="masked-summary">
-        <tbody>
-          <tr>
-            <td>Masked fields</td>
-            <td>{{ verification.maskedFieldCount }}</td>
-          </tr>
-          <tr>
-            <td>Erased fields</td>
-            <td>{{ verification.erasedFieldCount }}</td>
-          </tr>
-        </tbody>
-      </table>
-      <button type="button" data-testid="toggle-event-list" @click="showEventList = !showEventList">
-        {{ showEventList ? 'Hide' : 'View' }} full event list
-      </button>
-      <table v-if="showEventList && bundle" data-testid="event-list">
-        <thead>
-          <tr>
-            <th>SequenceNumber</th>
-            <th>EventType</th>
-            <th>OccurredAt</th>
-            <th>LateArrivalFlag</th>
-            <th>Payload</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr v-for="event in bundle.events" :key="event.eventId">
-            <td>{{ event.sequenceNumber }}</td>
-            <td>{{ event.eventType }}</td>
-            <td>{{ event.occurredAt }}</td>
-            <td>{{ event.lateArrivalFlag }}</td>
-            <td><code>{{ event.payload }}</code></td>
-          </tr>
-        </tbody>
-      </table>
-    </template>
+    <n-card>
+      <h2 v-if="bundle">Offline Player — {{ bundle.manifest.entityId }}</h2>
+      <n-alert v-if="parseError" type="error" data-testid="parse-error">{{ parseError }}</n-alert>
+      <template v-else-if="verification">
+        <n-alert v-if="verification.fullyVerified" type="success" data-testid="verdict-full">
+          ✔ Fully independently verified — manifest hash matches, no masked or erased fields.
+        </n-alert>
+        <n-alert v-else-if="verification.manifestHashVerified" type="warning" data-testid="verdict-partial">
+          ⚠ Verified except {{ verification.maskedFieldCount + verification.erasedFieldCount }} masked/erased field(s) —
+          manifest hash intact; chain linkage unaffected by masking.
+        </n-alert>
+        <n-alert v-else type="error" data-testid="verdict-failed">
+          ✘ Manifest hash does not match a recomputation over this bundle's own ChainHash values — this bundle may have
+          been tampered with or corrupted since export.
+        </n-alert>
+        <table v-if="verification.maskedFieldCount > 0 || verification.erasedFieldCount > 0" data-testid="masked-summary">
+          <tbody>
+            <tr>
+              <td>Masked fields</td>
+              <td>{{ verification.maskedFieldCount }}</td>
+            </tr>
+            <tr>
+              <td>Erased fields</td>
+              <td>{{ verification.erasedFieldCount }}</td>
+            </tr>
+          </tbody>
+        </table>
+        <n-button data-testid="toggle-event-list" @click="showEventList = !showEventList">
+          {{ showEventList ? 'Hide' : 'View' }} full event list
+        </n-button>
+        <n-data-table
+          v-if="showEventList && bundle"
+          data-testid="event-list"
+          :columns="eventListColumns"
+          :data="bundle.events"
+          :row-key="(row: ExportedEventLine) => row.eventId"
+        />
+      </template>
+    </n-card>
   </section>
 </template>
 

@@ -262,6 +262,102 @@ var clientWebMeridian = builder.AddViteApp("client-web-meridian", "../../client-
     .WithHttpEndpoint(port: Port("ClientWebMeridian", 5175))
     .WithExternalHttpEndpoints();
 
+// Workflow C's periodic-screening half (Samples.Meridian.Seed already
+// publishes SanctionsScreeningPerformed for applicant-1001, folded onto
+// the same ApplicantIdentity entity client-web-meridian above watches --
+// but that instance's own subscription is fixed to IdentityClaimSubmitted,
+// so ScreeningDate/MatchFound/etc. are unreachable from it, same
+// one-event-type-per-instance reasoning as the Vitals instances above).
+// The SAR-escalation half (SarFilingRecorded) needs a real RFC 9470
+// step-up authentication flow the seeder doesn't perform -- still a
+// genuinely open gap (TODO.md), not addressed by this instance.
+var clientWebMeridianScreening = builder.AddViteApp("client-web-meridian-screening", "../../client-web")
+    .WithReference(eventstore)
+    .WaitFor(eventstore)
+    .WithReference(devIdp)
+    .WithEnvironment("VITE_HOST_BASE_URL", eventstore.GetEndpoint("https"))
+    .WithEnvironment("VITE_AUTH_BASE_URL", devIdp.GetEndpoint("http"))
+    .WithEnvironment("VITE_APP_ID", "kyc")
+    .WithEnvironment("VITE_ENTITY_TYPE", "applicantidentity")
+    .WithEnvironment("VITE_EVENT_TYPE", "SanctionsScreeningPerformed")
+    .WithEnvironment("VITE_ENTITY_ID_FIELD", "applicantId")
+    .WithHttpEndpoint(port: Port("ClientWebMeridianScreening", 5179))
+    .WithExternalHttpEndpoints();
+
+// Workflow C's SAR-escalation half -- Samples.Meridian.Seed now performs
+// the real step-up-authenticated SarFilingRecorded publish (a compliance
+// officer's ClaimsPrincipal carrying "acr"/"auth_time" directly, the same
+// mechanism MeridianWorkflowCScenarioAssertions.cs's own passing test
+// already proves, satisfied without a real DevIdp round trip since this
+// seeder talks to PublishService in-process). This instance is what makes
+// the resulting SarFilingRecorded event Browse-reachable at all.
+var clientWebMeridianSarFiling = builder.AddViteApp("client-web-meridian-sarfiling", "../../client-web")
+    .WithReference(eventstore)
+    .WaitFor(eventstore)
+    .WithReference(devIdp)
+    .WithEnvironment("VITE_HOST_BASE_URL", eventstore.GetEndpoint("https"))
+    .WithEnvironment("VITE_AUTH_BASE_URL", devIdp.GetEndpoint("http"))
+    .WithEnvironment("VITE_APP_ID", "kyc")
+    .WithEnvironment("VITE_ENTITY_TYPE", "applicantidentity")
+    .WithEnvironment("VITE_EVENT_TYPE", "SarFilingRecorded")
+    .WithEnvironment("VITE_ENTITY_ID_FIELD", "applicantId")
+    .WithHttpEndpoint(port: Port("ClientWebMeridianSarFiling", 5180))
+    .WithExternalHttpEndpoints();
+
+// Two more Vitals instances, same shape as clientWebVitals above --
+// ADR-039's one-event-type-per-instance model means Workflow B's Device
+// entities and Workflow D's IonmAlert entities need their own dedicated
+// subscriptions to ever be Browse-reachable at all (confirmed by reading
+// subscriptionBuilder.ts: a GraphQL Subscription field is built per
+// (AppId, EventType), never per EntityType -- TODO.md's own tracked gap
+// before this pair existed). DeviceOnboarded/IonmAlertRaised both declare
+// RequiredClaims: null (Samples.Vitals/VitalsWorkflowB.cs/VitalsWorkflowD.cs),
+// so no additional claim beyond the DevIdp login every other instance
+// already gets is needed to browse either.
+var clientWebVitalsDevice = builder.AddViteApp("client-web-vitals-device", "../../client-web")
+    .WithReference(eventstore)
+    .WaitFor(eventstore)
+    .WithReference(devIdp)
+    .WithEnvironment("VITE_HOST_BASE_URL", eventstore.GetEndpoint("https"))
+    .WithEnvironment("VITE_AUTH_BASE_URL", devIdp.GetEndpoint("http"))
+    .WithEnvironment("VITE_APP_ID", "trial1")
+    .WithEnvironment("VITE_ENTITY_TYPE", "device")
+    .WithEnvironment("VITE_EVENT_TYPE", "DeviceOnboarded")
+    .WithEnvironment("VITE_ENTITY_ID_FIELD", "deviceId")
+    .WithHttpEndpoint(port: Port("ClientWebVitalsDevice", 5176))
+    .WithExternalHttpEndpoints();
+
+var clientWebVitalsIonmAlert = builder.AddViteApp("client-web-vitals-ionmalert", "../../client-web")
+    .WithReference(eventstore)
+    .WaitFor(eventstore)
+    .WithReference(devIdp)
+    .WithEnvironment("VITE_HOST_BASE_URL", eventstore.GetEndpoint("https"))
+    .WithEnvironment("VITE_AUTH_BASE_URL", devIdp.GetEndpoint("http"))
+    .WithEnvironment("VITE_APP_ID", "trial1")
+    .WithEnvironment("VITE_ENTITY_TYPE", "ionmalert")
+    .WithEnvironment("VITE_EVENT_TYPE", "IonmAlertRaised")
+    .WithEnvironment("VITE_ENTITY_ID_FIELD", "alertId")
+    .WithHttpEndpoint(port: Port("ClientWebVitalsIonmAlert", 5177))
+    .WithExternalHttpEndpoints();
+
+// Workflow B's downstream half (Adverse Event Capture and Review) --
+// same reasoning as the Device/IonmAlert pair above, now that
+// Samples.Vitals.Seed actually publishes an AdverseEventReported event
+// (TODO.md's own tracked gap: no AdverseEvent entity existed to browse
+// at all until this pass).
+var clientWebVitalsAdverseEvent = builder.AddViteApp("client-web-vitals-adverseevent", "../../client-web")
+    .WithReference(eventstore)
+    .WaitFor(eventstore)
+    .WithReference(devIdp)
+    .WithEnvironment("VITE_HOST_BASE_URL", eventstore.GetEndpoint("https"))
+    .WithEnvironment("VITE_AUTH_BASE_URL", devIdp.GetEndpoint("http"))
+    .WithEnvironment("VITE_APP_ID", "trial1")
+    .WithEnvironment("VITE_ENTITY_TYPE", "adverseevent")
+    .WithEnvironment("VITE_EVENT_TYPE", "AdverseEventReported")
+    .WithEnvironment("VITE_ENTITY_ID_FIELD", "aeId")
+    .WithHttpEndpoint(port: Port("ClientWebVitalsAdverseEvent", 5178))
+    .WithExternalHttpEndpoints();
+
 // Every client-web instance's browser-side JS calls devIdp's /connect/token
 // and eventstore's GraphQL/registry endpoints directly, cross-origin (each
 // Vite dev server has its own dynamically-assigned port) -- ADR-014's own
@@ -276,10 +372,43 @@ var clientWebMeridian = builder.AddViteApp("client-web-meridian", "../../client-
 // which is why this couldn't be inlined into their own definitions above.
 devIdp.WithEnvironment("Cors__AllowedOrigins__0", clientWeb.GetEndpoint("http"))
     .WithEnvironment("Cors__AllowedOrigins__1", clientWebVitals.GetEndpoint("http"))
-    .WithEnvironment("Cors__AllowedOrigins__2", clientWebMeridian.GetEndpoint("http"));
+    .WithEnvironment("Cors__AllowedOrigins__2", clientWebMeridian.GetEndpoint("http"))
+    .WithEnvironment("Cors__AllowedOrigins__3", clientWebVitalsDevice.GetEndpoint("http"))
+    .WithEnvironment("Cors__AllowedOrigins__4", clientWebVitalsIonmAlert.GetEndpoint("http"))
+    .WithEnvironment("Cors__AllowedOrigins__5", clientWebVitalsAdverseEvent.GetEndpoint("http"))
+    .WithEnvironment("Cors__AllowedOrigins__6", clientWebMeridianScreening.GetEndpoint("http"))
+    .WithEnvironment("Cors__AllowedOrigins__7", clientWebMeridianSarFiling.GetEndpoint("http"));
 eventstore.WithEnvironment("Cors__AllowedOrigins__0", clientWeb.GetEndpoint("http"))
     .WithEnvironment("Cors__AllowedOrigins__1", clientWebVitals.GetEndpoint("http"))
-    .WithEnvironment("Cors__AllowedOrigins__2", clientWebMeridian.GetEndpoint("http"));
+    .WithEnvironment("Cors__AllowedOrigins__2", clientWebMeridian.GetEndpoint("http"))
+    .WithEnvironment("Cors__AllowedOrigins__3", clientWebVitalsDevice.GetEndpoint("http"))
+    .WithEnvironment("Cors__AllowedOrigins__4", clientWebVitalsIonmAlert.GetEndpoint("http"))
+    .WithEnvironment("Cors__AllowedOrigins__5", clientWebVitalsAdverseEvent.GetEndpoint("http"))
+    .WithEnvironment("Cors__AllowedOrigins__6", clientWebMeridianScreening.GetEndpoint("http"))
+    .WithEnvironment("Cors__AllowedOrigins__7", clientWebMeridianSarFiling.GetEndpoint("http"));
+
+// ADR-067's RbacProjectionWorker (EventStore.DevIdp) -- registered
+// unconditionally (Program.cs) but a permanent no-op whenever Rbac:AppIds
+// is empty, which it always was here: this AppHost never configured it at
+// all until now. Found only by actually driving a real UcanDelegation
+// through the live app's own trust-root registration (client-web's new
+// Relying-Party Access panel, TODO.md) -- every prior exercise of this
+// mechanism was an isolated WebApplicationFactory test that either
+// applied TrustRootService's own fold method directly
+// (DelegatedGrantsRbacFederationHttpSqliteTests.cs) or drove
+// RbacProjectionWorker.CatchUpOnceAsync explicitly
+// (RbacProjectionWorkerHttpSqliteTests.cs), never the real
+// BackgroundService wired into a genuinely running AppHost -- so this gap
+// had no way to surface before. Config keys/values match that second
+// test's own already-proven configuration exactly (RbacProjectionOptions/
+// FollowClientOptions, EventStore.DevIdp/Program.cs).
+devIdp.WithEnvironment("Rbac__AppIds__0", "trial1")
+    .WithEnvironment("Rbac__AppIds__1", "kyc")
+    .WithEnvironment("Rbac__HostBaseUrl", eventstore.GetEndpoint("https"))
+    .WithEnvironment("Rbac__DevIdpBaseAddress", devIdp.GetEndpoint("http"))
+    .WithEnvironment("Rbac__Client__ClientId", "devidp-rbac-follower-client")
+    .WithEnvironment("Rbac__Client__ClientSecret", "devidp-rbac-follower-client-secret")
+    .WithEnvironment("Rbac__Client__Scope", "events:follow");
 
 // Dashboard-only grouping (WithParentRelationship carries no lifecycle/
 // dependency meaning of its own -- that's WithReference/WaitFor's job
@@ -302,7 +431,12 @@ migrator.WithParentRelationship(eventstore);
 devIdp.WithParentRelationship(eventstore);
 clientWeb.WithParentRelationship(eventstore);
 clientWebVitals.WithParentRelationship(vitalsSeed);
+clientWebVitalsDevice.WithParentRelationship(vitalsSeed);
+clientWebVitalsIonmAlert.WithParentRelationship(vitalsSeed);
+clientWebVitalsAdverseEvent.WithParentRelationship(vitalsSeed);
 clientWebMeridian.WithParentRelationship(meridianSeed);
+clientWebMeridianScreening.WithParentRelationship(meridianSeed);
+clientWebMeridianSarFiling.WithParentRelationship(meridianSeed);
 vitalsSimulator.WithParentRelationship(vitalsSeed);
 meridianSimulator.WithParentRelationship(meridianSeed);
 

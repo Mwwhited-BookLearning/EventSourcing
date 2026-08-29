@@ -85,6 +85,17 @@ public class SchemaRegistryService(
                 errors.Add($"filterableFields[].dataType must be one of String, Number, Boolean, DateTimeOffset (got: {fieldRequest.DataType})");
                 continue;
             }
+
+            // ADR-096/097 -- a x-masking-searchable-with-no-matching-
+            // FilterableField is a schema-authoring mistake with no error
+            // raised here (MaskingSchemaValidator validates x-masking-
+            // searchable's own shape independently of whether a
+            // FilterableField names the same path) -- it simply can never
+            // be indexed, since nothing could ever query it either.
+            var (indexKind, searchableConfig) = schemaNode is not null
+                ? ResolveSearchableIndexKind(schemaNode, fieldRequest.JsonPath)
+                : (FilterableFieldIndexKind.PlaintextExpression, null);
+
             filterableFields.Add(new FilterableField
             {
                 EventTypeAppId = request.AppId,
@@ -92,6 +103,8 @@ public class SchemaRegistryService(
                 JsonPath = fieldRequest.JsonPath,
                 DataType = dataType,
                 IsIndexed = fieldRequest.IsIndexed,
+                IndexKind = indexKind,
+                SearchableConfig = searchableConfig,
             });
         }
 
@@ -501,6 +514,53 @@ public class SchemaRegistryService(
             current = next;
         }
         return true;
+    }
+
+    // ADR-096/097 -- same walk as ResolvesInSchema above, but returns the
+    // resolved node itself rather than a bool, so its own x-masking-
+    // searchable extension (already structurally validated by
+    // MaskingSchemaValidator, walked independently per this design's own
+    // "no shared schema walker" pattern) can be read here too.
+    private static JsonObject? ResolveSchemaNode(JsonNode schemaNode, string jsonPath)
+    {
+        JsonNode? current = schemaNode;
+        foreach (var segment in JsonPathValidation.Segments(jsonPath))
+        {
+            if (current is not JsonObject obj || obj["properties"] is not JsonObject properties ||
+                !properties.TryGetPropertyValue(segment, out current) || current is null)
+                return null;
+        }
+        return current as JsonObject;
+    }
+
+    private static (FilterableFieldIndexKind IndexKind, SearchableIndexConfig? Config) ResolveSearchableIndexKind(JsonNode schemaNode, string jsonPath)
+    {
+        if (ResolveSchemaNode(schemaNode, jsonPath) is not { } targetNode ||
+            targetNode["x-masking-searchable"] is not JsonObject searchable ||
+            !Enum.TryParse<SearchableIndexKind>(searchable["indexKind"]?.GetValue<string>(), out var searchableKind))
+            return (FilterableFieldIndexKind.PlaintextExpression, null);
+
+        Enum.TryParse<SearchIndexKeyScope>(searchable["keyScope"]?.GetValue<string>(), out var keyScope);
+        Enum.TryParse<FieldCardinality>(searchable["cardinality"]?.GetValue<string>(), out var cardinality);
+        var config = new SearchableIndexConfig
+        {
+            IndexKind = searchableKind,
+            KeyScope = keyScope,
+            BucketGranularities = searchable["bucketGranularities"] is JsonArray granularities
+                ? granularities.Select(g => g!.GetValue<string>()).ToList()
+                : null,
+            Cardinality = searchable["cardinality"] is not null ? cardinality : null,
+            AcknowledgeLeakageRisk = searchable["acknowledgeLeakageRisk"]?.GetValue<bool>() ?? false,
+        };
+
+        var indexKind = searchableKind switch
+        {
+            SearchableIndexKind.Equality => FilterableFieldIndexKind.EncryptedBlindIndex,
+            SearchableIndexKind.Range => FilterableFieldIndexKind.EncryptedRangeBucket,
+            SearchableIndexKind.OrderRevealing => FilterableFieldIndexKind.OrderRevealing,
+            _ => FilterableFieldIndexKind.PlaintextExpression,
+        };
+        return (indexKind, config);
     }
 
     private static bool IsTypeValueFormat(string claim)

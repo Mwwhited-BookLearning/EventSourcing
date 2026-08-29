@@ -55,6 +55,13 @@ Decision:
   (`TODO.md`, this ADR's own `ADR-063` escalation) — `Moq` itself just
   wasn't named there specifically until now. Resolves once `EventStore.
   UnitTests` is either built for real or that item is formally descoped.
+  **Resolved, 2026-08-28**: `EventStore.UnitTests` was built per
+  `ADR-063`'s own decision ("adopt now, alongside `ADR-055`'s
+  `EventStore.UnitTests`") — FsCheck property tests, Polly+Simmy fault
+  injection, plus ordinary pure-logic unit tests added since. `docs/06-
+  solution-structure.md`'s own stale "NEVER BUILT" line for it (found
+  the same day, independently, while reconciling the file tree against
+  this ADR) is corrected in the same pass.
 - **Frontend unit tests: [Vitest](../libraries/web/vitest.md) + [Vue Test Utils](../libraries/web/vue-test-utils.md).** `Vitest` is
   maintained by the Vue/Vite team itself, needs zero additional config
   since `ADR-039`'s client is already Vite-based, and has solidified as
@@ -103,3 +110,56 @@ Consequences:
   overlooked (the same "state explicitly rather than silently disappear"
   discipline this design already applies to `references.md`'s rejected
   items).
+
+**Implementation note, added 2026-08-28**: `EventStore.E2ETests` finally
+built, plus a real extension this ADR didn't originally scope — direct
+request for automated UI playbooks: screenshots captured at each
+meaningful step of a real user workflow, assembled into a markdown user
+guide.
+- **Not `Microsoft.Playwright.MSTest`'s `PageTest` base class** — found,
+  by actually running it, that this package pins `MSTest.TestFramework`/
+  `TestAdapter` **2.2.7** and the old VSTest-based `Microsoft.NET.Test.Sdk`
+  **17.8.0** (confirmed via its own `.nuspec`), genuinely incompatible
+  with the `Microsoft.Testing.Platform`-based MSTest 4.3.3 every other
+  test project in this repo already uses — mixing them silently
+  discovered zero tests ("No test is available"), not a warning. Fixed
+  by referencing plain `Microsoft.Playwright` and managing the browser/
+  page lifecycle by hand in `ClassInitialize`/`ClassCleanup`/
+  `TestInitialize`/`TestCleanup` — `Microsoft.Playwright.Assertions.Expect`
+  is part of the core package, not exclusive to the MSTest adapter, so
+  nothing else about the testing experience is lost.
+- **Boots the real `EventStore.AppHost` via `Aspire.Hosting.Testing`'s
+  `DistributedApplicationTestingBuilder`**, not a human-started `aspire
+  run` in another terminal — the whole point of the direct request this
+  satisfies ("scripted so these can be updated and extended as needed")
+  is that `dotnet test tests/EventStore.E2ETests` alone regenerates a
+  playbook end to end: real Postgres, migrator, seed workers, DevIdp,
+  `eventstore`, and the pinned `client-web-vitals`/`client-web-meridian`
+  Vite instances, exactly as `AppHost.cs` already defines them, no second
+  orchestration path to keep in sync. `KnownResourceStates.Running` alone
+  isn't sufficient readiness signal for a Vite dev server (confirmed by
+  running it) — the class-level setup also polls the resolved endpoint
+  until it actually answers before Playwright ever navigates to it.
+- **`PlaybookRecorder`** (`tests/EventStore.E2ETests/PlaybookRecorder.cs`)
+  is the actual screenshot-to-markdown mechanism: `RecordStepAsync(page,
+  caption)` captures a numbered screenshot per step; `WriteMarkdownAsync`
+  assembles every captured step, in order, into one file. **Naming
+  convention, confirmed with the user rather than assumed**: `{Workflow}-
+  {feature doc name}.md` under `docs/playbooks/{domain}/` — reuses each
+  domain README's own existing `Workflow` lettering (Vitals A–D, Meridian
+  A–C) as this project's closest existing "epic" concept, rather than
+  inventing a new one. Screenshots live in a sibling folder matching the
+  markdown file's own basename, so the prose and its images move/delete
+  together as one unit. See `docs/playbooks/README.md` for the catalog.
+- Verified for real, not merely built: `VitalsWorkflowAPlaybookTests.
+  RecordPatientEnrollmentAndInformedConsentPlaybook` passes against the
+  actual live app and produces `docs/playbooks/vitals/workflow-a-
+  patient-enrollment-and-informed-consent.md` plus its three real
+  screenshots — one of which incidentally, usefully demonstrates
+  `ADR-009`'s masking wrapper live (`legalName`/`dateOfBirth` render
+  `"masked": "REDACTED"` for the `follower-client`'s `events:follow`-only
+  scope), not a contrived example.
+- Only one workflow is recorded so far (Vitals Workflow A) — the
+  mechanism is proven, not yet applied to every workflow both proving-
+  ground domains have; extending coverage is ordinary follow-on work
+  using the same `PlaybookRecorder`, not a new mechanism each time.

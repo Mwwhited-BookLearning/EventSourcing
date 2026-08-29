@@ -12,13 +12,17 @@ export * from './api/graphqlClient'
 export * from './api/localeClient'
 export * from './api/playbackClient'
 export * from './api/publishClient'
+export * from './api/rbacClient'
 export * from './api/streamingClient'
 export * from './api/subscriptionBuilder'
+export * from './api/ucan'
 
 export * from './composables/useEntityViewActions'
 export * from './composables/useEventComposer'
+export * from './composables/useLineageExportAndPlayback'
 export * from './composables/useOnlineStatus'
 export * from './composables/usePendingAuthorityQueue'
+export * from './composables/useRelyingPartyAccess'
 
 export * from './db/indexedDb'
 

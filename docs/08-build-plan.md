@@ -112,6 +112,9 @@ provider they apply to — not "code written."
 | 51 | [Domain Decision Queues](#domain-decision-queues) | Proving-Ground Application UX, Digital Sign-Off for Regulated Actions, Non-Authoritative Capture | Done |
 | 52 | [Generic Entity/Live-View Query](#generic-entitylive-view-query) | GraphQL-Only Query Layer, Non-Authoritative Capture, Property-Level Masking, Delegated Grants/RBAC/Read Audit Logging | Done |
 | 53 | [Push-Notification Wake-Up Layer](#push-notification-wake-up-layer) | Publish API, Entity-Centric Core Rebuild | Done (all 6 background workers) |
+| 54 | [Searchable Blind-Index & Bucketed-Range Encrypted-Field Indexes](#searchable-blind-index--bucketed-range-encrypted-field-indexes) | GDPR/CCPA Erasure, Property-Level Masking, Follow API + Filter Pushdown | Done |
+| 55 | [Order-Revealing Encryption Range Index (opt-in)](#order-revealing-encryption-range-index-opt-in) | Searchable Blind-Index & Bucketed-Range Encrypted-Field Indexes | Built, pending required security review (not Done) |
+| 56 | [In-Database Native Predicate Evaluator Seam](#in-database-native-predicate-evaluator-seam) | Searchable Blind-Index & Bucketed-Range Encrypted-Field Indexes | SQL Server built and verified; PostgreSQL written, not verified (not Done) |
 
 Two groups worth naming up front, since they explain most of the
 ordering below:
@@ -241,6 +244,9 @@ state "Local Services" as tierLocal {
   state "Lineage Export +\nBitemporal Playback" as a17 #palegreen
   state "Mechanism-Level\nOTel Instrumentation" as a23 #palegreen
   state "Expected-Response\nTracking" as a26 #palegreen
+  state "Searchable Blind-Index &\nBucketed-Range Indexes" as a31 #palegreen
+  state "Order-Revealing\nEncryption Range Index" as a32 #palegoldenrod
+  state "In-Database Native\nPredicate Evaluator Seam" as a33 #palegoldenrod
 }
 state "UI" as tierUi {
   state "MVVM Client" as p20 #palegreen
@@ -383,6 +389,11 @@ p8 --> a29
 p22 --> a29
 p2 --> a30
 p11 --> a30
+a2 --> a31
+p8 --> a31
+p4 --> a31
+a31 --> a32
+a31 --> a33
 @enduml
 ```
 
@@ -5156,6 +5167,147 @@ pre-existing/unrelated on isolated re-run.
   otherwise are Accepted and built/verified by the items above named for
   each, or folded into an earlier item/this cross-cutting section as
   noted at the top of the `ADR-050`+ section.
+
+## Searchable Blind-Index & Bucketed-Range Encrypted-Field Indexes
+
+**Scope**: `ADR-096` — the `x-masking-searchable` schema extension
+(`Equality`/`Range` kinds, `Shared`/`PerEntity` key scope), the new
+`EncryptedFieldIndexEntry` table, `FilterableField.IndexKind`, and
+`GraphQlFilterPredicateBuilder` routing an encrypted-kind field's
+comparison to `EncryptedFieldIndexEntry.Token` instead of extracting
+from ciphertext-filled `Payload`. Includes the cardinality-aware
+registration guardrail and `EntityErasureResolver`'s new erasure
+side-effect step (deleting an erased entity's own `Shared`-scope index
+rows). The default `IEncryptedPredicateEvaluator` implementation
+(`ADR-098`, app-tier, over the already-narrowed candidate set only) is
+built as part of this item, not deferred to `ADR-098`'s own item, since
+`ADR-096`'s range routing has nothing to fall back to without it.
+
+**Depends on**: GDPR/CCPA Erasure via Crypto-Shredding (the per-entity
+DEK and `IErasureKeyStore` this reuses/derives from), Property-Level
+Masking (`x-masking` itself, the schema extension point this attaches
+alongside), Follow API + Filter Pushdown (`FilterableField`,
+`GraphQlFilterPredicateBuilder`, `IJsonPathTranslator` — the pipeline
+this item's new `IndexKind` values route around).
+
+**Exit criteria**: an equality query against an `EncryptedBlindIndex`
+field returns the correct matching event(s) on every provider without
+ever extracting `Payload` as plaintext for the comparison; a range query
+against an `EncryptedRangeBucket` field returns the correct set,
+narrowed via bucket lookup then an exact decrypt-compare over a
+provably small candidate set (not a full-table decrypt); registering a
+`Low`-cardinality `Range` field with `regulatoryClassification` set and
+no `acknowledgeLeakageRisk` is rejected `400`; erasing an entity removes
+its own `Shared`-scope `EncryptedFieldIndexEntry` rows and a subsequent
+query no longer matches that entity, while `ChainHash` before/after the
+erasure is provably unchanged.
+
+**Status: Done.** 2026-08-27. Built exactly as scoped, plus one real
+prerequisite bug fix and a few implementation-level corrections found
+along the way — see `ADR-096`'s own "Implementation note" for the full
+list (most notably: `PayloadEncryptor`, `ADR-057`'s own encryption, was
+never wired into any Host's DI before this pass, so classified-field
+encryption was inert in production until now). New: `src/EventStore.
+Domain/SchemaRegistry/{SearchableIndexConfig,EncryptedFieldIndexEntry,
+SearchIndexKey}.cs`, `src/EventStore.Abstractions/ISearchIndexKeyStore.cs`,
+`src/EventStore.Erasure/{LocalSearchIndexKeyStore,SearchIndexKeyService,
+SearchIndexOptions,PayloadIndexer,RangeBucketing,
+AppTierEncryptedPredicateEvaluator}.cs`. Migrated across all three
+providers (`AddEncryptedFieldIndexAndSearchIndexKeys`, clean on Sqlite/
+Postgres/SqlServer). Verified: `EventStore.IntegrationTests.
+SearchableEncryptionSqliteTests` (equality query never touches plaintext;
+erasure removes `Shared`-scope rows, `ChainHash` unchanged; both
+registration guardrails refuse correctly) — all passing, alongside the
+full pre-existing Sqlite suite (150/150) confirming no regression from
+the `GraphQlFilterPredicateBuilder.Build` signature change or the
+`PayloadEncryptor` DI fix. **Extended later the same day**: the four
+cloud/Vault `ISearchIndexKeyStore` backends, via `CloudSearchIndexKeyStoreAdapter`
+wrapping the existing `IErasureKeyStore` cloud backends rather than a
+second SDK integration per provider — see `ADR-096`'s own "Implementation
+note" addendum. Verified against `LocalErasureKeyStore` (the adapter's
+logic is provider-agnostic) via `EventStore.UnitTests.
+CloudSearchIndexKeyStoreAdapterTests`.
+
+## Order-Revealing Encryption Range Index (opt-in)
+
+**Scope**: `ADR-097` — the CLWW/Lewi-Wu ORE construction as a real,
+working `OrderRevealing` `x-masking-searchable` kind: key derivation
+(`Shared`/`PerEntity`, same choice as the item above), the compare
+function, the ciphertext storage/indexing shape, and the no-override
+registration refusal on any classified field. This bespoke cryptographic
+primitive needs its own dedicated correctness/security review before
+this item can be marked Done — named here as a real, separate gate, not
+assumed satisfied by landing the code.
+
+**Depends on**: Searchable Blind-Index & Bucketed-Range Encrypted-Field
+Indexes (shares the `x-masking-searchable` schema extension and
+`EncryptedFieldIndexEntry`-adjacent erasure-cleanup shape).
+
+**Exit criteria**: a range query against an `OrderRevealing` field
+compiles to a native ciphertext comparison with no decryption performed
+to evaluate the predicate; registering `OrderRevealing` on any field
+that also carries `x-masking.regulatoryClassification` is rejected `400`
+unconditionally (no override accepted, unlike the sibling item above);
+the dedicated security review (above) has actually happened and is
+recorded, not merely implied by tests passing.
+
+**Status: Built, pending required security review (not Done).**
+2026-08-27. `src/EventStore.Erasure/OrderRevealingEncryption.cs` — see
+its own header for the honest scope statement (a from-scratch, tested
+realization of the same high-level CLWW/Lewi-Wu idea, not a verified
+byte-for-byte implementation of either paper). Order-preservation
+correctness verified across many Number/DateTimeOffset pairs
+(`EventStore.UnitTests.OrderRevealingEncryptionTests`); the no-override
+guardrail verified (`SearchableEncryptionSqliteTests`). **Not marked
+Done**, matching this item's own exit criteria literally: no dedicated
+security review has happened, and — found while building the query
+side, see `ADR-097`'s own "Implementation note" — the default app-tier
+evaluator compares ciphertext in application memory across a field's own
+indexed rows, not yet via a true native SQL comparison operator (that
+needs `ADR-098`'s own native evaluator seam, item 56 below, not yet
+built for any provider).
+
+## In-Database Native Predicate Evaluator Seam
+
+**Scope**: `ADR-098` — concrete per-provider `IEncryptedPredicateEvaluator`
+implementations beyond the default app-tier one (already built as part
+of the Searchable Blind-Index item above): a SQL Server SQLCLR scalar
+function, and a PostgreSQL native function (a small custom function or
+extension, since `pgcrypto`'s own primitives don't speak
+`EnvelopeAesGcm`'s raw AES-GCM format directly). Each is its own,
+explicitly optional sub-item — a deployment may run the default app-tier
+evaluator indefinitely and never build either. SQLite is explicitly not
+planned here, per `ADR-098`'s own honest assessment that an app-registered
+function there wins nothing over the default (same process either way).
+
+**Depends on**: Searchable Blind-Index & Bucketed-Range Encrypted-Field
+Indexes (the seam and its default implementation).
+
+**Exit criteria**, per provider actually built: the native evaluator
+returns identical results to the default app-tier evaluator against the
+same candidate set; the database engine process's own new dependency
+(network access and credentials to the configured `IErasureKeyStore`
+backend) is documented as a real, accepted operational change, not
+silently introduced.
+
+**Status: SQL Server built and verified; PostgreSQL written, not
+verified (not Done).** 2026-08-27, `ADR-098`'s own "Implementation note"
+has the full detail. `src/EventStore.SqlClr.SqlServer/` (net48, the one
+deliberate break from this solution's net10.0 targeting — confirmed
+required, since SQL Server's CLR host never loads .NET Core/.NET 5+
+assemblies) + `scripts/sql-clr/deploy-sql-server-encrypted-predicate-
+function.sql`. Cross-verified against real `EnvelopeAesGcm`-produced
+ciphertext (a golden fixture generated from the actual net10.0
+production code, not invented) via `tests/EventStore.SqlClr.SqlServer.
+Tests`, all passing. `scripts/sql-clr/deploy-postgres-encrypted-
+predicate-function.sql` (a `plpython3u` function, since `pgcrypto` has no
+GCM support at all — confirmed against current PostgreSQL docs) is
+written but explicitly **not** verified: neither `plpython3u` nor
+Python's `cryptography` package exists in the standard Testcontainers
+`postgres` image this project's other tests already use, and building/
+maintaining a custom Postgres image for this one function is real,
+separate infrastructure work, not done this pass. Both evaluators remain
+scoped to the `Local` backend only, per `ADR-098`'s own Decision.
 
 ## Suggested References
 

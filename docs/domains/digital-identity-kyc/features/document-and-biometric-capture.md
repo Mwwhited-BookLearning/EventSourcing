@@ -269,6 +269,36 @@ public class BiometricCaptureRecordedPayload
 // attestedClaims, not a Payload property.
 ```
 
+## Searchable encryption — document-reuse fraud detection (`ADR-096`)
+
+A real KYC fraud signal: the *same* passport/driver's-license/national-ID
+number being used to onboard a *different* applicant is a strong
+indicator of identity fraud — either a stolen document or a single
+person attempting to onboard multiple identities. Detecting this
+requires an equality search across every applicant's own
+`ExtractedDocumentNumber`, without decrypting each one to compare.
+Document numbers are high-entropy strings (a passport/license number
+combines letters and digits across a wide format space) — genuinely
+`High` cardinality, unlike `DateOfBirth` elsewhere in this domain, so no
+`acknowledgeLeakageRisk` override is needed:
+
+```json
+"ExtractedDocumentNumber": {
+  "type": "string",
+  "x-masking": { "requiredClaim": "identity:pii-read", "strategy": "PartialReveal", "regulatoryClassification": "PII" },
+  "x-masking-searchable": { "indexKind": "Equality", "keyScope": "Shared", "cardinality": "High" }
+}
+```
+
+An analyst (or an automated pre-review check run at upload time) queries
+`on_kyc_IdentityDocumentUploaded(where: [{ field: "ExtractedDocumentNumber",
+eq: "<the just-uploaded document number>" }])` — any match against an
+`ApplicantId` other than the one currently uploading is a real fraud
+flag, surfaced the same way `BiometricCaptureRecorded`'s own liveness
+detector already surfaces an unconfirmed pattern (`ADR-042`'s explicit
+`reviewPending` marker) — this doc doesn't re-derive that mechanism, only
+notes it's the natural place a document-reuse match would route to.
+
 ## State machine — an applicant's document/biometric intake, upstream of `AuthorityStatus`
 
 ```plantuml
@@ -509,4 +539,32 @@ Feature: Document and Biometric Capture
     # ChangeKind.Partial merge means this entity accumulates fields from
     # multiple event types over time (entity-concept.md) -- the identity
     # claim submitted downstream just adds more to the same EntityId.
+
+  # ADR-096 -- document-reuse fraud detection, per the "Searchable
+  # encryption" section above. A separate Background registration, since
+  # the shared one above doesn't declare x-masking-searchable.
+
+  Scenario: A document number reused across two different applicants is detected without decrypting either to compare
+    Given the event type "IdentityDocumentUploaded" version 1 is registered
+      with EntityIdField "$.ApplicantId" and schema:
+      """
+      {
+        "type": "object",
+        "properties": {
+          "ApplicantId": { "type": "string" },
+          "DocumentType": { "type": "string" },
+          "ExtractedDocumentNumber": {
+            "type": "string",
+            "x-masking": { "requiredClaim": "identity:pii-read", "strategy": "PartialReveal", "regulatoryClassification": "PII" },
+            "x-masking-searchable": { "indexKind": "Equality", "keyScope": "Shared", "cardinality": "High" }
+          }
+        },
+        "required": ["ApplicantId", "DocumentType", "ExtractedDocumentNumber"]
+      }
+      """
+    And "applicant-1001" uploaded a passport with ExtractedDocumentNumber "P1234567"
+    When "applicant-4001" uploads a passport with the same ExtractedDocumentNumber "P1234567"
+    And an analyst queries `on_kyc_IdentityDocumentUploaded(where: [{ field: "ExtractedDocumentNumber", eq: "P1234567" }])`
+    Then the query should match both "applicant-1001" and "applicant-4001"
+    And the generated query should never extract or compare `Payload` as plaintext for `ExtractedDocumentNumber`
 ```

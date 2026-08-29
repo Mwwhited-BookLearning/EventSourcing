@@ -31,50 +31,77 @@ lose or corrupt data.
 
 ## Current state
 
-*(as of 2026-08-13, branch `fix/postgres-retry-strategy-and-otel-metrics`,
-HEAD `39f2bd7` — update this whole section, don't just bump the date)*
+*(as of 2026-08-29, branch `dev/cryptoshredding` off `main` — update this
+whole section, don't just bump the date)*
 
-All 95 ADRs Accepted; all 52 `docs/08-build-plan.md` items Done. `TODO.md`
-and `docs/10-open-questions.md` are both empty. `EventStore.
-IntegrationTests` has 231 `[TestMethod]`s (`grep -rc "\[TestMethod\]"
-tests/EventStore.IntegrationTests/*.cs | awk -F: '{sum+=$2} END
-{print sum}'` — the reliable way to recheck, don't hand-thread a running
-tally through prose).
+All 95 pre-existing ADRs Accepted; `ADR-096`–`099` added since. `08-build-
+plan.md` has 56 items: the original 53 Done, item 54 Done, item 55 built
+but not Done (own exit criteria need a dedicated security review, not
+performed), item 56 SQL Server built+verified / PostgreSQL
+written+unverified (not Done). `client-web`'s reference app grew from one
+generic entity view into 8 tabs across 12 real, Playwright-verified
+playbooks (`docs/playbooks/README.md`), then `ADR-099` replaced its
+plain-HTML tab-button shell with Naive UI + Vue Router behind a
+left-hand-nav rail, restyling every existing component in the same pass
+(`docs/changes/2026-08-29.md` has the full build narrative, including 5
+real bugs found only by running things — Naive UI's own `n-card`/
+`n-form-item` accessibility gaps, and `n-data-table` pagination breaking
+findability of a known `EntityId` under live simulator load). `TODO.md`
+has one Postgres-noise item (investigated, two fix attempts tried and
+reverted, real fix not yet built — read it before touching that code
+path) plus two smaller, fully-scoped UI follow-ons (a real paged server
+query for entity lists; a charting-library decision). `docs/10-open-
+questions.md` is empty.
 
-This session's real work — full narrative in `docs/changes/2026-08-13.md`,
-not repeated here:
-- Three real Postgres bugs, found by actually running the AppHost under
-  concurrent write load, fixed in sequence (each one blocked the next
-  from being reachable): `EventAppender`/`AccessLogAppender`/
-  `SchemaRegistryService` calling `BeginTransactionAsync` directly,
-  incompatible with `EnableRetryOnFailure`; the obvious fix silently
-  corrupting the hash chain under real retries (a shared entity reused
-  across attempts); and an insufficient `maxRetryCount` under sustained
-  load. Regression-tested in `RetryOnFailurePostgresTests.cs`.
-- OTel metrics extended beyond `ADR-088`'s original four mechanisms
-  (publish, GraphQL, derivation, archival, simulators, process) — see
-  that ADR's own "Extended, 2026-08-13" note.
-- A real `client-web`/`client-web-vitals`/`client-web-meridian` bug: a
-  missing `--` separator in nested `npm run --workspace=` scripts
-  silently swallowed Aspire's `--port` flag, so every instance was
-  always listening on the wrong port. Fixed in `client-web/package.json`.
-- Four new Aspire dashboard links on the `eventstore` resource (Scalar
-  UI, raw OpenAPI/AsyncAPI JSON, AsyncAPI viewer).
-- `EventTailReader.TailAsync` (Follow/GraphQL Subscriptions) now ends
-  the stream cleanly on client disconnect instead of throwing an
-  unhandled `TaskCanceledException` — regression-tested in
-  `FollowScenarioAssertions.
-  DisconnectingMidTailEndsTheStreamGracefullyRatherThanThrowing`.
-- This file itself, purged from ~2372 lines of duplicated build-item
-  narrative down to this snapshot (protocol violation caught and fixed
-  the same session it was noticed).
+This session (full narrative split across three passes in
+`docs/changes/2026-08-27.md`): designed searchable equality/range
+queries over `ADR-057`'s crypto-shredded fields (comparison doc + `ADR-
+096`/`097`/`098`), then built and tested items 54/55 (`PayloadIndexer`,
+`EncryptedFieldIndexEntry`, `OrderRevealingEncryption`, async
+`GraphQlFilterPredicateBuilder` routing — **found and fixed a real
+prerequisite bug**: `PayloadEncryptor`/`ADR-057`'s own encryption was
+never wired into any Host's DI before this session, inert in
+production until now), then built `ADR-098`'s two native predicate
+evaluators. New code lives in `src/EventStore.Domain/SchemaRegistry/`,
+`src/EventStore.Abstractions/`, `src/EventStore.Erasure/`, and a new
+`net48` project `src/EventStore.SqlClr.SqlServer/` (SQL Server's CLR
+host never loads .NET Core/.NET 5+, a real confirmed constraint — the
+one deliberate break from this solution's otherwise-uniform net10.0
+targeting). Migrated across all three providers. Verified: new unit/
+integration tests including a genuine cross-runtime check (the SQLCLR
+decrypt logic tested against a golden ciphertext fixture generated from
+the real net10.0 `EnvelopeAesGcm.Encrypt`), the full pre-existing Sqlite
+suite (150/150), and `ErasurePostgresTests`/`ErasureSqlServerTests`
+against real Testcontainers Postgres/SQL Server — no regressions found
+anywhere.
+
+`ISearchIndexKeyStore`'s cloud/Vault gap is also now closed:
+`CloudSearchIndexKeyStoreAdapter` wraps any existing `IErasureKeyStore`
+cloud backend (Azure Key Vault/AWS KMS/Google Cloud KMS/HashiCorp Vault)
+into a search-index key store via the same derivation trick `PerEntity`
+scope uses, rather than a fourth bespoke SDK integration — verified
+against `LocalErasureKeyStore` (provider-agnostic logic).
 
 ## Actively in flight
 
-`TODO.md` is empty — nothing queued. The branch above is 5 commits ahead
-of `main` (`f271b26`, `abbc3b4`, `e078b3f`, `786bc10`, `39f2bd7`), not yet
-merged or opened as a PR — a fresh session should ask the user before
-assuming that's the next step.
+`TODO.md` has four items, added while reviewing Vitals/Meridian for real
+`x-masking-searchable` candidates: a real guardrail gap found (`ADR-096`'s
+cardinality check only gates `Range`, not `Equality`, though the same
+paper it cites names deterministic encryption — what `Equality` is — as
+frequency-analysis-vulnerable too), plus three domain-doc propagation
+items (Vitals' `Patient Enrollment`, Meridian's `Customer Onboarding`,
+Meridian's `Document Capture`/`Periodic Screening`). See `TODO.md` for
+the concrete file-by-file detail, not repeated here.
+
+Also still open, not yet in `TODO.md` (build-plan sequencing calls, not
+"decided, just undone" doc/fix items): item 55's required security
+review; item 56's PostgreSQL `plpython3u` function is written but
+unverified (needs a custom Postgres image); both item 56 evaluators stay
+`Local`-backend-only regardless of the cloud `ISearchIndexKeyStore` work
+(the evaluators themselves would still need their own network access to
+a real KMS/Vault). `dev/cryptoshredding` has four commits ahead of
+`main`, not yet merged or opened as a PR — a fresh session should
+confirm with the user before assuming either is wanted.
 
 ## How to resume cold
 

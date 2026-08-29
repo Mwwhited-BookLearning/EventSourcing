@@ -40,6 +40,7 @@ public class PublishService(
     SchemaRegistryService schemaRegistry,
     IUniqueConstraintViolationDetector uniqueConstraintViolationDetector,
     PayloadEncryptor? payloadEncryptor = null,
+    PayloadIndexer? payloadIndexer = null,
     IOptions<OriginIdOptions>? originIdOptions = null,
     ITimestampAuthorityClient? timestampAuthorityClient = null,
     IWorkerWakeSignal? wakeSignal = null,
@@ -106,7 +107,7 @@ public class PublishService(
         // representation every time, or a legitimate idempotent retry of a
         // publish containing a classified field would hash differently from
         // what's already stored and be wrongly reported as a 409 Conflict.
-        var payloadJson = await EncryptClassifiedFieldsAsync(request, activeDefinition, ct);
+        var (payloadJson, pendingIndexEntries) = await EncryptAndIndexClassifiedFieldsAsync(request, activeDefinition, ct);
 
         // ADR-011 -- the eventId short-circuit happens before the parent-link
         // check, immediately after confirming the event type is registered.
@@ -243,6 +244,20 @@ public class PublishService(
             return ReplayOrConflict(winner, payloadHash);
         }
 
+        // ADR-096/097 -- StoredEventSequenceNumber isn't known until the
+        // append above assigns it (an identity column), so the entries
+        // PayloadIndexer already computed (against the pre-encryption
+        // plaintext, before Payload was overwritten with ciphertext) are
+        // only persisted now, the same "add once SequenceNumber exists"
+        // pattern AttachmentRef below already follows.
+        if (pendingIndexEntries.Count > 0)
+        {
+            foreach (var entry in pendingIndexEntries)
+                entry.StoredEventSequenceNumber = storedEvent.SequenceNumber;
+            db.EncryptedFieldIndexEntries.AddRange(pendingIndexEntries);
+            await db.SaveChangesAsync(ct);
+        }
+
         // ADR-095 -- best-effort, AFTER the durable append above genuinely
         // succeeded, never before: each worker's own poll loop is what
         // actually finds and processes this event regardless, so a signal
@@ -327,7 +342,8 @@ public class PublishService(
     // schema they're each looking at). An unregistered declared version, or an
     // unresolvable EntityId, means nothing to encrypt -- returns the payload
     // unchanged, same as PayloadEncryptor's own no-op path.
-    private async Task<string> EncryptClassifiedFieldsAsync(PublishEventRequest request, EventTypeDefinition activeDefinition, CancellationToken ct)
+    private async Task<(string PayloadJson, List<EncryptedFieldIndexEntry> IndexEntries)> EncryptAndIndexClassifiedFieldsAsync(
+        PublishEventRequest request, EventTypeDefinition activeDefinition, CancellationToken ct)
     {
         // ADR-057's own encryption machinery is opt-in via DI, same reasoning
         // as _originId above -- every pre-"GDPR/CCPA Erasure" test file (~37
@@ -336,19 +352,30 @@ public class PublishService(
         // field, so there is nothing for a real one to do differently. A real
         // Host always supplies a real, DI-resolved PayloadEncryptor.
         if (payloadEncryptor is null)
-            return request.Payload;
+            return (request.Payload, []);
 
         var declaredDefinition = await schemaRegistry.GetVersionAsync(request.AppId, activeDefinition.Name, request.SchemaVersion, ct);
         if (declaredDefinition is null)
-            return request.Payload;
+            return (request.Payload, []);
 
         var payloadNode = JsonNode.Parse(request.Payload);
         var uniqueId = EntityIdResolver.ResolveUniqueId(payloadNode, activeDefinition.EntityIdField);
         var entityId = uniqueId is null ? null : $"{request.AppId}:{activeDefinition.EntityType}:{uniqueId}";
 
         var schemaNode = JsonNode.Parse(declaredDefinition.JsonSchema);
+
+        // ADR-096/097 -- computed against the PRE-encryption plaintext
+        // payloadNode, which PayloadEncryptor's own call below never mutates
+        // in place (it returns a separate, newly-built encrypted tree) --
+        // must happen before Payload is overwritten with ciphertext, the
+        // same ordering requirement ADR-057 already states for encryption
+        // itself relative to hashing.
+        var indexEntries = payloadIndexer is not null
+            ? await payloadIndexer.ComputeIndexEntriesAsync(schemaNode, payloadNode, request.AppId, activeDefinition.Name, entityId, sequenceNumber: 0, declaredDefinition.FilterableFields, ct)
+            : [];
+
         var encrypted = await payloadEncryptor.EncryptClassifiedFieldsAsync(schemaNode, payloadNode, request.AppId, entityId, ct);
-        return encrypted?.ToJsonString() ?? request.Payload;
+        return (encrypted?.ToJsonString() ?? request.Payload, indexEntries);
     }
 
     private static string ComputeHash(string eventType, string payloadJson, IReadOnlyList<Guid> parentEventIds) =>

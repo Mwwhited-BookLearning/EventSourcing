@@ -325,7 +325,7 @@ public class RouterWorker(IServiceScopeFactory scopeFactory, ILogger<RouterWorke
         // null only for call sites (most existing tests) that never publish
         // this reserved type and have nothing to react to.
         if (storedEvent.EventType == "entityerasurerequested" && erasureKeyService is not null)
-            await EntityErasureResolver.ProcessAsync(erasureKeyService, storedEvent, ct);
+            await EntityErasureResolver.ProcessAsync(erasureKeyService, db, storedEvent, ct);
 
         // ADR-060 -- same "ordinary fold above, additional reactor effect
         // here" shape as the two reactors just above. payloadMasker is null

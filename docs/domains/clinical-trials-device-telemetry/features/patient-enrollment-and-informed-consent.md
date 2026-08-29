@@ -304,6 +304,70 @@ public class PatientRecord
 }
 ```
 
+## Searchable encryption — duplicate-subject detection across sites (`ADR-096`)
+
+A real, named operational need this domain has: a patient screened at
+one site shouldn't also get enrolled at a different site under a second
+`SubjectId` — the classic multi-site duplicate-subject problem. `ADR-057`
+already encrypts `LegalName`/`DateOfBirth` at rest; `ADR-096` is what
+lets a coordinator's screening workflow actually check for a duplicate
+**without decrypting every enrolled patient's record to compare**. The
+`PatientScreened` schema's `x-masking-classified` fields (elided above,
+per this doc's own convention) carry the concrete extension:
+
+```json
+"LegalName": {
+  "type": "string",
+  "x-masking": { "requiredClaim": "phi:view", "strategy": "PartialReveal", "regulatoryClassification": "PHI" },
+  "x-masking-searchable": { "indexKind": "Equality", "keyScope": "Shared", "cardinality": "High" }
+},
+"DateOfBirth": {
+  "type": "string",
+  "x-masking": { "requiredClaim": "phi:view", "strategy": "FixedValue", "regulatoryClassification": "PHI" },
+  "x-masking-searchable": { "indexKind": "Equality", "keyScope": "Shared", "cardinality": "Low", "acknowledgeLeakageRisk": true }
+}
+```
+
+**`DateOfBirth` needs the explicit `acknowledgeLeakageRisk` override**
+(`ADR-096`'s registration guardrail) — a birthdate is exactly the
+low-cardinality shape the underlying attack ([Naveed/Kamara/Wright, CCS
+2015](https://www.microsoft.com/en-us/research/publication/inference-attacks-property-preserving-encrypted-databases/))
+can fully recover via frequency analysis alone. **The mitigation this
+domain actually uses is compound matching, not accepting that risk in
+isolation**: a duplicate-detection query always requires **both**
+`LegalName` AND `DateOfBirth` to match — never `DateOfBirth` alone —
+which meaningfully raises the bar against frequency analysis on the
+low-cardinality half, since the attacker would also need to correlate
+against the high-cardinality `LegalName` token to get any signal at all.
+The same compound-match query answers [Trial Data Export and Subject
+Rights](trial-data-export-and-subject-rights.md)'s own intake case: a
+data-subject-rights caller identifies themselves by name and date of
+birth, not by an internal `SubjectId` they were never given.
+
+```plantuml
+@startuml DuplicateSubjectDetection_Sequence
+autonumber
+actor "Site Coordinator's client\n(coord-3)" as coordinator
+participant "GraphQL Gateway" as gateway
+database "EncryptedFieldIndexEntry\n(ADR-096)" as index
+database "Entity Store" as entityStore
+
+coordinator -> gateway: subscription { on_trial1_PatientScreened(\n  where: [{ field: "LegalName", eq: "Jordan Reyes" },\n          { field: "DateOfBirth", eq: "1988-04-02" }]) {\n  subjectId siteId } }
+gateway -> index: resolve matching SequenceNumbers for BOTH\nclauses (AND-combined, ADR-096) -- never decrypts\nPayload to compare
+index --> gateway: matching SequenceNumber(s), if any
+gateway -> entityStore: fetch matched StoredEvent(s) for display
+gateway --> coordinator: 0 or more matches -- a match means this\nperson is already screened at another site
+note right of coordinator
+  Zero matches doesn't guarantee no duplicate exists --
+  it means no OTHER already-enrolled patient shares this
+  exact (LegalName, DateOfBirth) pair under the Shared-
+  scope key. A coordinator still exercises judgment (name
+  variants, transcription differences) -- this narrows
+  the search, it doesn't replace it.
+end note
+@enduml
+```
+
 ## State machine — `PatientRecord` enrollment lifecycle
 
 ```plantuml
@@ -513,4 +577,45 @@ Feature: Patient Enrollment and Informed Consent
     And the target event for "S-0044" should have AuthorityStatus "rejected"
     And the authoritative Entity Store for "trial1:Patient:S-0044" should still reflect EnrollmentStatus "Screened", never "Enrolled"
     And the coordinator must publish a new "InformedConsentCaptured" event for "S-0044" before resubmitting for approval
+
+  # ADR-096 -- duplicate-subject detection across sites, per the
+  # "Searchable encryption" section above. A separate Background here
+  # (rather than the shared one) since it registers PatientScreened with
+  # LegalName/DateOfBirth actually present and x-masking-searchable-
+  # annotated, which the shared Background above deliberately elides.
+
+  Scenario: A coordinator's duplicate-subject check matches an existing patient only when BOTH name and date of birth match
+    Given the event type "PatientScreened" version 1 is registered with EntityIdField "$.SubjectId", ChangeKind "Full" and schema:
+      """
+      {
+        "type": "object",
+        "properties": {
+          "SubjectId": { "type": "string" },
+          "SiteId": { "type": "string" },
+          "LegalName": {
+            "type": "string",
+            "x-masking": { "requiredClaim": "phi:view", "strategy": "PartialReveal", "regulatoryClassification": "PHI" },
+            "x-masking-searchable": { "indexKind": "Equality", "keyScope": "Shared", "cardinality": "High" }
+          },
+          "DateOfBirth": {
+            "type": "string",
+            "x-masking": { "requiredClaim": "phi:view", "strategy": "FixedValue", "regulatoryClassification": "PHI" },
+            "x-masking-searchable": { "indexKind": "Equality", "keyScope": "Shared", "cardinality": "Low", "acknowledgeLeakageRisk": true }
+          }
+        },
+        "required": ["SubjectId", "SiteId", "LegalName", "DateOfBirth"]
+      }
+      """
+    And "coord-3" at site "04-221" publishes "PatientScreened" for "S-0091" with body { "SubjectId": "S-0091", "SiteId": "04-221", "LegalName": "Jordan Reyes", "DateOfBirth": "1988-04-02" }
+    When a coordinator at a different site queries `on_trial1_PatientScreened(where: [{ field: "LegalName", eq: "Jordan Reyes" }, { field: "DateOfBirth", eq: "1988-04-02" }])`
+    Then the query should match "S-0091"
+    And the generated query should never extract or compare `Payload` as plaintext for either field (ADR-096)
+
+  Scenario: A name-only match without a matching date of birth is not treated as a duplicate
+    Given "S-0091" is registered as above with LegalName "Jordan Reyes", DateOfBirth "1988-04-02"
+    When a coordinator queries `on_trial1_PatientScreened(where: [{ field: "LegalName", eq: "Jordan Reyes" }, { field: "DateOfBirth", eq: "1975-11-09" }])`
+    Then the query should return no matches
+    # Compound matching in practice, not just in principle -- a shared
+    # LegalName alone (a common name) never surfaces as a false duplicate
+    # without an independently-matching DateOfBirth.
 ```

@@ -188,16 +188,27 @@ EventStore.sln
     -- Sample application, explicitly NOT part of the framework (ADR-030):
     Samples.Orders.Projections/           -- worked example: OrderSummaryProjection (features/cqrs-projections.md)
   tests/
-    EventStore.UnitTests/            -- NEVER BUILT as its own project -- the same class of consolidation this whole
-                                      -- section documents for src/, on the tests/ side. Every test in this solution
-                                      -- (unit-level and integration-level alike) lives in the ONE project below instead.
-    EventStore.IntegrationTests/    -- runs against all three providers (see below); ALSO where every "unit test" actually
-                                     -- lives -- descriptively-named MSTest [TestMethod]s / shared *ScenarioAssertions.cs
-                                     -- helper classes calling services directly, not a separate fast/slow test-project split
-    EventStore.E2ETests/             -- NEVER BUILT -- no Playwright package reference exists anywhere in this solution's
-                                      -- own .csproj files. client-web's own a11y.spec.ts (Vitest, real axe-core) and the
-                                      -- headless-Edge cross-checks used while building several items are the closest real
-                                      -- equivalent, neither of them a literal Playwright E2E suite (ADR-055)
+    EventStore.UnitTests/            -- Built per ADR-063's own decision ("adopt now, alongside ADR-055's
+                                      -- EventStore.UnitTests"), correcting THIS line's own earlier "never built"
+                                      -- claim (stale as of this pass -- found while reconciling it against the
+                                      -- file tree, TODO.md). Holds tests with no real database/service wiring
+                                      -- to exercise: FsCheck property tests (hash-chain/conflict-resolution
+                                      -- invariants, ADR-063), Polly+Simmy fault injection (same ADR), and
+                                      -- ordinary pure-logic unit tests added since (OrderRevealingEncryption's
+                                      -- own correctness, CloudSearchIndexKeyStoreAdapter's provider-agnostic
+                                      -- derivation logic) -- the dividing line from IntegrationTests below is
+                                      -- "needs a real service/database in the loop" (IntegrationTests) vs.
+                                      -- "a pure function or a small in-memory object graph is enough"
+                                      -- (UnitTests), not "unit" vs. "integration" in the abstract.
+    EventStore.IntegrationTests/    -- runs against all three providers (see below); still where most "unit test"-shaped
+                                     -- coverage actually lives -- descriptively-named MSTest [TestMethod]s / shared
+                                     -- *ScenarioAssertions.cs helper classes calling real services against a real
+                                     -- database, not a mocked dependency, never a separate fast/slow project split
+    EventStore.E2ETests/             -- Built 2026-08-28 (ADR-055's own "Implementation note"): plain Microsoft.Playwright
+                                      -- (not Microsoft.Playwright.MSTest -- see that ADR note for the real MSTest-version
+                                      -- conflict found by actually running it), Aspire.Hosting.Testing boots the real
+                                      -- AppHost. Also generates docs/playbooks/ -- see PlaybookRecorder.cs and
+                                      -- docs/playbooks/README.md's own catalog.
     EventStore.Bdd/                 -- NEVER BUILT -- no Reqnroll/SpecFlow package reference exists anywhere either. Every
                                      -- feature doc's own fenced Gherkin block stays documentation-only; the corresponding
                                      -- real test is a same-intent MSTest [TestMethod] in EventStore.IntegrationTests above,

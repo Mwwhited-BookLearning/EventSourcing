@@ -53,6 +53,9 @@ public class EventStoreContext(DbContextOptions<EventStoreContext> options, IJso
     public DbSet<WebhookDeliveryCursor> WebhookDeliveryCursors => Set<WebhookDeliveryCursor>();
     public DbSet<ExpectedResponseTracker> ExpectedResponseTrackers => Set<ExpectedResponseTracker>(); // ADR-094
     public DbSet<WakeSignal> WakeSignals => Set<WakeSignal>(); // ADR-095
+    public DbSet<EncryptedFieldIndexEntry> EncryptedFieldIndexEntries => Set<EncryptedFieldIndexEntry>(); // ADR-096/097
+    public DbSet<SearchIndexKey> SearchIndexKeys => Set<SearchIndexKey>(); // ADR-096
+    public DbSet<LocalSearchIndexKeyMaterial> LocalSearchIndexKeyMaterials => Set<LocalSearchIndexKeyMaterial>(); // ADR-096
 
     // ADR-089 -- ONE CLR type (ChainCheckpoint), TWO genuinely distinct
     // tables via EF Core's "shared-type entity" feature, so the Event
@@ -99,6 +102,12 @@ public class EventStoreContext(DbContextOptions<EventStoreContext> options, IJso
         modelBuilder.Entity<FilterableField>(e =>
         {
             e.HasKey(x => x.Id);
+
+            // ADR-096/097 -- null for every field registered before these
+            // ADRs and every ordinary (non-searchable) field since.
+            e.Property(x => x.SearchableConfig)
+                .HasConversion(JsonValueConverter.ForNullable<SearchableIndexConfig>())
+                .Metadata.SetValueComparer(JsonValueConverter.NullableComparer<SearchableIndexConfig>());
         });
 
         modelBuilder.Entity<StoredEvent>(e =>
@@ -289,6 +298,23 @@ public class EventStoreContext(DbContextOptions<EventStoreContext> options, IJso
         modelBuilder.Entity<WakeSignal>(e =>
         {
             e.HasKey(x => x.Topic); // ADR-095 -- deployment-wide, not AppId-scoped, same shape as LeaderLease
+        });
+
+        modelBuilder.Entity<EncryptedFieldIndexEntry>(e =>
+        {
+            e.HasKey(x => x.Id); // ADR-096/097
+            e.HasIndex(x => new { x.AppId, x.EventTypeName, x.FieldJsonPath, x.Token }); // GraphQlFilterPredicateBuilder's own query-routing lookup
+            e.HasIndex(x => x.EntityId); // EntityErasureResolver's own Shared-scope cleanup delete
+        });
+
+        modelBuilder.Entity<SearchIndexKey>(e =>
+        {
+            e.HasKey(x => new { x.AppId, x.EventTypeName, x.FieldJsonPath }); // ADR-096
+        });
+
+        modelBuilder.Entity<LocalSearchIndexKeyMaterial>(e =>
+        {
+            e.HasKey(x => x.KeyReference); // ADR-096
         });
 
         modelBuilder.SharedTypeEntity<ChainCheckpoint>("EventLogChainCheckpoints", e =>

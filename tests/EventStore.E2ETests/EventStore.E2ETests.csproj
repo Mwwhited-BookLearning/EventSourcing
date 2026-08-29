@@ -1,0 +1,45 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- ADR-055 names this project (Playwright, MSTest base classes) but
+       never built it; built this session, plus the playbook-generation
+       extension (see docs/adrs/adr-055-testing-strategy.md's own
+       "Amendment" note). Boots the REAL EventStore.AppHost via
+       Aspire.Hosting.Testing rather than assuming a human already has
+       `aspire run` going in another terminal; the whole point of the
+       direct request this exists to satisfy ("scripted so these can be
+       updated and extended") is that `dotnet test` alone regenerates
+       every playbook, start to finish, no manual setup step. -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <!-- Deliberately NOT Microsoft.Playwright.MSTest: that package pins
+       MSTest.TestFramework/TestAdapter 2.2.7 and the old VSTest-based
+       Microsoft.NET.Test.Sdk 17.8.0, confirmed via its own .nuspec;
+       genuinely incompatible with MSTest 4.3.3's Microsoft.Testing.Platform
+       engine every other test project in this repo already uses (mixing
+       them silently broke test discovery entirely, "No test is
+       available", found by actually running it, not assumed). Plain
+       Microsoft.Playwright (browser/page lifecycle managed by hand in
+       ClassInitialize/ClassCleanup below) plus this repo's own MSTest
+       version avoids the conflict; Assertions.Expect is part of the core
+       package, not exclusive to the MSTest adapter. -->
+  <ItemGroup>
+    <PackageReference Include="Aspire.Hosting.Testing" Version="13.4.6" />
+    <PackageReference Include="Microsoft.Playwright" Version="1.61.0" />
+    <PackageReference Include="MSTest" Version="4.3.3" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Using Include="Microsoft.VisualStudio.TestTools.UnitTesting" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\EventStore.AppHost\EventStore.AppHost.csproj" />
+  </ItemGroup>
+
+</Project>

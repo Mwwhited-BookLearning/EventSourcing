@@ -143,6 +143,8 @@ note right of inbox
 end note
 inbox --> coordinator: 202
 
+dpo -> gateway: subscription { on_trial1_PatientScreened(\n  where: [{ field: "LegalName", eq: "<name subject gave>" },\n          { field: "DateOfBirth", eq: "<DOB subject gave>" }]) {\n  subjectId } }
+gateway --> dpo: "S-0077" (ADR-096 -- see patient-enrollment-and-\ninformed-consent.md's own compound-match section;\na real subject-rights intake call names a person by\nname/DOB, never the internal EntityId directly)
 dpo -> inbox: POST /publish/EntityErasureRequested\n{ payload: { EntityId: "trial1:Patient:S-0077",\n  RequestedAt: "2026-07-29T00:00:00Z",\n  Reason: "subject withdrew consent, GDPR Art. 17 request" } }
 inbox -> eventLog: INSERT StoredEvent (EntityErasureRequested)\nActorId: "dpo-1" -- hash-chained like any other event (ADR-057)
 inbox -> keyStore: DestroyKey(AppId: "trial1", EntityId: "trial1:Patient:S-0077")
@@ -181,6 +183,16 @@ CRF, say), that signature would remain fully attributable regardless —
 `ADR-066`'s categorical exemption (GDPR Art. 17(3)(b)/(e)) — though this
 particular scenario doesn't exercise that path, since `S-0077` here is
 the consent *subject*, never a signer.
+
+**The intake step's own mechanics (the `LegalName`/`DateOfBirth`
+compound-match query) are owned by
+[`patient-enrollment-and-informed-consent.md`](patient-enrollment-and-informed-consent.md)'s
+own "Searchable encryption" section, not re-derived here** — this doc
+only shows *where* that lookup fits into the erasure workflow: a DPO
+resolving a caller's stated identity to an internal `EntityId` before an
+erasure request can even be constructed, since a real Art. 17 request
+never arrives pre-addressed to a `SubjectId` the requester was never
+given.
 
 ## Data model (ER diagram)
 
@@ -468,6 +480,19 @@ Feature: Trial Data Export and Subject Rights
     And the ConsentWithdrawn event should remain fully readable and hash-chained forever, exactly like any other event
     # ICH-GCP's retention requirement applies to this event just as
     # much as to any clinical finding.
+
+  Scenario: A Data Protection Officer resolves a caller's stated identity to an internal EntityId before an erasure request can be constructed
+    Given subject "S-0077" has withdrawn consent, per above, with LegalName "Robin Okafor" and DateOfBirth "1979-02-14"
+    And "S-0077" was never given their own internal SubjectId
+    When "dpo-1" queries `on_trial1_PatientScreened(where: [{ field: "LegalName", eq: "Robin Okafor" }, { field: "DateOfBirth", eq: "1979-02-14" }])`
+    Then the query should resolve to "S-0077"
+    # See patient-enrollment-and-informed-consent.md's own "Searchable
+    # encryption" section (ADR-096) for the compound-match mechanics --
+    # this is the SAME query shape used there for duplicate-subject
+    # detection, reused here for the opposite direction: identifying an
+    # already-enrolled subject from what a caller tells you about
+    # themselves, without ever decrypting every enrolled patient's record
+    # to compare by hand.
 
   Scenario: A Data Protection Officer requests erasure for the withdrawn subject, destroying the encryption key
     Given subject "S-0077" has withdrawn consent, per above
