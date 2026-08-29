@@ -25,74 +25,6 @@ here instead of inlining.
 
 ## Active
 
-- [ ] **Reduce routine Postgres `40001` conflict frequency under real
-  concurrent load — properly, not via a quick patch** (direct report:
-  "I'm getting a ton of errors... it should not error this much. it
-  should be much more graceful for retrys and so on"). Investigated
-  this session; **do not re-attempt either approach below without
-  reading this first — both were tried, both failed, for specific,
-  understood reasons:**
-  - Confirmed real: a live `AppHost` + `docker logs <postgres-container>`
-    shows routine `ERROR: could not serialize access due to read/write
-    dependencies among transactions` under nothing more than the two
-    proving-ground Simulators' own background ticks, not just heavy
-    load. `EventStore.Host.Postgres`'s existing `EnableRetryOnFailure`
-    (`maxRetryCount: 20`, `errorCodesToAdd: ["3D000","40001"]`) already
-    retries every one of these correctly and never lets it reach a
-    caller — this is a noise/gracefulness problem, not a correctness
-    bug; don't weaken or remove that retry config while working this.
-  - Root cause: `EventAppender.AppendAsync`/`AccessLogAppender.
-    AppendAsync`'s Serializable-isolation "read the tail, insert,
-    compute chain" critical section (`ADR-019`/`ADR-033`/`ADR-045`) is
-    exactly the read/write shape Postgres's SSI flags whenever two
-    appends overlap.
-  - **Attempt 1 (failed, ineffective): `pg_advisory_xact_lock` acquired
-    as the first statement AFTER `BeginTransactionAsync(Serializable)`.**
-    Proven ineffective by a dedicated regression test (30 concurrent
-    publishers, counting EF's own `CoreEventId.ExecutionStrategyRetrying`
-    diagnostic event) — still observed ~97 real retries out of 30
-    publishers. A transaction-scoped lock acquired after `BEGIN` doesn't
-    prevent two Serializable transactions from being concurrently open
-    in the first place, which is what SSI actually conflicts on;
-    waiting *inside* one doesn't un-open it.
-  - **Attempt 2 (failed, unsafe — caused a real deadlock): a
-    session-scoped `pg_advisory_lock`/`pg_advisory_unlock` pair acquired
-    *before* `BeginTransactionAsync` and released in a `finally`.**
-    Theoretically sound (guarantees at most one session inside the whole
-    BEGIN..COMMIT window), but the same 30-concurrent-publisher
-    regression test hung indefinitely (>180s, had to be killed) —
-    suspected interaction between session-scoped advisory locks and
-    Npgsql's connection pooling/EF's retry-triggered connection
-    resets (a lock acquired on one physical connection can outlive that
-    connection's return to the pool if a retry swaps connections
-    mid-attempt, or similar). **Not safe to retry without solving that
-    interaction first, and not worth solving blind** — reverted
-    immediately rather than risk shipping a deadlock.
-  - **The real fix, not yet built, needs care**: drop this specific
-    critical section from `Serializable` to `ReadCommitted` and use
-    `SELECT ... FOR UPDATE` (raw SQL, no EF LINQ operator for it) on the
-    tail row instead — Postgres's Read Committed semantics correctly
-    block a second locker and re-fetch the FRESH row once unblocked
-    (unlike Serializable, whose snapshot is fixed regardless of any
-    lock-wait, which is *why* attempts 1 and 2 above couldn't work no
-    matter how the lock itself was structured — under Serializable,
-    `FOR UPDATE` on a since-changed row throws its own 40001
-    ["could not serialize access due to concurrent update"] instead of
-    silently returning stale data). This needs: (1) raw SQL via
-    `Database.SqlQuery<T>`/`FromSqlInterpolated` for the `FOR UPDATE`
-    read (a `record` projection matching `ChainHash`/`LogicalClock`
-    column names — verify exact Npgsql quoted-identifier casing before
-    assuming it matches the C# property names); (2) confirming dropping
-    to `ReadCommitted` for just this critical section doesn't weaken any
-    OTHER guarantee this method relies on Serializable for (re-read
-    `ADR-019`/`ADR-033`'s own reasoning first); (3) the identical
-    regression-test technique (count `ExecutionStrategyRetrying`, assert
-    zero, prove red-then-green by temporarily reverting) *before*
-    trusting it, given both easier-looking attempts above silently
-    failed one way or another; (4) SQLite/SQL Server are NOT reported to
-    have this problem and don't need a matching change — Postgres-only,
-    same scoping as both failed attempts.
-
 Direct request: add PlantUML sequence diagrams to every UI playbook, add
 a per-application (Vitals/Meridian) README covering that application's
 workflows and how they interact, rename every playbook file to a
@@ -322,9 +254,9 @@ mid-pass:
     no specific id) — deliberate: `ADR-045` names "every GraphQL query,"
     not "every entity a query happens to touch," and N sequential
     Serializable-isolation hash-chain appends per page load would have
-    directly multiplied the exact routine Postgres contention the
-    still-open "Reduce routine Postgres 40001..." item above already
-    documents.
+    directly multiplied the exact routine Postgres contention
+    `docs/bugs/framework/database/postgres-routine-40001-serialization-
+    noise.md` documents (resolved separately, this session).
   - 6 new integration tests, all passing (`EntityQueryHttpSqliteTests.cs`):
     paging slices correctly in `EntityId` order, count reflects the real
     matching set, per-row masking matches the single-entity query exactly,

@@ -50,9 +50,19 @@ public static class AccessLogAppender
 
             db.AccessLogEntries.Add(entry);
 
-            await using var transaction = await db.Database.BeginTransactionAsync(IsolationLevel.Serializable, ct);
+            // See EventAppender.AppendAsync's identical comment and
+            // AppendSerializationLock's own class comment for the full
+            // reasoning -- Postgres uses Read Committed plus a transaction-
+            // scoped advisory lock instead of Serializable alone; SQLite/
+            // SQL Server are unchanged.
+            var isolationLevel = AppendSerializationLock.IsPostgres(db) ? IsolationLevel.ReadCommitted : IsolationLevel.Serializable;
+            await using var transaction = await db.Database.BeginTransactionAsync(isolationLevel, ct);
             try
             {
+                // A distinct key from the Event Log's own -- separate
+                // chains, no reason to serialize one against the other.
+                await AppendSerializationLock.AcquireAsync(db, AppendSerializationLock.AccessLogTailLockKey, ct);
+
                 var prior = await db.AccessLogEntries
                     .AsNoTracking()
                     .OrderByDescending(e => e.SequenceNumber)
