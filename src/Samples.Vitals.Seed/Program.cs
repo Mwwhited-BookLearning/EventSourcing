@@ -106,6 +106,16 @@ await PublishSeedEventAsync("IonmAlertAcknowledged", VitalsWorkflowD.AppId,
     Guid.Parse("a0000005-0000-0000-0000-000000000091"),
     $$"""{"AlertId":"{{AlertId}}","AckedBy":"neurologist-1"}""");
 
+// Workflow B's downstream half (Adverse Event Capture and Review) --
+// same AeId/Severity/SeriousAdverseEvent the feature doc's own worked
+// example uses (docs/domains/clinical-trials-device-telemetry/features/
+// adverse-event-capture-and-review.md), so this seed data is legible
+// against that doc's own diagrams the same way S-0091/dev-0091/alert-0091
+// already are against theirs.
+await PublishSeedEventAsync("AdverseEventReported", VitalsWorkflowB.AppId,
+    Guid.Parse("a0000006-0000-0000-0000-000000000091"),
+    $$"""{"AeId":"ae-1042","SubjectId":"{{SubjectId}}","SiteId":"site-1","Description":"Desaturation event","Severity":"Severe","SeriousAdverseEvent":true}""");
+
 Console.WriteLine("Samples.Vitals.Seed complete.");
 
 async Task PublishSeedEventAsync(string eventType, string appId, Guid eventId, string payload)

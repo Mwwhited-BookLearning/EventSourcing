@@ -262,6 +262,28 @@ var clientWebMeridian = builder.AddViteApp("client-web-meridian", "../../client-
     .WithHttpEndpoint(port: Port("ClientWebMeridian", 5175))
     .WithExternalHttpEndpoints();
 
+// Workflow C's periodic-screening half (Samples.Meridian.Seed already
+// publishes SanctionsScreeningPerformed for applicant-1001, folded onto
+// the same ApplicantIdentity entity client-web-meridian above watches --
+// but that instance's own subscription is fixed to IdentityClaimSubmitted,
+// so ScreeningDate/MatchFound/etc. are unreachable from it, same
+// one-event-type-per-instance reasoning as the Vitals instances above).
+// The SAR-escalation half (SarFilingRecorded) needs a real RFC 9470
+// step-up authentication flow the seeder doesn't perform -- still a
+// genuinely open gap (TODO.md), not addressed by this instance.
+var clientWebMeridianScreening = builder.AddViteApp("client-web-meridian-screening", "../../client-web")
+    .WithReference(eventstore)
+    .WaitFor(eventstore)
+    .WithReference(devIdp)
+    .WithEnvironment("VITE_HOST_BASE_URL", eventstore.GetEndpoint("https"))
+    .WithEnvironment("VITE_AUTH_BASE_URL", devIdp.GetEndpoint("http"))
+    .WithEnvironment("VITE_APP_ID", "kyc")
+    .WithEnvironment("VITE_ENTITY_TYPE", "applicantidentity")
+    .WithEnvironment("VITE_EVENT_TYPE", "SanctionsScreeningPerformed")
+    .WithEnvironment("VITE_ENTITY_ID_FIELD", "applicantId")
+    .WithHttpEndpoint(port: Port("ClientWebMeridianScreening", 5179))
+    .WithExternalHttpEndpoints();
+
 // Two more Vitals instances, same shape as clientWebVitals above --
 // ADR-039's one-event-type-per-instance model means Workflow B's Device
 // entities and Workflow D's IonmAlert entities need their own dedicated
@@ -298,6 +320,24 @@ var clientWebVitalsIonmAlert = builder.AddViteApp("client-web-vitals-ionmalert",
     .WithHttpEndpoint(port: Port("ClientWebVitalsIonmAlert", 5177))
     .WithExternalHttpEndpoints();
 
+// Workflow B's downstream half (Adverse Event Capture and Review) --
+// same reasoning as the Device/IonmAlert pair above, now that
+// Samples.Vitals.Seed actually publishes an AdverseEventReported event
+// (TODO.md's own tracked gap: no AdverseEvent entity existed to browse
+// at all until this pass).
+var clientWebVitalsAdverseEvent = builder.AddViteApp("client-web-vitals-adverseevent", "../../client-web")
+    .WithReference(eventstore)
+    .WaitFor(eventstore)
+    .WithReference(devIdp)
+    .WithEnvironment("VITE_HOST_BASE_URL", eventstore.GetEndpoint("https"))
+    .WithEnvironment("VITE_AUTH_BASE_URL", devIdp.GetEndpoint("http"))
+    .WithEnvironment("VITE_APP_ID", "trial1")
+    .WithEnvironment("VITE_ENTITY_TYPE", "adverseevent")
+    .WithEnvironment("VITE_EVENT_TYPE", "AdverseEventReported")
+    .WithEnvironment("VITE_ENTITY_ID_FIELD", "aeId")
+    .WithHttpEndpoint(port: Port("ClientWebVitalsAdverseEvent", 5178))
+    .WithExternalHttpEndpoints();
+
 // Every client-web instance's browser-side JS calls devIdp's /connect/token
 // and eventstore's GraphQL/registry endpoints directly, cross-origin (each
 // Vite dev server has its own dynamically-assigned port) -- ADR-014's own
@@ -314,12 +354,16 @@ devIdp.WithEnvironment("Cors__AllowedOrigins__0", clientWeb.GetEndpoint("http"))
     .WithEnvironment("Cors__AllowedOrigins__1", clientWebVitals.GetEndpoint("http"))
     .WithEnvironment("Cors__AllowedOrigins__2", clientWebMeridian.GetEndpoint("http"))
     .WithEnvironment("Cors__AllowedOrigins__3", clientWebVitalsDevice.GetEndpoint("http"))
-    .WithEnvironment("Cors__AllowedOrigins__4", clientWebVitalsIonmAlert.GetEndpoint("http"));
+    .WithEnvironment("Cors__AllowedOrigins__4", clientWebVitalsIonmAlert.GetEndpoint("http"))
+    .WithEnvironment("Cors__AllowedOrigins__5", clientWebVitalsAdverseEvent.GetEndpoint("http"))
+    .WithEnvironment("Cors__AllowedOrigins__6", clientWebMeridianScreening.GetEndpoint("http"));
 eventstore.WithEnvironment("Cors__AllowedOrigins__0", clientWeb.GetEndpoint("http"))
     .WithEnvironment("Cors__AllowedOrigins__1", clientWebVitals.GetEndpoint("http"))
     .WithEnvironment("Cors__AllowedOrigins__2", clientWebMeridian.GetEndpoint("http"))
     .WithEnvironment("Cors__AllowedOrigins__3", clientWebVitalsDevice.GetEndpoint("http"))
-    .WithEnvironment("Cors__AllowedOrigins__4", clientWebVitalsIonmAlert.GetEndpoint("http"));
+    .WithEnvironment("Cors__AllowedOrigins__4", clientWebVitalsIonmAlert.GetEndpoint("http"))
+    .WithEnvironment("Cors__AllowedOrigins__5", clientWebVitalsAdverseEvent.GetEndpoint("http"))
+    .WithEnvironment("Cors__AllowedOrigins__6", clientWebMeridianScreening.GetEndpoint("http"));
 
 // Dashboard-only grouping (WithParentRelationship carries no lifecycle/
 // dependency meaning of its own -- that's WithReference/WaitFor's job
@@ -344,7 +388,9 @@ clientWeb.WithParentRelationship(eventstore);
 clientWebVitals.WithParentRelationship(vitalsSeed);
 clientWebVitalsDevice.WithParentRelationship(vitalsSeed);
 clientWebVitalsIonmAlert.WithParentRelationship(vitalsSeed);
+clientWebVitalsAdverseEvent.WithParentRelationship(vitalsSeed);
 clientWebMeridian.WithParentRelationship(meridianSeed);
+clientWebMeridianScreening.WithParentRelationship(meridianSeed);
 vitalsSimulator.WithParentRelationship(vitalsSeed);
 meridianSimulator.WithParentRelationship(meridianSeed);
 

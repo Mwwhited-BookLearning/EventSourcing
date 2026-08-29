@@ -38,24 +38,47 @@ the prose and its images move or delete together as one unit.
 | [Workflow A: Customer Onboarding and Identity Verification](meridian/workflow-a-customer-onboarding-and-identity-verification.md) | Meridian | [`customer-onboarding-and-identity-verification.md`](../domains/digital-identity-kyc/features/customer-onboarding-and-identity-verification.md) | `MeridianWorkflowACustomerOnboardingPlaybookTests.RecordCustomerOnboardingAndIdentityVerificationPlaybook` |
 | [Workflow B: Device Onboarding and Continuous Monitoring](vitals/workflow-b-device-onboarding-and-continuous-monitoring.md) | Vitals | [`device-onboarding-and-continuous-monitoring.md`](../domains/clinical-trials-device-telemetry/features/device-onboarding-and-continuous-monitoring.md) | `VitalsWorkflowBDeviceOnboardingPlaybookTests.RecordDeviceOnboardingAndContinuousMonitoringPlaybook` |
 | [Workflow D: Intraoperative Monitoring and Alert Response](vitals/workflow-d-intraoperative-monitoring-and-alert-response.md) | Vitals | [`intraoperative-monitoring-and-alert-response.md`](../domains/clinical-trials-device-telemetry/features/intraoperative-monitoring-and-alert-response.md) | `VitalsWorkflowDIntraoperativeMonitoringPlaybookTests.RecordIntraoperativeMonitoringAndAlertResponsePlaybook` |
+| [Workflow B: Adverse Event Capture and Review](vitals/workflow-b-adverse-event-capture-and-review.md) | Vitals | [`adverse-event-capture-and-review.md`](../domains/clinical-trials-device-telemetry/features/adverse-event-capture-and-review.md) | `VitalsWorkflowBAdverseEventPlaybookTests.RecordAdverseEventCaptureAndReviewPlaybook` |
+| [Workflow C: Periodic Screening and SAR Escalation](meridian/workflow-c-periodic-screening-and-sar-escalation.md) (screening half only) | Meridian | [`periodic-screening-and-sar-escalation.md`](../domains/digital-identity-kyc/features/periodic-screening-and-sar-escalation.md) | `MeridianWorkflowCPeriodicScreeningPlaybookTests.RecordPeriodicScreeningPlaybook` |
 
-`EventStore.AppHost` now runs two more Vitals client instances,
-`client-web-vitals-device` (subscribed to `DeviceOnboarded`) and
-`client-web-vitals-ionmalert` (subscribed to `IonmAlertRaised`), purely
-to make the two rows above Browse-reachable at all — the original
-`client-web-vitals` instance is permanently locked to `PatientScreened`
-(`ADR-039`'s one-event-type-per-instance model; confirmed by reading
-`subscriptionBuilder.ts` directly, a client instance's GraphQL
-subscription is fixed to one `(AppId, EventType)` pair at launch).
+`EventStore.AppHost` now runs three more Vitals client instances
+(`client-web-vitals-device`/`DeviceOnboarded`, `client-web-vitals-
+ionmalert`/`IonmAlertRaised`, `client-web-vitals-adverseevent`/
+`AdverseEventReported`) and one more Meridian instance
+(`client-web-meridian-screening`/`SanctionsScreeningPerformed`), purely
+to make the rows above Browse-reachable at all — `ADR-039`'s
+one-event-type-per-instance model means the original `client-web-
+vitals`/`client-web-meridian` instances can never see any event type
+but the one each was launched with (confirmed by reading
+`subscriptionBuilder.ts` directly). `Samples.Vitals.Seed` also now
+publishes an `AdverseEventReported` event (`ae-1042`) it never did
+before — there was no `AdverseEvent` entity to browse at all until
+this pass.
 
-Two real gaps remain, tracked in `TODO.md`: Vitals' Workflow B
-downstream half (Adverse Event Capture and Review) has no seed data
-published for the `AdverseEvent` entity type at all, so a new client
-instance alone wouldn't be enough; and both Meridian's Workflow B
-(no `MeridianWorkflowB.cs`/sample exists yet) and Workflow C
-(`SarFilingRecorded` needs a step-up-auth flow the seeder can't
-perform) need real sample-workflow work before a playbook is even
-possible, UI-reachable or not. Add a row here in the same pass a new
-playbook test lands, matching this repo's own "keep the catalog in
-sync" convention for every other consolidated index (`docs/patterns/
-README.md`, `docs/libraries/README.md`, `docs/references.md`).
+**A genuinely interesting, separate finding surfaced building the
+screening playbook**: the registered `ApplicantIdentity` `ViewDefinition`
+template's own bound fields (`applicantId`/`documentType`/
+`claimedLegalName`/`dateOfBirth`/`did`) don't match `SanctionsScreening
+Performed`'s payload shape at all — only `applicantId` renders, every
+other field on screen is blank, and the actually-useful screening data
+(`ScreeningDate`/`ListsChecked`/`MatchFound`) never appears through this
+template even though it's genuinely published. A `ViewDefinition` is
+scoped to an `EntityType`, but the data actually available in any given
+client instance is scoped to the one `EventType` it subscribes to —
+nothing currently reconciles the two. Not fixed here (redesigning the
+template is a real content decision, out of this pass's scope) —
+flagged plainly in the playbook's own caption instead of quietly
+producing a misleadingly sparse screenshot.
+
+Two real gaps remain, tracked in `TODO.md`: Meridian's Workflow B
+(Relying-Party Access) has a real, tested mechanism
+(`MeridianWorkflowBHttpSqliteTests.cs`) but it's a token-exchange +
+`revealField` GraphQL mutation, not a browsable entity — there is no
+`client-web` UI surface for it at all, and building one would be a new
+production UI feature, not a wiring change. Workflow C's SAR-escalation
+half (`SarFilingRecorded`) needs a real RFC 9470 step-up authentication
+flow `Samples.Meridian.Seed` doesn't perform. Add a row here in the
+same pass a new playbook test lands, matching this repo's own "keep the
+catalog in sync" convention for every other consolidated index
+(`docs/patterns/README.md`, `docs/libraries/README.md`, `docs/
+references.md`).

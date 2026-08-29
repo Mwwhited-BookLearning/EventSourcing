@@ -25,26 +25,40 @@ here instead of inlining.
 
 ## Active
 
-- [ ] **Three UI-playbook gaps remain, each needing real sample-data/
-  infra work first, not just a new `[TestMethod]`.** Extended this
-  session from one playbook (Vitals' Workflow A) to five — Meridian's
-  Workflow A (both feature docs), plus Vitals' Workflows B (upstream
-  half) and D, the latter two unblocked by adding `client-web-vitals-
-  device`/`client-web-vitals-ionmalert` to `EventStore.AppHost`
-  (`ADR-039`'s one-event-type-per-instance model meant the original
-  `client-web-vitals` instance, locked to `PatientScreened`, could never
-  Browse those entities — confirmed by reading `subscriptionBuilder.ts`
-  directly). `docs/playbooks/README.md`'s catalog has all five. Still
-  open:
-  1. **Vitals' Workflow B downstream half** (Adverse Event Capture and
-     Review) — `Samples.Vitals.Seed` never publishes an event that
-     creates an `AdverseEvent` entity at all, so a new client instance
-     alone wouldn't be enough; needs a seed event added first.
-  2. **Meridian's Workflow B** (Relying-Party Verification Request) —
-     no `MeridianWorkflowB.cs`/seed data exists in `Samples.Meridian`
-     at all; needs a real sample workflow built, not just a client
-     instance.
-  3. **Meridian's Workflow C** (Periodic Screening and SAR Escalation)
-     — `SarFilingRecorded` needs a step-up-auth flow `Samples.Meridian.
-     Seed` deliberately doesn't perform, so no SAR entity is ever
-     published to browse.
+- [ ] **Meridian's Workflow B (Relying-Party Access) has no `client-web`
+  UI surface at all — building one is a real new UI feature, not
+  wiring.** UI-playbook coverage now spans 7 of the two domains'
+  workflows (`docs/playbooks/README.md`'s catalog) — every remaining
+  gap this session found either has no UI to walk through
+  (this item) or needs an authentication flow the seeder can't perform
+  (the next item). Confirmed the mechanism itself is real and already
+  proven — `MeridianWorkflowBHttpSqliteTests.cs` exercises a full
+  UcanDelegation + OAuth Token Exchange + `revealField` round trip
+  end to end — but it's a delegation token used for a GraphQL
+  mutation, never a `StoredEvent`/browsable entity (confirmed in that
+  test file's own header comment). `client-web`'s only screens are
+  generic entity Browse/Detail and event Compose; there is no delegation-
+  request or field-reveal screen anywhere in `client-web/packages/
+  reference-app`. A playbook here needs a real, new Vue UI feature built
+  first (a relying-party access request panel) — deliberately not built
+  this pass, since inventing UI whose only purpose is to make a
+  screenshot possible would invert this project's own "don't add
+  features beyond what the task requires" rule. Revisit only if a real
+  product reason for that UI surfaces independently of the playbook
+  initiative.
+- [ ] **Meridian's Workflow C SAR-escalation half needs a step-up
+  authentication flow `Samples.Meridian.Seed` doesn't perform.**
+  The periodic-screening half is now covered (`docs/playbooks/
+  meridian/workflow-c-periodic-screening-and-sar-escalation.md`,
+  screening only) — `SarFilingRecorded` itself
+  (`MeridianWorkflowC.cs`) declares `RequiredSignature: ["urn:kyc:acr:
+  step-up"]`, a real RFC 9470 step-up-authentication gate the seed
+  script has no mechanism to satisfy. A second, independent, real
+  finding from building that playbook: the registered `ApplicantIdentity`
+  `ViewDefinition` template's own bound fields don't match `Sanctions
+  ScreeningPerformed`'s payload shape at all, so only `applicantId`
+  renders — `ScreeningDate`/`MatchFound`/etc. are genuinely published
+  but never appear on screen through that template. Not fixed (a real
+  content decision, out of this pass's scope) — flagged in the
+  playbook's own caption and `docs/playbooks/README.md` instead of
+  producing a silently misleading screenshot.
