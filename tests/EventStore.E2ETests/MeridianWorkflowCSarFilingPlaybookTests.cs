@@ -81,7 +81,7 @@ public class MeridianWorkflowCSarFilingPlaybookTests
     public async Task RecordSarFilingPlaybook()
     {
         var recorder = new PlaybookRecorder(
-            Path.Combine(RepoRootDirectory(), "docs", "playbooks", "meridian", "workflow-c-sar-filing.md"));
+            Path.Combine(RepoRootDirectory(), "docs", "playbooks", "meridian", "compliance-officer", "file-sar.md"));
 
         await _page.GotoAsync(_clientWebMeridianSarFilingBaseUrl);
         await Assertions.Expect(_page.GetByRole(AriaRole.Heading, new() { Name = "Duplex Client" })).ToBeVisibleAsync();
@@ -97,9 +97,33 @@ public class MeridianWorkflowCSarFilingPlaybookTests
         await Assertions.Expect(templatedView).ToBeVisibleAsync();
         await recorder.RecordStepAsync(_page, "Selecting applicant-1001 opens its Detail view. The registered ApplicantIdentity template now covers this event type's own fields too (TODO.md's ViewDefinition/payload-shape mismatch, fixed by extending the one shared template): Filing Reference ID (SAR-2026-00417) renders plainly, and Narrative renders masked (\"***\") -- a live demonstration of x-masking on this specific field (MeridianWorkflowC.cs's own requiredClaim: identity:aml-review), not a rendering gap.");
 
-        await recorder.WriteMarkdownAsync("Meridian -- Workflow C: SAR Filing");
+        const string sequenceDiagram = """
+            @startuml MeridianSarFiling_Playbook_Sequence
+            autonumber
+            actor "Compliance officer\n(identity:aml-review)" as officer
+            participant "PublishEndpoint\n(Inbox)" as inbox
+            database "Event Log" as eventLog
+            database "Entity Store\n(kyc:ApplicantIdentity)" as entityStore
 
-        Assert.IsTrue(File.Exists(Path.Combine(RepoRootDirectory(), "docs", "playbooks", "meridian", "workflow-c-sar-filing.md")));
+            officer -> inbox: POST /publish/SarFilingRecorded\n{ ApplicantId, TargetScreeningEventId,\n  FilingReferenceId, Narrative }\nBearer <JWT, acr not recent enough>
+            alt caller's token doesn't satisfy RequiredSignature.AcrValues/MaxAge\n(this playbook's own seed data starts here)
+              inbox --> officer: 401 WWW-Authenticate: step-up required\n(acr_values="urn:kyc:acr:step-up")
+              officer -> officer: re-authenticate (IdP's own mechanism, ADR-066) --\nSamples.Meridian.Seed simulates this by attaching\n"acr"/"auth_time" claims directly, no real DevIdp round trip
+              officer -> inbox: retry POST /publish/SarFilingRecorded\n(same payload, stepped-up token, Meaning: "approved filing")
+            end
+            inbox -> eventLog: INSERT StoredEvent (SarFilingRecorded)\nSignature: { SignerId, SignedAt, Meaning: "approved filing",\n  Acr: "urn:kyc:acr:step-up" }
+            inbox -> entityStore: fold (Partial) onto ApplicantIdentity,\nAuthorityStatus: "accepted"
+            note right: the actual FinCEN BSA E-Filing submission is out of scope\n(ADR-072's IInterchangeFormatAdapter seam, not built here)
+
+            == Later: staff browse the result via client-web ==
+            participant "Duplex Client\n(client-web-meridian-sarfiling)" as client
+            client -> entityStore: (via GraphQL Subscription on_kyc_SarFilingRecorded, REPLAY)
+            client -> officer: Detail view -- FilingReferenceId renders plainly;\nNarrative renders masked ("***", x-masking requiredClaim\n"identity:aml-review")
+            @enduml
+            """;
+        await recorder.WriteMarkdownAsync("Meridian -- Workflow C: SAR Filing", sequenceDiagram);
+
+        Assert.IsTrue(File.Exists(Path.Combine(RepoRootDirectory(), "docs", "playbooks", "meridian", "compliance-officer", "file-sar.md")));
     }
 
     private static string RepoRootDirectory()

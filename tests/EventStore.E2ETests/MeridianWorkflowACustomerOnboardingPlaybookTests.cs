@@ -81,7 +81,7 @@ public class MeridianWorkflowACustomerOnboardingPlaybookTests
     public async Task RecordCustomerOnboardingAndIdentityVerificationPlaybook()
     {
         var recorder = new PlaybookRecorder(
-            Path.Combine(RepoRootDirectory(), "docs", "playbooks", "meridian", "workflow-a-customer-onboarding-and-identity-verification.md"));
+            Path.Combine(RepoRootDirectory(), "docs", "playbooks", "meridian", "kyc-analyst", "review-identity-claim.md"));
 
         await _page.GotoAsync(_clientWebMeridianBaseUrl);
         await Assertions.Expect(_page.GetByRole(AriaRole.Heading, new() { Name = "Duplex Client" })).ToBeVisibleAsync();
@@ -99,11 +99,44 @@ public class MeridianWorkflowACustomerOnboardingPlaybookTests
         // CapturePlaybookTests's own comment for the full correction history).
         var templatedView = _page.GetByLabel("Entity (ViewDefinition-rendered)");
         await Assertions.Expect(templatedView).ToBeVisibleAsync();
-        await recorder.RecordStepAsync(_page, "The Detail view, rendered from the registered ApplicantIdentity ViewDefinition, shows the IdentityClaimSubmitted payload itself (masked ClaimedLegalName/DateOfBirth, ADR-009) plus AuthorityStatus: accepted, this workflow's own end state: an analyst's review (ADR-035/ADR-042/ADR-046) has accepted the self-attested claim into the record.");
+        // Corrected caption: the seed publishes this via an ordinary,
+        // claims-free principal (no AttestedActorId/AttestedClaims/
+        // ReviewPending), so AuthorityStatus reaches "accepted" immediately
+        // -- no analyst review actually ran for this specific data. The
+        // domain's own self-attestation -> analyst-decision path IS real
+        // (MeridianWorkflowA.cs's own header comment), just not what this
+        // continuity applicant's seed data exercises; see the sequence
+        // diagram's own note for where that path would fit.
+        await recorder.RecordStepAsync(_page, "The Detail view, rendered from the registered ApplicantIdentity ViewDefinition, shows the IdentityClaimSubmitted payload itself (masked ClaimedLegalName/DateOfBirth, ADR-009) plus AuthorityStatus: accepted -- an ordinary, immediately-accepted publish for this continuity applicant, not the result of an analyst decision (see the sequence diagram below for the fuller self-attestation path this domain also supports).");
 
-        await recorder.WriteMarkdownAsync("Meridian -- Workflow A: Customer Onboarding and Identity Verification");
+        const string sequenceDiagram = """
+            @startuml MeridianKycAnalyst_ReviewIdentityClaim_Sequence
+            autonumber
+            actor "Applicant" as applicant
+            participant "PublishEndpoint\n(Inbox)" as inbox
+            participant "Duplex Client\n(client-web-meridian)" as client
+            database "Entity Store\n(kyc:ApplicantIdentity:applicant-1001)" as entityStore
 
-        Assert.IsTrue(File.Exists(Path.Combine(RepoRootDirectory(), "docs", "playbooks", "meridian", "workflow-a-customer-onboarding-and-identity-verification.md")));
+            applicant -> inbox: POST /publish/IdentityClaimSubmitted\n{ ApplicantId, Did (self-attested DID key),\n  ClaimedLegalName (masked), DateOfBirth (masked) }
+
+            alt ordinary publish (this continuity applicant's own seed data)
+              inbox -> entityStore: fold immediately, AuthorityStatus: "accepted"
+            else self-attested, credential-agnostic capture (ADR-035/036)
+              inbox -> inbox: AuthorityStatus starts "unattested"\n(AttestedActorId/AttestedClaims present)
+              note right: not exercised by this playbook's own seed data --\nreal and proven via NonAuthoritativeCaptureScenarioAssertions
+              actor "KYC Analyst" as analyst
+              analyst -> inbox: POST /publish/authorityDecision\n{ targetEventId, decision: "accepted", decidingActorId }\nRequiredClaims: "identity:review"
+              inbox -> entityStore: fold now (catch-up)
+            end
+
+            == Later: staff browse the result via client-web ==
+            client -> entityStore: (via GraphQL Subscription, REPLAY)
+            client -> applicant: Detail view -- ClaimedLegalName/DateOfBirth\nrender masked (PartialReveal, requiredClaim "identity:pii-read")
+            @enduml
+            """;
+        await recorder.WriteMarkdownAsync("Meridian -- Workflow A: Customer Onboarding and Identity Verification", sequenceDiagram);
+
+        Assert.IsTrue(File.Exists(Path.Combine(RepoRootDirectory(), "docs", "playbooks", "meridian", "kyc-analyst", "review-identity-claim.md")));
     }
 
     private static string RepoRootDirectory()

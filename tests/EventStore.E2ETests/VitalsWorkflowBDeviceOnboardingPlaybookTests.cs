@@ -85,7 +85,7 @@ public class VitalsWorkflowBDeviceOnboardingPlaybookTests
     public async Task RecordDeviceOnboardingAndContinuousMonitoringPlaybook()
     {
         var recorder = new PlaybookRecorder(
-            Path.Combine(RepoRootDirectory(), "docs", "playbooks", "vitals", "workflow-b-device-onboarding-and-continuous-monitoring.md"));
+            Path.Combine(RepoRootDirectory(), "docs", "playbooks", "vitals", "site-coordinator", "onboard-monitoring-device.md"));
 
         await _page.GotoAsync(_clientWebVitalsDeviceBaseUrl);
         await Assertions.Expect(_page.GetByRole(AriaRole.Heading, new() { Name = "Duplex Client" })).ToBeVisibleAsync();
@@ -102,9 +102,33 @@ public class VitalsWorkflowBDeviceOnboardingPlaybookTests
         await Assertions.Expect(templatedView.Or(fallbackView)).ToBeVisibleAsync();
         await recorder.RecordStepAsync(_page, "Selecting dev-0091 opens its Detail view -- rendered generically via GenericFallbackView (ADR-039), since no ViewDefinition is registered for the \"device\" EntityType. Shows the device model (NIM-Eclipse), interface kind (IONM), the patient it's paired to (S-0091), and its site.");
 
-        await recorder.WriteMarkdownAsync("Vitals -- Workflow B: Device Onboarding and Continuous Monitoring");
+        const string sequenceDiagram = """
+            @startuml VitalsDeviceOnboarding_Playbook_Sequence
+            autonumber
+            actor "Site staff" as user
+            participant "PublishEndpoint\n(Inbox)" as inbox
+            participant "Duplex Client\n(client-web-vitals-device)" as client
+            database "Entity Store\n(trial1:Device:dev-0091)" as entityStore
 
-        Assert.IsTrue(File.Exists(Path.Combine(RepoRootDirectory(), "docs", "playbooks", "vitals", "workflow-b-device-onboarding-and-continuous-monitoring.md")));
+            user -> inbox: POST /publish/DeviceOnboarded\n{ DeviceId: "dev-0091", DeviceModel: "NIM-Eclipse",\n  InterfaceKind: "IONM", PairedToSubjectId: "S-0091", SiteId }
+            inbox -> entityStore: fold (Full), AuthorityStatus: "accepted"\n(no RequiredClaims -- ordinary Bearer token, events:publish)
+
+            note over user, entityStore
+              Continuous monitoring itself (the device's live telemetry
+              stream, ADR-031) has no client-web UI -- this playbook
+              covers device pairing/metadata only. The paired continuous
+              stream feeds Workflow D's own IONM alert detection instead
+              (see that playbook's own diagram).
+            end note
+
+            == Later: staff browse the result via client-web ==
+            client -> entityStore: (via GraphQL Subscription on_trial1_DeviceOnboarded, REPLAY)
+            client -> user: Detail view -- rendered generically\n(GenericFallbackView, no ViewDefinition registered for "device")
+            @enduml
+            """;
+        await recorder.WriteMarkdownAsync("Vitals -- Workflow B: Device Onboarding and Continuous Monitoring", sequenceDiagram);
+
+        Assert.IsTrue(File.Exists(Path.Combine(RepoRootDirectory(), "docs", "playbooks", "vitals", "site-coordinator", "onboard-monitoring-device.md")));
     }
 
     private static string RepoRootDirectory()

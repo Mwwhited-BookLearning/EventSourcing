@@ -100,7 +100,7 @@ public class VitalsWorkflowAPlaybookTests
     public async Task RecordPatientEnrollmentAndInformedConsentPlaybook()
     {
         var recorder = new PlaybookRecorder(
-            Path.Combine(RepoRootDirectory(), "docs", "playbooks", "vitals", "workflow-a-patient-enrollment-and-informed-consent.md"));
+            Path.Combine(RepoRootDirectory(), "docs", "playbooks", "vitals", "site-coordinator", "enroll-and-review-patient.md"));
 
         await _page.GotoAsync(_clientWebVitalsBaseUrl);
         await Assertions.Expect(_page.GetByRole(AriaRole.Heading, new() { Name = "Duplex Client" })).ToBeVisibleAsync();
@@ -124,9 +124,31 @@ public class VitalsWorkflowAPlaybookTests
         await Assertions.Expect(templatedView).ToBeVisibleAsync();
         await recorder.RecordStepAsync(_page, "Selecting S-0091 from the browser opens its Detail view, rendered from the Patient Detail ViewDefinition Samples.Vitals.Seed registers (ADR-039) -- subject/site/protocol IDs, eligibility status, and the masked legal name/date of birth fields (translated via translations.ts's placeholderTranslations, ADR-087).");
 
-        await recorder.WriteMarkdownAsync("Vitals -- Workflow A: Patient Enrollment and Informed Consent");
+        const string sequenceDiagram = """
+            @startuml VitalsWorkflowA_Playbook_Sequence
+            autonumber
+            actor "Site staff" as user
+            participant "Duplex Client\n(client-web-vitals)" as client
+            participant "GraphQL Subscription\n(on_trial1_PatientScreened)" as graphql
+            database "Event Log" as eventLog
 
-        Assert.IsTrue(File.Exists(Path.Combine(RepoRootDirectory(), "docs", "playbooks", "vitals", "workflow-a-patient-enrollment-and-informed-consent.md")));
+            user -> client: open client-web-vitals
+            client -> graphql: subscription (mode: REPLAY)\nBearer <follower-client token, events:follow>
+            graphql -> eventLog: SELECT PatientScreened events\nWHERE AppId="trial1" ORDER BY SequenceNumber
+            eventLog --> graphql: PatientScreened{S-0091,\n LegalName (masked), DateOfBirth (masked), ...}
+            graphql --> client: SSE stream (REPLAY catch-up, then TAIL)
+            client -> client: fold into local entity cache\n(IndexedDB, per-instance, ADR-039)
+            user -> client: Browse tab -> select S-0091
+            client -> user: Detail view (Patient Detail ViewDefinition)\nLegalName/DateOfBirth render "REDACTED"\n(x-masking, requiredClaim "clearance:phi")
+
+            alt caller's own token instead holds "clearance:phi"
+              client -> user: LegalName/DateOfBirth render their real values
+            end
+            @enduml
+            """;
+        await recorder.WriteMarkdownAsync("Vitals -- Workflow A: Patient Enrollment and Informed Consent", sequenceDiagram);
+
+        Assert.IsTrue(File.Exists(Path.Combine(RepoRootDirectory(), "docs", "playbooks", "vitals", "site-coordinator", "enroll-and-review-patient.md")));
     }
 
     // Walks up from the test assembly's own output directory to find the

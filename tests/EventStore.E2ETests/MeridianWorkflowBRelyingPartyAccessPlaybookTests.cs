@@ -92,7 +92,7 @@ public class MeridianWorkflowBRelyingPartyAccessPlaybookTests
     public async Task RecordRelyingPartyAccessPlaybook()
     {
         var recorder = new PlaybookRecorder(
-            Path.Combine(RepoRootDirectory(), "docs", "playbooks", "meridian", "workflow-b-relying-party-access.md"));
+            Path.Combine(RepoRootDirectory(), "docs", "playbooks", "meridian", "relying-party", "request-delegated-access.md"));
 
         await _page.GotoAsync(_clientWebMeridianBaseUrl);
         await Assertions.Expect(_page.GetByRole(AriaRole.Heading, new() { Name = "Duplex Client" })).ToBeVisibleAsync();
@@ -108,9 +108,45 @@ public class MeridianWorkflowBRelyingPartyAccessPlaybookTests
         await Assertions.Expect(revealedValue).ToBeVisibleAsync(new() { Timeout = 30_000 }); // registers a trust root, waits for RbacProjectionWorker's own Follow tail to catch up, signs a delegation, exchanges it, then reveals -- several real network round trips, not an instant local action
         await recorder.RecordStepAsync(_page, "Clicking \"Delegate & Reveal\" runs the whole mechanism live in the browser: a freshly-generated customer DID key (WebCrypto ECDSA P-256) is registered as an AppTrustRoot, signs a UCAN delegation naming exactly this one field for exactly this one entity, exchanges it for a scoped access token (RFC 8693), then reveals the field with it. \"John Doe\" -- the real seed value -- comes back, proving the whole chain actually worked, not a stubbed response.");
 
-        await recorder.WriteMarkdownAsync("Meridian -- Workflow B: Relying-Party Access");
+        const string sequenceDiagram = """
+            @startuml MeridianRelyingPartyAccess_Playbook_Sequence
+            autonumber
+            actor "Customer\n(applicant-1001)" as customer
+            participant "Duplex Client\n(RelyingPartyAccessPanel.vue)" as client
+            participant "eventstore\n(PUT /rbac/trust-roots)" as rbac
+            participant "DevIdp\n(/connect/token)" as devIdp
+            participant "RbacProjectionWorker" as worker
+            participant "GraphQL\n(revealField)" as graphql
 
-        Assert.IsTrue(File.Exists(Path.Combine(RepoRootDirectory(), "docs", "playbooks", "meridian", "workflow-b-relying-party-access.md")));
+            client -> client: generate a fresh ECDSA P-256 keypair\n(WebCrypto, ucan.ts) -- the customer's own DID key
+            client -> rbac: PUT /rbac/trust-roots/{thumbprint}\nBearer <operator-client token, registry:trust-admin>
+            rbac -> rbac: publish AppTrustRootRegistered (accepted)
+            rbac --> client: 201 Created
+
+            client -> client: sign a UCAN delegation (ucan+jwt)\n{ iss: applicant-1001, aud: colleague-1, appId: kyc,\n  cap: [{ Claim: "identity:pii-read", EntityScope: <entityId> }],\n  exp: now + 24h }, signed with the customer's own key
+
+            loop until RbacProjectionWorker's own Follow tail catches up (~500ms-few s)
+              client -> devIdp: POST /connect/token\ngrant_type=token-exchange, subject_token=<delegation>,\nclient_id=colleague-client
+              devIdp -> worker: (has AppTrustRootRegistered been folded yet?)
+              alt trust root not yet visible
+                devIdp --> client: 400 invalid_grant --\n"issuer key is not a registered AppTrustRoot"
+              else trust root visible (worker's Follow tail has caught up)
+                devIdp --> client: 200 { access_token }\n(bound to THIS call's own DPoP proof key, RFC 9449 cnf.jkt)
+              end
+            end
+
+            client -> graphql: mutation revealField(entityId, eventId, fieldPath)\nBearer <granted access_token>, DPoP <same key>
+            alt entityId matches the delegation's own EntityScope\n(this playbook's own scenario)
+              graphql --> client: { value: "John Doe" }
+            else a DIFFERENT entityId (ADR-043's entity-scoping invariant,\nnot exercised by this playbook)
+              graphql --> client: 403 Forbidden -- caller lacks the\nrequired claim for THIS entity
+            end
+            client -> customer: "Revealed value: John Doe"
+            @enduml
+            """;
+        await recorder.WriteMarkdownAsync("Meridian -- Workflow B: Relying-Party Access", sequenceDiagram);
+
+        Assert.IsTrue(File.Exists(Path.Combine(RepoRootDirectory(), "docs", "playbooks", "meridian", "relying-party", "request-delegated-access.md")));
     }
 
     private static string RepoRootDirectory()

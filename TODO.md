@@ -25,6 +25,106 @@ here instead of inlining.
 
 ## Active
 
-Nothing open right now — the last item (Meridian's Workflow B UI) was
-closed by building the `Relying-Party Access` panel, on direct request;
-see `docs/changes/2026-08-28.md` for what that involved.
+Direct request: add PlantUML sequence diagrams to every UI playbook, add
+a per-application (Vitals/Meridian) README covering that application's
+workflows and how they interact, rename every playbook file to a
+`{role}-{task}.md` scheme (dropping the `{workflow}-{feature doc name}.md`
+convention), and expand each application with more of the proving-ground's
+own defined use cases. In progress, tracked here so nothing gets lost
+mid-pass:
+
+- [x] **Add a PlantUML sequence diagram to each of the 9 original
+  playbooks** — done, all 9 (`VitalsWorkflowAPlaybookTests` through
+  `MeridianWorkflowBRelyingPartyAccessPlaybookTests`). The 2 new
+  queue-decision playbooks below get theirs inline as they're built (PI
+  Queue done; KYC Analyst Queue still needs one).
+- [x] **Restructure every playbook to `{domain}/{role}/{task}.md`** —
+  done. Went through two revisions on direct feedback: first
+  `{role}-{task}.md` (dropping `{workflow}-{feature doc name}.md`
+  entirely), then role moved into its own directory segment rather than
+  a filename prefix. All 10 playbooks (9 original + the new PI Queue
+  one) generate at their final nested paths, verified together against
+  a live `AppHost`. Every stale generated file/asset folder under an
+  older name (`git rm` for the originally-tracked `workflow-*.md` set,
+  plain `rm` for the untracked intermediate flat `{role}-{task}.md` set
+  that never got committed) is gone. `docs/playbooks/README.md`'s
+  catalog rewritten to the new paths, split into per-domain tables.
+- [ ] **Add 2 new playbooks using already-built Queue UI** — genuine
+  additional proving-ground use-case coverage that needs no new
+  production UI, unlike the Relying-Party Access panel:
+  1. Vitals' Principal Investigator Queue (`VitalsPiQueue.vue`) — **done**,
+     `VitalsPrincipalInvestigatorQueuePlaybookTests`, verified against a
+     live `AppHost`. Found and fixed a real, previously-undiscovered bug
+     doing it: `publishClient.ts`'s RFC 9470 step-up-retry check read
+     `body.error`, but `PublishEndpoints.cs`'s actual 401 response is an
+     RFC 7807 `ProblemDetails` body with no `error` field at all (the
+     real field is `title`) — every step-up retry through this client
+     silently fell through to an ordinary failure before this fix. Also
+     corrected `useEventComposer.spec.ts`'s own mock, which had been
+     matching the bug's assumption, not the real server response.
+  2. Meridian's KYC Analyst Queue (`MeridianAnalystQueue.vue`) — still
+     open. Accept/reject a pending `SanctionsScreeningPerformed` match
+     `Samples.Meridian.Simulator` publishes every ~25s. Needs a new test
+     class against `client-web-meridian` or `client-web-meridian-
+     screening` (either already exists) — same shape as the PI Queue
+     test just built, reuse its structure directly. Give it its own
+     sequence diagram (`alt` for accept vs. reject) in the same pass.
+- [ ] **Vitals' Workflow C (Trial Data Export and Subject Rights) is
+  still entirely uncovered** — the proving ground's own defined use case
+  most worth adding next, but a bigger lift than the two queue playbooks
+  above: `BitemporalPlaybackControl.vue`/`OfflineBundleViewer.vue`
+  already exist but are wired into no route/tab anywhere in `client-web`
+  (confirmed by grep, same shape as the Relying-Party Access gap closed
+  this session) — needs a new tab built and wired into `App.vue` before
+  a real playbook is possible, the same pattern
+  `RelyingPartyAccessPanel.vue` already established. The erasure half of
+  this workflow (`EntityErasureRequested`) may be reachable via the
+  already-generic Event Composer tab with no new UI at all -- worth
+  checking before assuming it needs the same treatment.
+- [ ] **Create `docs/playbooks/vitals/README.md` and `docs/playbooks/
+  meridian/README.md`** (direct request) — one per "application," each
+  listing that application's workflows, linking to its own (renamed)
+  playbooks, and a PlantUML diagram showing how the workflows interact
+  (e.g. the same continuity subject/applicant flowing through more than
+  one workflow, a downstream workflow consuming an upstream one's
+  entity). `docs/playbooks/README.md` (the top-level catalog) should
+  point to both rather than duplicate their content.
+
+- [ ] **Create `style-guide.md` describing how `client-web`'s UI/UX
+  should work** (direct request), with example screens either as
+  PlantUML+Salt mockups or as real pages captured via a Playwright
+  script that keeps the file updated (this project's own established
+  `PlaybookRecorder` mechanism, reused). Deliberately sequenced AFTER
+  the Naive UI/left-nav item below, not before: a style guide describing
+  the TARGET UI/UX would need rewriting the moment that adoption lands
+  if written against today's plain-HTML shell first. Not yet started.
+
+- [ ] **Adopt Naive UI (`naiveui.com`) and a left-hand-nav shell
+  (Azure Portal/Azure DevOps-style), replacing `client-web`'s current
+  plain-HTML tab-button styling entirely — direct request, deliberately
+  sequenced AFTER the diagram/rename/README/expansion work above, not
+  alongside it.** Every Playwright playbook test currently in flight
+  locates elements by role/label text against the CURRENT plain markup
+  (`GetByRole(AriaRole.Button, new() { Name = "Browse" })`, etc.) — a
+  navigation-pattern rewrite touches that same markup across every tab,
+  so doing it mid-batch would mean re-verifying every playbook a second
+  time, not once. Real work this item actually needs, not yet scoped in
+  detail: (1) research Naive UI's own Vue 3 compatibility and pull in
+  the library per `docs/libraries/README.md`'s existing "one file per
+  adopted framework" convention (this project's own standing "buy over
+  build," "verify before citing" rules apply to a new UI dependency the
+  same as anything else) — no such doc exists for it yet; (2) redesign
+  `App.vue`'s current top-nav tab-button shell into a left-hand
+  navigation rail (collapsible sections, matching the Azure Portal/DevOps
+  pattern named) — a real layout and routing-model change, not a drop-in
+  style swap, since today's shell is a plain tab switcher with no router
+  at all (ADR-039's own "no Vue Router dependency" decision may need
+  revisiting, or may not — worth checking before assuming); (3) once the
+  shell is rebuilt, every existing Vitest component test AND every
+  Playwright playbook test's own selectors will likely need updating to
+  match the new markup, in the same pass, not deferred; (4) decide
+  whether `EntityBrowser.vue`/`GenericFallbackView.vue`/`EventComposer.vue`/
+  the two Queue components/`RelyingPartyAccessPanel.vue` get restyled
+  with Naive UI's own components (`n-table`, `n-form`, `n-button`, etc.)
+  in the same pass or as follow-on work per component -- a real scope
+  decision, not yet made.

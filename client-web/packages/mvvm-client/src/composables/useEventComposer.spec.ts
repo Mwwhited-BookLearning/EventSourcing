@@ -114,8 +114,24 @@ describe('useEventComposer', () => {
       { hostBaseUrl: 'https://host', authBaseUrl: 'https://auth', appId: 'trial1' },
       { fetchToken: stepUpFetchToken },
     )
+    // Mirrors PublishEndpoints.cs's own BuildStepUpChallenge exactly: an
+    // RFC 7807 ProblemDetails body (type/title/status), "title" carrying
+    // "insufficient_user_authentication" -- there is no "error" field in
+    // the real response body at all. This mock originally used {error:
+    // ...} instead, matching a bug in publishClient.ts's own check
+    // rather than the real server response -- found only by actually
+    // driving a real RequiredSignature-gated publish through a live
+    // server, where the mismatch meant this retry path never actually
+    // fired. Locking the real wire shape here now, not the bug's own
+    // assumption.
     const challengeResponse = new Response(
-      JSON.stringify({ error: 'insufficient_user_authentication', acrValues: ['urn:test:step-up'], maxAge: 300 }),
+      JSON.stringify({
+        type: 'https://eventstore.example/problems/insufficient-user-authentication',
+        title: 'insufficient_user_authentication',
+        status: 401,
+        acrValues: ['urn:test:step-up'],
+        maxAge: 300,
+      }),
       { status: 401, headers: { 'content-type': 'application/json' } },
     )
     const acceptedResponse = jsonResponse({ status: 'received', entityId: 'trial1:Decision:D-1', conflictFlag: false })

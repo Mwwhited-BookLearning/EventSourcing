@@ -44,7 +44,21 @@ public class PlaybookRecorder
         _steps.Add((fileName, caption));
     }
 
-    public async Task WriteMarkdownAsync(string title)
+    // Optional -- a PlantUML sequence diagram showing the general
+    // business-process flow this playbook's own screenshots walk
+    // through (with alt/opt blocks for a real alternate path, e.g. a
+    // rejection, a step-up challenge, or an unmatched-vs-matched
+    // branch), placed right after the generated-by note and before
+    // Step 1. Written by hand per playbook test (direct request,
+    // TODO.md-adjacent) rather than derived from the screenshots
+    // themselves -- there's no mechanical way to produce a sequence
+    // diagram from a page's own DOM, and the underlying business
+    // process is exactly the kind of thing a human author decides how
+    // to depict, the same reasoning every other PlantUML diagram in
+    // this repo is hand-authored rather than generated. Follows this
+    // repo's own standing PlantUML convention (CLAUDE.md): no external
+    // `!include`, ever.
+    public async Task WriteMarkdownAsync(string title, string? sequenceDiagramPlantUml = null)
     {
         if (_steps.Count == 0)
             throw new InvalidOperationException("No steps recorded -- RecordStepAsync must be called at least once before WriteMarkdownAsync.");
@@ -57,6 +71,16 @@ public class PlaybookRecorder
             " file directly; edit the owning test's own step captions instead, or the content" +
             " will be overwritten on the next run._");
         sb.AppendLine();
+
+        if (sequenceDiagramPlantUml is not null)
+        {
+            sb.AppendLine("## Sequence Diagram");
+            sb.AppendLine();
+            sb.AppendLine("```plantuml");
+            sb.AppendLine(sequenceDiagramPlantUml.Trim());
+            sb.AppendLine("```");
+            sb.AppendLine();
+        }
 
         for (var i = 0; i < _steps.Count; i++)
         {

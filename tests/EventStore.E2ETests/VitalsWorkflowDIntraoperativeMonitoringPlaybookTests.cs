@@ -78,7 +78,7 @@ public class VitalsWorkflowDIntraoperativeMonitoringPlaybookTests
     public async Task RecordIntraoperativeMonitoringAndAlertResponsePlaybook()
     {
         var recorder = new PlaybookRecorder(
-            Path.Combine(RepoRootDirectory(), "docs", "playbooks", "vitals", "workflow-d-intraoperative-monitoring-and-alert-response.md"));
+            Path.Combine(RepoRootDirectory(), "docs", "playbooks", "vitals", "neurotechnologist", "monitor-and-respond-to-alert.md"));
 
         await _page.GotoAsync(_clientWebVitalsIonmAlertBaseUrl);
         await Assertions.Expect(_page.GetByRole(AriaRole.Heading, new() { Name = "Duplex Client" })).ToBeVisibleAsync();
@@ -95,9 +95,38 @@ public class VitalsWorkflowDIntraoperativeMonitoringPlaybookTests
         await Assertions.Expect(templatedView.Or(fallbackView)).ToBeVisibleAsync();
         await recorder.RecordStepAsync(_page, "Selecting alert-0091 opens its Detail view -- rendered generically via GenericFallbackView (ADR-039), since no ViewDefinition is registered for the \"ionmalert\" EntityType. This subscription's own payload type is IonmAlertRaised's, so the finding (SSEP amplitude decrease) and severity (High) render here -- IonmAlertAcknowledged's own AckedBy field isn't part of this payload shape, even though both events fold onto the same entity in the Entity Store itself (ADR-094's expected-response tracking).");
 
-        await recorder.WriteMarkdownAsync("Vitals -- Workflow D: Intraoperative Monitoring and Alert Response");
+        const string sequenceDiagram = """
+            @startuml VitalsIonmAlert_Playbook_Sequence
+            autonumber
+            actor "Neurotechnologist" as tech
+            actor "Attending neurologist" as neurologist
+            participant "PublishEndpoint\n(Inbox)" as inbox
+            participant "ExpectedResponseWatcher" as watcher
+            participant "Duplex Client\n(client-web-vitals-ionmalert)" as client
+            database "Entity Store\n(trial1:IonmAlert:alert-0091)" as entityStore
 
-        Assert.IsTrue(File.Exists(Path.Combine(RepoRootDirectory(), "docs", "playbooks", "vitals", "workflow-d-intraoperative-monitoring-and-alert-response.md")));
+            tech -> inbox: POST /publish/IonmAlertRaised\n{ AlertId: "alert-0091", SubjectId: "S-0091",\n  Finding: "SSEP amplitude decrease", Severity: "High" }\nExpectedResponse: IonmAlertAcknowledged within 2 minutes (ADR-094)
+            inbox -> entityStore: fold (Partial), AuthorityStatus: "accepted"
+            watcher -> watcher: start a 2-minute deadline timer\nfor this event's own RespondsToEventId chain
+
+            alt acknowledged within 2 minutes (this playbook's own seed data)
+              neurologist -> inbox: POST /publish/IonmAlertAcknowledged\n{ AlertId: "alert-0091", AckedBy: "neurologist-1" }\nRespondsToEventId: <the IonmAlertRaised event's own EventId>
+              inbox -> entityStore: fold (Partial) onto the SAME IonmAlert entity
+              watcher -> watcher: deadline satisfied -- no further action
+            else no IonmAlertAcknowledged within the 2-minute deadline
+              watcher -> inbox: publish reserved "ExpectedResponseMissing" event\n(system-owned, no RequiredClaims)
+              inbox -> entityStore: fold as an ordinary Follow-able fact
+              note right: the domain's own escalation process (paging a\nbackup, sounding a different alarm) reacts to this\nthe same way it already reacts to ChannelLagDetected
+            end
+
+            == Later: staff browse the result via client-web ==
+            client -> entityStore: (via GraphQL Subscription on_trial1_IonmAlertRaised, REPLAY)
+            client -> tech: Detail view shows Finding/Severity (this subscription's\nown IonmAlertRaised payload) -- AckedBy isn't part of this\npayload shape, even though it's folded into the same entity
+            @enduml
+            """;
+        await recorder.WriteMarkdownAsync("Vitals -- Workflow D: Intraoperative Monitoring and Alert Response", sequenceDiagram);
+
+        Assert.IsTrue(File.Exists(Path.Combine(RepoRootDirectory(), "docs", "playbooks", "vitals", "neurotechnologist", "monitor-and-respond-to-alert.md")));
     }
 
     private static string RepoRootDirectory()

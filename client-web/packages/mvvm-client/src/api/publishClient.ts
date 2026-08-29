@@ -47,8 +47,17 @@ export async function publishCommand(hostBaseUrl: string, token: string, entry: 
   })
   if (!response.ok) {
     if (response.status === 401) {
-      const body = (await response.json().catch(() => null)) as { error?: string; acrValues?: string[]; maxAge?: number | null } | null
-      if (body?.error === 'insufficient_user_authentication') {
+      // PublishEndpoints.cs's BuildStepUpChallenge returns an RFC 7807
+      // ProblemDetails body (type/title/status) -- "title" carries
+      // "insufficient_user_authentication", there is no "error" field in
+      // the JSON body at all (that string only appears inside the
+      // WWW-Authenticate header's own error="..." parameter). Found only
+      // by actually driving a real RequiredSignature-gated publish
+      // through this client against a live server: every step-up retry
+      // before this fix silently fell through to the generic `{ ok:
+      // false }` branch below, since `body?.error` was always undefined.
+      const body = (await response.json().catch(() => null)) as { title?: string; acrValues?: string[]; maxAge?: number | null } | null
+      if (body?.title === 'insufficient_user_authentication') {
         return { ok: false, stepUpRequired: { acrValues: body.acrValues ?? [], maxAge: body.maxAge ?? null } }
       }
     }

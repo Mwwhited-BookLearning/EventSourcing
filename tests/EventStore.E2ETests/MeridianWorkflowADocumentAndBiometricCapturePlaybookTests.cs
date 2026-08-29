@@ -95,7 +95,7 @@ public class MeridianWorkflowADocumentAndBiometricCapturePlaybookTests
     public async Task RecordDocumentAndBiometricCapturePlaybook()
     {
         var recorder = new PlaybookRecorder(
-            Path.Combine(RepoRootDirectory(), "docs", "playbooks", "meridian", "workflow-a-document-and-biometric-capture.md"));
+            Path.Combine(RepoRootDirectory(), "docs", "playbooks", "meridian", "applicant", "capture-identity-documents.md"));
 
         await _page.GotoAsync(_clientWebMeridianBaseUrl);
         await Assertions.Expect(_page.GetByRole(AriaRole.Heading, new() { Name = "Duplex Client" })).ToBeVisibleAsync();
@@ -117,9 +117,37 @@ public class MeridianWorkflowADocumentAndBiometricCapturePlaybookTests
         await Assertions.Expect(templatedView).ToBeVisibleAsync();
         await recorder.RecordStepAsync(_page, "Selecting applicant-1001 opens its Detail view, rendered from the ApplicantIdentity Detail ViewDefinition Samples.Meridian.Seed registers (ADR-039). This subscription's own payload type is IdentityClaimSubmitted's, so only that event's fields (DID, claimed legal name, date of birth, document type) render -- ExtractedDocumentNumber/biometric fields from the upstream capture events aren't part of this payload shape, even though all three events fold onto the same entity in the Entity Store itself.");
 
-        await recorder.WriteMarkdownAsync("Meridian -- Workflow A: Document and Biometric Capture");
+        const string sequenceDiagram = """
+            @startuml MeridianWorkflowADocument_Playbook_Sequence
+            autonumber
+            actor "Applicant" as applicant
+            participant "PublishEndpoint\n(Inbox)" as inbox
+            participant "Duplex Client\n(client-web-meridian)" as client
+            participant "GraphQL Subscription\n(on_kyc_IdentityClaimSubmitted)" as graphql
+            database "Event Log" as eventLog
+            database "Entity Store\n(kyc:ApplicantIdentity:applicant-1001)" as entityStore
 
-        Assert.IsTrue(File.Exists(Path.Combine(RepoRootDirectory(), "docs", "playbooks", "meridian", "workflow-a-document-and-biometric-capture.md")));
+            applicant -> inbox: POST /publish/IdentityDocumentUploaded\n{ ApplicantId, DocumentType, ExtractedDocumentNumber }
+            inbox -> eventLog: INSERT StoredEvent (accepted)
+            inbox -> entityStore: fold (Partial) onto ApplicantIdentity
+            applicant -> inbox: POST /publish/BiometricCaptureRecorded\n{ ApplicantId, CaptureType, LivenessCheckResult, LivenessConfidence }
+            inbox -> eventLog: INSERT StoredEvent (accepted)
+            inbox -> entityStore: fold (Partial) onto the SAME ApplicantIdentity
+            applicant -> inbox: POST /publish/IdentityClaimSubmitted\n{ ApplicantId, Did, ClaimedLegalName (masked),\n  DateOfBirth (masked), DocumentType }
+            inbox -> eventLog: INSERT StoredEvent (accepted)
+            inbox -> entityStore: fold (Partial) onto the SAME ApplicantIdentity
+
+            == Later: staff browse the result via client-web ==
+            client -> graphql: subscription on_kyc_IdentityClaimSubmitted\n(mode: REPLAY)\nBearer <follower-client token, events:follow>
+            graphql -> eventLog: SELECT IdentityClaimSubmitted events WHERE AppId="kyc"
+            eventLog --> graphql: IdentityClaimSubmitted{applicant-1001, ...}
+            graphql --> client: SSE stream
+            client -> applicant: Detail view shows ONLY this subscription's\nown fields (Did/ClaimedLegalName/DateOfBirth/DocumentType) --\nExtractedDocumentNumber/biometric fields are real,\nfolded into the Entity Store, but not part of THIS\nsubscription's payload shape (ADR-039, one event type per instance)
+            @enduml
+            """;
+        await recorder.WriteMarkdownAsync("Meridian -- Workflow A: Document and Biometric Capture", sequenceDiagram);
+
+        Assert.IsTrue(File.Exists(Path.Combine(RepoRootDirectory(), "docs", "playbooks", "meridian", "applicant", "capture-identity-documents.md")));
     }
 
     private static string RepoRootDirectory()

@@ -81,7 +81,7 @@ public class VitalsWorkflowBAdverseEventPlaybookTests
     public async Task RecordAdverseEventCaptureAndReviewPlaybook()
     {
         var recorder = new PlaybookRecorder(
-            Path.Combine(RepoRootDirectory(), "docs", "playbooks", "vitals", "workflow-b-adverse-event-capture-and-review.md"));
+            Path.Combine(RepoRootDirectory(), "docs", "playbooks", "vitals", "site-coordinator", "capture-and-review-adverse-event.md"));
 
         await _page.GotoAsync(_clientWebVitalsAdverseEventBaseUrl);
         await Assertions.Expect(_page.GetByRole(AriaRole.Heading, new() { Name = "Duplex Client" })).ToBeVisibleAsync();
@@ -98,9 +98,32 @@ public class VitalsWorkflowBAdverseEventPlaybookTests
         await Assertions.Expect(templatedView.Or(fallbackView)).ToBeVisibleAsync();
         await recorder.RecordStepAsync(_page, "Selecting ae-1042 opens its Detail view -- rendered generically via GenericFallbackView (ADR-039), since no ViewDefinition is registered for the \"adverseevent\" EntityType. Shows the reported severity (Severe) and SeriousAdverseEvent flag (true) -- this playbook stops at capture; the delegated secondary-opinion review and investigator sign-off this workflow's own feature doc describes (ADR-043/ADR-066) have no dedicated client-web screen yet, only the same generic property view every entity gets.");
 
-        await recorder.WriteMarkdownAsync("Vitals -- Workflow B: Adverse Event Capture and Review");
+        const string sequenceDiagram = """
+            @startuml VitalsAdverseEvent_Playbook_Sequence
+            autonumber
+            actor "Site coordinator" as coordinator
+            actor "Colleague\n(delegated \"secondary opinion\")" as colleague
+            actor "Principal Investigator" as pi
+            participant "PublishEndpoint\n(Inbox)" as inbox
+            database "Entity Store\n(trial1:AdverseEvent:ae-1042)" as entityStore
 
-        Assert.IsTrue(File.Exists(Path.Combine(RepoRootDirectory(), "docs", "playbooks", "vitals", "workflow-b-adverse-event-capture-and-review.md")));
+            coordinator -> inbox: POST /publish/AdverseEventReported\n{ AeId: "ae-1042", SubjectId: "S-0091",\n  Severity: "Severe", SeriousAdverseEvent: true }
+
+            alt ordinary publish (this playbook's own seed data)
+              inbox -> entityStore: fold (Full) immediately, AuthorityStatus: "accepted"
+            else non-authoritative capture, pending clinical judgment (ADR-035/042)
+              inbox -> inbox: AuthorityStatus: "pending_review"\n(ReviewPending: true, reason: "clinical-judgment-required")
+              note right: not exercised by this playbook's own seed data
+              coordinator -> colleague: delegate a capped, time-boxed\n"secondary opinion" grant (ADR-043) for this one AeId
+              colleague -> inbox: reviews the pending finding\n(entity-scoped access, never blanket)
+              pi -> inbox: POST /publish/authorityDecision\n{ targetEventId, decision: "accepted"|"rejected",\n  decidingActorId }\nRequiredClaims: "review:ae"; step-up gated (ADR-066)
+              inbox -> entityStore: fold now (catch-up) if accepted;\nEntity Store left untouched if rejected (ADR-042)
+            end
+            @enduml
+            """;
+        await recorder.WriteMarkdownAsync("Vitals -- Workflow B: Adverse Event Capture and Review", sequenceDiagram);
+
+        Assert.IsTrue(File.Exists(Path.Combine(RepoRootDirectory(), "docs", "playbooks", "vitals", "site-coordinator", "capture-and-review-adverse-event.md")));
     }
 
     private static string RepoRootDirectory()

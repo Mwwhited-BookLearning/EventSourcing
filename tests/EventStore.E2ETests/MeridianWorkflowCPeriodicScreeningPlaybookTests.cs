@@ -88,7 +88,7 @@ public class MeridianWorkflowCPeriodicScreeningPlaybookTests
     public async Task RecordPeriodicScreeningPlaybook()
     {
         var recorder = new PlaybookRecorder(
-            Path.Combine(RepoRootDirectory(), "docs", "playbooks", "meridian", "workflow-c-periodic-screening-and-sar-escalation.md"));
+            Path.Combine(RepoRootDirectory(), "docs", "playbooks", "meridian", "compliance-officer", "review-periodic-screening.md"));
 
         await _page.GotoAsync(_clientWebMeridianScreeningBaseUrl);
         await Assertions.Expect(_page.GetByRole(AriaRole.Heading, new() { Name = "Duplex Client" })).ToBeVisibleAsync();
@@ -114,9 +114,42 @@ public class MeridianWorkflowCPeriodicScreeningPlaybookTests
         await Assertions.Expect(templatedView).ToBeVisibleAsync();
         await recorder.RecordStepAsync(_page, "Selecting applicant-1001 opens its Detail view. The registered ApplicantIdentity template now covers this event type's own fields too -- Screening Date (2026-07-30, the later, matched screening -- this instance's entity cache reflects the most recent SanctionsScreeningPerformed for this applicant) and Match Found (true). Lists Checked renders blank -- EventTypeSchemaReader.cs deliberately skips top-level array-typed properties when building this GraphQL payload type at all (an already-documented, accepted narrowing, not a new gap), so ListsChecked was never selectable to begin with. Document Type/Claimed Legal Name/Date of Birth/DID stay blank here, same reasoning as before: those are IdentityClaimSubmitted's own fields, not this subscription's.");
 
-        await recorder.WriteMarkdownAsync("Meridian -- Workflow C: Periodic Screening and SAR Escalation (screening half only)");
+        const string sequenceDiagram = """
+            @startuml MeridianPeriodicScreening_Playbook_Sequence
+            autonumber
+            participant "Screening worker\n(ISanctionsScreeningProvider)" as worker
+            participant "PublishEndpoint\n(Inbox)" as inbox
+            actor "Compliance officer\n(identity:aml-review)" as officer
+            actor "Any other caller" as other
+            database "Entity Store\n(kyc:ApplicantIdentity)" as entityStore
+            database "Live View" as liveView
 
-        Assert.IsTrue(File.Exists(Path.Combine(RepoRootDirectory(), "docs", "playbooks", "meridian", "workflow-c-periodic-screening-and-sar-escalation.md")));
+            worker -> inbox: POST /publish/SanctionsScreeningPerformed\n{ ApplicantId, ScreeningDate, ListsChecked, MatchFound }
+
+            alt MatchFound = false (this playbook's own first seed screening)
+              inbox -> entityStore: fold (Partial) immediately, AuthorityStatus: "accepted"
+            else MatchFound = true (this playbook's own second seed screening)
+              inbox -> inbox: ReviewPending: true --\nAuthorityStatus: "pending_review" (ADR-042),\nalways captured regardless of MatchConfidence
+              inbox -> liveView: fold into the Live View only\n(not yet the authoritative Entity Store)
+              other -> inbox: POST /publish/authorityDecision\n{ targetEventId, decision, decidingActorId }
+              inbox --> other: 403 Forbidden -- lacks "identity:review"\nor "identity:aml-review" (RequiredClaims OR-set)
+              officer -> inbox: POST /publish/authorityDecision\n{ targetEventId, decision: "accepted"|"rejected",\n  decidingActorId, reason }
+              alt decision = "accepted" (this playbook's own seed data)
+                inbox -> entityStore: fold now (catch-up) -- MatchedName/\nMatchedListEntryId/etc. join the authoritative record
+              else decision = "rejected" (false positive)
+                inbox -> inbox: AuthorityStatus: "rejected" --\nnever folds into the authoritative Entity Store
+              end
+            end
+
+            == Later: staff browse the result via client-web ==
+            participant "Duplex Client\n(client-web-meridian-screening)" as client
+            client -> entityStore: (via GraphQL Subscription on_kyc_SanctionsScreeningPerformed, REPLAY)
+            client -> officer: Detail view -- ScreeningDate/MatchFound render;\nMatchedName/MatchedListEntryId stay masked without\nthe "identity:aml-review" reveal claim
+            @enduml
+            """;
+        await recorder.WriteMarkdownAsync("Meridian -- Workflow C: Periodic Screening and SAR Escalation (screening half only)", sequenceDiagram);
+
+        Assert.IsTrue(File.Exists(Path.Combine(RepoRootDirectory(), "docs", "playbooks", "meridian", "compliance-officer", "review-periodic-screening.md")));
     }
 
     private static string RepoRootDirectory()
