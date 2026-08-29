@@ -305,21 +305,33 @@ mid-pass:
   with or replaces `REPLAY` mode for large entity sets) before coding;
   do NOT improvise the query shape without that pass.
 
-- [ ] **Configurable charting view for display elements** (direct
-  request, found at the same time as grid pagination above). Some
-  fields/views (the user named "graphs" — likely this project's own
-  time-series-shaped data, e.g. Vitals' IONM alert telemetry or
-  screening-history trends, not a literal existing "graph" component,
-  since none exists yet) would read better as a chart than as a table
-  row. Needs: (1) a charting library decision — Naive UI ships no
-  charting components of its own, so this is a new dependency choice,
-  same "buy over build"/"verify before citing" bar as Naive UI itself,
-  with its own `docs/libraries/web/{library}.md` entry once chosen; (2)
-  a declarative way to mark a field/view as chart-renderable (a
-  `chartable`/`chartType` config alongside the existing `.columns.js`/
-  `.fields.js` ViewModel-structure convention `docs/patterns/mvvm-
-  client-architecture.md` already establishes, not a one-off per
-  component); (3) at least one real example wired against real data
+- [ ] **Configurable presentation-type view for display elements**
+  (direct request, found at the same time as grid pagination above;
+  **scope broadened** by the "User Requested Tasks" review below — the
+  user's own separate "expected presentation types per object/child set"
+  ask is the generalized form of this same gap, not a second thing to
+  build in parallel: `ViewDefinition.TemplateContent` is imperative,
+  hand-authored HTML+JS per entity type, "never precompiled"
+  (`docs/data/schema-registry.md`) — there is no declarative,
+  per-field "how should this render" metadata anywhere today, charts
+  being only the specific case that was named first). Some fields/views
+  (the user named "graphs" — likely this project's own time-series-
+  shaped data, e.g. Vitals' IONM alert telemetry, not a literal existing
+  "graph" component, since none exists yet) would read better as a
+  chart than as a table row; more generally, a field/child-set could
+  declare its own presentation type at all (chart, table, badge, ...)
+  rather than every `ViewDefinition` re-deciding by hand. Needs: (1) a
+  charting library decision — Naive UI ships no charting components of
+  its own, so this is a new dependency choice, same "buy over build"/
+  "verify before citing" bar as Naive UI itself, with its own
+  `docs/libraries/web/{library}.md` entry once chosen; (2) a
+  declarative presentation-type config (`chartable`/`chartType`/
+  `presentationType` alongside the existing `.columns.js`/`.fields.js`
+  ViewModel-structure convention `docs/patterns/mvvm-client-
+  architecture.md` already establishes, not a one-off per component) —
+  scope this as the general mechanism from the start now that both asks
+  are known to be the same gap, not charts-only with presentation-types
+  bolted on later; (3) at least one real example wired against real data
   (Vitals' IONM/device telemetry is the natural first candidate, given
   its own time-series shape already discussed in `docs/domains/
   clinical-trials-device-telemetry/`). Deliberately sequenced as
@@ -329,15 +341,71 @@ mid-pass:
 
 ## User Requested Tasks
 
-These should be reviewed as they may not included all of the technical details.  They may also be duplicates of features already requested
+Reviewed against the existing codebase/docs (direct request) to check
+for duplicates before treating any of these as new work — findings
+below each item, refined into what's actually still open.
 
-- [ ] Extend the entity schema metadata
-  - [ ] Provide field level validation and datatype rules
-  - [ ] Define custom field valdiations that include mappings and dependant fields
-  - [ ] Define calculated fields
-  - [ ] Defined expected presentation types per object/child set
-- [ ] Migrate embedded plantuml diagrams to their own .puml files (Low Priority)
-  - [ ] there should be a plantuml docker instance configured for rendering out the images
-  - [ ] after diagrams are generated there should be a script to convert them from .puml to .svg
-    - [ ] the outputs of the script should be validated to ensure the diagrams may be rendered correctly 
-- [ ] searching for good DSLs to use to define user flows, validations, approvals and so on
+- [ ] **Extend the entity schema metadata** — reviewed, not a duplicate,
+  but split into pieces of very different size/shape:
+  - [ ] **Field-level validation and datatype rules** — genuine, real
+    gap, not a duplicate: `JsonSchemaInstanceValidator`
+    (`src/EventStore.SchemaRegistry/JsonSchemaInstanceValidator.cs`) is
+    a **hand-written, intentionally partial** validator (type/required/
+    properties/items only — a full JSON Schema library rejects this
+    project's own `x-masking` vendor extension, which is why it's
+    hand-written at all) with **no** `pattern`/`minLength`/`maxLength`/
+    `minimum`/`maximum`/`enum`/`format` support today. Real, scoped
+    work: extend that validator (or find/adopt a JSON Schema library
+    that can be taught to tolerate `x-masking` alongside real
+    validation — check for one before writing more bespoke validation
+    code, per this project's own buy-over-build rule) to cover these
+    keywords.
+  - [ ] **Custom/dependent-field validation (mappings, dependent
+    fields)** — genuinely new, confirmed not covered anywhere
+    (no `dependentRequired`/`if`-`then`-`else`/cross-field check exists
+    in the validator or schema registry today). Needs its own design
+    pass — likely an extension of the same validator above once it
+    exists, not a separate mechanism.
+  - [ ] **Calculated fields** — **do not build as a new mechanism**:
+    `ADR-007` (`docs/adrs/adr-007-derived-event-types.md`, Accepted) +
+    `DerivationDefinition`/`SelectField`
+    (`src/EventStore.Domain/SchemaRegistry/`) already do cross-source
+    field **mapping** via `EventStore.Derivation`'s `DerivationWorker`,
+    but `SelectField` is a straight 1:1 rename/copy today, with no
+    formula/expression/aggregation support. A true calculated field
+    (e.g. `Total = Quantity * UnitPrice`) is a real, new capability, but
+    belongs as an extension of `ADR-007`'s existing derivation
+    mechanism, not a second, parallel one — scope it there.
+  - [ ] **Expected presentation types per object/child set** — this is
+    the SAME gap as the already-tracked "Configurable presentation-type
+    view for display elements" item above (that item's own scope was
+    broadened to cover this directly) — not a separate task, don't
+    duplicate it here.
+- [ ] **Migrate embedded PlantUML diagrams to their own `.puml` files +
+  a Docker rendering pipeline to `.svg`** (Low Priority, user's own
+  priority marking kept). Reviewed: confirmed no such pipeline exists
+  today (no `.puml` file anywhere in the repo, nothing in `client-web/
+  package.json`, no CI workflow, no `scripts/` entry — 97 markdown files
+  currently embed PlantUML inline via fenced code blocks). **Real
+  tension worth deciding explicitly before building, not silently
+  overriding**: `docs/references.md`'s own PlantUML/C4-PlantUML entries
+  document exactly why every diagram in this repo is hand-styled,
+  `!include`-free, and embedded as plain text — avoiding a required
+  external-rendering dependency that failed silently and repeatedly
+  before (`CLAUDE.md`'s own standing convention bullet on this). A
+  Docker-based render-to-`.svg` pipeline doesn't reintroduce `!include`
+  itself, but it does reintroduce the class of "diagrams need working
+  external infrastructure to render at all" dependency that convention
+  was specifically adopted to avoid — weighed against the real,
+  legitimate upside (GitHub itself never renders raw PlantUML text
+  inline the way it does Mermaid, so pre-rendered `.svg` would make
+  every diagram actually visible there). Confirm this tradeoff is
+  accepted before scoping the actual build.
+- [ ] **Search for a good DSL for user flows, validations, and
+  approvals** — reviewed: moved to
+  [`docs/10-open-questions.md`](docs/10-open-questions.md) instead of
+  staying here, since this is a genuinely undecided fork (the actual
+  definition of that file), not decided work with only the doing left.
+  See that file's own row for the existing bespoke mechanisms
+  (`RequiredSignature`/`authorityDecision`/`ExpectedResponse`) this
+  would need to be weighed against.
