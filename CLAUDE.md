@@ -57,6 +57,10 @@ re-derive the process from scratch:
 - `protocols/context-handoff.md` — how to keep `.claude/context.md`
   current: a session-handoff snapshot, not a log, so a fresh session
   can resume from the repo alone.
+- `protocols/bug-report-tracking.md` — how and when to file a durable
+  bug report under `docs/bugs/{tier}/{summary-title}.md` for a genuine
+  defect found by actually running the thing, distinct from a
+  changelog's own day-of narrative.
 
 ## Layout
 
@@ -177,6 +181,19 @@ re-derive the process from scratch:
 - `docs/naming.md` — company/product naming (OoBDev; `Duplex` the base
   engine; `Vitals`/`Meridian` the two proving-ground products). Not an
   architecture decision, kept separate on purpose.
+- `docs/bugs/{scope}/{tier}/{summary-title}.md` — a **seventh kind of
+  document**: one file per genuine, previously-undiscovered defect found
+  by actually running the real thing (not a design fork, not a doc/code
+  drift with no runtime effect — those stay in `docs/10-open-questions.md`/
+  `TODO.md`). `{scope}` is `framework` (core Duplex) or `proving-ground`
+  (Vitals/Meridian-specific), kept separate per direct request; `{tier}`
+  is `ui`/`client`/`service`/`database`/`test`/... (grouped by where the
+  *defect* lived, not where it was observed). The file itself covers
+  what was wrong, how/where it was found, root cause, and resolution.
+  `docs/changes/{date}.md`'s own entry for the same bug becomes a short
+  pointer to it rather than a second full narrative, same "don't
+  restate, link instead" principle this file already applies elsewhere.
+  See `.claude/protocols/bug-report-tracking.md` for the full workflow.
 - `docs/glossary.md` — every cross-cutting Duplex engine term, defined
   once, cross-referenced to its deciding ADR, with verified synonyms
   where real ones exist.
@@ -228,6 +245,14 @@ re-derive the process from scratch:
   invisible to any `dotnet`-side check at all (`docs/changes/
   2026-08-13.md`). None of these were reachable by reading the code back
   or by a green test suite alone.
+- **Run `dotnet test` with `--logger "console;verbosity=detailed"`
+  (direct request), not a terse default run.** A plain `dotnet test`
+  summarizes to pass/fail counts and can silently eat the "Standard
+  Output Messages" a test actually produced (Testcontainers container
+  lifecycle logs, an inner exception's own detail, an `ILogger` line)
+  — exactly the detail that already explained a real bug once it was
+  visible. Confirmed this flag surfaces that detail without needing an
+  attached interactive debugger (`docs/changes/2026-08-29.md`).
 - **Never invent a bespoke mechanism when a real standard already
   fits; prefer buy over build for libraries the same way.** Record the
   reason explicitly in `references.md` either way (adopted, or
