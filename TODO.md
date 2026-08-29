@@ -96,14 +96,17 @@ mid-pass:
   (`EntityErasureRequested`) was not investigated this pass — worth
   checking whether the already-generic Event Composer tab already
   reaches it before assuming it needs its own UI too.
-- [ ] **Create `docs/playbooks/vitals/README.md` and `docs/playbooks/
-  meridian/README.md`** (direct request) — one per "application," each
-  listing that application's workflows, linking to its own (renamed)
-  playbooks, and a PlantUML diagram showing how the workflows interact
-  (e.g. the same continuity subject/applicant flowing through more than
-  one workflow, a downstream workflow consuming an upstream one's
-  entity). `docs/playbooks/README.md` (the top-level catalog) should
-  point to both rather than duplicate their content.
+- [x] **Create `docs/playbooks/vitals/README.md` and `docs/playbooks/
+  meridian/README.md`** — done. Each lists its own domain's workflows
+  and playbooks, plus a PlantUML object diagram showing how they
+  actually interact through shared entities: Vitals' four workflows
+  around one continuity subject (`S-0091`, several loosely-related
+  entities linked by business `SubjectId` fields, not `ADR-005` causal
+  parent links); Meridian's three workflows all folding onto the exact
+  same `ApplicantIdentity` entity, with Workflow B (Relying-Party
+  Access) a genuine data dependency on Workflow A's own event, not just
+  a shared subject. `docs/playbooks/README.md`'s own catalog now points
+  to both rather than restating their content.
 
 - [ ] **Create `style-guide.md` describing how `client-web`'s UI/UX
   should work** (direct request), with example screens either as

@@ -36,7 +36,12 @@ and its images move or delete together as one unit.
 
 Grouped by Workflow, each domain's own existing lettering
 (`docs/domains/{domain}/README.md`), since the role-based file paths no
-longer carry that grouping themselves.
+longer carry that grouping themselves. For how each domain's own
+workflows actually connect to one another — shared entities,
+cross-workflow dependencies, a diagram — see that domain's own
+hand-written index: [`vitals/README.md`](vitals/README.md),
+[`meridian/README.md`](meridian/README.md). Not restated here, per this
+repo's own "don't duplicate a list that just drifts stale" convention.
 
 ### Vitals
 
