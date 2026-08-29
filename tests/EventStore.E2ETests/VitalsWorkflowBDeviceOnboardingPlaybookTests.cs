@@ -98,7 +98,12 @@ public class VitalsWorkflowBDeviceOnboardingPlaybookTests
         // running this playbook, not assumed).
         await _page.GetByTestId("entity-browser-filter").FillAsync("dev-0091");
         var deviceRow = _page.GetByRole(AriaRole.Row).Filter(new() { HasText = "dev-0091" });
-        await Assertions.Expect(deviceRow).ToBeVisibleAsync(new() { Timeout = 30_000 }); // REPLAY-mode subscription needs a moment to catch up on first load
+        // See VitalsWorkflowAPlaybookTests.cs's identical comment -- waits
+        // for the debounced server-side "contains" filter to actually take
+        // effect (table settles to 1 row), not just for the target row's
+        // own visibility, which can be trivially true before that happens.
+        await Assertions.Expect(_page.Locator("tbody tr")).ToHaveCountAsync(1, new() { Timeout = 30_000 });
+        await Assertions.Expect(deviceRow).ToBeVisibleAsync();
         await recorder.RecordStepAsync(_page, "Switching to the Browse tab. The seed continuity device dev-0091 (Samples.Vitals.Seed), paired to patient S-0091, is already present via REPLAY-mode catch-up.");
 
         await deviceRow.GetByRole(AriaRole.Button, new() { Name = "View" }).ClickAsync();

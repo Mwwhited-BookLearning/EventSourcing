@@ -381,6 +381,17 @@ public class EntityQueryTypeModule(IServiceScopeFactory scopeFactory) : ITypeMod
         };
         config.Arguments.Add(new ArgumentConfiguration("first", type: TypeReference.Parse("Int!")));
         config.Arguments.Add(new ArgumentConfiguration("skip", type: TypeReference.Parse("Int!")));
+        // TODO.md's own "client wiring" follow-up: a real server-side
+        // narrowing, not a full EventFilterInput-style multi-clause filter
+        // -- deliberately scoped to the one concrete problem that motivated
+        // EntityBrowser.vue's filter box in the first place (ADR-099: a
+        // known EntityId like the seed data's own continuity subject
+        // becoming unreachable once pagination pushed it past page 1), not
+        // a search over summarized payload content too. A plain substring
+        // match on EntityId, applied BEFORE Skip/Take so it narrows the
+        // whole matching set server-side, not just whatever page happens
+        // to already be loaded.
+        config.Arguments.Add(new ArgumentConfiguration("contains", type: TypeReference.Parse("String")));
         return config;
     }
 
@@ -393,11 +404,18 @@ public class EntityQueryTypeModule(IServiceScopeFactory scopeFactory) : ITypeMod
     // needs (the total row count, queried only when the page-number
     // control needs to know how many pages exist).
     private ObjectFieldConfiguration BuildEntityCountQueryField(
-        string appId, string entityType, string safeAppId, string safeEntityType, List<EventTypeDefinition> contributing) =>
-        new($"entityCount_{safeAppId}_{safeEntityType}", type: TypeReference.Parse("Int!"))
+        string appId, string entityType, string safeAppId, string safeEntityType, List<EventTypeDefinition> contributing)
+    {
+        var config = new ObjectFieldConfiguration($"entityCount_{safeAppId}_{safeEntityType}", type: TypeReference.Parse("Int!"))
         {
             Resolver = async ctx => await ResolveEntityCountAsync(ctx, appId, entityType, contributing),
         };
+        // Same "contains" filter as entities_{...}'s own -- must accept the
+        // identical argument so a caller can ask "how many pages does THIS
+        // filtered set have," not just the unfiltered total.
+        config.Arguments.Add(new ArgumentConfiguration("contains", type: TypeReference.Parse("String")));
+        return config;
+    }
 
     private static async ValueTask<object> ResolveEntityListAsync(
         IResolverContext ctx, string appId, string entityType, IReadOnlyList<EventTypeDefinition> contributing)
@@ -415,11 +433,16 @@ public class EntityQueryTypeModule(IServiceScopeFactory scopeFactory) : ITypeMod
 
         var first = ctx.ArgumentValue<int>("first");
         var skip = ctx.ArgumentValue<int>("skip");
+        var contains = ctx.ArgumentValue<string?>("contains");
         var lowerEntityType = entityType.ToLowerInvariant();
         var entityIdPrefix = $"{appId}:{lowerEntityType}:";
 
-        var page = await db.LiveEntityStore.AsNoTracking()
-            .Where(r => r.EntityType == lowerEntityType && r.EntityId.StartsWith(entityIdPrefix))
+        var query = db.LiveEntityStore.AsNoTracking()
+            .Where(r => r.EntityType == lowerEntityType && r.EntityId.StartsWith(entityIdPrefix));
+        if (!string.IsNullOrEmpty(contains))
+            query = query.Where(r => r.EntityId.Contains(contains));
+
+        var page = await query
             .OrderBy(r => r.EntityId)
             .Skip(skip)
             .Take(first)
@@ -470,11 +493,14 @@ public class EntityQueryTypeModule(IServiceScopeFactory scopeFactory) : ITypeMod
         if (!RequiredClaimEvaluator.HasAny(readClaims, ClaimDirection.Read, user))
             throw new GraphQLException("Forbidden -- caller lacks the required Read claim for this entity type.");
 
+        var contains = ctx.ArgumentValue<string?>("contains");
         var lowerEntityType = entityType.ToLowerInvariant();
         var entityIdPrefix = $"{appId}:{lowerEntityType}:";
-        return await db.LiveEntityStore.AsNoTracking()
-            .Where(r => r.EntityType == lowerEntityType && r.EntityId.StartsWith(entityIdPrefix))
-            .CountAsync(ctx.RequestAborted);
+        var query = db.LiveEntityStore.AsNoTracking()
+            .Where(r => r.EntityType == lowerEntityType && r.EntityId.StartsWith(entityIdPrefix));
+        if (!string.IsNullOrEmpty(contains))
+            query = query.Where(r => r.EntityId.Contains(contains));
+        return await query.CountAsync(ctx.RequestAborted);
     }
 
     // A synthesized schema object -- {"type":"object","properties": {...}} --

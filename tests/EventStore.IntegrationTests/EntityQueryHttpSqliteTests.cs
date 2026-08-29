@@ -400,6 +400,32 @@ public class EntityQueryHttpSqliteTests
     }
 
     [TestMethod]
+    public async Task PagedEntityListContainsFilterNarrowsTheServerSideMatchingSetNotJustTheLoadedPage()
+    {
+        // Distinctive enough that no other test method's own gadget IDs
+        // (g-1, page-*, count-*, browse-log-*) can accidentally match this
+        // "contains" needle -- proves the filter is a real server-side
+        // WHERE clause over the full set, not a client-side re-filter of
+        // whatever page happened to load.
+        await PublishAsync("GadgetCreated", """{ "GadgetId": "findme-unique-9001", "Label": "Needle" }""");
+        await PublishAsync("GadgetCreated", """{ "GadgetId": "other-9002", "Label": "Haystack" }""");
+        await Task.Delay(500);
+
+        var filtered = await ExecuteGraphQlAsync(
+            """query { entities_entityquery_demo_1_gadget(first: 50, skip: 0, contains: "findme-unique-9001") { entityId } }""",
+            "follower-client", "follower-client-secret", "events:follow");
+        Assert.IsFalse(filtered.TryGetProperty("errors", out _), filtered.ToString());
+        var filteredItems = filtered.GetProperty("data").GetProperty("entities_entityquery_demo_1_gadget");
+        Assert.AreEqual(1, filteredItems.GetArrayLength(), "contains must narrow the WHERE clause itself, not just what's already loaded");
+        Assert.AreEqual($"{AppId}:gadget:findme-unique-9001", filteredItems[0].GetProperty("entityId").GetString());
+
+        var filteredCount = await ExecuteGraphQlAsync(
+            """query { entityCount_entityquery_demo_1_gadget(contains: "findme-unique-9001") }""",
+            "follower-client", "follower-client-secret", "events:follow");
+        Assert.AreEqual(1, filteredCount.GetProperty("data").GetProperty("entityCount_entityquery_demo_1_gadget").GetInt32(), "entityCount must accept and apply the same filter, for correct page-count math against a filtered set");
+    }
+
+    [TestMethod]
     public async Task PagedEntityListIsForbiddenWithoutTheRequiredReadClaim()
     {
         await PublishAsync("RestrictedThing", """{ "ThingId": "page-restricted-1", "Value": "classified" }""");

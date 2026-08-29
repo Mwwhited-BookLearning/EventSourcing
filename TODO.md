@@ -330,27 +330,49 @@ mid-pass:
     matching set, per-row masking matches the single-entity query exactly,
     the read-claim check is enforced, and the one-AccessLogEntry-not-N
     behavior is verified directly. Full solution build clean.
-  - **Client wiring, not yet started — a real design question surfaced
-    while scoping this, don't improvise it blind**: `EntityBrowser.vue`'s
-    existing filter box (`ADR-099`) does a client-side text search over
-    its ALREADY-fully-loaded array. Once Browse actually fetches pages
-    from the server instead of accumulating a `REPLAY` cache, that
-    filter can no longer search entities outside the currently-loaded
-    page — either (a) the filter becomes a real server-side argument on
-    `entities_{appId}_{entityType}` (more capable, more work — needs its
-    own query-shape decision, likely something in the spirit of
-    `EventFilterInput`), or (b) it stays a client-side, current-page-only
-    search with a UI affordance making that limitation obvious (simpler,
-    a real capability reduction from today's whole-cache search). Decide
-    this explicitly before writing the composable — this is exactly the
-    kind of interaction the Postgres investigation above was a reminder
-    to slow down and think through rather than assume away. The actual
-    client composable (`mvvm-client`'s own introspect-the-entity-graph-
-    type-then-build-a-field-selection pattern, mirroring
-    `subscriptionBuilder.ts`'s already-established approach for
-    Subscription payload types, adapted for the `{appId}_{entityType}
-    _Entity` type name instead) is real, moderate-sized work once that
-    question is settled, not a trivial fetch call.
+  - [x] **Client wiring — done.** Design question resolved: neither pure
+    (a) nor (b) from the original scoping note — added a real, scoped
+    server-side `contains` argument to `entities_{appId}_{entityType}`/
+    `entityCount_{appId}_{entityType}` (a plain substring `WHERE` clause
+    on `EntityId`, not a full `EventFilterInput`-style multi-clause
+    filter — deliberately narrower, matching the one concrete problem
+    that motivated the filter box in the first place). New
+    `client-web/packages/mvvm-client/src/api/entityQueryBuilder.ts`
+    (introspects the `{appId}_{entityType}_Entity` graph type, mirroring
+    `subscriptionBuilder.ts`'s already-established pattern for
+    Subscription payload types; deliberately excludes masked fields and
+    `attachments` from the browse-list projection — Detail view is where
+    a caller reviews either) and
+    `useEntityBrowserQuery.ts` composable. `EntityBrowser.vue` rewritten
+    to fetch real server pages via `n-data-table`'s remote-pagination
+    mode instead of listing `useEntityCacheStore`'s accumulated `REPLAY`
+    cache (Detail view's own real-time use of that cache is unaffected).
+    New unit tests (`entityQueryBuilder.spec.ts`) and a rewritten
+    `EntityBrowser.spec.ts` (mocks `fetch` directly, matching
+    `EventComposer.spec.ts`'s own established convention, since the data
+    source is no longer a seedable Pinia store).
+    - **Two real bugs found only by actually running the Playwright
+      playbooks, not assumed**: (1) a genuine **race condition** — the
+      initial unfiltered page-load (on mount) and the debounced filtered
+      reload (300ms after typing) are independent requests with no
+      guaranteed resolution order; an unlucky ordering let the stale
+      unfiltered response overwrite the correct filtered one after it
+      briefly rendered. Fixed with a monotonic request-generation guard
+      in `EntityBrowser.vue` (a response is only applied if it's still
+      the most recently *started* request, regardless of arrival order).
+      (2) All 8 playbooks using the filter box waited only for their
+      target row's own visibility before capturing a screenshot — since
+      that row could already be on the default unfiltered first page
+      (alphabetical luck), the assertion could pass, and the screenshot
+      get captured, *before* the debounced filter's fetch had even run.
+      Caught by actually reviewing a generated screenshot (filter box
+      showing typed text, table still showing the full unfiltered list)
+      — fixed all 8 to wait for the table to settle to exactly 1 row
+      first, a deterministic signal the filter actually took effect.
+    - Full regression green: `dotnet build EventStore.slnx` (0 errors),
+      full `client-web` Vitest suite both workspaces (43 + 128 tests),
+      full `EventStore.E2ETests` Playwright suite (13/13, run together
+      against one live `AppHost`).
 
 - [ ] **Configurable presentation-type view for display elements**
   (direct request, found at the same time as grid pagination above;

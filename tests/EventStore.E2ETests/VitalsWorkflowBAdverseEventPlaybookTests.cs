@@ -94,7 +94,12 @@ public class VitalsWorkflowBAdverseEventPlaybookTests
         // running this playbook, not assumed).
         await _page.GetByTestId("entity-browser-filter").FillAsync("ae-1042");
         var aeRow = _page.GetByRole(AriaRole.Row).Filter(new() { HasText = "ae-1042" });
-        await Assertions.Expect(aeRow).ToBeVisibleAsync(new() { Timeout = 30_000 }); // REPLAY-mode subscription needs a moment to catch up on first load
+        // See VitalsWorkflowAPlaybookTests.cs's identical comment -- waits
+        // for the debounced server-side "contains" filter to actually take
+        // effect (table settles to 1 row), not just for the target row's
+        // own visibility, which can be trivially true before that happens.
+        await Assertions.Expect(_page.Locator("tbody tr")).ToHaveCountAsync(1, new() { Timeout = 30_000 });
+        await Assertions.Expect(aeRow).ToBeVisibleAsync();
         await recorder.RecordStepAsync(_page, "Switching to the Browse tab. The seed continuity adverse event ae-1042 (Samples.Vitals.Seed) -- the same AeId the feature doc's own worked example uses -- is already present via REPLAY-mode catch-up.");
 
         await aeRow.GetByRole(AriaRole.Button, new() { Name = "View" }).ClickAsync();
