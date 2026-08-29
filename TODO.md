@@ -46,21 +46,3 @@ here instead of inlining.
   features beyond what the task requires" rule. Revisit only if a real
   product reason for that UI surfaces independently of the playbook
   initiative.
-- [ ] **Registered `ViewDefinition` templates can silently mismatch the
-  payload shape actually available to a given client instance —
-  cosmetic, not a defect, but worth a real fix eventually.** Found
-  building both Meridian Workflow C playbooks: the `ApplicantIdentity`
-  template's bound fields (`applicantId`/`documentType`/
-  `claimedLegalName`/`dateOfBirth`/`did`) don't cover
-  `SanctionsScreeningPerformed`'s or `SarFilingRecorded`'s own payload
-  shape at all, so only `applicantId` ever renders through it for
-  either — `ScreeningDate`/`MatchFound`/`FilingReferenceId`/`Narrative`
-  are genuinely published but never appear on screen through that
-  template, because a `ViewDefinition` is scoped to an `EntityType`
-  while the data actually available in a given client instance is
-  scoped to the one `EventType` it subscribes to, and nothing
-  reconciles the two. Not fixed (redesigning the template, or teaching
-  `TemplateRenderer` to fall back per-field, is a real content/design
-  decision) — flagged in both playbooks' own captions and `docs/
-  playbooks/README.md` instead of silently shipping a misleadingly
-  sparse screenshot.

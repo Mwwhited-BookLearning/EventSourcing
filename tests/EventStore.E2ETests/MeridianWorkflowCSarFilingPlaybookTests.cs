@@ -95,7 +95,7 @@ public class MeridianWorkflowCSarFilingPlaybookTests
         await applicantRow.GetByRole(AriaRole.Button, new() { Name = "View" }).ClickAsync();
         var templatedView = _page.GetByLabel("Entity (ViewDefinition-rendered)");
         await Assertions.Expect(templatedView).ToBeVisibleAsync();
-        await recorder.RecordStepAsync(_page, "Selecting applicant-1001 opens its Detail view. The registered ApplicantIdentity template renders here too (same mismatch as the periodic-screening playbook -- its bound fields don't cover SarFilingRecorded's own payload shape either), so only applicantId shows; the FilingReferenceId (SAR-2026-00417), TargetScreeningEventId, and masked Narrative are genuinely published but not reachable through this particular template.");
+        await recorder.RecordStepAsync(_page, "Selecting applicant-1001 opens its Detail view. The registered ApplicantIdentity template now covers this event type's own fields too (TODO.md's ViewDefinition/payload-shape mismatch, fixed by extending the one shared template): Filing Reference ID (SAR-2026-00417) renders plainly, and Narrative renders masked (\"***\") -- a live demonstration of x-masking on this specific field (MeridianWorkflowC.cs's own requiredClaim: identity:aml-review), not a rendering gap.");
 
         await recorder.WriteMarkdownAsync("Meridian -- Workflow C: SAR Filing");
 

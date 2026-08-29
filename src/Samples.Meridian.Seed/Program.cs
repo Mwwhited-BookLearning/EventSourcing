@@ -48,6 +48,22 @@ var publisher = new PublishService(db, registry, new PostgresUniqueConstraintVio
 await MeridianWorkflowA.RegisterAsync(registry);
 await MeridianWorkflowC.RegisterAsync(registry);
 
+// Fields beyond IdentityClaimSubmitted's own five (ApplicantId through
+// Did) were added after finding, via a real UI-playbook screenshot
+// (TODO.md), that client-web-meridian-screening/client-web-meridian-
+// sarfiling's own subscriptions (SanctionsScreeningPerformed/
+// SarFilingRecorded) render this SAME template but almost entirely
+// blank -- their payload fields were never bound here at all. Adding
+// them costs nothing for the instances that don't have them (an unbound
+// field's own {{ field }} interpolation already renders '' when
+// entry.data lacks that key, TemplateRenderer.vue's own documented
+// behavior) and gives the screening/SAR instances real content instead
+// of a near-empty screen. MatchedName/MatchedListEntryId (x-masking,
+// requiredClaim identity:aml-review) deliberately left out -- neither
+// client instance's own login claim set is expected to hold that claim,
+// so they'd only ever show a masked placeholder, unlike Narrative below
+// (also x-masking'd the same way, but worth including anyway as a live
+// masking demonstration, matching LegalName/ClaimedLegalName elsewhere).
 var viewResult = await views.RegisterAsync(new RegisterViewDefinitionRequest(
     "ApplicantIdentity", "Detail", [1],
     """
@@ -59,6 +75,11 @@ var viewResult = await views.RegisterAsync(new RegisterViewDefinitionRequest(
         <dt>{{ t:claimed_legal_name }}</dt><dd>{{ claimedLegalName }}</dd>
         <dt>{{ t:date_of_birth }}</dt><dd>{{ dateOfBirth:date }}</dd>
         <dt>{{ t:did }}</dt><dd>{{ did }}</dd>
+        <dt>{{ t:screening_date }}</dt><dd>{{ screeningDate }}</dd>
+        <dt>{{ t:lists_checked }}</dt><dd>{{ listsChecked }}</dd>
+        <dt>{{ t:match_found }}</dt><dd>{{ matchFound }}</dd>
+        <dt>{{ t:filing_reference_id }}</dt><dd>{{ filingReferenceId }}</dd>
+        <dt>{{ t:narrative }}</dt><dd>{{ narrative }}</dd>
       </dl>
     </section>
     """));

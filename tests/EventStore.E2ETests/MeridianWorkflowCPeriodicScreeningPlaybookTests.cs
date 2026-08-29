@@ -103,16 +103,16 @@ public class MeridianWorkflowCPeriodicScreeningPlaybookTests
         // Unlike the Device/IonmAlert/AdverseEvent instances (no
         // ViewDefinition registered at all for those EntityTypes), a
         // Detail ViewDefinition genuinely IS registered for
-        // "applicantidentity" (Samples.Meridian.Seed) -- so, after the
-        // same transient fallback-before-resolution window documented on
-        // the other Meridian playbooks, this one settles on the real
-        // templated render too, even though that template's own bound
-        // fields (applicantId/documentType/claimedLegalName/dateOfBirth/
-        // did) don't match SanctionsScreeningPerformed's payload shape at
-        // all -- a genuine, real finding, not another timing artifact.
+        // "applicantidentity" (Samples.Meridian.Seed) -- after the same
+        // transient fallback-before-resolution window documented on the
+        // other Meridian playbooks, this one settles on the real templated
+        // render, which now includes screeningDate/listsChecked/matchFound
+        // bindings alongside Workflow A's own five (TODO.md's tracked
+        // ViewDefinition/payload-shape mismatch, fixed by extending the
+        // one shared template rather than by building a second one).
         var templatedView = _page.GetByLabel("Entity (ViewDefinition-rendered)");
         await Assertions.Expect(templatedView).ToBeVisibleAsync();
-        await recorder.RecordStepAsync(_page, "Selecting applicant-1001 opens its Detail view. The registered ApplicantIdentity template renders here too, but its own bound fields (applicantId, documentType, claimedLegalName, dateOfBirth, did) don't match this subscription's SanctionsScreeningPerformed payload shape at all -- every field but applicantId renders blank. ScreeningDate/ListsChecked/MatchFound are real, published data (Samples.Meridian.Seed), just not reachable through this particular template -- a genuine ViewDefinition/payload-shape mismatch, not a masking or subscription defect.");
+        await recorder.RecordStepAsync(_page, "Selecting applicant-1001 opens its Detail view. The registered ApplicantIdentity template now covers this event type's own fields too -- Screening Date (2026-07-30, the later, matched screening -- this instance's entity cache reflects the most recent SanctionsScreeningPerformed for this applicant) and Match Found (true). Lists Checked renders blank -- EventTypeSchemaReader.cs deliberately skips top-level array-typed properties when building this GraphQL payload type at all (an already-documented, accepted narrowing, not a new gap), so ListsChecked was never selectable to begin with. Document Type/Claimed Legal Name/Date of Birth/DID stay blank here, same reasoning as before: those are IdentityClaimSubmitted's own fields, not this subscription's.");
 
         await recorder.WriteMarkdownAsync("Meridian -- Workflow C: Periodic Screening and SAR Escalation (screening half only)");
 

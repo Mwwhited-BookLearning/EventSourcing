@@ -34,6 +34,11 @@ export const placeholderTranslations: TranslationResources = {
     document_type: 'Document Type',
     claimed_legal_name: 'Claimed Legal Name',
     did: 'DID',
+    screening_date: 'Screening Date',
+    lists_checked: 'Lists Checked',
+    match_found: 'Match Found',
+    filing_reference_id: 'Filing Reference ID',
+    narrative: 'Narrative',
   },
   'fr-FR': {
     carrier_label: 'Transporteur',
@@ -50,6 +55,11 @@ export const placeholderTranslations: TranslationResources = {
     document_type: 'Type de document',
     claimed_legal_name: 'Nom légal déclaré',
     did: 'DID',
+    screening_date: 'Date de dépistage',
+    lists_checked: 'Listes vérifiées',
+    match_found: 'Correspondance trouvée',
+    filing_reference_id: 'Numéro de référence du dossier',
+    narrative: 'Récit',
   },
   'ar-SA': {
     carrier_label: 'شركة الشحن',
@@ -66,6 +76,11 @@ export const placeholderTranslations: TranslationResources = {
     document_type: 'نوع المستند',
     claimed_legal_name: 'الاسم القانوني المصرح به',
     did: 'المعرف اللامركزي (DID)',
+    screening_date: 'تاريخ الفحص',
+    lists_checked: 'القوائم التي تم فحصها',
+    match_found: 'تم العثور على تطابق',
+    filing_reference_id: 'رقم مرجع الملف',
+    narrative: 'السرد',
   },
 }
 
