@@ -402,11 +402,8 @@ below each item, refined into what's actually still open.
   inline the way it does Mermaid, so pre-rendered `.svg` would make
   every diagram actually visible there). Confirm this tradeoff is
   accepted before scoping the actual build.
-- [ ] **Search for a good DSL for user flows, validations, and
-  approvals** — reviewed: moved to
-  [`docs/10-open-questions.md`](docs/10-open-questions.md) instead of
-  staying here, since this is a genuinely undecided fork (the actual
-  definition of that file), not decided work with only the doing left.
-  See that file's own row for the existing bespoke mechanisms
-  (`RequiredSignature`/`authorityDecision`/`ExpectedResponse`) this
-  would need to be weighed against.
+
+(The "DSL for user flows/validations/approvals" ask was moved to
+[`docs/10-open-questions.md`](docs/10-open-questions.md) row 1, not kept
+here — a genuinely undecided fork, not decided work with only the doing
+left.)
