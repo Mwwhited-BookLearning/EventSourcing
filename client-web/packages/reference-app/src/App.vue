@@ -1,52 +1,13 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref } from 'vue'
-import { useEntityViewActions, useOnlineStatus, useOutboxStore, useEntityCacheStore, useViewDefinitionsStore, tokens, type ClientConfig } from '@eventstore/mvvm-client'
-import EntityView from './components/entity/EntityView.vue'
-import EntityBrowser from './components/entity/EntityBrowser.vue'
-import EventComposer from './components/composer/EventComposer.vue'
-import VitalsPiQueue from './components/queue/VitalsPiQueue.vue'
-import MeridianAnalystQueue from './components/queue/MeridianAnalystQueue.vue'
-import RelyingPartyAccessPanel from './components/relyingParty/RelyingPartyAccessPanel.vue'
-import LineageExportAndPlaybackPanel from './components/playback/LineageExportAndPlaybackPanel.vue'
+import { computed, h, onMounted, onUnmounted, provide, ref } from 'vue'
+import { RouterLink, useRoute, useRouter } from 'vue-router'
+import { NConfigProvider, NLayout, NLayoutContent, NLayoutHeader, NLayoutSider, NMenu, type MenuOption } from 'naive-ui'
+import { useEntityViewActions, useOnlineStatus, useOutboxStore, useEntityCacheStore, useViewDefinitionsStore, tokens, themeOverrides } from '@eventstore/mvvm-client'
+import { config, queueDomain } from './appConfig'
+import { APP_STATE_KEY } from './appState'
 
-// Per-instance launch configuration (ADR-039: "which EntityType/AppId/
-// subscription target an instance follows is per-instance launch
-// configuration, not a global singleton") -- read from the URL's own query
-// string, so two windows of this same installed app can genuinely watch
-// different things, exactly as the ADR describes. Defaults match this
-// repo's own demo AppId/EventType conventions used throughout the server-
-// side test suite.
-const params = new URLSearchParams(window.location.search)
-const config: ClientConfig = {
-  instanceId: params.get('instanceId') ?? crypto.randomUUID(),
-  // Query string wins if present (a specific launch always overrides);
-  // otherwise the Vite build-time env vars EventStore.AppHost injects via
-  // WithEnvironment (a per-domain client-web resource -- clientWebVitals/
-  // clientWebMeridian -- pre-configured for its own AppId/EntityType/
-  // EventType, the same reasoning hostBaseUrl/authBaseUrl below already
-  // established for the dynamically-assigned Aspire endpoint) win over the
-  // hardcoded fallback, which only applies when running client-web
-  // standalone (`npm run dev`, no AppHost at all).
-  appId: params.get('appId') ?? import.meta.env.VITE_APP_ID ?? 'mvvm-demo',
-  entityType: params.get('entityType') ?? import.meta.env.VITE_ENTITY_TYPE ?? 'orderplaced',
-  eventType: params.get('eventType') ?? import.meta.env.VITE_EVENT_TYPE ?? 'OrderPlaced',
-  entityIdField: params.get('entityIdField') ?? import.meta.env.VITE_ENTITY_ID_FIELD ?? 'orderId',
-  hostBaseUrl: params.get('hostBaseUrl') ?? import.meta.env.VITE_HOST_BASE_URL ?? 'https://localhost:5001',
-  // http, not https -- devIdp's own OpenIddict issuer is computed per-
-  // request from whichever endpoint actually receives the call, and
-  // eventstore's own Authentication:Authority trusts devIdp's HTTP
-  // endpoint specifically (avoids an HTTPS metadata fetch at server
-  // startup, EventStore.AppHost/AppHost.cs's own comment on that config
-  // value). A token fetched via devIdp's https endpoint carries an
-  // issuer eventstore doesn't trust, and every later GraphQL call fails
-  // with "Forbidden -- caller's token does not hold the required scope"
-  // -- found only by actually driving a real token through both
-  // endpoints and comparing, not from reading the config alone.
-  authBaseUrl: params.get('authBaseUrl') ?? import.meta.env.VITE_AUTH_BASE_URL ?? 'http://localhost:5010',
-  clientId: params.get('clientId') ?? 'follower-client',
-  clientSecret: params.get('clientSecret') ?? 'follower-client-secret',
-  scope: params.get('scope') ?? 'events:follow',
-}
+const route = useRoute()
+const router = useRouter()
 
 const outbox = useOutboxStore()
 const entityCache = useEntityCacheStore()
@@ -56,29 +17,10 @@ const viewActions = useEntityViewActions(config)
 const currentEntityId = ref('')
 const amountInput = ref('')
 const statusMessage = ref('')
-// "Proving-Ground Application UX" -- a plain tab switcher, not a router
-// dependency: this instance still watches exactly one EntityType/AppId
-// (ADR-039's own per-instance launch configuration, unchanged), these are
-// different VIEWS over that same subscription/outbox state, not
-// different routes/pages.
-const activeTab = ref<'detail' | 'browser' | 'composer' | 'queue' | 'relyingParty' | 'lineage'>('detail')
-
-// "Domain Decision Queues" -- the one place in this otherwise domain-
-// agnostic shell that knows Vitals is "trial1" and Meridian is "kyc"
-// (EventStore.AppHost/AppHost.cs's own VITE_APP_ID values) -- a bespoke
-// per-domain screen is, by definition, not generic, so this tab simply
-// doesn't render for any OTHER AppId (a standalone `npm run dev` against
-// the "mvvm-demo" fallback config, or a future third domain) rather than
-// guessing at a queue that doesn't apply.
-const queueDomain = computed<'vitals' | 'meridian' | null>(() => {
-  if (config.appId === 'trial1') return 'vitals'
-  if (config.appId === 'kyc') return 'meridian'
-  return null
-})
 
 function selectFromBrowser(entityId: string): void {
   currentEntityId.value = entityId
-  activeTab.value = 'detail'
+  void router.push('/detail')
 }
 
 const { isOnline } = useOnlineStatus(() => {
@@ -105,61 +47,79 @@ async function submitAmountCommand(): Promise<void> {
 }
 
 const pendingCount = computed(() => outbox.pendingFor(config.instanceId).length)
+
+provide(APP_STATE_KEY, { config, viewActions, currentEntityId, amountInput, statusMessage, submitAmountCommand, selectFromBrowser })
+
+// ADR-099 -- left-hand navigation rail (Azure Portal/DevOps-style),
+// replacing the prior top tab-button row. Real `<a>` elements via
+// RouterLink (not a plain @click handler), so deep-linking/"open in new
+// tab"/screen-reader link semantics all work -- n-menu's own `value` just
+// drives which item shows as active, navigation happens through the link.
+function navLabel(to: string, text: string) {
+  return () => h(RouterLink, { to }, { default: () => text })
+}
+
+const menuOptions = computed<MenuOption[]>(() => {
+  const items: MenuOption[] = [
+    { label: navLabel('/detail', 'Detail'), key: '/detail' },
+    { label: navLabel('/browse', 'Browse'), key: '/browse' },
+    { label: navLabel('/compose', 'Compose'), key: '/compose' },
+  ]
+  if (queueDomain) items.push({ label: navLabel('/queue', 'Queue'), key: '/queue' })
+  if (queueDomain === 'meridian') items.push({ label: navLabel('/relying-party', 'Relying-Party Access'), key: '/relying-party' })
+  items.push({ label: navLabel('/lineage', 'Lineage & Playback'), key: '/lineage' })
+  return items
+})
+
+// Sidebar collapse state is a per-viewer UI convenience (ADR-099), not app
+// state -- localStorage, wrapped in try/catch (private browsing/blocked
+// site data must never break the shell).
+function loadCollapsedPreference(): boolean {
+  try {
+    return localStorage.getItem('duplex-nav-collapsed') === 'true'
+  } catch {
+    return false
+  }
+}
+
+const collapsed = ref(loadCollapsedPreference())
+
+function onSiderUpdateCollapsed(value: boolean): void {
+  collapsed.value = value
+  try {
+    localStorage.setItem('duplex-nav-collapsed', String(value))
+  } catch {
+    // storage unavailable (private browsing, blocked site data) -- the
+    // preference just doesn't persist across reloads, the shell itself
+    // still works fine for this session.
+  }
+}
 </script>
 
 <template>
-  <main>
-    <header>
-      <h1>Duplex Client</h1>
-      <p>
-        instance <code>{{ config.instanceId }}</code> — watching
-        <code>{{ config.appId }}:{{ config.entityType }}</code> —
-        <strong>{{ isOnline ? 'online' : 'offline' }}</strong>
-        — {{ pendingCount }} command(s) queued
-      </p>
-    </header>
-
-    <nav aria-label="View">
-      <button type="button" :aria-pressed="activeTab === 'detail'" @click="activeTab = 'detail'">Detail</button>
-      <button type="button" :aria-pressed="activeTab === 'browser'" @click="activeTab = 'browser'">Browse</button>
-      <button type="button" :aria-pressed="activeTab === 'composer'" @click="activeTab = 'composer'">Compose</button>
-      <button v-if="queueDomain" type="button" :aria-pressed="activeTab === 'queue'" @click="activeTab = 'queue'">Queue</button>
-      <button v-if="queueDomain === 'meridian'" type="button" :aria-pressed="activeTab === 'relyingParty'" @click="activeTab = 'relyingParty'">Relying-Party Access</button>
-      <button type="button" :aria-pressed="activeTab === 'lineage'" @click="activeTab = 'lineage'">Lineage &amp; Playback</button>
-    </nav>
-
-    <template v-if="activeTab === 'detail'">
-      <section v-if="currentEntityId">
-        <EntityView :entity-id="currentEntityId" :instance-id="config.instanceId" :entity-type="config.entityType" :view-actions="viewActions" />
-      </section>
-      <section v-else>
-        <p>Waiting for the first event on this subscription…</p>
-      </section>
-
-      <section>
-        <h2>Dispatch a command</h2>
-        <label>
-          Amount
-          <input v-model="amountInput" type="number" />
-        </label>
-        <button type="button" :disabled="!currentEntityId" @click="submitAmountCommand">Set Amount</button>
-        <p>{{ statusMessage }}</p>
-      </section>
-    </template>
-
-    <EntityBrowser v-else-if="activeTab === 'browser'" :instance-id="config.instanceId" @select="selectFromBrowser" />
-
-    <EventComposer v-else-if="activeTab === 'composer'" :host-base-url="config.hostBaseUrl" :auth-base-url="config.authBaseUrl" :app-id="config.appId" />
-
-    <template v-else-if="activeTab === 'queue' && queueDomain">
-      <VitalsPiQueue v-if="queueDomain === 'vitals'" :host-base-url="config.hostBaseUrl" :auth-base-url="config.authBaseUrl" :app-id="config.appId" />
-      <MeridianAnalystQueue v-else :host-base-url="config.hostBaseUrl" :auth-base-url="config.authBaseUrl" :app-id="config.appId" />
-    </template>
-
-    <RelyingPartyAccessPanel v-else-if="activeTab === 'relyingParty' && queueDomain === 'meridian'" :host-base-url="config.hostBaseUrl" :auth-base-url="config.authBaseUrl" :app-id="config.appId" />
-
-    <LineageExportAndPlaybackPanel v-else-if="activeTab === 'lineage'" :host-base-url="config.hostBaseUrl" :auth-base-url="config.authBaseUrl" />
-  </main>
+  <n-config-provider :theme-overrides="themeOverrides">
+    <n-layout has-sider style="min-height: 100vh">
+      <n-layout-sider bordered collapsible show-trigger :collapsed="collapsed" @update:collapsed="onSiderUpdateCollapsed">
+        <div v-if="!collapsed" class="app-brand">
+          <h1>Duplex Client</h1>
+        </div>
+        <n-menu :value="route.path" :collapsed="collapsed" :options="menuOptions" aria-label="View" />
+      </n-layout-sider>
+      <n-layout>
+        <n-layout-header bordered class="app-header">
+          <p>
+            instance <code>{{ config.instanceId }}</code> — watching
+            <code>{{ config.appId }}:{{ config.entityType }}</code> —
+            <strong>{{ isOnline ? 'online' : 'offline' }}</strong>
+            — {{ pendingCount }} command(s) queued
+          </p>
+        </n-layout-header>
+        <n-layout-content class="app-content">
+          <router-view />
+        </n-layout-content>
+      </n-layout>
+    </n-layout>
+  </n-config-provider>
 </template>
 
 <style>
@@ -167,5 +127,15 @@ body {
   background: var(--duplex-bg);
   color: var(--duplex-fg);
   font-family: system-ui, sans-serif;
+  margin: 0;
+}
+.app-brand {
+  padding: 1rem;
+}
+.app-header {
+  padding: 0.75rem 1rem;
+}
+.app-content {
+  padding: 1rem;
 }
 </style>

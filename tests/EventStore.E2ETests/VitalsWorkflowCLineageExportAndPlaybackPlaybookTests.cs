@@ -92,7 +92,7 @@ public class VitalsWorkflowCLineageExportAndPlaybackPlaybookTests
 
         await _page.GotoAsync(_clientWebVitalsBaseUrl);
         await Assertions.Expect(_page.GetByRole(AriaRole.Heading, new() { Name = "Duplex Client" })).ToBeVisibleAsync();
-        await _page.GetByRole(AriaRole.Button, new() { Name = "Lineage & Playback" }).ClickAsync();
+        await _page.GetByRole(AriaRole.Link, new() { Name = "Lineage & Playback" }).ClickAsync();
         await Assertions.Expect(_page.GetByRole(AriaRole.Heading, new() { Name = "Lineage Export and Bitemporal Playback" })).ToBeVisibleAsync();
         await recorder.RecordStepAsync(_page, "Opening the Lineage & Playback tab -- new this pass, and domain-agnostic (reachable from any client-web instance, not gated to a specific AppId the way the Queue/Relying-Party tabs are). Mirrors the feature doc's own Salt mockup: one Entity ID field feeds Export Lineage Bundle; a separate As-of SequenceNumber field feeds System-Time Playback.");
 

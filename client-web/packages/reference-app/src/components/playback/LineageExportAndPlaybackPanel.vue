@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref } from 'vue'
+import { NAlert, NButton, NCard, NFormItem, NInput, NInputNumber } from 'naive-ui'
 import { useLineageExportAndPlayback } from '@eventstore/mvvm-client'
 import OfflineBundleViewer from './OfflineBundleViewer.vue'
 import BitemporalPlaybackControl from './BitemporalPlaybackControl.vue'
@@ -53,35 +54,42 @@ async function startPlayback(): Promise<void> {
   <section aria-label="Lineage Export and Bitemporal Playback">
     <h2>Lineage Export and Bitemporal Playback</h2>
 
+    <!-- aria-label on the plain <section>, not n-card's own root <div> --
+         a <div> with no ARIA role doesn't support aria-label (a real
+         axe-core finding, verified against GenericFallbackView.vue). -->
     <section aria-label="Export Lineage Bundle">
-      <h3>Export Lineage Bundle</h3>
-      <label>
-        Entity ID
-        <input v-model="exportEntityId" type="text" data-testid="export-entity-id" />
-      </label>
-      <button type="button" :disabled="!exportEntityId || exportInProgress" data-testid="export-button" @click="runExport">Export Lineage Bundle</button>
-      <p v-if="exportError" data-testid="export-error" role="alert">{{ exportError }}</p>
-      <OfflineBundleViewer v-if="bundleNdjson" :bundle-ndjson="bundleNdjson" />
+      <n-card>
+        <h3>Export Lineage Bundle</h3>
+        <!-- aria-label, not label-for -- this Naive UI version's
+             NFormItem never actually wires a `for` association (see
+             RelyingPartyAccessPanel.vue's own note). -->
+        <n-form-item label="Entity ID">
+          <n-input v-model:value="exportEntityId" :input-props="({ 'aria-label': 'Entity ID', 'data-testid': 'export-entity-id' } as any)" />
+        </n-form-item>
+        <n-button :disabled="!exportEntityId || exportInProgress" data-testid="export-button" @click="runExport">Export Lineage Bundle</n-button>
+        <n-alert v-if="exportError" type="error" data-testid="export-error" role="alert">{{ exportError }}</n-alert>
+        <OfflineBundleViewer v-if="bundleNdjson" :bundle-ndjson="bundleNdjson" />
+      </n-card>
     </section>
 
     <section aria-label="System-Time Playback">
-      <h3>System-Time Playback</h3>
-      <label>
-        Entity ID
-        <input v-model="playbackEntityId" type="text" data-testid="playback-entity-id" />
-      </label>
-      <label>
-        As of SequenceNumber
-        <input v-model.number="startingSequenceNumber" type="number" data-testid="playback-starting-sequence-number" />
-      </label>
-      <button type="button" :disabled="!playbackEntityId" data-testid="playback-play" @click="startPlayback">Play</button>
-      <BitemporalPlaybackControl
-        v-if="playbackStarted && playbackToken"
-        :host-base-url="props.hostBaseUrl"
-        :token="playbackToken"
-        :entity-id="playbackEntityId"
-        :starting-sequence-number="startingSequenceNumber"
-      />
+      <n-card>
+        <h3>System-Time Playback</h3>
+        <n-form-item label="Entity ID">
+          <n-input v-model:value="playbackEntityId" :input-props="({ 'aria-label': 'Entity ID', 'data-testid': 'playback-entity-id' } as any)" />
+        </n-form-item>
+        <n-form-item label="As of SequenceNumber">
+          <n-input-number v-model:value="startingSequenceNumber" :input-props="({ 'aria-label': 'As of SequenceNumber', 'data-testid': 'playback-starting-sequence-number' } as any)" />
+        </n-form-item>
+        <n-button :disabled="!playbackEntityId" data-testid="playback-play" @click="startPlayback">Play</n-button>
+        <BitemporalPlaybackControl
+          v-if="playbackStarted && playbackToken"
+          :host-base-url="props.hostBaseUrl"
+          :token="playbackToken"
+          :entity-id="playbackEntityId"
+          :starting-sequence-number="startingSequenceNumber"
+        />
+      </n-card>
     </section>
   </section>
 </template>

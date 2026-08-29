@@ -87,7 +87,12 @@ public class VitalsWorkflowBAdverseEventPlaybookTests
         await Assertions.Expect(_page.GetByRole(AriaRole.Heading, new() { Name = "Duplex Client" })).ToBeVisibleAsync();
         await recorder.RecordStepAsync(_page, "Opening the Vitals-AdverseEvent instance of the Duplex Client -- a dedicated client-web instance launch-configured (ADR-039) to subscribe to the trial1 AdverseEventReported event type.");
 
-        await _page.GetByRole(AriaRole.Button, new() { Name = "Browse" }).ClickAsync();
+        await _page.GetByRole(AriaRole.Link, new() { Name = "Browse" }).ClickAsync();
+        // ADR-099 -- EntityBrowser now paginates (page size 10); the filter box
+        // is the way to reach a specific row once the simulator has pushed
+        // more than a page of entities in front of it (found by actually
+        // running this playbook, not assumed).
+        await _page.GetByTestId("entity-browser-filter").FillAsync("ae-1042");
         var aeRow = _page.GetByRole(AriaRole.Row).Filter(new() { HasText = "ae-1042" });
         await Assertions.Expect(aeRow).ToBeVisibleAsync(new() { Timeout = 30_000 }); // REPLAY-mode subscription needs a moment to catch up on first load
         await recorder.RecordStepAsync(_page, "Switching to the Browse tab. The seed continuity adverse event ae-1042 (Samples.Vitals.Seed) -- the same AeId the feature doc's own worked example uses -- is already present via REPLAY-mode catch-up.");
@@ -114,8 +119,8 @@ public class VitalsWorkflowBAdverseEventPlaybookTests
             else non-authoritative capture, pending clinical judgment (ADR-035/042)
               inbox -> inbox: AuthorityStatus: "pending_review"\n(ReviewPending: true, reason: "clinical-judgment-required")
               note right: not exercised by this playbook's own seed data
-              coordinator -> colleague: delegate a capped, time-boxed\n"secondary opinion" grant (ADR-043) for this one AeId
-              colleague -> inbox: reviews the pending finding\n(entity-scoped access, never blanket)
+              pi -> inbox: POST /publish/accessGrant\n{ GranteeDid, DelegatedClaim: "review:secondary-opinion",\n  EntityScope: "trial1:AdverseEvent:ae-1042" } (ADR-043)
+              colleague -> inbox: reviews the pending finding via a delegated,\nentity-scoped read (ADR-043) -- never blanket access
               pi -> inbox: POST /publish/authorityDecision\n{ targetEventId, decision: "accepted"|"rejected",\n  decidingActorId }\nRequiredClaims: "review:ae"; step-up gated (ADR-066)
               inbox -> entityStore: fold now (catch-up) if accepted;\nEntity Store left untouched if rejected (ADR-042)
             end

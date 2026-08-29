@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
+import { NButton, NCard, NCheckbox, NInput } from 'naive-ui'
 import { useEventComposer, type ComposerFormField, type ComposerRequiredSignature, type EventTypeSummary } from '@eventstore/mvvm-client'
 
 const props = defineProps<{
@@ -72,43 +73,57 @@ void loadEventTypes()
 
 <template>
   <section aria-label="Event Composer">
-    <h2>Event Composer</h2>
-    <p v-if="!loaded">Loading registered event types...</p>
-    <template v-else>
-      <label>
-        Event type
-        <select @change="(e) => selectEventType(eventTypes[(e.target as HTMLSelectElement).selectedIndex - 1])">
-          <option disabled selected value="">-- choose --</option>
-          <option v-for="et in eventTypes" :key="`${et.name}:${et.version}`" :value="et.name">{{ et.name }} (v{{ et.version }})</option>
-        </select>
-      </label>
+    <n-card>
+      <h2>Event Composer</h2>
+      <p v-if="!loaded">Loading registered event types...</p>
+      <template v-else>
+        <label>
+          Event type
+          <!-- ADR-099 -- kept as a native `<select>`, not `n-select`:
+               `n-select` renders a teleported custom dropdown rather than
+               a native element, which this spec's own `find('select')`/
+               `.setValue()` interaction (and jsdom's general lack of
+               popover-positioning support) can't drive without a much
+               larger test rewrite for no real UX gain over a native
+               select for a short, keyboard-native list like this one. -->
+          <select @change="(e) => selectEventType(eventTypes[(e.target as HTMLSelectElement).selectedIndex - 1])">
+            <option disabled selected value="">-- choose --</option>
+            <option v-for="et in eventTypes" :key="`${et.name}:${et.version}`" :value="et.name">{{ et.name }} (v{{ et.version }})</option>
+          </select>
+        </label>
 
-      <form v-if="selected" data-testid="composer-form" @submit.prevent="submit">
-        <div v-for="field in fields" :key="field.name" class="composer-field">
-          <template v-if="field.editable">
+        <form v-if="selected" data-testid="composer-form" @submit.prevent="submit">
+          <div v-for="field in fields" :key="field.name" class="composer-field">
+            <template v-if="field.editable">
+              <label>
+                {{ field.name }}<span v-if="field.required"> *</span>
+                <n-checkbox v-if="field.type === 'boolean'" v-model:checked="formValues[field.name] as boolean" />
+                <!-- number/integer stays a native input (see the select
+                     note above -- n-input has no numeric-typed mode, and
+                     an native <input type="number"> already gives correct
+                     numeric keyboard/validation behavior for free). -->
+                <input v-else-if="field.type === 'number' || field.type === 'integer'" type="number" v-model="formValues[field.name] as string" />
+                <n-input v-else v-model:value="formValues[field.name] as string" />
+              </label>
+            </template>
+            <template v-else>
+              <p class="composer-field-disabled">{{ field.name }} (masked or nested field -- publish only, not editable here)</p>
+            </template>
+          </div>
+          <div v-if="requiredSignature" class="composer-field" data-testid="composer-signature-block">
             <label>
-              {{ field.name }}<span v-if="field.required"> *</span>
-              <input v-if="field.type === 'boolean'" type="checkbox" v-model="formValues[field.name] as boolean" />
-              <input v-else :type="field.type === 'number' || field.type === 'integer' ? 'number' : 'text'" v-model="formValues[field.name] as string" />
+              Reason for sign-off (Meaning) *
+              <n-input v-model:value="meaning" :input-props="({ 'data-testid': 'composer-meaning-input' } as any)" />
             </label>
-          </template>
-          <template v-else>
-            <p class="composer-field-disabled">{{ field.name }} (masked or nested field -- publish only, not editable here)</p>
-          </template>
-        </div>
-        <div v-if="requiredSignature" class="composer-field" data-testid="composer-signature-block">
-          <label>
-            Reason for sign-off (Meaning) *
-            <input type="text" v-model="meaning" data-testid="composer-meaning-input" />
-          </label>
-          <p class="composer-field-hint">
-            This event type requires digital sign-off (ADR-066) -- acr: {{ requiredSignature.acrValues.join(', ') || 'any' }}<span v-if="requiredSignature.maxAge"> within {{ requiredSignature.maxAge }}s of authentication</span>.
-            You may be stepped up to a stronger authentication context automatically before this publishes.
-          </p>
-        </div>
-        <button type="submit" :disabled="!canPublish">Publish {{ selected.name }}</button>
-      </form>
-    </template>
-    <p v-if="statusMessage" data-testid="composer-status">{{ statusMessage }}</p>
+            <p class="composer-field-hint">
+              This event type requires digital sign-off (ADR-066) -- acr: {{ requiredSignature.acrValues.join(', ') || 'any' }}<span v-if="requiredSignature.maxAge"> within {{ requiredSignature.maxAge }}s of authentication</span>.
+              You may be stepped up to a stronger authentication context automatically before this publishes.
+            </p>
+          </div>
+          <n-button attr-type="submit" type="primary" :disabled="!canPublish">Publish {{ selected.name }}</n-button>
+        </form>
+      </template>
+      <p v-if="statusMessage" data-testid="composer-status">{{ statusMessage }}</p>
+    </n-card>
   </section>
 </template>

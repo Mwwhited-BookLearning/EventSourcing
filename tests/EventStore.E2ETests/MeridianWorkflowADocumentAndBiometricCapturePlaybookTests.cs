@@ -101,7 +101,12 @@ public class MeridianWorkflowADocumentAndBiometricCapturePlaybookTests
         await Assertions.Expect(_page.GetByRole(AriaRole.Heading, new() { Name = "Duplex Client" })).ToBeVisibleAsync();
         await recorder.RecordStepAsync(_page, "Opening the Meridian instance of the Duplex Client. It's launch-configured (ADR-039) to subscribe to the kyc IdentityClaimSubmitted event type.");
 
-        await _page.GetByRole(AriaRole.Button, new() { Name = "Browse" }).ClickAsync();
+        await _page.GetByRole(AriaRole.Link, new() { Name = "Browse" }).ClickAsync();
+        // ADR-099 -- EntityBrowser now paginates (page size 10); the filter box
+        // is the way to reach a specific row once the simulator has pushed
+        // more than a page of entities in front of it (found by actually
+        // running this playbook, not assumed).
+        await _page.GetByTestId("entity-browser-filter").FillAsync("applicant-1001");
         var applicantRow = _page.GetByRole(AriaRole.Row).Filter(new() { HasText = "applicant-1001" });
         await Assertions.Expect(applicantRow).ToBeVisibleAsync(new() { Timeout = 30_000 }); // REPLAY-mode subscription needs a moment to catch up on first load
         await recorder.RecordStepAsync(_page, "Switching to the Browse tab. The continuity applicant applicant-1001 (Samples.Meridian.Seed) is already present, having published IdentityDocumentUploaded, BiometricCaptureRecorded, and IdentityClaimSubmitted -- all folded onto the one kyc:ApplicantIdentity:applicant-1001 entity.");

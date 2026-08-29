@@ -93,16 +93,21 @@ public class MeridianKycAnalystQueuePlaybookTests
 
         await _page.GotoAsync(_clientWebMeridianBaseUrl);
         await Assertions.Expect(_page.GetByRole(AriaRole.Heading, new() { Name = "Duplex Client" })).ToBeVisibleAsync();
-        await _page.GetByRole(AriaRole.Button, new() { Name = "Queue" }).ClickAsync();
+        await _page.GetByRole(AriaRole.Link, new() { Name = "Queue" }).ClickAsync();
         await Assertions.Expect(_page.GetByRole(AriaRole.Heading, new() { Name = "KYC Analyst Queue" })).ToBeVisibleAsync();
         await recorder.RecordStepAsync(_page, "Opening the KYC Analyst Queue tab -- a real, already-built screen (MeridianAnalystQueue.vue) reachable from any Meridian client instance, not new this pass.");
 
         var queueList = _page.GetByTestId("queue-list");
         await Assertions.Expect(queueList).ToBeVisibleAsync(new() { Timeout = 150_000 }); // Samples.Meridian.Simulator publishes a matched SanctionsScreeningPerformed roughly every 3rd tick (~75s), not every tick
-        var firstItem = queueList.Locator("li").First;
+        // ADR-099 -- AuthorityQueue.vue now renders as an n-data-table
+        // (real <table><tbody><tr> rows), not the prior <li> list; the
+        // Meaning input is located by its own stable data-testid rather
+        // than "last text input in the row" (found necessary by actually
+        // running this playbook against the new markup, not assumed).
+        var firstItem = queueList.Locator("tbody tr").First;
         await recorder.RecordStepAsync(_page, "Samples.Meridian.Simulator publishes a fresh SanctionsScreeningPerformed for a new applicant roughly every 25 seconds, alternating MatchFound so the queue shows both hits and clears -- this is a real, live pending match, not fixed seed data.");
 
-        await firstItem.Locator("input[type=text]").Last.FillAsync("confirmed against OFAC-SDN, applicant's own stated DOB does not match");
+        await firstItem.Locator("[data-testid^='queue-meaning-']").FillAsync("confirmed against OFAC-SDN, applicant's own stated DOB does not match");
         await firstItem.GetByRole(AriaRole.Button, new() { Name = "Accept" }).ClickAsync();
         var status = firstItem.Locator("[data-testid^='queue-status-']");
         await Assertions.Expect(status).ToContainTextAsync("accepted", new() { Timeout = 15_000 });

@@ -106,7 +106,12 @@ public class VitalsWorkflowAPlaybookTests
         await Assertions.Expect(_page.GetByRole(AriaRole.Heading, new() { Name = "Duplex Client" })).ToBeVisibleAsync();
         await recorder.RecordStepAsync(_page, "Opening the Vitals instance of the Duplex Client. It's already subscribed to the trial1 PatientScreened event type (ADR-039's own per-instance launch configuration).");
 
-        await _page.GetByRole(AriaRole.Button, new() { Name = "Browse" }).ClickAsync();
+        await _page.GetByRole(AriaRole.Link, new() { Name = "Browse" }).ClickAsync();
+        // ADR-099 -- EntityBrowser now paginates (page size 10); the filter box
+        // is the way to reach a specific row once the simulator has pushed
+        // more than a page of entities in front of it (found by actually
+        // running this playbook, not assumed).
+        await _page.GetByTestId("entity-browser-filter").FillAsync("S-0091");
         var patientRow = _page.GetByRole(AriaRole.Row).Filter(new() { HasText = "S-0091" });
         await Assertions.Expect(patientRow).ToBeVisibleAsync(new() { Timeout = 30_000 }); // REPLAY-mode subscription needs a moment to catch up on first load
         await recorder.RecordStepAsync(_page, "Switching to the Browse tab. The continuity subject S-0091 (Samples.Vitals.Seed) is already present -- REPLAY mode (not TAIL) means the full historical PatientScreened stream is caught up on first subscribe, not just new arrivals.");

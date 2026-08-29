@@ -91,7 +91,12 @@ public class VitalsWorkflowBDeviceOnboardingPlaybookTests
         await Assertions.Expect(_page.GetByRole(AriaRole.Heading, new() { Name = "Duplex Client" })).ToBeVisibleAsync();
         await recorder.RecordStepAsync(_page, "Opening the Vitals-Device instance of the Duplex Client -- a second, dedicated client-web instance launch-configured (ADR-039) to subscribe to the trial1 DeviceOnboarded event type, since the original client-web-vitals instance is locked to PatientScreened and can never Browse a Device entity.");
 
-        await _page.GetByRole(AriaRole.Button, new() { Name = "Browse" }).ClickAsync();
+        await _page.GetByRole(AriaRole.Link, new() { Name = "Browse" }).ClickAsync();
+        // ADR-099 -- EntityBrowser now paginates (page size 10); the filter box
+        // is the way to reach a specific row once the simulator has pushed
+        // more than a page of entities in front of it (found by actually
+        // running this playbook, not assumed).
+        await _page.GetByTestId("entity-browser-filter").FillAsync("dev-0091");
         var deviceRow = _page.GetByRole(AriaRole.Row).Filter(new() { HasText = "dev-0091" });
         await Assertions.Expect(deviceRow).ToBeVisibleAsync(new() { Timeout = 30_000 }); // REPLAY-mode subscription needs a moment to catch up on first load
         await recorder.RecordStepAsync(_page, "Switching to the Browse tab. The seed continuity device dev-0091 (Samples.Vitals.Seed), paired to patient S-0091, is already present via REPLAY-mode catch-up.");

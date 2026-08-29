@@ -94,16 +94,21 @@ public class VitalsPrincipalInvestigatorQueuePlaybookTests
 
         await _page.GotoAsync(_clientWebVitalsBaseUrl);
         await Assertions.Expect(_page.GetByRole(AriaRole.Heading, new() { Name = "Duplex Client" })).ToBeVisibleAsync();
-        await _page.GetByRole(AriaRole.Button, new() { Name = "Queue" }).ClickAsync();
+        await _page.GetByRole(AriaRole.Link, new() { Name = "Queue" }).ClickAsync();
         await Assertions.Expect(_page.GetByRole(AriaRole.Heading, new() { Name = "Principal Investigator Queue" })).ToBeVisibleAsync();
         await recorder.RecordStepAsync(_page, "Opening the Principal Investigator Queue tab -- a real, already-built screen (VitalsPiQueue.vue) reachable from any Vitals client instance, not new this pass.");
 
         var queueList = _page.GetByTestId("queue-list");
         await Assertions.Expect(queueList).ToBeVisibleAsync(new() { Timeout = 60_000 }); // Samples.Vitals.Simulator publishes a fresh, real pending IonmAlertRaised roughly every 20s
-        var firstItem = queueList.Locator("li").First;
+        // ADR-099 -- AuthorityQueue.vue now renders as an n-data-table
+        // (real <table><tbody><tr> rows), not the prior <li> list; the
+        // Meaning input is located by its own stable data-testid rather
+        // than "last text input in the row" (found necessary by actually
+        // running this playbook against the new markup, not assumed).
+        var firstItem = queueList.Locator("tbody tr").First;
         await recorder.RecordStepAsync(_page, "Samples.Vitals.Simulator publishes a fresh IonmAlertRaised with ReviewPending: true roughly every 20 seconds -- this is a real, live pending item, not fixed seed data. The queue subscribes to both the raiser event type and authorityDecision live, so a decision anywhere resolves this list immediately.");
 
-        await firstItem.Locator("input[type=text]").Last.FillAsync("reviewed against the live SSEP trace");
+        await firstItem.Locator("[data-testid^='queue-meaning-']").FillAsync("reviewed against the live SSEP trace");
         await firstItem.GetByRole(AriaRole.Button, new() { Name = "Accept" }).ClickAsync();
         var status = firstItem.Locator("[data-testid^='queue-status-']");
         await Assertions.Expect(status).ToContainTextAsync("accepted", new() { Timeout = 15_000 });

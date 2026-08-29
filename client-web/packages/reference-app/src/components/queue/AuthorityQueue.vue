@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { onMounted, onUnmounted, reactive, ref } from 'vue'
-import { usePendingAuthorityQueue } from '@eventstore/mvvm-client'
+import { h, onMounted, onUnmounted, reactive, ref } from 'vue'
+import { NButton, NCard, NDataTable, NInput, type DataTableColumns } from 'naive-ui'
+import { usePendingAuthorityQueue, type PendingAuthorityItem } from '@eventstore/mvvm-client'
 
 // "Domain Decision Queues" -- deliberately generic (docs/features/
 // mvvm-client.md's own "never hardcodes a Vitals or Meridian field name"
@@ -67,32 +68,74 @@ async function decide(eventId: string, decision: 'accepted' | 'rejected'): Promi
 
 onMounted(() => queue.subscribe())
 onUnmounted(() => queue.stopSubscription())
+
+// ADR-099 -- `n-data-table` with per-row render-function columns (Reason/
+// Meaning inputs and Accept/Reject buttons are per-row interactive
+// controls, not plain cell text), plus its own built-in pagination over
+// this same already-fully-loaded queue array (see EntityBrowser.vue's
+// identical note: this bounds render cost, it doesn't reduce what already
+// crossed the wire via the underlying subscription).
+const pagination = { pageSize: 10 } as const
+
+const columns: DataTableColumns<PendingAuthorityItem> = [
+  { title: 'Item', key: 'summary', render: (row) => summarize(row.payload) },
+  {
+    title: 'Reason',
+    key: 'reason',
+    render: (row) =>
+      h(NInput, {
+        value: draftFor(row.eventId).reason,
+        'onUpdate:value': (v: string) => (draftFor(row.eventId).reason = v),
+      }),
+  },
+  {
+    title: 'Reason for sign-off (Meaning) *',
+    key: 'meaning',
+    render: (row) =>
+      h(NInput, {
+        value: draftFor(row.eventId).meaning,
+        inputProps: { 'data-testid': `queue-meaning-${row.eventId}` } as any,
+        'onUpdate:value': (v: string) => (draftFor(row.eventId).meaning = v),
+      }),
+  },
+  {
+    title: '',
+    key: 'actions',
+    render: (row) => [
+      h(
+        NButton,
+        { disabled: !draftFor(row.eventId).meaning.trim(), onClick: () => decide(row.eventId, 'accepted'), style: 'margin-right: 0.5rem' },
+        { default: () => 'Accept' },
+      ),
+      h(NButton, { disabled: !draftFor(row.eventId).meaning.trim(), onClick: () => decide(row.eventId, 'rejected') }, { default: () => 'Reject' }),
+    ],
+  },
+  {
+    title: 'Status',
+    key: 'status',
+    render: (row) => (statusByEventId[row.eventId] ? h('span', { 'data-testid': `queue-status-${row.eventId}` }, statusByEventId[row.eventId]) : null),
+  },
+]
 </script>
 
 <template>
   <section :aria-label="title">
-    <h2>{{ title }}</h2>
-    <label>
-      {{ reviewerLabel }}
-      <input v-model="decidingActorId" type="text" data-testid="queue-reviewer-input" />
-    </label>
+    <n-card>
+      <h2>{{ title }}</h2>
+      <label>
+        {{ reviewerLabel }}
+        <n-input v-model:value="decidingActorId" :input-props="({ 'data-testid': 'queue-reviewer-input' } as any)" />
+      </label>
 
-    <p v-if="queue.items.value.length === 0">Nothing pending review right now.</p>
-    <ul v-else data-testid="queue-list">
-      <li v-for="item in queue.items.value" :key="item.eventId" class="queue-item">
-        <p>{{ summarize(item.payload) }}</p>
-        <label>
-          Reason
-          <input v-model="draftFor(item.eventId).reason" type="text" />
-        </label>
-        <label>
-          Reason for sign-off (Meaning) *
-          <input v-model="draftFor(item.eventId).meaning" type="text" :data-testid="`queue-meaning-${item.eventId}`" />
-        </label>
-        <button type="button" :disabled="!draftFor(item.eventId).meaning.trim()" @click="decide(item.eventId, 'accepted')">Accept</button>
-        <button type="button" :disabled="!draftFor(item.eventId).meaning.trim()" @click="decide(item.eventId, 'rejected')">Reject</button>
-        <p v-if="statusByEventId[item.eventId]" :data-testid="`queue-status-${item.eventId}`">{{ statusByEventId[item.eventId] }}</p>
-      </li>
-    </ul>
+      <p v-if="queue.items.value.length === 0">Nothing pending review right now.</p>
+      <n-data-table
+        v-else
+        data-testid="queue-list"
+        :columns="columns"
+        :data="queue.items.value"
+        :pagination="pagination"
+        :row-key="(row: PendingAuthorityItem) => row.eventId"
+      />
+    </n-card>
   </section>
 </template>

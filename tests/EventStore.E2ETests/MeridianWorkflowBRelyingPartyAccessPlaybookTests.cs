@@ -96,7 +96,7 @@ public class MeridianWorkflowBRelyingPartyAccessPlaybookTests
 
         await _page.GotoAsync(_clientWebMeridianBaseUrl);
         await Assertions.Expect(_page.GetByRole(AriaRole.Heading, new() { Name = "Duplex Client" })).ToBeVisibleAsync();
-        await _page.GetByRole(AriaRole.Button, new() { Name = "Relying-Party Access" }).ClickAsync();
+        await _page.GetByRole(AriaRole.Link, new() { Name = "Relying-Party Access" }).ClickAsync();
         await Assertions.Expect(_page.GetByRole(AriaRole.Heading, new() { Name = "Relying-Party Access" })).ToBeVisibleAsync();
         await recorder.RecordStepAsync(_page, "Opening the Relying-Party Access tab -- new this pass, Meridian-only (ADR-043/044). A raw form, not a guided wizard: it demonstrates the underlying delegation mechanism directly, the same posture the Event Composer tab already takes toward publishing.");
 

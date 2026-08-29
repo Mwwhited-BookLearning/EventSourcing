@@ -20,8 +20,8 @@ alt ordinary publish (this playbook's own seed data)
 else non-authoritative capture, pending clinical judgment (ADR-035/042)
   inbox -> inbox: AuthorityStatus: "pending_review"\n(ReviewPending: true, reason: "clinical-judgment-required")
   note right: not exercised by this playbook's own seed data
-  coordinator -> colleague: delegate a capped, time-boxed\n"secondary opinion" grant (ADR-043) for this one AeId
-  colleague -> inbox: reviews the pending finding\n(entity-scoped access, never blanket)
+  pi -> inbox: POST /publish/accessGrant\n{ GranteeDid, DelegatedClaim: "review:secondary-opinion",\n  EntityScope: "trial1:AdverseEvent:ae-1042" } (ADR-043)
+  colleague -> inbox: reviews the pending finding via a delegated,\nentity-scoped read (ADR-043) -- never blanket access
   pi -> inbox: POST /publish/authorityDecision\n{ targetEventId, decision: "accepted"|"rejected",\n  decidingActorId }\nRequiredClaims: "review:ae"; step-up gated (ADR-066)
   inbox -> entityStore: fold now (catch-up) if accepted;\nEntity Store left untouched if rejected (ADR-042)
 end
