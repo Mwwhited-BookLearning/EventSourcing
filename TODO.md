@@ -370,19 +370,39 @@ below each item, refined into what's actually still open.
 
 - [ ] **Extend the entity schema metadata** — reviewed, not a duplicate,
   but split into pieces of very different size/shape:
-  - [ ] **Field-level validation and datatype rules** — genuine, real
-    gap, not a duplicate: `JsonSchemaInstanceValidator`
-    (`src/EventStore.SchemaRegistry/JsonSchemaInstanceValidator.cs`) is
-    a **hand-written, intentionally partial** validator (type/required/
-    properties/items only — a full JSON Schema library rejects this
-    project's own `x-masking` vendor extension, which is why it's
-    hand-written at all) with **no** `pattern`/`minLength`/`maxLength`/
-    `minimum`/`maximum`/`enum`/`format` support today. Real, scoped
-    work: extend that validator (or find/adopt a JSON Schema library
-    that can be taught to tolerate `x-masking` alongside real
-    validation — check for one before writing more bespoke validation
-    code, per this project's own buy-over-build rule) to cover these
-    keywords.
+  - [x] **Field-level validation and datatype rules** — done.
+    `JsonSchemaInstanceValidator` extended in place (kept hand-written,
+    not switched to a library — the same `x-masking`-tolerance reasoning
+    that made it hand-written still applies, and adding keywords is
+    purely additive to that): `minLength`/`maxLength`/`pattern` (string),
+    `minimum`/`maximum`/`exclusiveMinimum`/`exclusiveMaximum` (number),
+    `enum` (any type), and a small, real-library-backed `format` subset
+    (`date-time` via `DateTimeOffset.TryParse`, `email` via
+    `MailAddress.TryCreate`, `uri` via `Uri.TryCreate` — buy over build,
+    not a bespoke format-regex vocabulary; an unrecognized format name is
+    tolerated, matching `MatchesType`'s own existing "don't fail closed
+    on our own uncertainty" posture for an unrecognized `type`).
+    - **A real, found-before-shipping compatibility conflict, not
+      assumed away**: `ADR-038`'s own `x-enum-fallback` contract ("every
+      enum-like field... the raw string travels through unmodified,
+      never substituted or dropped") means an out-of-list enum value is
+      the *expected* forward-compatibility case that flag exists for,
+      not a real violation — a real, already-existing integration test
+      (`CompatibilityGraphQlHttpSqliteTests`) publishes exactly this
+      scenario. The new `enum` check honors `x-enum-fallback: true` as
+      an exemption, the same "vendor extension flag changes validation
+      behavior for this field" shape the pre-existing `x-masking`
+      exemption already uses — found by grepping this repo's own real
+      schemas for the new keywords before shipping, not by a test
+      failure after the fact.
+    - 22 new unit tests (`JsonSchemaInstanceValidatorTests.cs`,
+      `EventStore.UnitTests`), all passing; full `EventStore.
+      IntegrationTests` (244/244, including the `ADR-038` scenario
+      directly) and full `EventStore.UnitTests` (39/39) green; full
+      solution build clean. No existing proving-ground schema (Vitals/
+      Meridian/demo) uses any of these keywords yet, confirmed by
+      search — purely additive, no behavior change for anything already
+      registered.
   - [ ] **Custom/dependent-field validation (mappings, dependent
     fields)** — genuinely new, confirmed not covered anywhere
     (no `dependentRequired`/`if`-`then`-`else`/cross-field check exists
