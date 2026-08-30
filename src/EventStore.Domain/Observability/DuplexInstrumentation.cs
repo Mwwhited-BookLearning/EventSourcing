@@ -121,4 +121,18 @@ public static class DuplexInstrumentation
     public static readonly Counter<long> SimulatorEventsPublished = Meter.CreateCounter<long>(
         "duplex.simulator.events_published",
         description: "Count of events a proving-ground Simulator process has successfully published, tagged by \"app.id\".");
+
+    // Direct request -- background-worker tail-loop reconnects should be
+    // bound into Aspire/OTel automatically (a real Activity exception
+    // event, a real counter an operator can graph/alert on), not left as
+    // an ILogger call alone that's easy to miss. "not_yet_registered" (a
+    // reserved event type with no schema yet for this AppId, an expected,
+    // recoverable state -- RbacProjectionWorker's own comment) and "error"
+    // (a genuine connection loss) are tracked as the same counter's own
+    // "reason" tag rather than two separate instruments, since they're
+    // both answers to the same operational question, "how often is this
+    // tail loop reconnecting, and why."
+    public static readonly Counter<long> WorkerTailReconnects = Meter.CreateCounter<long>(
+        "duplex.worker.tail_reconnects",
+        description: "Count of a background worker's own tail-loop reconnects, tagged by \"worker\", \"app.id\"/\"event.type\" (or whatever the caller's own dimensions are), and \"reason\" (\"not_yet_registered\" or \"error\").");
 }

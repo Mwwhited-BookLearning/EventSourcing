@@ -1,0 +1,16 @@
+@startuml
+actor Caller
+participant "Service" as Service
+
+== Known outcome modeled as an exception (avoid) ==
+Caller -> Service: DoThing()
+Service -> Service: outcome is a well-understood,\nexpected case (e.g. "not registered yet")
+Service --> Caller: throw KnownCaseException
+note right: caller must catch + inspect --\na broad catch (Exception) loses the real\nseverity, exactly what happened in\nRbacProjectionWorker's own bug
+
+== Known outcome modeled as data (this pattern) ==
+Caller -> Service: DoThing()
+Service -> Service: same known, expected case
+Service --> Caller: return Result.KnownCase(...)
+Caller -> Caller: switch on Result --\nordinary, visible control flow,\nnothing to catch
+@enduml

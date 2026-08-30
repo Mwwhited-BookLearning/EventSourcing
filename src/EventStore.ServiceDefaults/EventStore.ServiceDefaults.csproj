@@ -23,7 +23,21 @@
   <ItemGroup>
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
 
-    <PackageReference Include="Microsoft.Extensions.Http.Resilience" Version="10.9.0" />
+    <!-- Microsoft.Extensions.Http.Resilience (Polly v8 underneath) removed
+         from this project's dependencies. See docs/bugs/framework/service/
+         follow-client-faults-under-default-http-resilience-timeout.md and
+         docs/references.md's own "considered and rejected" entry: its
+         blanket 10s per attempt / 30s total default timeout is
+         fundamentally incompatible with this design's own genuinely
+         long-lived streaming HTTP calls (the Follow API's SSE-style tail),
+         and every real cross-service retry need this project actually has
+         already owns its own purpose-built, correctly-tuned mechanism
+         (ADR-033's outbox/inbox, ADR-060's webhook dispatcher, EventTailReader
+         and FollowClient's own reconnect loops, EF Core's own
+         EnableRetryOnFailure). A generic HTTP-level wrapper was never adding
+         real value here, only an unexamined Aspire template default.
+         Removed rather than retuned, also given Polly's new Open Source
+         Maintenance Fee (thepollyproject.org, 2026-07-14, direct request). -->
     <PackageReference Include="Microsoft.Extensions.ServiceDiscovery" Version="10.9.0" />
     <PackageReference Include="OpenTelemetry.Exporter.OpenTelemetryProtocol" Version="1.17.0" />
     <PackageReference Include="OpenTelemetry.Extensions.Hosting" Version="1.17.0" />

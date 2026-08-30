@@ -1,3 +1,6 @@
+using System.Diagnostics;
+using System.Net;
+using EventStore.Domain.Observability;
 using EventStore.Projections.Host;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -71,6 +74,16 @@ public class RbacProjectionWorker(
     {
         while (!ct.IsCancellationRequested)
         {
+            // Direct request -- bound into Aspire/OTel, not left as an
+            // ILogger call alone: a genuine reconnect (the catch (Exception)
+            // branch below) is recorded as a real OTel "exception" event on
+            // this Activity (Activity.AddException, a real .NET 9+ BCL
+            // method -- no OpenTelemetry package dependency needed, shows up
+            // in the Aspire dashboard's own Traces view automatically), and
+            // both branches increment DuplexInstrumentation.WorkerTailReconnects
+            // (ADR-088's shared Meter) so an operator can graph/alert on
+            // reconnect volume without grepping logs at all.
+            using var activity = DuplexInstrumentation.ActivitySource.StartActivity($"RbacProjectionWorker.Tail {appId}/{eventType}");
             try
             {
                 await CatchUpOnceAsync(appId, eventType, maxEventsToConsume: int.MaxValue, idleTimeout: Timeout.InfiniteTimeSpan, ct);
@@ -79,8 +92,39 @@ public class RbacProjectionWorker(
             {
                 break;
             }
+            catch (HttpRequestException ex) when (ex.StatusCode == HttpStatusCode.NotFound)
+            {
+                // A reserved event type (RoleGranted/RoleRevoked/PermissionGranted/
+                // AppTrustRootRegistered) only gets a registered schema for a given
+                // AppId once something of that kind has actually happened there --
+                // e.g. an AppId that's only ever had roles GRANTED, never revoked,
+                // genuinely has no "RoleRevoked" type registered yet. FollowClient
+                // .TailAsync's own EnsureSuccessStatusCode surfaces that as an
+                // ordinary 404, which this loop used to treat exactly like a lost
+                // connection -- logging at Error and busy-retrying every
+                // ReconnectDelay forever, for as long as that combination simply
+                // never happens (a real, continuous source of error-level log
+                // noise, found by reading this worker's own real logs under a
+                // live AppHost run, not assumed). Expected and recoverable, but
+                // still worth a human noticing if it goes on for a while --
+                // direct request to log this at Warning, not Debug, precisely so
+                // it isn't invisible in a real deployment's default log level.
+                DuplexInstrumentation.WorkerTailReconnects.Add(1,
+                    new KeyValuePair<string, object?>("worker", "RbacProjectionWorker"),
+                    new KeyValuePair<string, object?>("app.id", appId),
+                    new KeyValuePair<string, object?>("event.type", eventType),
+                    new KeyValuePair<string, object?>("reason", "not_yet_registered"));
+                logger.LogWarning("RBAC fold for {AppId}/{EventType} has no registered schema yet; will retry", appId, eventType);
+            }
             catch (Exception ex)
             {
+                activity?.AddException(ex);
+                activity?.SetStatus(ActivityStatusCode.Error, ex.Message);
+                DuplexInstrumentation.WorkerTailReconnects.Add(1,
+                    new KeyValuePair<string, object?>("worker", "RbacProjectionWorker"),
+                    new KeyValuePair<string, object?>("app.id", appId),
+                    new KeyValuePair<string, object?>("event.type", eventType),
+                    new KeyValuePair<string, object?>("reason", "error"));
                 logger.LogError(ex, "RBAC fold for {AppId}/{EventType} lost its connection; reconnecting", appId, eventType);
             }
 

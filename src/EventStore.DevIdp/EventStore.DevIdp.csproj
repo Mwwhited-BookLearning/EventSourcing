@@ -17,6 +17,12 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- ADR-088's shared DuplexInstrumentation only, already a transitive
+         dependency via EventStore.ServiceDefaults below, added explicitly
+         for clarity. Still never EventStoreContext/Persistence/SchemaRegistry
+         (this project's own "no core engine" boundary, RbacProjectionWorker.cs's
+         own comment), since none of those live in this leaf project. -->
+    <ProjectReference Include="..\EventStore.Domain\EventStore.Domain.csproj" />
     <ProjectReference Include="..\EventStore.ServiceDefaults\EventStore.ServiceDefaults.csproj" />
     <ProjectReference Include="..\EventStore.Dpop\EventStore.Dpop.csproj" />
     <ProjectReference Include="..\EventStore.TicketExchange\EventStore.TicketExchange.csproj" />

@@ -7,16 +7,15 @@ using EventStore.Upcasting;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Caching.Memory;
-using Polly;
-using Polly.Contrib.Simmy;
-using Polly.Contrib.Simmy.Outcomes;
 
 namespace EventStore.UnitTests;
 
-// ADR-063 -- Polly+Simmy in-process fault injection for "whether the
-// durable outbox/inbox actually resumes correctly after a simulated
-// crash." A true process-kill test needs the deferred Testcontainers+
-// Toxiproxy tier (this ADR's own named escalation, not built this pass);
+// ADR-063 -- in-process fault injection (originally Polly+Simmy, replaced
+// with the hand-rolled FaultInjector alongside it -- see that class's own
+// comment for why) for "whether the durable outbox/inbox actually resumes
+// correctly after a simulated crash." A true process-kill test needs the
+// deferred Testcontainers+Toxiproxy tier (this ADR's own named escalation,
+// not built this pass);
 // what IS cheaply testable in-process is the specific, real failure mode
 // that tier would also have to cover eventually: a durable write commits
 // successfully, but the CALLER never learns of it (the connection dies,
@@ -75,16 +74,14 @@ public class PublishCrashRecoveryFaultInjectionTests
 
         // Simulate the crash: the caller never actually receives the
         // response above (a dropped connection, a process restart between
-        // the commit and the HTTP response being written) -- Simmy
-        // injects the fault on a SEPARATE delegate representing "deliver
-        // the response," never on the write itself, so the durable data
-        // this test just asserted committed above is completely
-        // unaffected by what happens next.
-        var chaosPolicy = MonkeyPolicy.InjectExceptionAsync(with => with
-            .Fault(new IOException("simulated: connection dropped after commit, before the caller received this response"))
-            .InjectionRate(1.0)
-            .Enabled(true));
-        await Assert.ThrowsExactlyAsync<IOException>(() => chaosPolicy.ExecuteAsync(() => Task.FromResult<object?>(firstAttemptResult)));
+        // the commit and the HTTP response being written) -- the fault is
+        // injected on a SEPARATE delegate representing "deliver the
+        // response," never on the write itself, so the durable data this
+        // test just asserted committed above is completely unaffected by
+        // what happens next.
+        await Assert.ThrowsExactlyAsync<IOException>(() => FaultInjector.InjectAsync(
+            () => Task.FromResult<object?>(firstAttemptResult),
+            new IOException("simulated: connection dropped after commit, before the caller received this response")));
 
         // Attempt 2 (the caller's own retry, having never seen attempt
         // 1's own success) -- SAME EventId, no fault this time.
@@ -120,11 +117,8 @@ public class PublishCrashRecoveryFaultInjectionTests
             new PublishEventRequest(appId, 1, """{ "WidgetId": "widget-2", "Name": "Original" }""", null, eventId),
             ClaimsPrincipal, CancellationToken.None);
 
-        var chaosPolicy = MonkeyPolicy.InjectExceptionAsync(with => with
-            .Fault(new IOException("simulated crash"))
-            .InjectionRate(1.0)
-            .Enabled(true));
-        await Assert.ThrowsExactlyAsync<IOException>(() => chaosPolicy.ExecuteAsync(() => Task.FromResult<object?>(null)));
+        await Assert.ThrowsExactlyAsync<IOException>(() => FaultInjector.InjectAsync(
+            () => Task.FromResult<object?>(null), new IOException("simulated crash")));
 
         var conflictingRetry = await publish.PublishAsync("WidgetCreated",
             new PublishEventRequest(appId, 1, """{ "WidgetId": "widget-2", "Name": "Genuinely Different" }""", null, eventId),

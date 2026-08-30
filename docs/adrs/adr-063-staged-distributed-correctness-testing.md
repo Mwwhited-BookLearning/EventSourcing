@@ -64,6 +64,27 @@ Consequences:
   actually built — stated honestly rather than implied by having *some*
   testing in place.
 
+**Implementation note, added when Polly was removed from this solution**
+(`docs/bugs/framework/service/follow-client-faults-under-default-http-
+resilience-timeout.md`): `Polly`+`Simmy` (the in-process fault-injection
+mechanism this ADR adopted above) is replaced with a minimal, hand-rolled
+`FaultInjector` (`tests/EventStore.UnitTests/FaultInjector.cs`) — same
+`[0,1]` injection-rate convention Simmy used, same tests, same coverage.
+This ADR's own actual **decision** (start with the low-cost options,
+escalate toward `Testcontainers`+`Toxiproxy` only if/when this moves
+toward production) is completely unaffected — only the *mechanism*
+backing the "in-process fault injection" tier changed, not the tier
+itself or its scope. Direct request, driven by Polly's new Open Source
+Maintenance Fee (thepollyproject.org, 2026-07-14, a per-organization
+usage fee) — reconsidered given both actual uses of Polly in this
+solution turned out to be small enough to not need a third-party
+dependency at all: this one always used `InjectionRate(1.0)`
+(unconditional), never the partial, configurable rate that was the
+original "worth buying" reasoning. `docs/libraries/dotnet/polly-
+simmy.md` and `docs/references.md`'s own entry are updated the same
+pass to record the removal, per this project's own "a rejection is
+recorded as explicitly as an adoption" convention.
+
 **Compliance note** (a proving-ground compliance review, this session):
 `FsCheck`'s hash-chain tamper-detection property and `Polly`/`Simmy`'s
 outbox crash-recovery tests are concrete instances of 21 CFR Part 11
