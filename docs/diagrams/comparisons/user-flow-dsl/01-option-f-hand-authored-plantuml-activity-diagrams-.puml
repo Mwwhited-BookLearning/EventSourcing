@@ -1,0 +1,18 @@
+@startuml
+start
+:Coordinator publishes AdverseEventReported;
+if (SeriousAdverseEvent?) then (yes)
+  :AuthorityStatus = pending_review;
+  :PI delegates scoped\n"secondary opinion" access (ADR-043);
+  :Colleague reviews via delegated read;
+  :PI publishes authorityDecision\n(step-up required, ADR-066);
+  if (accepted?) then (yes)
+    :Fold now (catch-up);
+  else (no)
+    :Entity Store left untouched;
+  endif
+else (no)
+  :Fold immediately (Full);
+endif
+stop
+@enduml
