@@ -66,3 +66,26 @@ left.)
   `docs/changes/{date}.md`/this file that re-running
   `extract-diagrams.mjs` is a required step after any E2E test run that
   touches a playbook doc, not just after hand-editing a diagram.
+
+- [ ] **`FollowClient.TailAsync`/`GetChangeKindAsync` should return their
+  own discriminated result, not throw for a known outcome** —
+  `docs/patterns/known-outcomes-are-not-exceptions.md`'s own named
+  follow-on, not done as part of the bug it was found alongside
+  (`docs/bugs/framework/service/rbac-fold-404-logged-as-error-forever.md`,
+  scoped to `RbacProjectionWorker`'s own `catch` clause only). The
+  server side already gets this right — `EventStore.Follow.Api`'s
+  `FollowResult` (`Connected`/`UnregisteredEventType`/`Forbidden`/
+  `ValidationFailed`) is switched on directly, never thrown — but
+  `FollowClient.TailAsync` calls `EnsureSuccessStatusCode()`, converting
+  that same well-understood result back into a thrown
+  `HttpRequestException` the moment it crosses the HTTP boundary, which
+  is why `RbacProjectionWorker` needed its own `catch (HttpRequestException
+  ex) when (ex.StatusCode == HttpStatusCode.NotFound)` filter in the
+  first place. Mirroring `FollowResult` on the client side (a
+  `FollowClientResult`-shaped return instead of a thrown exception)
+  would give every caller — `RbacProjectionWorker`, `ProjectionHost`,
+  `Samples.Orders.Projections` — the distinction for free, rather than
+  each one needing to know and filter on the right `HttpStatusCode`
+  itself. Worth doing the next time `FollowClient` is touched for an
+  unrelated reason, not urgent enough to justify touching all three
+  callers on its own.
