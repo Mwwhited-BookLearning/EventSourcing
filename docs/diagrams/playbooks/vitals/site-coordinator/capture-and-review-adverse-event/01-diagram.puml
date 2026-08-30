@@ -1,4 +1,4 @@
-@startuml VitalsAdverseEvent_Playbook_Sequence
+@startuml
 autonumber
 actor "Site coordinator" as coordinator
 actor "Colleague\n(delegated 'secondary opinion')" as colleague
