@@ -27,5 +27,6 @@ function isPending(payload: Record<string, unknown>): boolean {
     title="KYC Analyst Queue"
     reviewer-label="Reviewing as (Analyst)"
     reviewer-default="analyst-1"
+    :chartable-fields="[{ field: 'matchConfidence', chartType: 'gauge', label: 'Match confidence' }]"
   />
 </template>

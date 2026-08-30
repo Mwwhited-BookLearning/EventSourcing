@@ -306,39 +306,61 @@ mid-pass:
       full `EventStore.E2ETests` Playwright suite (13/13, run together
       against one live `AppHost`).
 
-- [ ] **Configurable presentation-type view for display elements**
-  (direct request, found at the same time as grid pagination above;
-  **scope broadened** by the "User Requested Tasks" review below — the
-  user's own separate "expected presentation types per object/child set"
-  ask is the generalized form of this same gap, not a second thing to
-  build in parallel: `ViewDefinition.TemplateContent` is imperative,
-  hand-authored HTML+JS per entity type, "never precompiled"
-  (`docs/data/schema-registry.md`) — there is no declarative,
-  per-field "how should this render" metadata anywhere today, charts
-  being only the specific case that was named first). Some fields/views
-  (the user named "graphs" — likely this project's own time-series-
-  shaped data, e.g. Vitals' IONM alert telemetry, not a literal existing
-  "graph" component, since none exists yet) would read better as a
-  chart than as a table row; more generally, a field/child-set could
-  declare its own presentation type at all (chart, table, badge, ...)
-  rather than every `ViewDefinition` re-deciding by hand. Needs: (1) a
-  charting library decision — Naive UI ships no charting components of
-  its own, so this is a new dependency choice, same "buy over build"/
-  "verify before citing" bar as Naive UI itself, with its own
-  `docs/libraries/web/{library}.md` entry once chosen; (2) a
-  declarative presentation-type config (`chartable`/`chartType`/
-  `presentationType` alongside the existing `.columns.js`/`.fields.js`
-  ViewModel-structure convention `docs/patterns/mvvm-client-
-  architecture.md` already establishes, not a one-off per component) —
-  scope this as the general mechanism from the start now that both asks
-  are known to be the same gap, not charts-only with presentation-types
-  bolted on later; (3) at least one real example wired against real data
-  (Vitals' IONM/device telemetry is the natural first candidate, given
-  its own time-series shape already discussed in `docs/domains/
-  clinical-trials-device-telemetry/`). Deliberately sequenced as
-  follow-on work after the Naive UI shell/restyle lands, not folded into
-  it blind — picking a charting library and a config schema is its own
-  real decision, not a restyle detail.
+- [x] **Configurable presentation-type view for display elements** —
+  done. `ADR-100` (`docs/adrs/adr-100-configurable-presentation-type-
+  charting.md`), gated by
+  [`docs/comparisons/charting-library.md`](docs/comparisons/charting-library.md)'s
+  three-way comparison (Apache ECharts vs. Chart.js vs. ApexCharts).
+  ApexCharts disqualified outright on a real, verified dual license
+  (MIT only under USD $2M org revenue — an unacceptable dependency for
+  a framework other organizations build products on); ECharts won over
+  Chart.js specifically because its genuine SVG renderer is the only
+  option of the three that's actually unit-testable under this repo's
+  own `jsdom`/Vitest setup, the same canvas gap `axe-core.md` already
+  documents.
+  - New `GaugeChart.vue` (`client-web/packages/reference-app/src/
+    components/chart/`), a narrow `chartable`/`chartType: 'gauge'`
+    config on `AuthorityQueue.vue` (kept out of that component's own
+    field knowledge, the same discipline every other domain specific
+    already gets — the actual field name lives in
+    `MeridianAnalystQueue.vue`'s own wrapper), wired to Meridian's real
+    `matchConfidence` field in the KYC Analyst Queue.
+  - **Three real bugs found only by actually running things**: (1)
+    `vue-echarts`' own `autoresize` needs `ResizeObserver`, which jsdom
+    doesn't implement — an unhandled promise rejection the first time a
+    chart was ever mounted in a Vitest spec; fixed with a no-op stub in
+    `vitest.setup.ts`. (2) The gauge's own animated detail text read
+    "0%" for about a second regardless of the real value (`valueAnimation:
+    true` counts up from zero) — made an early version of this
+    component's own regression test flaky; fixed to `false`, which is
+    also better UX for a reviewer scanning many queue rows at once. (3)
+    A real Playwright screenshot (not the Vitest specs, which never
+    exercise actual CSS layout) showed the gauge rendering as an
+    illegible, overlapping starburst detached from its own table cell —
+    two compounding causes: `vue-echarts`' internal `position: absolute`
+    root element escaping to the nearest positioned ancestor with no
+    `position: relative` on its own container, and ECharts' own default
+    11 tick-mark axis labels (`0, 0.1, 0.2, ... 1`) plus an internal
+    title cluttering an 80×80px cell. Fixed both — a real, visually
+    confirmed clean gauge, re-verified against a live `AppHost`.
+  - New tests: `GaugeChart.spec.ts` (3, asserting real rendered SVG
+    content, not just "a component exists") and a new
+    `AuthorityQueue.spec.ts` case (the configured field renders as a
+    chart, excluded from the plain-text summary). Full regression green:
+    `client-web` Vitest both workspaces (47 + 128), full 13-test
+    Playwright suite against a live `AppHost`.
+  - Deliberately NOT solved here (named in `ADR-100`'s own Consequences,
+    not silently dropped): a real multi-point time-series chart for
+    Vitals' IONM/device telemetry — that data lives in a different
+    subsystem (`TelemetrySample`, `EventStore.Streaming`) than the
+    entity-property GraphQL surface this config hooks into, and needs
+    its own real data-fetching design, not an accidental extension of
+    this pass's narrow gauge scope. `LivenessConfidence`
+    (`BiometricCaptureRecorded`) is a second, equally fitting gauge
+    candidate, also not wired up this pass — no dedicated queue-style UI
+    exists for it today, only `GenericFallbackView`'s generic property
+    table, which doesn't yet consult `chartable` config for arbitrary
+    schemas.
 
 ## User Requested Tasks
 

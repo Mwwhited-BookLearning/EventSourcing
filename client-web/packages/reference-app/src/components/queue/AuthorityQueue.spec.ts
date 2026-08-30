@@ -116,4 +116,50 @@ describe('AuthorityQueue', () => {
 
     vi.restoreAllMocks()
   })
+
+  // ADR-100 -- a configured chartable field renders as a real gauge, not
+  // plain text, and is excluded from the plain-text summary column so the
+  // same value isn't shown twice.
+  it('renders a configured chartable field as a gauge chart, excluded from the plain-text summary', async () => {
+    let raiserOnMessage: ((data: Record<string, Record<string, unknown>>) => void) | undefined
+    global.fetch = vi.fn().mockImplementation(async (url: string, init?: RequestInit) => {
+      if (url.includes('/connect/token')) return jsonResponse({ access_token: 'follower-token' })
+      const body = init?.body ? (JSON.parse(init.body as string) as { query: string }) : { query: '' }
+      if (body.query.includes('__type')) {
+        const fields = body.query.includes('authoritydecision')
+          ? ['targetEventId']
+          : ['eventId', 'applicantId', 'matchFound', 'matchConfidence']
+        return jsonResponse({ data: { __type: { fields: fields.map((name) => ({ name })) } } })
+      }
+      throw new Error(`unexpected fetch: ${url}`)
+    })
+
+    const graphqlClientModule = await import('@eventstore/mvvm-client/src/api/graphqlClient')
+    vi.spyOn(graphqlClientModule, 'graphqlSubscribe').mockImplementation((_host, _token, query, onMessage) => {
+      if ((query as string).includes('sanctionsscreeningperformed')) raiserOnMessage = onMessage as typeof raiserOnMessage
+      return () => {}
+    })
+
+    const wrapper = mount(AuthorityQueue, {
+      props: {
+        ...props,
+        raiserEventType: 'SanctionsScreeningPerformed',
+        isPending: (payload: Record<string, unknown>) => payload.matchFound === true,
+        chartableFields: [{ field: 'matchConfidence', chartType: 'gauge' as const, label: 'Match confidence' }],
+      },
+    })
+    await flushAll()
+
+    raiserOnMessage!({
+      on_trial1_sanctionsscreeningperformed: { eventId: 'evt-3', applicantId: 'applicant-3', matchFound: true, matchConfidence: 0.87 },
+    })
+    await flushAll()
+    await new Promise((resolve) => setTimeout(resolve, 20)) // ECharts' own render happens a tick after the DOM update, see GaugeChart.spec.ts's identical note
+
+    expect(wrapper.find('svg').exists()).toBe(true)
+    expect(wrapper.html()).toContain('87%')
+    expect(wrapper.text()).not.toContain('matchConfidence: 0.87')
+
+    vi.restoreAllMocks()
+  })
 })
