@@ -7,6 +7,7 @@ using EventStore.Domain.SchemaRegistry;
 using EventStore.Inbox;
 using EventStore.Persistence;
 using EventStore.SchemaRegistry;
+using EventStore.Upcasting;
 using EventStore.WorkerWakeSignal;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
@@ -49,8 +50,9 @@ public class DerivationWorker(IServiceScopeFactory scopeFactory, ILogger<Derivat
                 var db = scope.ServiceProvider.GetRequiredService<EventStoreContext>();
                 var schemaRegistry = scope.ServiceProvider.GetRequiredService<SchemaRegistryService>();
                 var publishService = scope.ServiceProvider.GetRequiredService<PublishService>();
+                var expressionEvaluator = scope.ServiceProvider.GetRequiredService<IUpcastExpressionEvaluator>();
 
-                await RunOnceAsync(db, schemaRegistry, publishService, stoppingToken);
+                await RunOnceAsync(db, schemaRegistry, publishService, stoppingToken, expressionEvaluator);
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
             {
@@ -87,18 +89,25 @@ public class DerivationWorker(IServiceScopeFactory scopeFactory, ILogger<Derivat
     // drive it directly against a provider-backed context (constructing the whole
     // hosted-service scaffolding, same as every other build-plan item's tests
     // exercise the underlying service directly rather than the ASP.NET host).
+    // expressionEvaluator is optional so every existing direct RunOnceAsync
+    // caller (tests exercising the underlying service, none of which use a
+    // calculated $select field) keeps compiling unchanged; the real hosted
+    // loop above always supplies the DI-registered one. A derivation whose
+    // SelectFields actually needs it with none supplied fails loudly in
+    // BuildOutputPayload rather than silently skipping the field.
     public static async Task RunOnceAsync(
-        EventStoreContext db, SchemaRegistryService schemaRegistry, PublishService publishService, CancellationToken ct = default)
+        EventStoreContext db, SchemaRegistryService schemaRegistry, PublishService publishService, CancellationToken ct = default,
+        IUpcastExpressionEvaluator? expressionEvaluator = null)
     {
         var activeDerivations = await db.DerivationDefinitions.Where(d => d.IsActive).ToListAsync(ct);
         foreach (var derivation in activeDerivations)
-            await ProcessDerivationAsync(db, schemaRegistry, publishService, derivation, ct);
+            await ProcessDerivationAsync(db, schemaRegistry, publishService, derivation, ct, expressionEvaluator);
         await SweepExpiredPendingJoinsAsync(db, ct);
     }
 
     private static async Task ProcessDerivationAsync(
         EventStoreContext db, SchemaRegistryService schemaRegistry, PublishService publishService,
-        DerivationDefinition derivation, CancellationToken ct)
+        DerivationDefinition derivation, CancellationToken ct, IUpcastExpressionEvaluator? expressionEvaluator)
     {
         var sources = derivation.Sources.Distinct().ToList();
         var cursors = await db.DerivationCursors
@@ -140,9 +149,9 @@ public class DerivationWorker(IServiceScopeFactory scopeFactory, ILogger<Derivat
             var joinKey = ComputeJoinKey(storedEvent.EventType, payloadNode, classOf, classCount);
 
             if (derivation.JoinTriggerMode == JoinTriggerMode.FireOnce)
-                await HandleFireOnceArrivalAsync(db, publishService, derivation, activeDefinition, storedEvent, joinKey, ct);
+                await HandleFireOnceArrivalAsync(db, publishService, derivation, activeDefinition, storedEvent, joinKey, ct, expressionEvaluator);
             else
-                await HandleContinuousArrivalAsync(db, publishService, derivation, activeDefinition, storedEvent, joinKey, sources, ct);
+                await HandleContinuousArrivalAsync(db, publishService, derivation, activeDefinition, storedEvent, joinKey, sources, ct, expressionEvaluator);
 
             if (cursors.TryGetValue(storedEvent.EventType, out var cursor))
                 cursor.LastProcessedSequenceNumber = Math.Max(cursor.LastProcessedSequenceNumber, storedEvent.SequenceNumber);
@@ -158,7 +167,8 @@ public class DerivationWorker(IServiceScopeFactory scopeFactory, ILogger<Derivat
 
     private static async Task HandleFireOnceArrivalAsync(
         EventStoreContext db, PublishService publishService, DerivationDefinition derivation,
-        EventTypeDefinition activeDefinition, StoredEvent arrivingEvent, string joinKey, CancellationToken ct)
+        EventTypeDefinition activeDefinition, StoredEvent arrivingEvent, string joinKey, CancellationToken ct,
+        IUpcastExpressionEvaluator? expressionEvaluator)
     {
         var pending = await db.PendingJoinStates.SingleOrDefaultAsync(p =>
             p.AppId == derivation.AppId && p.DerivationName == derivation.Name &&
@@ -222,7 +232,7 @@ public class DerivationWorker(IServiceScopeFactory scopeFactory, ILogger<Derivat
             return;
         }
 
-        await PublishDerivedEventAsync(publishService, derivation, activeDefinition, arrived, hopCount, arrivingEvent.AppendedAt, ct);
+        await PublishDerivedEventAsync(publishService, derivation, activeDefinition, arrived, hopCount, arrivingEvent.AppendedAt, ct, expressionEvaluator);
 
         if (pending is not null)
             db.PendingJoinStates.Remove(pending);
@@ -238,7 +248,7 @@ public class DerivationWorker(IServiceScopeFactory scopeFactory, ILogger<Derivat
     private static async Task HandleContinuousArrivalAsync(
         EventStoreContext db, PublishService publishService, DerivationDefinition derivation,
         EventTypeDefinition activeDefinition, StoredEvent arrivingEvent, string joinKey,
-        IReadOnlyList<string> sources, CancellationToken ct)
+        IReadOnlyList<string> sources, CancellationToken ct, IUpcastExpressionEvaluator? expressionEvaluator)
     {
         var arrived = new Dictionary<string, ArrivedSource>
         {
@@ -270,7 +280,7 @@ public class DerivationWorker(IServiceScopeFactory scopeFactory, ILogger<Derivat
             return;
         }
 
-        await PublishDerivedEventAsync(publishService, derivation, activeDefinition, arrived, hopCount, arrivingEvent.AppendedAt, ct);
+        await PublishDerivedEventAsync(publishService, derivation, activeDefinition, arrived, hopCount, arrivingEvent.AppendedAt, ct, expressionEvaluator);
     }
 
     private static async Task<StoredEvent?> FindLatestMatchingEventAsync(
@@ -295,9 +305,10 @@ public class DerivationWorker(IServiceScopeFactory scopeFactory, ILogger<Derivat
 
     private static async Task PublishDerivedEventAsync(
         PublishService publishService, DerivationDefinition derivation, EventTypeDefinition activeDefinition,
-        Dictionary<string, ArrivedSource> arrived, int hopCount, DateTimeOffset triggeringEventAppendedAt, CancellationToken ct)
+        Dictionary<string, ArrivedSource> arrived, int hopCount, DateTimeOffset triggeringEventAppendedAt, CancellationToken ct,
+        IUpcastExpressionEvaluator? expressionEvaluator)
     {
-        var outputPayload = BuildOutputPayload(derivation.SelectFields, arrived);
+        var outputPayload = BuildOutputPayload(derivation.SelectFields, arrived, expressionEvaluator);
         var parentEventIds = arrived.Values.Select(a => a.EventId).ToList();
 
         var result = await publishService.PublishAsync(
@@ -318,13 +329,32 @@ public class DerivationWorker(IServiceScopeFactory scopeFactory, ILogger<Derivat
                 new KeyValuePair<string, object?>("derivation.name", derivation.Name));
     }
 
-    private static string BuildOutputPayload(List<SelectField> selectFields, IReadOnlyDictionary<string, ArrivedSource> arrived)
+    private static string BuildOutputPayload(
+        List<SelectField> selectFields, IReadOnlyDictionary<string, ArrivedSource> arrived, IUpcastExpressionEvaluator? expressionEvaluator)
     {
         var output = new JsonObject();
+        // Built lazily, once, only if some field actually needs it: every
+        // arrived source's own payload, keyed by its (lowercased) source
+        // name, bound to a calculated field's expression as "event" --
+        // "event.orderline.Quantity * event.orderline.UnitPrice".
+        JsonObject? sourcesByName = null;
+
         foreach (var field in selectFields)
         {
-            var sourcePayload = JsonNode.Parse(arrived[field.SourceType].Payload);
-            var value = sourcePayload is JsonObject obj && obj.TryGetPropertyValue(field.SourceField, out var v) ? v : null;
+            if (field.Expression is not null)
+            {
+                if (expressionEvaluator is null)
+                    throw new InvalidOperationException(
+                        $"derived field \"{field.OutputField}\" is a calculated field but no IUpcastExpressionEvaluator was supplied");
+
+                sourcesByName ??= new JsonObject(arrived.Select(kv =>
+                    new KeyValuePair<string, JsonNode?>(kv.Key, JsonNode.Parse(kv.Value.Payload))));
+                output[field.OutputField] = expressionEvaluator.Evaluate(field.Expression, sourcesByName);
+                continue;
+            }
+
+            var sourcePayload = JsonNode.Parse(arrived[field.SourceType!].Payload);
+            var value = sourcePayload is JsonObject obj && obj.TryGetPropertyValue(field.SourceField!, out var v) ? v : null;
             output[field.OutputField] = value?.DeepClone();
         }
         return output.ToJsonString();

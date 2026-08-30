@@ -2,11 +2,12 @@ using System.Text.Json.Nodes;
 using EventStore.Domain.SchemaRegistry;
 using EventStore.Persistence;
 using EventStore.SchemaRegistry;
+using EventStore.Upcasting;
 using Microsoft.EntityFrameworkCore;
 
 namespace EventStore.Derivation;
 
-public class DerivationRegistrationService(EventStoreContext db, SchemaRegistryService schemaRegistry)
+public class DerivationRegistrationService(EventStoreContext db, SchemaRegistryService schemaRegistry, IUpcastExpressionEvaluator expressionEvaluator)
 {
     public async Task<RegisterDerivationResult> RegisterAsync(string eventTypeName, RegisterDerivationRequest request, CancellationToken ct = default)
     {
@@ -28,7 +29,7 @@ public class DerivationRegistrationService(EventStoreContext db, SchemaRegistryS
             errors.Add(onError!);
 
         var selectFields = new List<SelectField>();
-        if (normalizedSources.Count > 0 && !SelectClauseParser.TryParse(request.Select, normalizedSources, out selectFields, out var selectError))
+        if (normalizedSources.Count > 0 && !SelectClauseParser.TryParse(request.Select, normalizedSources, expressionEvaluator, out selectFields, out var selectError))
             errors.Add(selectError!);
 
         if (joinTriggerMode == JoinTriggerMode.FireOnce && request.PendingJoinTtlSeconds is not > 0)
@@ -172,12 +173,16 @@ public class DerivationRegistrationService(EventStoreContext db, SchemaRegistryS
         var properties = new JsonObject();
         foreach (var field in selectFields)
         {
-            JsonNode fieldSchema = new JsonObject { ["type"] = "string" }; // fallback if the source field can't be resolved in its schema
+            // Fallback for a calculated field (no single source field to copy a
+            // type from -- ADR-007 addendum) and for a straight mapping whose
+            // source field can't be resolved in its schema.
+            JsonNode fieldSchema = new JsonObject { ["type"] = "string" };
 
-            if (sourceSchemas.TryGetValue(field.SourceType, out var schemaNode) &&
+            if (field.SourceType is not null &&
+                sourceSchemas.TryGetValue(field.SourceType, out var schemaNode) &&
                 schemaNode is JsonObject schemaObject &&
                 schemaObject["properties"] is JsonObject sourceProperties &&
-                sourceProperties.TryGetPropertyValue(field.SourceField, out var sourceFieldSchema) &&
+                sourceProperties.TryGetPropertyValue(field.SourceField!, out var sourceFieldSchema) &&
                 sourceFieldSchema is not null)
             {
                 fieldSchema = sourceFieldSchema.DeepClone();

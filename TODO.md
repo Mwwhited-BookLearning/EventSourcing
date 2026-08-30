@@ -368,7 +368,7 @@ Reviewed against the existing codebase/docs (direct request) to check
 for duplicates before treating any of these as new work — findings
 below each item, refined into what's actually still open.
 
-- [ ] **Extend the entity schema metadata** — reviewed, not a duplicate,
+- [x] **Extend the entity schema metadata** — reviewed, not a duplicate,
   but split into pieces of very different size/shape:
   - [x] **Field-level validation and datatype rules** — done.
     `JsonSchemaInstanceValidator` extended in place (kept hand-written,
@@ -421,21 +421,51 @@ below each item, refined into what's actually still open.
     uses any of these keywords yet, confirmed by search. Full
     `EventStore.UnitTests` (47/47) and `EventStore.IntegrationTests`
     (244/244) green, full solution build clean.
-  - [ ] **Calculated fields** — **do not build as a new mechanism**:
-    `ADR-007` (`docs/adrs/adr-007-derived-event-types.md`, Accepted) +
-    `DerivationDefinition`/`SelectField`
-    (`src/EventStore.Domain/SchemaRegistry/`) already do cross-source
-    field **mapping** via `EventStore.Derivation`'s `DerivationWorker`,
-    but `SelectField` is a straight 1:1 rename/copy today, with no
-    formula/expression/aggregation support. A true calculated field
-    (e.g. `Total = Quantity * UnitPrice`) is a real, new capability, but
-    belongs as an extension of `ADR-007`'s existing derivation
-    mechanism, not a second, parallel one — scope it there.
-  - [ ] **Expected presentation types per object/child set** — this is
+  - [x] **Calculated fields** — done, as an extension of `ADR-007`'s
+    existing derivation mechanism (`DerivationDefinition`/`SelectField`,
+    `EventStore.Derivation`'s `DerivationWorker`), not a second, parallel
+    one. `SelectField` now carries a mutually-exclusive `Expression`
+    alongside the pre-existing `SourceType`/`SourceField` straight-mapping
+    pair; `$select`'s grammar gained a second entry form,
+    `"output:=expression"` (`SelectClauseParser`, comma-splitting made
+    paren/bracket/string-literal aware so a function-call expression's own
+    commas don't get cut). The expression is evaluated through the
+    already-registered `IUpcastExpressionEvaluator` (`ADR-053`) — the same
+    seam `UpcastFromPrevious` already uses, reused rather than building a
+    third expression mechanism, per this project's own buy-over-build
+    convention (verified by reading `IUpcastExpressionEvaluator`/
+    `CelUpcastExpressionEvaluator`/`JsonataUpcastExpressionEvaluator`
+    before designing anything). `"event"` binds to an object keyed by
+    each declared source's own lowercased name, so an expression can read
+    any arrived source's fields. Compiled (not just evaluated) at
+    registration time via `TryCompile`, so a malformed expression is a
+    `400` at registration, matching `ADR-018`'s posture for
+    `UpcastFromPrevious` itself. `DerivationRegistrationService` and
+    `DerivationWorker` (`RunOnceAsync` down through `BuildOutputPayload`)
+    both thread the evaluator through; `RunOnceAsync`'s own new parameter
+    is optional (default `null`) specifically so the other ~24 existing
+    call sites across `EventStore.IntegrationTests` (none of which use a
+    calculated field) keep compiling unchanged — a derivation that
+    actually needs it with none supplied fails loudly, not silently.
+    Real, found-by-running gotcha, documented rather than papered over:
+    CEL has no implicit `int`/`double` coercion, so a whole-number JSON
+    field multiplied against a decimal field needs an explicit
+    `double(...)` cast in the expression. Doc corrections landed in the
+    same pass: `docs/data/schema-registry.md`'s `SelectField` shape, and
+    an additive "Implementation note" on `ADR-007` itself (its own
+    additive-history convention, not a silent rewrite). Two new
+    integration scenarios (`DerivationScenarioAssertions`, run against
+    all three providers): a calculated field evaluating correctly end to
+    end, and an uncompilable expression rejected at registration. Full
+    `EventStore.UnitTests` (47/47) and the full SQLite
+    `EventStore.IntegrationTests` run green (one unrelated,
+    already-pre-existing flaky test outside this area, confirmed to pass
+    in isolation); full solution build clean.
+  - [x] **Expected presentation types per object/child set** — this is
     the SAME gap as the already-tracked "Configurable presentation-type
     view for display elements" item above (that item's own scope was
-    broadened to cover this directly) — not a separate task, don't
-    duplicate it here.
+    broadened to cover this directly), which is done — not a separate
+    task.
 - [ ] **Migrate embedded PlantUML diagrams to their own `.puml` files +
   a Docker rendering pipeline to `.svg`** (Low Priority, user's own
   priority marking kept). Reviewed: confirmed no such pipeline exists

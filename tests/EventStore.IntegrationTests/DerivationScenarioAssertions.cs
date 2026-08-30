@@ -252,6 +252,81 @@ internal static class DerivationScenarioAssertions
         Assert.AreEqual("ord-9-new", JsonNode.Parse(derivedKeys[0])!["OrderId"]!.GetValue<string>());
     }
 
+    private const string LineItemPlacedSchema = """
+        { "type": "object", "properties": { "OrderId": { "type": "string" }, "Quantity": { "type": "number" }, "UnitPrice": { "type": "number" } }, "required": ["OrderId", "Quantity", "UnitPrice"] }
+        """;
+
+    public static async Task CalculatedFieldEvaluatesAnExpressionOverArrivedSources(
+        SchemaRegistryService registry, DerivationRegistrationService derivationRegistry, PublishService publish, EventStoreContext db)
+    {
+        const string appId = "derivation-demo-11";
+        var suffix = "11";
+        await registry.RegisterAsync($"LineItemPlaced{suffix}", new RegisterEventTypeRequest(
+            AppId: appId, JsonSchema: LineItemPlacedSchema, FilterableFields: [],
+            ChangeKind: "Full", EntityIdField: "$.OrderId",
+            ParentValidationMode: null, RequiredClaims: null, UpcastFromPrevious: null, DowncastToPrevious: null));
+
+        // A single-source derivation, trivially self-joined (same technique
+        // RegisteringADerivationDefinitionCycleIsRejected already uses) -- the
+        // calculated field itself doesn't need a join, just a source to read
+        // arrived fields from.
+        var request = new RegisterDerivationRequest(
+            AppId: appId,
+            From: [$"LineItemPlaced{suffix}"],
+            On: $"LineItemPlaced{suffix}/OrderId eq LineItemPlaced{suffix}/OrderId",
+            // double(...) on Quantity is required, not stylistic: CEL has no
+            // implicit int/double coercion (unlike JS-style arithmetic), and a
+            // whole-number JSON value like "Quantity": 3 round-trips as CEL's
+            // int, not double -- int * double fails to compile at evaluation
+            // time ("no such overload: int.multiply(double)"), found by
+            // actually running this expression, not assumed from the CEL docs.
+            Select: $"Quantity:LineItemPlaced{suffix}/Quantity,UnitPrice:LineItemPlaced{suffix}/UnitPrice," +
+                    $"Total:=double(event.lineitemplaced{suffix}.Quantity) * event.lineitemplaced{suffix}.UnitPrice",
+            JoinTriggerMode: "FireOnce",
+            BackfillMode: "FromHistory",
+            BackfillThroughDerivedSources: true,
+            PendingJoinTtlSeconds: 60,
+            MaxHopCount: 5);
+        Assert.IsInstanceOfType<RegisterDerivationResult.Success>(await derivationRegistry.RegisterAsync($"InvoiceLine{suffix}", request));
+
+        await publish.PublishAsync($"LineItemPlaced{suffix}", new PublishEventRequest(
+            appId, 1, """{ "OrderId": "ord-11", "Quantity": 3, "UnitPrice": 12.5 }""", null, null), TestClaimsPrincipal.None);
+
+        await DerivationWorker.RunOnceAsync(db, registry, publish, expressionEvaluator: UpcastingTestSupport.CreateEvaluator());
+
+        var derived = await db.Events.AsNoTracking().SingleAsync(e => e.EventType == $"invoiceline{suffix}");
+        var payload = JsonNode.Parse(derived.Payload)!;
+        Assert.AreEqual(3, payload["Quantity"]!.GetValue<double>());
+        Assert.AreEqual(12.5, payload["UnitPrice"]!.GetValue<double>());
+        Assert.AreEqual(37.5, payload["Total"]!.GetValue<double>());
+    }
+
+    public static async Task RegisteringACalculatedFieldWithAnUncompilableExpressionFails(
+        SchemaRegistryService registry, DerivationRegistrationService derivationRegistry)
+    {
+        const string appId = "derivation-demo-12";
+        var suffix = "12";
+        await registry.RegisterAsync($"LineItemPlaced{suffix}", new RegisterEventTypeRequest(
+            AppId: appId, JsonSchema: LineItemPlacedSchema, FilterableFields: [],
+            ChangeKind: "Full", EntityIdField: "$.OrderId",
+            ParentValidationMode: null, RequiredClaims: null, UpcastFromPrevious: null, DowncastToPrevious: null));
+
+        var request = new RegisterDerivationRequest(
+            AppId: appId,
+            From: [$"LineItemPlaced{suffix}"],
+            On: $"LineItemPlaced{suffix}/OrderId eq LineItemPlaced{suffix}/OrderId",
+            Select: "Total:=event.Quantity *", // deliberately incomplete -- must fail TryCompile, not reach the worker
+            JoinTriggerMode: "FireOnce",
+            BackfillMode: "FromHistory",
+            BackfillThroughDerivedSources: true,
+            PendingJoinTtlSeconds: 60,
+            MaxHopCount: 5);
+
+        var result = await derivationRegistry.RegisterAsync($"InvoiceLine{suffix}", request);
+
+        Assert.IsInstanceOfType<RegisterDerivationResult.ValidationFailed>(result);
+    }
+
     public static async Task HopCountExceedingMaxHopCountSkipsEmissionAndRecordsADeadLetter(
         SchemaRegistryService registry, DerivationRegistrationService derivationRegistry, PublishService publish, EventStoreContext db)
     {

@@ -46,7 +46,7 @@ public class DerivationSqliteTests
         var cache = new MemoryCache(new MemoryCacheOptions());
         var registry = new SchemaRegistryService(db, new SqliteFilterableFieldIndexDdlGenerator(), cache, UpcastingTestSupport.CreateEvaluator());
         var publish = new PublishService(db, registry, new SqliteUniqueConstraintViolationDetector());
-        var derivationRegistry = new DerivationRegistrationService(db, registry);
+        var derivationRegistry = new DerivationRegistrationService(db, registry, UpcastingTestSupport.CreateEvaluator());
 
         await DerivationScenarioAssertions.RegisteringAValidDerivationSucceeds(registry, derivationRegistry);
         await DerivationScenarioAssertions.RegisteringWithAnUnregisteredSourceFails(registry, derivationRegistry);
@@ -58,5 +58,7 @@ public class DerivationSqliteTests
         await DerivationScenarioAssertions.ContinuousEnrichmentReEmitsOnEveryNewArrivalOnceBothSourcesHaveArrivedOnce(registry, derivationRegistry, publish, db);
         await DerivationScenarioAssertions.BackfillFromNowIgnoresEventsPublishedBeforeRegistration(registry, derivationRegistry, publish, db);
         await DerivationScenarioAssertions.HopCountExceedingMaxHopCountSkipsEmissionAndRecordsADeadLetter(registry, derivationRegistry, publish, db);
+        await DerivationScenarioAssertions.CalculatedFieldEvaluatesAnExpressionOverArrivedSources(registry, derivationRegistry, publish, db);
+        await DerivationScenarioAssertions.RegisteringACalculatedFieldWithAnUncompilableExpressionFails(registry, derivationRegistry);
     }
 }
