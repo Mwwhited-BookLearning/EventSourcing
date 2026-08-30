@@ -57,12 +57,19 @@ history this session makes concrete, not abstract:
   verified, not assumed — BPMN 2.0's own XML Schema embeds Diagram
   Interchange (`BPMNDI`: shape bounds, waypoints, coordinates) in the
   *same file* as the logical process model, and this is a well-known,
-  documented pain point independent of this project — one real account
-  found a single name-attribute change producing a 257-line diff (82
-  removed/86 added) purely from DI noise, serious enough that dedicated
-  diff-filtering tools exist just to strip it back out before comparing
-  ([bpmn.io — "Ditching the XML in BPMN 2.0"](https://bpmn.io/blog/posts/2025-ditching-the-xml-in-bpmn-2-0);
-  [Sonalake — "How We Fixed BPMN Diffs"](https://sonalake.com/latest/smart-tools-faster-teams-how-we-fixed-bpmn-diffs/)).
+  documented pain point independent of this project — one real,
+  verified account found a single name-attribute change (`"yes"` →
+  `"Yes"`) producing a 257-line diff (82 removed/86 added) purely from
+  DI noise, serious enough that they built and now run a dedicated
+  diff-filtering tool in front of every BPMN review specifically to
+  strip that noise back out before comparing
+  ([Sonalake — "Smart Tools, Faster Teams: How We Fixed BPMN
+  Diffs"](https://sonalake.com/latest/smart-tools-faster-teams-how-we-fixed-bpmn-diffs/) —
+  fetched and confirmed as a genuine, serious engineering account, not
+  satire; an earlier draft of this citation also listed a bpmn.io post
+  that turned out, on the same direct check, to be an April Fools' joke
+  with an explicit notice saying so — caught and removed before this
+  version, not left in on the strength of a search summary alone).
   PlantUML avoids this by construction: layout is *computed at render
   time*, never stored in the source text, so a hand-written `.puml` file
   never carries GUI-authored position noise to begin with — precisely
