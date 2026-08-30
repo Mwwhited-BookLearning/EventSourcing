@@ -551,3 +551,13 @@ below each item, refined into what's actually still open.
 [`docs/10-open-questions.md`](docs/10-open-questions.md) row 1, not kept
 here — a genuinely undecided fork, not decided work with only the doing
 left.)
+
+- [ ] **Write `docs/patterns/fault-injection-chaos-engineering.md`** —
+  found while fixing `docs/bugs/framework/service/follow-client-faults-
+  under-default-http-resilience-timeout.md`: `docs/references.md`'s own
+  "Chaos Engineering" row has pointed at this file since `ADR-063`, but
+  the file itself was never actually written — a pre-existing dangling
+  reference, not introduced this pass. Matches `docs/patterns/README.md`'s
+  own catalog-entry convention (general pattern first, cited, then which
+  ADR applies it here — `ADR-063`, via the now-hand-rolled `FaultInjector`
+  rather than `Polly`+`Simmy`, see `docs/libraries/dotnet/polly-simmy.md`).

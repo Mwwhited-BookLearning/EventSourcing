@@ -31,8 +31,32 @@ lose or corrupt data.
 
 ## Current state
 
-*(as of 2026-08-29, branch `dev/cryptoshredding` off `main` — update this
+*(as of 2026-08-30, branch `dev/cryptoshredding` off `main` — update this
 whole section, don't just bump the date)*
+
+**2026-08-30**: fixed a real, reported runtime fault (`docs/changes/
+2026-08-30.md`, `docs/bugs/framework/service/follow-client-faults-under-
+default-http-resilience-timeout.md`) — `EventStore.ServiceDefaults`'s
+unexamined Aspire-template `AddStandardResilienceHandler()` was faulting
+every cross-service `HttpClient` under this project's own real
+multi-service startup contention. Removed entirely rather than retuned.
+Worth knowing if this surfaces again: the FIRST diagnosis (long-lived
+Follow-tail body streaming) was wrong and caught by its own regression
+test failing to reproduce the bug — the real vulnerable phase is any
+bounded call slow to even START responding (a cold-starting `DevIdp`/
+`eventstore` under 8 concurrent `RbacProjectionWorker` tail-loop
+startups), not the intentionally-long-lived streaming phase itself
+(which `HttpCompletionOption.ResponseHeadersRead` exempts from Polly's
+`SendAsync`-scoped timeout entirely). Same pass, per direct request
+about Polly's new Open Source Maintenance Fee: `ADR-063`'s
+`Polly.Contrib.Simmy` fault injection replaced with a hand-rolled
+`FaultInjector` — Polly is gone from every place this project
+deliberately chose it, though not from the dependency graph entirely
+(`Aspire.Hosting.*`/`OpenIddict.*.SystemNetHttp` both pull it in
+internally, unavoidably, for unrelated reasons). Full regression green;
+one pre-existing, unrelated doc gap found and tracked in `TODO.md`
+(`docs/patterns/fault-injection-chaos-engineering.md` was referenced but
+never written, since `ADR-063`).
 
 All 100 ADRs Accepted (`ADR-100` added this session, configurable
 presentation-type/charting). `08-build-plan.md`'s item 54/55/56 status is

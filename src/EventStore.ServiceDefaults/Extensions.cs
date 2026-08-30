@@ -11,9 +11,29 @@ using EventStore.Domain.Observability;
 
 namespace Microsoft.Extensions.Hosting;
 
-// Adds common Aspire services: service discovery, resilience, health checks, and OpenTelemetry.
+// Adds common Aspire services: service discovery, health checks, and OpenTelemetry.
 // This project should be referenced by each service project in your solution.
 // To learn more about using this project, see https://aka.ms/aspire/service-defaults
+//
+// This started from Aspire's own scaffolded template, which also turns on
+// AddStandardResilienceHandler() (Microsoft.Extensions.Http.Resilience, built
+// on Polly v8) for every HttpClient by default -- deliberately removed here,
+// not just left as-is. Its blanket 10s-per-attempt/30s-total timeout faulted
+// EventStore.DevIdp's RbacProjectionWorker (and every other Follow-API
+// consumer) constantly: FollowClient.TailAsync opens one long-lived SSE-style
+// HTTP request and reads it for as long as there's anything to tail, which is
+// meant to run far longer than 10 seconds -- Polly had no way to know that
+// was intentional, so it kept cancelling and retrying a perfectly healthy
+// connection. See docs/bugs/framework/service/follow-client-faults-under-
+// default-http-resilience-timeout.md for the full diagnosis. Rather than
+// hand-tune Polly's options per named client, this default was removed
+// outright: every real retry-worthy path in this design already owns its own
+// purpose-built, correctly-tuned resilience mechanism (ADR-033's outbox/
+// inbox, ADR-060's webhook dispatcher, FollowClient/EventTailReader's own
+// reconnect loops, EF Core's EnableRetryOnFailure) -- a generic HTTP-level
+// wrapper was never doing real, non-redundant work here. See
+// docs/references.md's own "considered and rejected" entry for the full
+// reasoning, including Polly's new Open Source Maintenance Fee.
 public static class Extensions
 {
     private const string HealthEndpointPath = "/health";
@@ -29,9 +49,6 @@ public static class Extensions
 
         builder.Services.ConfigureHttpClientDefaults(http =>
         {
-            // Turn on resilience by default
-            http.AddStandardResilienceHandler();
-
             // Turn on service discovery by default
             http.AddServiceDiscovery();
         });
