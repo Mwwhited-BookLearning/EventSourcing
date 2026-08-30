@@ -198,6 +198,118 @@ public class JsonSchemaInstanceValidatorTests
     }
 
     [TestMethod]
+    public void ConstRejectsAValueThatDoesNotMatchExactly()
+    {
+        var ok = Validate("""{ "const": true }""", "false", out var errors);
+        Assert.IsFalse(ok);
+        Assert.Contains("const", errors[0]);
+    }
+
+    [TestMethod]
+    public void ConstAcceptsTheExactMatchingValue()
+    {
+        var ok = Validate("""{ "const": "US" }""", "\"US\"", out _);
+        Assert.IsTrue(ok);
+    }
+
+    // TODO.md, "Custom/dependent-field validation" -- real JSON Schema
+    // keywords (dependentRequired, if/then/else), verified against the
+    // spec before writing, not bespoke syntax.
+    [TestMethod]
+    public void DependentRequiredRejectsAPayloadMissingTheDependentPropertyWhenTheTriggerIsPresent()
+    {
+        const string schema = """
+            { "type": "object", "properties": { "creditCardNumber": { "type": "string" }, "billingAddress": { "type": "string" } },
+              "dependentRequired": { "creditCardNumber": ["billingAddress"] } }
+            """;
+        var ok = Validate(schema, """{ "creditCardNumber": "4111" }""", out var errors);
+        Assert.IsFalse(ok);
+        Assert.Contains("billingAddress", errors[0]);
+        Assert.Contains("creditCardNumber", errors[0]);
+    }
+
+    [TestMethod]
+    public void DependentRequiredAcceptsAPayloadWithBothPropertiesPresent()
+    {
+        const string schema = """
+            { "type": "object", "dependentRequired": { "creditCardNumber": ["billingAddress"] } }
+            """;
+        var ok = Validate(schema, """{ "creditCardNumber": "4111", "billingAddress": "1 Main St" }""", out _);
+        Assert.IsTrue(ok);
+    }
+
+    [TestMethod]
+    public void DependentRequiredDoesNotApplyWhenTheTriggerPropertyIsAbsent()
+    {
+        const string schema = """
+            { "type": "object", "dependentRequired": { "creditCardNumber": ["billingAddress"] } }
+            """;
+        var ok = Validate(schema, """{ "unrelatedField": "x" }""", out _);
+        Assert.IsTrue(ok);
+    }
+
+    [TestMethod]
+    public void IfThenAppliesTheThenSchemaOnlyWhenTheIfSchemaMatches()
+    {
+        // A real, concrete shape this project's own domains actually
+        // need: SeriousAdverseEvent: true requires a non-empty
+        // regulatoryReportedAt timestamp; false doesn't.
+        const string schema = """
+            { "type": "object",
+              "if": { "properties": { "seriousAdverseEvent": { "const": true } }, "required": ["seriousAdverseEvent"] },
+              "then": { "required": ["regulatoryReportedAt"] } }
+            """;
+        var failing = Validate(schema, """{ "seriousAdverseEvent": true }""", out var errors);
+        Assert.IsFalse(failing);
+        Assert.Contains("regulatoryReportedAt", errors[0]);
+
+        var passingBecauseSerious = Validate(schema, """{ "seriousAdverseEvent": true, "regulatoryReportedAt": "2026-08-29T00:00:00Z" }""", out _);
+        Assert.IsTrue(passingBecauseSerious);
+
+        var passingBecauseNotSerious = Validate(schema, """{ "seriousAdverseEvent": false }""", out _);
+        Assert.IsTrue(passingBecauseNotSerious, "the `then` branch never applies at all when `if` doesn't match");
+    }
+
+    [TestMethod]
+    public void IfThenElseAppliesElseWhenIfDoesNotMatch()
+    {
+        const string schema = """
+            { "type": "object",
+              "if": { "properties": { "country": { "const": "US" } }, "required": ["country"] },
+              "then": { "required": ["state"] },
+              "else": { "required": ["province"] } }
+            """;
+        var okUs = Validate(schema, """{ "country": "US", "state": "CA" }""", out _);
+        Assert.IsTrue(okUs);
+
+        var failingUs = Validate(schema, """{ "country": "US" }""", out var usErrors);
+        Assert.IsFalse(failingUs);
+        Assert.Contains("state", usErrors[0]);
+
+        var okOther = Validate(schema, """{ "country": "CA", "province": "ON" }""", out _);
+        Assert.IsTrue(okOther);
+
+        var failingOther = Validate(schema, """{ "country": "CA" }""", out var otherErrors);
+        Assert.IsFalse(failingOther);
+        Assert.Contains("province", otherErrors[0]);
+    }
+
+    [TestMethod]
+    public void AFailingIfBranchNeverContributesItsOwnErrorsOnlyThenOrElseDo()
+    {
+        // The `if` schema itself is a pure boolean test -- its own
+        // constraint failures must never leak into the reported error
+        // list, only whichever of then/else actually gets evaluated.
+        const string schema = """
+            { "type": "object",
+              "if": { "properties": { "amount": { "minimum": 1000 } }, "required": ["amount"] },
+              "then": { "required": ["approverId"] } }
+            """;
+        var ok = Validate(schema, """{ "amount": 5 }""", out var errors);
+        Assert.IsTrue(ok, string.Join("; ", errors));
+    }
+
+    [TestMethod]
     public void AClassifiedFieldsCiphertextIsExemptFromTheseConstraintsTooNotJustType()
     {
         // ADR-057's own pre-existing exemption (x-masking.regulatoryClassification

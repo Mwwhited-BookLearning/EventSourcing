@@ -97,8 +97,64 @@ public static class JsonSchemaInstanceValidator
         if (!CheckStringConstraints(schemaObject, payload, errors, path)) ok = false;
         if (!CheckNumberConstraints(schemaObject, payload, errors, path)) ok = false;
         if (!CheckEnum(schemaObject, payload, errors, path)) ok = false;
+        if (!CheckConst(schemaObject, payload, errors, path)) ok = false;
+
+        // TODO.md, "Custom/dependent-field validation" -- real JSON
+        // Schema keywords (Draft 2019-09+), not bespoke syntax: verified
+        // against the spec before writing this, per this project's own
+        // verify-before-citing rule. `dependentRequired` for the simple
+        // "if X is present, Y must be too" case; `if`/`then`/`else` for
+        // the general conditional case (Y's own shape/range depends on
+        // X's value, not just X's presence).
+        if (!CheckDependentRequired(schemaObject, payload, errors, path)) ok = false;
+        if (!CheckIfThenElse(schemaObject, payload, errors, path)) ok = false;
 
         return ok;
+    }
+
+    // "if I is present, J must be too" -- e.g. { "dependentRequired": {
+    // "creditCardNumber": ["billingAddress", "expiryDate"] } }. Only
+    // meaningful for an object payload; a non-object payload has no
+    // properties to depend on each other at all.
+    private static bool CheckDependentRequired(JsonObject schemaObject, JsonNode? payload, List<string> errors, string path)
+    {
+        if (schemaObject["dependentRequired"] is not JsonObject dependentRequired || payload is not JsonObject payloadObject)
+            return true;
+
+        var ok = true;
+        foreach (var (triggerProperty, dependents) in dependentRequired)
+        {
+            if (!payloadObject.ContainsKey(triggerProperty) || dependents is not JsonArray dependentNames)
+                continue;
+            foreach (var dependentName in dependentNames)
+            {
+                var name = dependentName!.GetValue<string>();
+                if (!payloadObject.ContainsKey(name))
+                {
+                    errors.Add($"{path}: '{name}' is required when '{triggerProperty}' is present");
+                    ok = false;
+                }
+            }
+        }
+        return ok;
+    }
+
+    // The general conditional case JSON Schema itself defines: IF the
+    // payload validates against the `if` subschema, THEN it must also
+    // validate against `then` (or, when `if` fails, against `else` when
+    // given). `if`'s own failure is never itself an error -- it's a pure
+    // boolean test, evaluated into a throwaway error list precisely so a
+    // non-matching `if` branch reports nothing about itself, only about
+    // whichever of `then`/`else` actually applies.
+    private static bool CheckIfThenElse(JsonObject schemaObject, JsonNode? payload, List<string> errors, string path)
+    {
+        if (schemaObject["if"] is not { } ifSchema)
+            return true;
+
+        var matchesIf = Validate(ifSchema, payload, [], path);
+        if (matchesIf)
+            return schemaObject["then"] is not { } thenSchema || Validate(thenSchema, payload, errors, path);
+        return schemaObject["else"] is not { } elseSchema || Validate(elseSchema, payload, errors, path);
     }
 
     private static bool CheckStringConstraints(JsonObject schemaObject, JsonNode? payload, List<string> errors, string path)
@@ -228,6 +284,21 @@ public static class JsonSchemaInstanceValidator
         if (allowedValues.Any(allowed => allowed?.ToJsonString() == payloadJson))
             return true;
         errors.Add($"{path}: value is not one of the allowed enum values");
+        return false;
+    }
+
+    // `const` is JSON Schema's own single-value shorthand for `enum` --
+    // used here by `if`/`then`/`else`'s own real, concrete test cases
+    // ("if seriousAdverseEvent is exactly true...") rather than a
+    // one-element `enum` array, matching how a real schema author would
+    // actually write it.
+    private static bool CheckConst(JsonObject schemaObject, JsonNode? payload, List<string> errors, string path)
+    {
+        if (schemaObject["const"] is not { } constNode)
+            return true;
+        if (constNode.ToJsonString() == payload?.ToJsonString())
+            return true;
+        errors.Add($"{path}: value does not equal the required const value");
         return false;
     }
 

@@ -403,12 +403,24 @@ below each item, refined into what's actually still open.
       Meridian/demo) uses any of these keywords yet, confirmed by
       search — purely additive, no behavior change for anything already
       registered.
-  - [ ] **Custom/dependent-field validation (mappings, dependent
-    fields)** — genuinely new, confirmed not covered anywhere
-    (no `dependentRequired`/`if`-`then`-`else`/cross-field check exists
-    in the validator or schema registry today). Needs its own design
-    pass — likely an extension of the same validator above once it
-    exists, not a separate mechanism.
+  - [x] **Custom/dependent-field validation (mappings, dependent
+    fields)** — done, as an extension of `JsonSchemaInstanceValidator`
+    (the previous sub-item), not a separate mechanism. Real, standard
+    JSON Schema keywords (Draft 2019-09+), verified against the spec
+    before writing, not bespoke syntax: `dependentRequired` (presence-
+    only dependency — "if X is present, Y must be too") and
+    `if`/`then`/`else` (the general conditional case — Y's own shape/
+    range depends on X's *value*, not just its presence). `const`
+    (single-value `enum`) added alongside them — needed for `if`'s own
+    realistic test cases ("if `seriousAdverseEvent` is exactly `true`
+    ..."), a natural, small, real keyword rather than forcing a
+    one-element `enum` array. `if`'s own failures never leak into the
+    reported error list (a pure boolean test, evaluated into a throwaway
+    list) — only whichever of `then`/`else` actually applies contributes
+    real errors. 8 new unit tests; no existing proving-ground schema
+    uses any of these keywords yet, confirmed by search. Full
+    `EventStore.UnitTests` (47/47) and `EventStore.IntegrationTests`
+    (244/244) green, full solution build clean.
   - [ ] **Calculated fields** — **do not build as a new mechanism**:
     `ADR-007` (`docs/adrs/adr-007-derived-event-types.md`, Accepted) +
     `DerivationDefinition`/`SelectField`
