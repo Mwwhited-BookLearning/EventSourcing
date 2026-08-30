@@ -246,6 +246,28 @@ public class RbacProjectionWorkerHttpSqliteTests
         Assert.AreEqual(1, consumed, "expected the idle timeout to stop consumption after the one real event, not hang waiting for a 5th that never arrives");
     }
 
+    // docs/bugs/framework/service/rbac-fold-404-logged-as-error-forever.md --
+    // RbacProjectionWorker.TailForeverAsync used to catch this exact
+    // HttpRequestException with a bare `catch (Exception ex)`, logging it at
+    // Error and busy-retrying forever for an AppId that has simply never had
+    // this reserved event type happen yet -- an expected, recoverable state,
+    // not a lost connection. The fix discriminates on StatusCode ==
+    // NotFound specifically; this confirms the real exception FollowClient
+    // actually throws for a genuinely unregistered type has that shape, not
+    // assumed from the fix's own code.
+    [TestMethod]
+    public async Task CatchUpOnceAsyncThrowsAnHttpRequestExceptionWithNotFoundStatusForAGenuinelyUnregisteredEventType()
+    {
+        const string appId = "rbac-worker-demo-5";
+
+        var worker = CreateWorker();
+        var ex = await Assert.ThrowsExactlyAsync<HttpRequestException>(() =>
+            worker.CatchUpOnceAsync(appId, "RoleGranted", maxEventsToConsume: 1, TimeSpan.FromSeconds(2), CancellationToken.None));
+
+        Assert.AreEqual(HttpStatusCode.NotFound, ex.StatusCode,
+            "TailForeverAsync's own catch (HttpRequestException ex) when (ex.StatusCode == HttpStatusCode.NotFound) filter depends on this exact shape");
+    }
+
     private static async Task GrantPermissionAsync(string appId, string actorId, string permission)
     {
         var (token, key) = await AuthScenarioAssertions.GetTokenAsync(_devIdpClient, "operator-client", "operator-client-secret", "registry:admin");

@@ -96,13 +96,21 @@ var migrator = builder.AddProject<Projects.EventStore_Migrator>("migrator")
 // Vitals/Meridian proving-ground demo data -- same one-shot, direct-DB
 // shape as migrator above (ADR-076's posture, applied to seeding instead
 // of schema migration), run after it for the same reason (schema must
-// already exist). Both gate "eventstore" itself below: FollowSubscriptionTypeModule
-// only builds the GraphQL Subscription schema ONCE, at host warmup
-// (confirmed, no hot-reload on a newly-registered event type -- see that
-// class's own comment) -- so every event type either seed worker
-// registers must already exist BEFORE "eventstore" ever starts, or its
-// Subscription field would silently never appear for the lifetime of
-// that run.
+// already exist).
+//
+// Stale note corrected here, not left wrong: an earlier pass of this
+// comment claimed "eventstore" had to wait for both seed workers because
+// FollowSubscriptionTypeModule only builds its GraphQL Subscription
+// schema ONCE, at host warmup, with no hot-reload for a later-registered
+// event type. That claim is no longer true -- FollowSubscriptionTypeModule's
+// own header comment documents a genuinely fixed and verified hot-reload
+// path (docs/changes/2026-08-13.md): a type registered after Host warmup
+// becomes queryable, and a real Subscription against it delivers a real
+// published event, within about 150ms, with no restart. `eventstore` still
+// waits for both seed workers below (WaitForCompletion), but only for the
+// ordinary reason migrator itself is waited on: the schema/data these
+// seeders write must exist before anything queries for it, not because the
+// GraphQL schema itself is frozen at boot.
 //
 // meridianSeed also WaitForCompletion(vitalsSeed) -- found by actually
 // running `dotnet run` against this AppHost, not assumed: EventAppender.cs

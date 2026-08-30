@@ -58,6 +58,26 @@ one pre-existing, unrelated doc gap found and tracked in `TODO.md`
 (`docs/patterns/fault-injection-chaos-engineering.md` was referenced but
 never written, since `ADR-063`).
 
+**Second, independent fix same day** (`docs/bugs/framework/service/
+rbac-fold-404-logged-as-error-forever.md`): found only by the user
+pasting real OTLP logs from a genuinely running `EventStore.DevIdp` —
+`RbacProjectionWorker` was logging a routine, expected 404 ("this
+reserved event type has never happened for this AppId yet," `ADR-067`)
+as an `Error`-level lost connection, every 2 seconds, forever, for any
+of its 8 (AppId × reserved-event-type) tail loops that simply never
+occurs. Fixed to a `Warning`-level, honestly-worded log for that specific
+case. Also bound the reconnect loop into Aspire/OTel directly, per
+direct request: a new `DuplexInstrumentation.WorkerTailReconnects`
+counter (`ADR-088`), and `Activity.AddException(ex)` (a real .NET 9+ BCL
+method, verified before using it — no `OpenTelemetry` package needed)
+on genuine reconnects, so they show up as real tracked exceptions in the
+Aspire dashboard's own Traces view, not just a log line. Also corrected
+a stale `AppHost.cs` comment found along the way (claimed GraphQL
+Subscriptions have no hot-reload for a newly-registered event type —
+false; `FollowSubscriptionTypeModule`'s own comment documents that this
+was fixed and verified working, `docs/changes/2026-08-13.md`). Full
+regression green.
+
 All 100 ADRs Accepted (`ADR-100` added this session, configurable
 presentation-type/charting). `08-build-plan.md`'s item 54/55/56 status is
 unchanged from the paragraph below (not touched this pass — this
