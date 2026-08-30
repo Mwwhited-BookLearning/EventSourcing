@@ -1,0 +1,64 @@
+@startuml
+hide circle
+skinparam linetype ortho
+
+entity "PublicRecordsRequestReceived" as request {
+  * EventId : uuid <<PK>>
+  --
+  EntityId : string
+  ' gov:PublicRecordsRequest:{RequestId}
+  RequestId : string
+  CaseFileEntityId : string
+  RequesterName : string
+  RequestedScope : string
+}
+
+entity "PermissionGranted" as grant {
+  * EventId : uuid <<PK>>
+  --
+  EntityId : string
+  ' reserved control-plane event (ADR-067/ADR-046)
+  GranteeActorId : string
+  Permission : string
+  ' "case:pii-view"
+  ScopedEntityId : string?
+  ' ADR-043's entity-scoped claim generalization
+}
+
+entity "DisclosureDetermination" as determination {
+  * EventId : uuid <<PK>>
+  --
+  EntityId : string
+  RequestId : string
+  Outcome : string
+  ' Approved | PartiallyApproved | Denied
+  ExemptFieldPaths : string[]
+  ' documentation only -- ADR-009's static x-masking still governs enforcement
+  FoiaExemptionCodes : string[]
+  Signature : Signature
+  ' Meaning/SignedAt/Acr required -- ADR-066
+}
+
+entity "AccessLogEntry" as accessLog {
+  * SequenceNumber : bigint <<PK>>
+  --
+  ReaderActorId : string
+  ReaderTrustBasis : string
+  ResourceRef : string
+  Action : string
+  ChainHash : string
+  ' independent chain from the Event Log's own (ADR-019/ADR-045)
+}
+
+request <.. grant : "parentEventIds\n(ADR-005)"
+request <.. determination : "parentEventIds"
+grant <.. determination : "parentEventIds"
+determination ..> accessLog : "the read(s) it later enables\nare logged separately, no FK --\nResourceRef is a plain string (ADR-045)"
+
+note right of grant
+  Reserved the same way ADR-020's
+  EventUpcastFailed already is --
+  never registered via PUT
+  /registry/{event-type}.
+end note
+@enduml

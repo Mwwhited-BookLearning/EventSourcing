@@ -66,6 +66,8 @@ bounding one utility tenant's entire meter fleet without starving
 another tenant sharing the same deployment (or, post-`ADR-075`, without
 one `AppId`'s applications starving another within the same silo).
 
+![Sequence diagram — continuous interval-data batch ingestion](../../../diagrams/domains/utilities-smart-metering/features/interval-data-and-demand-response/01-sequence-diagram-continuous-interval-data-batch-in.svg)
+
 ```plantuml
 @startuml IntervalData_Ingest_Sequence
 autonumber
@@ -112,6 +114,8 @@ authoritative `EntityStoreRow` fold the demand-response state at all
 (`ADR-042`) — until then it's visible only in the ungated
 `LiveEntityStoreRow`, labeled `isAuthoritative: false`.
 
+![Sequence diagram — a demand-response trigger, validated or rejected](../../../diagrams/domains/utilities-smart-metering/features/interval-data-and-demand-response/02-sequence-diagram-a-demand-response-trigger-validat.svg)
+
 ```plantuml
 @startuml DemandResponse_Trigger_Sequence
 autonumber
@@ -156,6 +160,8 @@ end
 ```
 
 ## Data model (ER diagram)
+
+![Data model (ER diagram)](../../../diagrams/domains/utilities-smart-metering/features/interval-data-and-demand-response/03-data-model-er-diagram.svg)
 
 ```plantuml
 @startuml IntervalDataDemandResponse_ER
@@ -227,6 +233,8 @@ end note
 
 ## State diagram
 
+![State diagram](../../../diagrams/domains/utilities-smart-metering/features/interval-data-and-demand-response/04-state-diagram.svg)
+
 ```plantuml
 @startuml DemandResponse_State_Diagram
 [*] --> Detected : DemandResponseTriggered published\nAuthorityStatus: pending_review (ADR-042)
@@ -269,6 +277,8 @@ rows are a `LiveEntityStoreRow`-backed view (`isAuthoritative: false`,
 convention `ADR-024`/`ADR-035` already established
 (`entity-concept.md`), not a bespoke indicator per concern.
 
+![Screen 1: Grid-operations dashboard — interval data and demand-response triage queue diagram](../../../diagrams/domains/utilities-smart-metering/features/interval-data-and-demand-response/05-screen-1-grid-operations-dashboard-interval-data-a.svg)
+
 ```plantuml
 @startsalt
 {
@@ -297,6 +307,8 @@ event.
 
 ### Screen 2: Grid-ops reviewer's decision screen
 
+![Screen 2: Grid-ops reviewer's decision screen diagram](../../../diagrams/domains/utilities-smart-metering/features/interval-data-and-demand-response/06-screen-2-grid-ops-reviewer-s-decision-screen.svg)
+
 ```plantuml
 @startsalt
 {
@@ -324,6 +336,8 @@ tamper finding). Either click dispatches the publish and moves the flow
 to Screen 3 — the record's fate diverges there, not before.
 
 ### Screen 3: Meter record after the authoritative fold
+
+![Screen 3: Meter record after the authoritative fold diagram](../../../diagrams/domains/utilities-smart-metering/features/interval-data-and-demand-response/07-screen-3-meter-record-after-the-authoritative-fold.svg)
 
 ```plantuml
 @startsalt

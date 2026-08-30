@@ -1,0 +1,15 @@
+@startsalt
+{
+  { "alert-8 -- Field Verification  (Live View, isAuthoritative: false)" }
+  ..
+  { "Asset"              | "pump-42"                 }
+  { "AlertSeverity"      | "Medium"                  }
+  { "DetectorConfidence" | "0.41"                    }
+  { "SuggestedAction"    | "Recommend inspection"    }
+  ..
+  [ View raw telemetry window (t3-t4) ]
+  ..
+  { "Field verification reason:" | "[                              ]" }
+  [ Acknowledge (accept) ] | [ Dismiss (reject) ]
+}
+@endsalt

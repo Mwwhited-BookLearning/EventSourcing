@@ -1,0 +1,33 @@
+@startuml
+autonumber
+actor "Platform/App operator" as operator
+participant "API\n(EventStore.Rbac's RbacEndpoints.cs,\nHost-side, role/permission/trust-root admin)" as api
+participant "Auth\n(JWT Bearer + scope policy)" as auth
+database "Event Log\n(core engine)" as eventLog
+participant "EventStore.DevIdp's\nRbacProjectionWorker\n(BackgroundService, follows the\nEvent Log cross-process)" as worker
+participant "Role / UserPermission / AppTrustRoot\n(DevIdp-LOCAL tables, never a\ncore-engine EntityStoreRow, ADR-067)" as rbac
+
+operator -> api: grant/revoke a role, grant a direct permission,\nor register an AppTrustRoot
+api -> auth: validate token + registry:admin (RBAC grants) or\nregistry:trust-admin (AppTrustRoot, ADR-044 -- a\ndeliberately separate scope, not implied by registry:admin)
+alt missing/invalid token or scope
+  auth --> operator: 401 / 403
+else authorized
+  api -> eventLog: append reserved "RoleGranted" / "RoleRevoked" /\n"PermissionGranted" (ADR-046) or\n"AppTrustRootRegistered" (ADR-044) event\n-- ActorId = operator's verified identity (ADR-064);\nsame StoredEvent shape, same hash chain (ADR-019/067)
+  api --> operator: 201 (or 200 for a revoke)
+  eventLog ->> worker: TailAsync (core engine's own Follow API) --\nasynchronous, cross-process, not part of the\nrequest above at all
+  worker -> rbac: fold via RoleService/TrustRootService's own\nalready-idempotent methods, entirely inside\nEventStore.DevIdp -- no EntityStoreRow anywhere\nin this path
+end
+note over eventLog, rbac
+  None of these four event types is ever registered via
+  PUT /registry/{event-type} -- reserved the same way
+  ADR-020's EventUpcastFailed already is (ADR-067). Each
+  is traceable through the ordinary Lineage API and
+  linkable via parentEventIds (ADR-005) wherever a genuine
+  causal relationship to a business event exists. The fold
+  into Role/UserPermission/AppTrustRoot happens one process
+  over, inside EventStore.DevIdp -- confirmed against
+  RbacProjectionWorker.cs -- not synchronously in this
+  request, and not via the core engine's generic
+  EntityStoreRow fold mechanism.
+end note
+@enduml

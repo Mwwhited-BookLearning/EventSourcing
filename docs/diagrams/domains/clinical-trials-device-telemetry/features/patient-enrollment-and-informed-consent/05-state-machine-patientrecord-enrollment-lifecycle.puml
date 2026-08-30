@@ -1,0 +1,18 @@
+@startuml
+[*] --> Screened : PatientScreened (ordinary capture,\nAuthorityStatus accepted immediately, ADR-042)
+
+Screened --> ConsentPending : InformedConsentCaptured\n(AuthorityStatus pending_review, ADR-035/042)
+ConsentPending : visible only in the Live View,\nisAuthoritative: false
+
+ConsentPending --> StepUpChallenged : PI submits ConsentApproval\nwithout sufficient acr/max_age (ADR-066)
+StepUpChallenged --> ConsentPending : RFC 9470 challenge issued,\nevent never stored (ADR-066)
+
+ConsentPending --> Enrolled : ConsentApproval "approved",\nwith valid step-up Signature (ADR-066)
+ConsentPending --> ConsentPending : ConsentApproval "rejected" --\nstays ConsentPending; coordinator\nmust recapture consent
+
+Enrolled : AuthorityStatus = accepted
+Enrolled : folded into the authoritative\nEntity Store (catch-up, ADR-042)
+Enrolled --> Withdrawn : subject withdraws consent\n(see trial-data-export-and-subject-rights.md,\na DIFFERENT subject in that doc's own scenario)
+Withdrawn --> [*]
+Enrolled --> [*]
+@enduml

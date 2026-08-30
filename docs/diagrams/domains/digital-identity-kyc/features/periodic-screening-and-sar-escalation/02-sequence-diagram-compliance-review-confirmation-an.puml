@@ -1,0 +1,40 @@
+@startuml
+autonumber
+actor "Compliance Officer\n(role: ComplianceOfficer,\nclaim: identity:aml-review, ADR-046)" as officer
+participant "PublishEndpoint\n(Inbox)" as inbox
+participant "AuthorityDecisionResolver" as resolver
+database "Event Log" as eventLog
+database "Entity Store\n(authoritative)" as entityStore
+participant "EventStore.DevIdp\n(RFC 9470 step-up, ADR-066)" as idp
+
+officer -> inbox: POST /publish/authorityDecision\n{ payload: { targetEventId: <SanctionsScreeningPerformed's EventId>,\n  decision: "accepted"|"rejected", decidingActorId: officer, reason } }
+inbox -> inbox: check RequiredClaims (ADR-050, OR-evaluated):\n[{Publish, "identity:review"}, {Publish, "identity:aml-review"}]\n-- officer holds "identity:aml-review", satisfies the OR
+alt decision = rejected (false positive)
+  inbox -> resolver: process authorityDecision event
+  resolver -> eventLog: UPDATE target SET AuthorityStatus = "rejected",\n  AuthorityDecisionRef = <this event's EventId>
+  note right of resolver
+    Annotate (this event type's default RejectionBehavior,
+    ADR-035) -- the match stays visible in the Event Log and
+    Live View, relabeled rejected, never deleted. No SAR filed.
+  end note
+else decision = accepted (confirmed hit)
+  inbox -> resolver: process authorityDecision event
+  resolver -> eventLog: UPDATE target SET AuthorityStatus = "accepted",\n  AuthorityDecisionRef = <this event's EventId>
+  resolver -> entityStore: fold now -- authoritative catch-up (ADR-042)
+
+  officer -> inbox: POST /publish/SarFilingRecorded\n{ payload: { ApplicantId: "applicant-1001",\n  TargetScreeningEventId, FilingReferenceId, Narrative } }
+  inbox -> inbox: check RequiredSignature (ADR-066): AcrValues\n["urn:kyc:acr:step-up"], MaxAge 300 -- caller's current token\nlacks a sufficiently strong/recent acr
+  inbox --> officer: 401 WWW-Authenticate: step-up challenge\n(acr_values="urn:kyc:acr:step-up")
+  officer -> idp: re-authenticate at required strength\n(password re-entry / OTP / WebAuthn -- the IdP's own job, ADR-006)
+  idp --> officer: new bearer JWT, acr = "urn:kyc:acr:step-up", fresh
+  officer -> inbox: retry POST /publish/SarFilingRecorded, same payload,\nstepped-up token
+  inbox -> eventLog: INSERT StoredEvent (SarFilingRecorded,\n  Signature: { SignerId: officer, SignedAt, Meaning: "approved filing",\n    Acr: "urn:kyc:acr:step-up" })
+  inbox --> officer: 202 { status: "received" }
+  note right of eventLog
+    Non-repudiation reuses the existing hash chain (ADR-019,
+    ADR-066) -- no new tamper-evidence primitive. The actual
+    FinCEN BSA E-Filing submission is a separate, out-of-scope
+    step (ADR-072's IInterchangeFormatAdapter seam, not built here).
+  end note
+end
+@enduml

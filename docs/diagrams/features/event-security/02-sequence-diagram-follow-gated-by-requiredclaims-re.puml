@@ -1,0 +1,22 @@
+@startuml
+autonumber
+actor "Consuming System" as follower
+participant "GraphQL Gateway\n(HotChocolate, graphql-sse over SSE)" as gateway
+participant "Auth\n(events:follow scope)" as scopeAuth
+database "Event & Schema Store" as db
+
+follower -> gateway: QUERY /graphql\nBearer <JWT>\nbody: subscription { onOrderPlaced { ... } }
+gateway -> scopeAuth: validate events:follow scope
+alt missing scope
+  scopeAuth --> follower: connection rejected 403
+else scope present
+  gateway -> db: SELECT EventTypeDefinition WHERE Name = event-type AND IsActive
+  alt event-type unknown (no matching subscription field in this AppId's schema)
+    gateway --> follower: GraphQL validation error, rejected before any\nresolver runs -- see follow-subscribe.md (ADR-037)
+  else a Read-direction RequiredClaims entry is configured and caller's token holds none of them
+    gateway --> follower: connection rejected 403 (missing required claim for event type)
+  else no Read-direction entry, or caller holds at least one (OR semantics, ADR-050)
+    gateway -> gateway: proceed to where-argument validation, SSE stream\n(see follow-subscribe.md) -- checked once, not per event
+  end
+end
+@enduml

@@ -25,6 +25,8 @@ dropped or endlessly retried. **Source:** also
 [Hohpe & Woolf](https://www.enterpriseintegrationpatterns.com/patterns/messaging/DeadLetterChannel.html) —
 the standard name for this shape.
 
+![The pattern diagram](../diagrams/patterns/idempotent-receiver-and-inbox/01-the-pattern.svg)
+
 ```plantuml
 @startuml Idempotent_Inbox_Sequence
 autonumber

@@ -1,0 +1,9 @@
+@startsalt
+{
+  { "Patient S-0091 -- Continuous Monitoring" }
+  ..
+  { "Vitals waveform:" | "[ Loading secure playback link... ]" }
+  ..
+  "Requesting a single-use playback ticket (ADR-040) before\nrendering the <video> element -- the bearer JWT never\nleaves this page."
+}
+@endsalt

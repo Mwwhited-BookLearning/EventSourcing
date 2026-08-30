@@ -1,0 +1,47 @@
+@startuml
+autonumber
+participant "Router\n(ADR-023)" as router
+participant "IPayloadMasker\n(see masking.md)" as masker
+database "Event Log" as eventLog
+database "WebhookOutbox /\nWebhookDeliveryCursor" as outboxDb
+participant "WebhookOutboxPump\n(leader-elected, ADR-078)" as pump
+participant "Webhook Target\n(external HTTPS endpoint)" as target
+
+router -> outboxDb: does this StoredEvent's EventType/EntityType\nmatch an Active WebhookSubscription.EventTypes\nfor this AppId?
+alt no matching Active subscription
+  router -> router: nothing enqueued
+else one or more matches
+  router -> masker: mask(Payload, subscription.FixedClaimsSnapshot)
+  masker --> router: masked EventPayloadSnapshot
+  router -> outboxDb: INSERT WebhookOutbox\n{ SequenceNumber, SubscriptionId, EventPayloadSnapshot, EnqueuedAt }
+  note right of outboxDb
+    A durable table, never an in-memory queue --
+    nothing queued here is lost to an unclean
+    process termination (ADR-060/ADR-033's own
+    fault-tolerance bar).
+  end note
+end
+... asynchronously, on WebhookOutboxPump's poll interval ...
+loop while WebhookOutbox rows exist past the cursor
+  pump -> outboxDb: SELECT WebhookOutbox WHERE SequenceNumber >\n  WebhookDeliveryCursor.LastDeliveredSequenceNumber\n  ORDER BY SequenceNumber
+  pump -> pump: build Standard Webhooks headers:\nwebhook-id (doubles as idempotency key),\nwebhook-timestamp,\nwebhook-signature = HMAC-SHA256("{id}.{timestamp}.{payload}", SigningSecret)
+  pump -> target: POST TargetUrl\nwebhook-id / webhook-timestamp / webhook-signature\nbody: EventPayloadSnapshot
+  alt 2xx response
+    target --> pump: 200
+    pump -> outboxDb: UPDATE WebhookDeliveryCursor\nSET LastDeliveredSequenceNumber, LastAttemptAt, LastSuccessAt
+  else non-2xx / timeout, retries remain
+    target --> pump: error or timeout
+    pump -> pump: schedule retry after exponential\nbackoff + jitter (Standard Webhooks' own recommendation)
+  else retries exhausted
+    pump -> eventLog: append reserved "WebhookDeliveryFailed" event\n{ SubscriptionId, TargetSequenceNumber, Attempts, LastError }
+    note right of eventLog
+      A reserved, platform-level event type, never
+      registered via PUT /registry/{event-type} -- the
+      same "make the failure an inspectable record"
+      posture ADR-020's EventUpcastFailed already
+      established. Queryable through the ordinary
+      Lineage API, not just operator logs (ADR-060).
+    end note
+  end
+end
+@enduml

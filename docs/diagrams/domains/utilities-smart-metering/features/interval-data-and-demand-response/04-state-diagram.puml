@@ -1,0 +1,27 @@
+@startuml
+[*] --> Detected : DemandResponseTriggered published\nAuthorityStatus: pending_review (ADR-042)
+
+Detected --> PendingValidation : folds into LiveEntityStoreRow\nimmediately, isAuthoritative: false (ADR-042)
+
+state PendingValidation {
+  PendingValidation : awaiting an authorityDecision event (ADR-035)
+}
+
+PendingValidation --> Accepted : authorityDecision\ndecision: accept
+PendingValidation --> Rejected : authorityDecision\ndecision: reject\n(tamper / false-positive)
+
+Accepted --> Dispatched : demand-response action\nexecuted (app-level; may notify\nvia ADR-060 webhook)
+Dispatched --> Completed : the triggering interval window\n(TelemetryPointer.ToTimestamp) elapses
+
+Rejected --> [*]
+Completed --> [*]
+
+note right of Accepted
+  Only Accepted onward folds into the
+  authoritative MeterEntityStoreRow
+  (ADR-042). Rejected never does --
+  the event stays visible in the Event
+  Log and LiveEntityStoreRow, re-labeled,
+  never deleted (README.md).
+end note
+@enduml

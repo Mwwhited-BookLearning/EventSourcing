@@ -1,0 +1,10 @@
+@startsalt
+{
+  { "Select a device to connect -- example.com wants to pair" }
+  ..
+  ( ) SerialMonitor-A4F2
+  ( ) SerialMonitor-9B01
+  ..
+  [Cancel] | [Pair]
+}
+@endsalt

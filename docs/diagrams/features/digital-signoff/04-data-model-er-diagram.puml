@@ -1,0 +1,53 @@
+@startuml
+hide circle
+skinparam linetype ortho
+
+entity "EventTypeDefinition" as etd {
+  * AppId : string <<PK>>
+  * Name : string <<PK>>
+  * Version : int <<PK>>
+  --
+  RequiredSignature : RequiredSignature?
+  ' null = no sign-off required (ADR-066)
+}
+
+entity "RequiredSignature" as reqSig {
+  AcrValues : list<string>
+  ' RFC 9470 acr_values
+  MaxAge : int?
+  ' RFC 9470 max_age, seconds
+}
+
+entity "StoredEvent" as event {
+  * SequenceNumber : bigint <<PK>>
+  --
+  EventId : uuid <<unique>>
+  ActorId : string
+  ' verified caller identity, ADR-064 -- always populated
+  ChainHash : string
+  Signature : Signature?
+}
+
+entity "Signature" as sig {
+  SignerId : string
+  ' denormalized copy of ActorId, kept explicit (ADR-066)
+  SignedAt : datetimeoffset
+  Meaning : string
+  ' required -- rejected if absent (ADR-066)
+  Acr : string
+  ' the acr claim the signing token actually carried
+  RFC3161Timestamp : byte[]?
+  ' optional -- a TSA TimeStampToken over ChainHash (ADR-086)
+}
+
+etd ||--o| reqSig : "RequiredSignature, when configured"
+event ||--o| sig : "Signature, when RequiredSignature\nwas satisfied at publish time"
+
+note right of sig
+  RFC3161Timestamp is timestamped over hash(ChainHash),
+  not Payload directly -- ChainHash already transitively
+  commits to the full event content (ADR-019). SignerId/
+  Signature are categorically exempt from ADR-057's
+  crypto-shredding erasure (GDPR Art. 17(3)(b)/(e)).
+end note
+@enduml

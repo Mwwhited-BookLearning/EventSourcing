@@ -60,6 +60,8 @@ This doc deliberately does **not** re-derive:
 
 ## Sequence diagram — customer delegates a time-boxed, entity-scoped grant to a relying party
 
+![Sequence diagram — customer delegates a time-boxed, entity-scoped grant to a relying party](../../../diagrams/domains/digital-identity-kyc/features/relying-party-verification-request/01-sequence-diagram-customer-delegates-a-time-boxed-e.svg)
+
 ```plantuml
 @startuml RelyingParty_Delegate_Sequence
 autonumber
@@ -85,6 +87,8 @@ customer -> bank: deliver the raw UCAN delegation token out-of-band\n(e.g. a dee
 ```
 
 ## Sequence diagram — relying party exchanges the grant, reads the claims-gated result, and the read is logged
+
+![Sequence diagram — relying party exchanges the grant, reads the claims-gated result, and the read is logged](../../../diagrams/domains/digital-identity-kyc/features/relying-party-verification-request/02-sequence-diagram-relying-party-exchanges-the-grant.svg)
 
 ```plantuml
 @startuml RelyingParty_ReadAndLog_Sequence
@@ -125,6 +129,8 @@ end
 ```
 
 ## Data model (ER diagram)
+
+![Data model (ER diagram)](../../../diagrams/domains/digital-identity-kyc/features/relying-party-verification-request/03-data-model-er-diagram.svg)
 
 ```plantuml
 @startuml RelyingParty_ER
@@ -214,6 +220,8 @@ public class AccessGrantRevokedPayload
 
 ## State machine — an access grant's lifecycle
 
+![State machine — an access grant's lifecycle diagram](../../../diagrams/domains/digital-identity-kyc/features/relying-party-verification-request/04-state-machine-an-access-grant-s-lifecycle.svg)
+
 ```plantuml
 @startuml RelyingParty_Grant_State
 [*] --> Issued : accessGrant published\n(customer delegates a UCAN\ncapped at their own claim level, ADR-043)
@@ -247,6 +255,8 @@ initiating the out-of-band request the first sequence diagram's final
 step delivers to the customer). Transition: clicking "Send request"
 generates a shareable link/QR code and notifies the customer.
 
+![Salt (UI mockup) — three screens, request through confirmation diagram](../../../diagrams/domains/digital-identity-kyc/features/relying-party-verification-request/05-salt-ui-mockup-three-screens-request-through-confi.svg)
+
 ```plantuml
 @startsalt
 {
@@ -268,6 +278,8 @@ UCAN-minting + `POST /publish/accessGrant` steps). Transition: clicking
 event, and hands the token back to acme-bank out-of-band; "Deny" ends the
 flow with nothing published at all.
 
+![Salt (UI mockup) — three screens, request through confirmation diagram](../../../diagrams/domains/digital-identity-kyc/features/relying-party-verification-request/06-salt-ui-mockup-three-screens-request-through-confi.svg)
+
 ```plantuml
 @startsalt
 {
@@ -288,6 +300,8 @@ dashboard, corresponds to the second sequence diagram's masked GraphQL
 response). This is the terminal screen for this flow — no further
 transition; the read has already been logged server-side (`ADR-045`) by
 the time this renders.
+
+![Salt (UI mockup) — three screens, request through confirmation diagram](../../../diagrams/domains/digital-identity-kyc/features/relying-party-verification-request/07-salt-ui-mockup-three-screens-request-through-confi.svg)
 
 ```plantuml
 @startsalt

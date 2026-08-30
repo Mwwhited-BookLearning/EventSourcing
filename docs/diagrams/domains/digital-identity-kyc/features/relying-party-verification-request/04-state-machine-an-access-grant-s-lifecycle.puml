@@ -1,0 +1,23 @@
+@startuml
+[*] --> Issued : accessGrant published\n(customer delegates a UCAN\ncapped at their own claim level, ADR-043)
+Issued --> Active : delivered to the relying party out-of-band\n(not a state change in this design --\nthe UCAN itself is self-verifying, ADR-036)
+Active --> Active : relying party exchanges + reads again,\nbefore ExpiresAt (a grant is not consumed\nby one use -- multiple reads are allowed)
+Active --> Expired : ExpiresAt passes with no accessGrantRevoked\n(checked live, at each token-exchange/introspection\ncall -- ADR-043's own revocation-check requirement)
+Active --> Revoked : accessGrantRevoked published by the customer,\nbefore natural expiration
+Expired --> [*]
+Revoked --> [*]
+
+note right of Active
+  Every successful read under this grant writes its
+  own AccessLogEntry (ADR-045) -- the grant's OWN state
+  here is unaffected by how many times it's used; only
+  time and an explicit revocation move it forward.
+end note
+
+note right of Expired
+  A token-exchange attempt against an expired grant fails
+  with invalid_grant (ADR-036's mechanics) before any
+  GraphQL read is ever reached -- no AccessLogEntry for
+  a failed exchange, only for an actual read (ADR-045).
+end note
+@enduml

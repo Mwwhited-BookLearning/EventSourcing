@@ -1,0 +1,45 @@
+@startuml
+autonumber
+actor "Consuming System" as follower
+participant "GraphQL Gateway\n(HotChocolate, graphql-sse over SSE)" as gateway
+participant "Auth\n(JWT Bearer + scope policy)" as auth
+participant "GraphQlFilterPredicateBuilder\n(see filter-pushdown.md)" as filtering
+participant "EventTailReader" as tailReader
+database "Event & Schema Store" as db
+
+follower -> gateway: QUERY /graphql\nAuthorization: Bearer <JWT>\nbody: subscription { on_demo_OrderPlaced(where: [{...}], mode: TAIL[, fromSequenceNumber: N]) { ... } }
+note right of follower
+  Field name is on_{appId}_{name} (FollowSubscriptionTypeModule, ADR-037's
+  own per-AppId qualification, needed since two AppIds can register the
+  same event-type Name -- ADR-030); this doc uses AppId "demo" throughout.
+end note
+gateway -> auth: validate token (header only -- no query-string fallback, ADR-012) + events:follow scope
+alt missing/invalid token
+  auth --> follower: connection rejected 401
+else valid token, missing scope
+  auth --> follower: connection rejected 403
+else authorized
+  alt event type has no corresponding subscription field in this AppId's schema
+    gateway --> follower: GraphQL validation error -- unknown field, rejected\nbefore any resolver runs (ADR-037: schema is composed\nonly from registered event types)
+  else where names a field not declared FilterableField
+    gateway -> filtering: Build(fields, where) -- looked up at RESOLVER\nRUNTIME against this event type's own FilterableFields
+    filtering --> gateway: GraphQLException("... is not a declared\nFilterableField for this event type.")
+    gateway --> follower: subscription rejected with that GraphQLException\n(a runtime check, not a schema-composition-time\nvalidation error -- see filter-pushdown.md's own note\non this honest narrowing from ADR-037's literal guarantee)
+  else a Read-direction RequiredClaims entry is configured and\ncaller's token holds none of them
+    gateway --> follower: connection rejected 403 (ADR-008/ADR-050)
+  else fromSequenceNumber given with mode=TAIL (or default)
+    gateway --> follower: subscription rejected -- invalid mode/fromSequenceNumber\ncombination (ADR-010)
+  else where valid or absent, mode valid
+    gateway -> filtering: Build(fields, where) -- succeeds, predicate built
+    gateway -> gateway: initialize lastSeen (see follow-tail-vs-replay-cursor\nin 06-solution-structure.md):\nmode=TAIL -> current max SequenceNumber\nmode=REPLAY -> fromSequenceNumber ?? 0
+    gateway -> follower: graphql-sse "distinct connections" SSE stream open (200)
+    loop every poll interval, while connection open
+      gateway -> tailReader: poll WHERE SequenceNumber > lastSeen AND predicate
+      tailReader -> db: SELECT ... (predicate pushed down, see filter-pushdown.md)
+      db --> tailReader: matching StoredEvent rows (if any)
+      tailReader --> gateway: matching events
+      gateway -> follower: SSE "next" event(s): data{ on_demo_OrderPlaced: { ...selected fields,\nparentEventIds (any restricted parent omitted, ADR-008) } }
+    end
+  end
+end
+@enduml

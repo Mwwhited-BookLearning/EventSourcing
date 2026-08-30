@@ -1,0 +1,68 @@
+@startuml
+autonumber
+actor "OBD-II Telematics Device\n(vehicle veh-773)" as device
+participant "Telemetry Ingest API" as ingest
+database "Telemetry Channel Store" as tstore
+participant "Trip Scoring Detector\n(app-specific, ADR-031 out of framework scope)" as detector
+participant "PublishEndpoint\n(Inbox)" as inbox
+participant "Router" as router
+participant "EventStore.Fold" as fold
+database "Event Log" as eventLog
+database "Entity Store" as entityStore
+actor "Adjuster A\n(reviewing the claim)" as adjusterA
+participant "Token Exchange\n(POST /oauth/token, ADR-036 reused by ADR-043)" as idp
+actor "Adjuster B / Medical Reviewer\n(grantee)" as adjusterB
+participant "GraphQL Gateway" as gateway
+
+device -> ingest: POST /telemetry/veh-773-obd2/samples\n{ startTimestamp, sampleIntervalMicros, values: [speed, harshBraking, hardAccel, ...] }
+ingest -> tstore: append batch (ContentKind: RawScalar, no schema check, ADR-031)
+tstore --> ingest: 202
+...repeats every few seconds for the duration of the trip...
+== trip ends (ignition off) ==
+detector -> tstore: GET /telemetry/veh-773-obd2/samples?mode=tail
+tstore --> detector: samples spanning the trip window
+detector -> detector: compute RiskScore, HarshBrakingCount,\nHardAccelerationCount, DistanceMiles\n(domain-specific scoring model, ADR-031 takes no position)
+detector -> inbox: POST /publish/TripScored\n{ payload: { TripId: "trip-482", PolicyId: "pol-55",\n  RiskScore: 72, HarshBrakingCount: 4, DistanceMiles: 18.3 },\n  telemetryPointer: [{ channelId: "veh-773-obd2",\n    fromTimestamp: tripStart, toTimestamp: tripEnd }] }
+inbox -> eventLog: INSERT StoredEvent (EntityIdField "$.TripId" resolves EntityId "acme-ubi:Trip:trip-482")
+router -> fold: fold(TripScored)
+fold -> entityStore: UPSERT EntityStoreRow "acme-ubi:Trip:trip-482"
+inbox --> detector: 202 { entityId: "acme-ubi:Trip:trip-482", schemaStatus: "conformant" }
+== policyholder files a claim referencing the scored trip ==
+actor "Policyholder" as policyholder
+policyholder -> inbox: POST /publish/ClaimFiled\n{ payload: { ClaimId: "claim-9911", PolicyId: "pol-55",\n  TripId: "trip-482", IncidentTimestamp, ClaimAmount: 4200.00 },\n  parentEventIds: [tripScoredEventId] }
+note right of inbox
+  parentEventIds is causal derivation (ADR-005) --
+  a DIFFERENT axis from EntityId above: "this claim's
+  risk context derives from trip-482's score," not
+  "this event patches trip-482." Neither subsumes
+  the other (entity-concept.md).
+end note
+inbox -> eventLog: INSERT StoredEvent + EventParent(ClaimFiled -> TripScored)
+router -> fold: fold(ClaimFiled)
+fold -> entityStore: INSERT EntityStoreRow "acme-ubi:Claim:claim-9911"\n(Data: { ClaimStatus: "filed", RiskScoreAtFiling: 72, ... })
+== adjuster A grants Adjuster B a secondary-opinion read grant (ADR-043) ==
+adjusterA -> inbox: POST /publish/AccessGrant\n{ payload: { GranteeDid: "did:key:...B",\n  DelegatedClaim: "claims:read", EntityScope: "acme-ubi:Claim:claim-9911",\n  ExpiresAt: "2026-08-01T00:00:00Z" } }
+note right of adjusterA
+  UCAN delegation capped at Adjuster A's own held claim
+  (claims:read), scoped to this one EntityId, not blanket
+  clearance across every claim (ADR-043). Mechanics of the
+  delegation chain itself: did-ucan-attestation.md.
+end note
+inbox -> eventLog: INSERT StoredEvent (AccessGrant, ordinary registered event type)
+adjusterB -> idp: POST /oauth/token\ngrant_type=urn:ietf:params:oauth:grant-type:token-exchange\n(presents the UCAN delegation)
+alt grant still valid (not expired, not revoked)
+  idp --> adjusterB: 200 { access_token: <JWT carrying\n  claims:read + entityScope: "acme-ubi:Claim:claim-9911" } }
+  adjusterB -> gateway: QUERY claim(entityId: "acme-ubi:Claim:claim-9911")\nAuthorization: Bearer <JWT>
+  gateway -> entityStore: SELECT EntityStoreRow WHERE EntityId = "acme-ubi:Claim:claim-9911"
+  gateway -> gateway: check claims:read AND entityScope matches (ADR-043's RLS-shaped check)
+  gateway --> adjusterB: 200 { ClaimId, RiskScoreAtFiling: 72,\n  ClaimAmount: 4200.00, ClaimStatus: "under_review" }
+else grant expired, or revoked before natural expiration\n(AccessGrantRevoked published in the meantime)
+  idp --> adjusterB: 400 invalid_grant
+  note right of idp
+    Same operational requirement ADR-040's ticket
+    consumption already has -- a still-unexpired-but-
+    revoked credential must still fail at exchange time,
+    not just rely on the UCAN's own exp (ADR-043).
+  end note
+end
+@enduml

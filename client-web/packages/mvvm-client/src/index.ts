@@ -8,6 +8,7 @@
 // added later.
 export * from './api/authClient'
 export * from './api/dpop'
+export * from './api/entityQueryBuilder'
 export * from './api/graphqlClient'
 export * from './api/localeClient'
 export * from './api/playbackClient'
@@ -17,6 +18,7 @@ export * from './api/streamingClient'
 export * from './api/subscriptionBuilder'
 export * from './api/ucan'
 
+export * from './composables/useEntityBrowserQuery'
 export * from './composables/useEntityViewActions'
 export * from './composables/useEventComposer'
 export * from './composables/useLineageExportAndPlayback'

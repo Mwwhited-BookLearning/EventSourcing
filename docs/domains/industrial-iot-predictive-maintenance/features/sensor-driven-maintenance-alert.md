@@ -84,6 +84,8 @@ that prose, not copied from an existing file.
 
 ## Sequence diagram — confident alert vs. low-confidence alert pending review
 
+![Sequence diagram — confident alert vs. low-confidence alert pending review](../../../diagrams/domains/industrial-iot-predictive-maintenance/features/sensor-driven-maintenance-alert/01-sequence-diagram-confident-alert-vs-low-confidence.svg)
+
 ```plantuml
 @startuml MaintenanceAlert_Detection_Sequence
 autonumber
@@ -139,6 +141,8 @@ end
 
 ## Sequence diagram — technician field-verification and channel-lag detection
 
+![Sequence diagram — technician field-verification and channel-lag detection](../../../diagrams/domains/industrial-iot-predictive-maintenance/features/sensor-driven-maintenance-alert/02-sequence-diagram-technician-field-verification-and.svg)
+
 ```plantuml
 @startuml MaintenanceAlert_Verification_Sequence
 autonumber
@@ -183,6 +187,8 @@ end
 ```
 
 ## Data model (ER diagram)
+
+![Data model (ER diagram)](../../../diagrams/domains/industrial-iot-predictive-maintenance/features/sensor-driven-maintenance-alert/03-data-model-er-diagram.svg)
 
 ```plantuml
 @startuml SensorDrivenMaintenanceAlert_ER
@@ -292,6 +298,8 @@ diagram shows only what this doc's own scenarios touch.
 
 ## State machine — `MaintenanceAlertRaised` lifecycle
 
+![State machine — `MaintenanceAlertRaised` lifecycle diagram](../../../diagrams/domains/industrial-iot-predictive-maintenance/features/sensor-driven-maintenance-alert/04-state-machine-maintenancealertraised-lifecycle.svg)
+
 ```plantuml
 @startuml MaintenanceAlert_Lifecycle
 [*] --> Raised
@@ -330,6 +338,8 @@ isn't designed here.
 
 ### Screen 1: Plant operator dashboard — maintenance-alert queue across assets
 
+![Screen 1: Plant operator dashboard — maintenance-alert queue across assets diagram](../../../diagrams/domains/industrial-iot-predictive-maintenance/features/sensor-driven-maintenance-alert/05-screen-1-plant-operator-dashboard-maintenance-aler.svg)
+
 ```plantuml
 @startsalt
 {
@@ -354,6 +364,8 @@ clicking an already-`accepted` row like `alert-10` instead skips
 straight to Screen 3, since no decision is outstanding.
 
 ### Screen 2: Technician's field-verification screen
+
+![Screen 2: Technician's field-verification screen diagram](../../../diagrams/domains/industrial-iot-predictive-maintenance/features/sensor-driven-maintenance-alert/06-screen-2-technician-s-field-verification-screen.svg)
 
 ```plantuml
 @startsalt
@@ -385,6 +397,8 @@ Screen 3 at all, staying visible only on Screen 1, re-labeled
 `Dismissed`, never deleted.
 
 ### Screen 3: Confirmed record, notified downstream
+
+![Screen 3: Confirmed record, notified downstream diagram](../../../diagrams/domains/industrial-iot-predictive-maintenance/features/sensor-driven-maintenance-alert/07-screen-3-confirmed-record-notified-downstream.svg)
 
 ```plantuml
 @startsalt

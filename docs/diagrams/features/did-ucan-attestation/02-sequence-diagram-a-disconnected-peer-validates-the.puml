@@ -1,0 +1,19 @@
+@startuml
+autonumber
+participant "Origin server" as origin
+participant "Peer Sync\nOutbox/Inbox (ADR-033)" as sync
+participant "Peer server\n(itself disconnected from\nthe identity provider)" as peer
+database "Peer's local Event & Entity Store" as peerDb
+
+origin -> sync: replicate StoredEvent\n(AttestedClaims = raw UCAN or exchanged JWT, AuthorityStatus, ...)
+sync -> peer: deliver (gossip topology, fault/abend-tolerant)
+peer -> peer: validate UCAN delegation chain locally\n(self-verifying signature chain -- no callback needed)
+peer -> peerDb: fold event; peer may independently set\nits own local AuthorityStatus/review state
+note over peer, peerDb
+  The peer never needs to reach EventStore.DevIdp to do this --
+  the whole point of UCAN over a plain OAuth token (ADR-036). If
+  the peer's local judgment differs from the origin's, that's an
+  ordinary divergence, resolved like any other (ConflictFlag,
+  ADR-024) -- not a new mechanism.
+end note
+@enduml

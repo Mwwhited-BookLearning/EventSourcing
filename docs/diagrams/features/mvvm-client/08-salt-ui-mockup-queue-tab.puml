@@ -1,0 +1,13 @@
+@startsalt
+{
+  { "Principal Investigator Queue" }
+  ..
+  { "Reviewing as (PI)" | "pi-1" }
+  ..
+  { "alertId: alert-sim-00042, subjectId: S-SIM-00042, finding: SSEP amplitude decrease, severity: High" }
+  { "Reason"                     | "confirmed real finding" }
+  { "Reason for sign-off (Meaning) *" | "reviewed"           }
+  [ Accept ] | [ Reject ]
+  "Recorded -- accepted"
+}
+@endsalt

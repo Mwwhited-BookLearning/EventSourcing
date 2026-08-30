@@ -1,0 +1,12 @@
+@startsalt
+{
+  { "Case File Disclosure -- gov:CaseFile:c-1  (requester: J. Alvarez)" }
+  ..
+  { "Determination: PartiallyApproved" }
+  ..
+  | Field         | Value (your view)               |
+  | ApplicantName | "Maria Alvarez"                  |
+  | SSN           | "***-**-6789"  ( masked -- no case:pii-view ) |
+  | ProgramNotes  | "***"  ( masked -- no case:pii-view )         |
+}
+@endsalt

@@ -1,0 +1,15 @@
+@startsalt
+{
+  { "Reading Detail -- SerialMonitor-A4F2" }
+  ..
+  | Field                    | Value          |
+  | Timestamp (wall-clock)   | 12:00:03.500Z  |
+  | MonotonicElapsedMicros   | 3,512,000      |
+  | Expected elapsed (prior sample) | 3,500,000 |
+  | Delta                    | +12,000 us     |
+  ..
+  "Delta within tolerance -- wall clock appears consistent"
+  ..
+  [ Back to dashboard ]
+}
+@endsalt

@@ -1,0 +1,12 @@
+@startsalt
+{
+  { "Bitemporal Playback -- lab1:Evidence:ev-1" }
+  ..
+  { "SequenceNumber" | "^48810^" | [|<] [<] [ Play ] [>] [>|] }
+  ..
+  { "EvidenceId" | "ev-1" } | { "CustodyHolder" | "analyst-2" }
+  { "! LateArrivalFlag: correction recovered in place at this position" }
+  ..
+  "Scrubbing to 48809 hides this correction -- it lands\nexactly at 48810, never smoothed away (ADR-068)"
+}
+@endsalt

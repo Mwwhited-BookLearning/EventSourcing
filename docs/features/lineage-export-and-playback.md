@@ -78,6 +78,8 @@ Every event type below is registered under `AppId` `"lab1"`
 
 ## Sequence diagram — lineage-scoped export, with the no-bypass masking rule
 
+![Sequence diagram — lineage-scoped export, with the no-bypass masking rule](../diagrams/features/lineage-export-and-playback/01-sequence-diagram-lineage-scoped-export-with-the-no.svg)
+
 ```plantuml
 @startuml LineageExport_Export_Sequence
 autonumber
@@ -131,6 +133,8 @@ diagram adds nothing new to that check, only a new consumer of it.
 
 ## Sequence diagram — import at a receiving environment, preserving provenance
 
+![Sequence diagram — import at a receiving environment, preserving provenance](../diagrams/features/lineage-export-and-playback/02-sequence-diagram-import-at-a-receiving-environment.svg)
+
 ```plantuml
 @startuml LineageExport_Import_Sequence
 autonumber
@@ -161,6 +165,8 @@ conflated with this environment's own, freshly-computed
 `SequenceNumber`/`ChainHash`).
 
 ## Sequence diagram — bitemporal system-time playback, VCR-style stepping
+
+![Sequence diagram — bitemporal system-time playback, VCR-style stepping](../diagrams/features/lineage-export-and-playback/03-sequence-diagram-bitemporal-system-time-playback-v.svg)
 
 ```plantuml
 @startuml LineageExport_Playback_Sequence
@@ -207,6 +213,8 @@ elsewhere.
 
 ## Sequence diagram — self-contained offline player, load and self-verification
 
+![Sequence diagram — self-contained offline player, load and self-verification](../diagrams/features/lineage-export-and-playback/04-sequence-diagram-self-contained-offline-player-loa.svg)
+
 ```plantuml
 @startuml LineageExport_OfflinePlayer_Sequence
 autonumber
@@ -241,6 +249,8 @@ event with real causal parents. See `ADR-068`'s own "Corrected, 2026-08-11"
 Consequences note and `client-web/src/playback/verifyBundle.ts`.
 
 ## Data model (ER diagram)
+
+![Data model (ER diagram)](../diagrams/features/lineage-export-and-playback/05-data-model-er-diagram.svg)
 
 ```plantuml
 @startuml LineageExport_ER
@@ -319,6 +329,8 @@ only what export, import, and playback actually touch.
 
 ### Screen 1: Export configuration screen
 
+![Screen 1: Export configuration screen diagram](../diagrams/features/lineage-export-and-playback/06-screen-1-export-configuration-screen.svg)
+
 ```plantuml
 @startsalt
 {
@@ -343,6 +355,8 @@ the bundle, per the no-bypass rule this doc's Context paragraph states.
 
 ### Screen 2: VCR-style bitemporal playback control
 
+![Screen 2: VCR-style bitemporal playback control diagram](../diagrams/features/lineage-export-and-playback/07-screen-2-vcr-style-bitemporal-playback-control.svg)
+
 ```plantuml
 @startsalt
 {
@@ -365,6 +379,8 @@ position. Every position shown is a fresh `playbackAsOf` reconstruction
 from the third sequence diagram above, never a cached snapshot in v1.
 
 ### Screen 3: Offline player's verification-result screen
+
+![Screen 3: Offline player's verification-result screen diagram](../diagrams/features/lineage-export-and-playback/08-screen-3-offline-player-s-verification-result-scre.svg)
 
 ```plantuml
 @startsalt

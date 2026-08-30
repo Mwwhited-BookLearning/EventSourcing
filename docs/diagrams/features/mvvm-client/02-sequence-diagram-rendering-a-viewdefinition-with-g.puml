@@ -1,0 +1,37 @@
+@startuml
+autonumber
+actor User
+participant "ViewModel" as vm
+participant "ViewDefinition registry\n(cached client-side, ADR-039)" as registry
+participant "Embedded web engine\n(WebView2/WKWebView/CEF/browser)" as webengine
+participant "Generic property-list view\n(native fallback)" as fallback
+database "Client entity cache" as cache
+
+User -> vm: open entity { EntityType, EntityId }
+vm -> cache: read last-known-good snapshot (offline-safe, no network required)
+cache --> vm: Data, Extensions, ConflictFlag, LateArrivalFlag, AuthorityStatus
+vm -> registry: lookup ViewDefinition(EntityType, CompatibleSchemaVersions)
+alt matching ViewDefinition found
+  registry --> vm: TemplateContent (HTML+JS, content-addressed, ADR-039)
+  vm -> webengine: push entity state via native/JS bridge
+  webengine -> webengine: render template, bind fields
+  webengine -> webengine: resolve translation keys in bound text\nfor the negotiated locale (Accept-Language, ADR-087)
+  webengine -> webengine: render Extensions/flags via generic\nconvention where the template has no field for them
+  webengine --> User: rendered entity view
+  note right of webengine
+    Base stylesheet uses CSS Logical
+    Properties (margin-inline-start, not
+    margin-left) so this same template
+    renders correctly under an RTL locale
+    without a second, mirrored stylesheet
+    -- ADR-087.
+  end note
+  User -> webengine: interacts (click, input)
+  webengine -> vm: post message through bridge -> dispatch command\n(same downstream event a native control would produce)
+else no matching ViewDefinition (unknown entity type/version)
+  registry --> vm: not found
+  vm -> fallback: render generic property-list view
+  fallback -> fallback: list every Data + Extensions property by name,\nplus ConflictFlag/LateArrivalFlag/AuthorityStatus\n(one shared generic "flag" convention)
+  fallback --> User: rendered entity view (never a blank/failed render)
+end
+@enduml

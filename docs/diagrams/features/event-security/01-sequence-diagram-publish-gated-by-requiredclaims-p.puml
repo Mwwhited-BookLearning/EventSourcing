@@ -1,0 +1,24 @@
+@startuml
+autonumber
+actor "Publishing System" as publisher
+participant "Publish API" as endpoint
+participant "Auth\n(events:publish scope)" as scopeAuth
+participant "SchemaRegistryClient" as registryClient
+database "Event & Schema Store" as db
+
+publisher -> endpoint: POST /publish/{event-type}\nBearer <JWT>
+endpoint -> scopeAuth: validate events:publish scope
+alt missing scope
+  scopeAuth --> publisher: 403
+else scope present
+  endpoint -> registryClient: get active EventTypeDefinition
+  registryClient -> db: SELECT ... WHERE Name = event-type AND IsActive
+  alt event-type unknown
+    registryClient --> publisher: 404
+  else a Publish-direction RequiredClaims entry is configured and caller's token holds none of them
+    endpoint --> publisher: 403 (missing required claim for event type)
+  else no Publish-direction entry, or caller holds at least one (OR semantics, ADR-050)
+    endpoint -> endpoint: proceed to schema validation, parent-link\nvalidation, append (see publish-event.md) --\npersists with 202 + advisory SchemaStatus regardless of shape (ADR-023)
+  end
+end
+@enduml

@@ -1,0 +1,9 @@
+@startsalt
+{
+  { "Webhook Subscriptions -- App 'demo'" }
+  ..
+  | Target                          | Event types           | Active | Last success        | .        |
+  | ops.example.com/hooks/order-... | OrderPlaced, Order...  | [X]    | 2026-08-03 09:14 UTC | [ Rotate secret ] [ History ] |
+  | billing.example.com/hooks/pay.. | PaymentCaptured        | [ ]    | (never)              | [ Rotate secret ] [ History ] |
+}
+@endsalt

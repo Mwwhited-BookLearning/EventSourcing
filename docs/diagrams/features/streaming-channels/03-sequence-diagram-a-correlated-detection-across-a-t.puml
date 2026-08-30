@@ -1,0 +1,29 @@
+@startuml
+autonumber
+participant "Detector Worker" as detector
+participant "Telemetry Read API" as read
+database "Telemetry Store" as tdb
+participant "Publish API" as publish
+participant "EventAppender" as appender
+database "Event & Schema Store" as edb
+
+note over detector, tdb
+  32-electrode EEG montage: channels "eeg-ch1".."eeg-ch32" were all
+  registered with ThreadId "session-9f2" (ADR-081) -- one logical
+  recording, 32 simultaneous ChannelIds
+end note
+
+detector -> read: GET /telemetry/sessions/session-9f2/samples?mode=tail\n(ThreadId-scoped tail -- ADR-081)
+read -> tdb: SELECT ... WHERE ChannelId IN (SELECT ChannelId FROM TelemetryChannel WHERE ThreadId = 'session-9f2')\nAND Timestamp > lastSeen
+tdb --> read: TelemetrySample rows across all 32 channels, grouped by ThreadId
+read --> detector: one grouped session view (not 32 unrelated channel streams)
+detector -> detector: apply correlation logic across channels\n(a seizure signature visible on several channels at once)
+alt correlated pattern found across channels "eeg-ch3", "eeg-ch7", "eeg-ch12"
+  detector -> publish: POST /publish/SeizureSignatureDetected\n{ payload: {...}, telemetryPointer: [\n    { channelId: "eeg-ch3", threadId: "session-9f2", fromTimestamp: t0, toTimestamp: t1 },\n    { channelId: "eeg-ch7", threadId: "session-9f2", fromTimestamp: t0, toTimestamp: t1 },\n    { channelId: "eeg-ch12", threadId: "session-9f2", fromTimestamp: t0, toTimestamp: t1 } ] }
+  publish -> appender: append(StoredEvent { ..., TelemetryPointer })\n(List<TelemetryPointerEntry>, one entry per contributing channel -- ADR-081)
+  appender -> edb: INSERT StoredEvent
+  appender --> detector: 202 { correlationId, status, schemaStatus, entityId }
+else no cross-channel pattern found this poll
+  detector -> detector: continue tailing the grouped session
+end
+@enduml

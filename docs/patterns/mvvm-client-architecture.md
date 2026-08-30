@@ -15,6 +15,8 @@ building WPF apps"](https://learn.microsoft.com/en-us/archive/blogs/johngossman/
 beyond it (WinUI, MAUI, Blazor, and — via each framework's own reactivity
 system rather than XAML binding — Angular, Vue, Knockout).
 
+![The pattern diagram](../diagrams/patterns/mvvm-client-architecture/01-the-pattern.svg)
+
 ```plantuml
 @startuml MVVM_Sequence
 autonumber
@@ -97,6 +99,8 @@ named for what a Vue codebase actually calls them:
 A `.vue` file should contain almost no logic — a `<script setup>` block
 that fetches, transforms, or validates is doing ViewModel work in the
 View layer, and that logic belongs in a composable instead.
+
+![Concrete implementation: Vue 3 (data / actions / structure / presentation / styling) diagram](../diagrams/patterns/mvvm-client-architecture/02-concrete-implementation-vue-3-data-actions-structu.svg)
 
 ```plantuml
 @startuml MVVM_Vue_Component
@@ -210,6 +214,8 @@ keeps `fetch`/HTTP concerns out of the View entirely.
    `composables/use<Domain>Actions.js`.
 
 #### Salt (UI mockup) — `OrderTable.vue`
+
+![Salt (UI mockup) — `OrderTable.vue` diagram](../diagrams/patterns/mvvm-client-architecture/03-salt-ui-mockup-ordertable-vue.svg)
 
 ```plantuml
 @startsalt

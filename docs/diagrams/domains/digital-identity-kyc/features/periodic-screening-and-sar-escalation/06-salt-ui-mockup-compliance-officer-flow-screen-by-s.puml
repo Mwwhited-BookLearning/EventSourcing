@@ -1,0 +1,14 @@
+@startsalt
+{
+  { "Match Detail -- applicant-1001" }
+  ..
+  { "Matched name"       | "J*** S****  ( masked, ADR-009 )" }
+  { "List"                | "OFAC-SDN" }
+  { "Match confidence"    | "0.87" }
+  { "List entry ref"      | "***  ( masked )" }
+  ..
+  "Decision reason (required):"
+  { "____________________________________" }
+  [ Confirm Hit ] | [ Clear as False Positive ]
+}
+@endsalt

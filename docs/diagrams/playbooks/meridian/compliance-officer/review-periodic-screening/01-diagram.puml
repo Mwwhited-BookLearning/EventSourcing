@@ -1,0 +1,31 @@
+@startuml
+autonumber
+participant "Screening worker\n(ISanctionsScreeningProvider)" as worker
+participant "PublishEndpoint\n(Inbox)" as inbox
+actor "Compliance officer\n(identity:aml-review)" as officer
+actor "Any other caller" as other
+database "Entity Store\n(kyc:ApplicantIdentity)" as entityStore
+database "Live View" as liveView
+
+worker -> inbox: POST /publish/SanctionsScreeningPerformed\n{ ApplicantId, ScreeningDate, ListsChecked, MatchFound }
+
+alt MatchFound = false (this playbook's own first seed screening)
+  inbox -> entityStore: fold (Partial) immediately, AuthorityStatus: "accepted"
+else MatchFound = true (this playbook's own second seed screening)
+  inbox -> inbox: ReviewPending: true --\nAuthorityStatus: "pending_review" (ADR-042),\nalways captured regardless of MatchConfidence
+  inbox -> liveView: fold into the Live View only\n(not yet the authoritative Entity Store)
+  other -> inbox: POST /publish/authorityDecision\n{ targetEventId, decision, decidingActorId }
+  inbox --> other: 403 Forbidden -- lacks "identity:review"\nor "identity:aml-review" (RequiredClaims OR-set)
+  officer -> inbox: POST /publish/authorityDecision\n{ targetEventId, decision: "accepted"|"rejected",\n  decidingActorId, reason }
+  alt decision = "accepted" (this playbook's own seed data)
+    inbox -> entityStore: fold now (catch-up) -- MatchedName/\nMatchedListEntryId/etc. join the authoritative record
+  else decision = "rejected" (false positive)
+    inbox -> inbox: AuthorityStatus: "rejected" --\nnever folds into the authoritative Entity Store
+  end
+end
+
+== Later: staff browse the result via client-web ==
+participant "Duplex Client\n(client-web-meridian-screening)" as client
+client -> entityStore: (via GraphQL Subscription on_kyc_SanctionsScreeningPerformed, REPLAY)
+client -> officer: Detail view -- ScreeningDate/MatchFound render;\nMatchedName/MatchedListEntryId stay masked without\nthe "identity:aml-review" reveal claim
+@enduml

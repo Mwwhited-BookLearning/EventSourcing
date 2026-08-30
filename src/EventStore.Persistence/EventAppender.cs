@@ -79,12 +79,28 @@ public static class EventAppender
             // so this is necessarily a read-prior-state, insert, then compute-and-
             // update sequence, not one single insert. LogicalClock's own "read this
             // site's most recent clock, compute the next one" follows the identical
-            // shape, in the same transaction. Serializable isolation prevents a
-            // concurrent appender's own insert from reading the same "prior tail"
-            // and producing two rows that both chain off the same predecessor.
-            await using var transaction = await db.Database.BeginTransactionAsync(IsolationLevel.Serializable, ct);
+            // shape, in the same transaction.
+            //
+            // Postgres: Read Committed, not Serializable -- AppendSerializationLock's
+            // own pg_advisory_xact_lock (acquired as the FIRST statement below)
+            // already provides real mutual exclusion between concurrent appenders,
+            // which is what actually prevents two of them from reading the same
+            // "prior tail." Serializable's own snapshot-based guarantee is not just
+            // redundant once that lock exists, it actively breaks the fix (see
+            // AppendSerializationLock's own class comment for the two prior,
+            // documented failed attempts this corrects). SQLite/SQL Server keep
+            // Serializable, completely unchanged -- neither has ever exhibited the
+            // Postgres-specific 40001 contention this exists to fix.
+            var isolationLevel = AppendSerializationLock.IsPostgres(db) ? IsolationLevel.ReadCommitted : IsolationLevel.Serializable;
+            await using var transaction = await db.Database.BeginTransactionAsync(isolationLevel, ct);
             try
             {
+                // Must be the very first statement in the transaction -- see
+                // AppendSerializationLock's own class comment for exactly why
+                // that ordering, combined with Read Committed above, is what
+                // makes this work where two earlier attempts didn't.
+                await AppendSerializationLock.AcquireAsync(db, AppendSerializationLock.EventLogTailLockKey, ct);
+
                 var prior = await db.Events
                     .AsNoTracking()
                     .OrderByDescending(e => e.SequenceNumber)

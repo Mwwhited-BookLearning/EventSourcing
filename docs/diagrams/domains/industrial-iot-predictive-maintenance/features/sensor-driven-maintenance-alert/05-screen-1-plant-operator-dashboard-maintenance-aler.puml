@@ -1,0 +1,10 @@
+@startsalt
+{
+  { "Plant Operator Dashboard -- Maintenance Alerts  (mixed isAuthoritative)" }
+  ..
+  | Alert    | Asset   | AlertSeverity | DetectorConfidence | AuthorityStatus | isAuthoritative |
+  | alert-10 | pump-42 | High          | 0.94               | accepted        | true            |
+  | alert-8  | pump-42 | Medium        | 0.41               | pending_review  | false           |
+  | alert-9  | pump-42 | High          | 0.97               | accepted        | true            |
+}
+@endsalt

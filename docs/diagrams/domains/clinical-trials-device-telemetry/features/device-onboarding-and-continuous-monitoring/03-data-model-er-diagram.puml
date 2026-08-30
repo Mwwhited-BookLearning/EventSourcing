@@ -1,0 +1,59 @@
+@startuml
+hide circle
+skinparam linetype ortho
+
+entity "EntityStoreRow\n(Device)" as device {
+  * EntityId : string <<PK>>
+  --
+  EntityType : string
+  Version : bigint
+  Data : text
+  ' DeviceId, DeviceModel, InterfaceKind, PairedToSubjectId, SiteId, PairedAt
+}
+
+entity "TelemetryChannel" as channel {
+  * ChannelId : string <<PK>>
+  --
+  AppId : string
+  EntityId : string
+  ' trial1:Patient:S-0091 -- the PATIENT, not the device (ADR-031)
+  ContentKind : enum {RawScalar, RawBinary, Media}
+  SampleType : enum {Float64, Int32}?
+  SampleIntervalMicros : bigint?
+  Origin : enum {Origin, Derived}
+  RequiredReadClaim : string?
+}
+
+entity "TelemetrySample" as sample {
+  * ChannelId : string <<PK, FK>>
+  * Timestamp : datetimeoffset <<PK>>
+  --
+  Value : bytes
+  LateArrivalFlag : bool
+}
+
+entity "StoredEvent" as event {
+  * SequenceNumber : bigint <<PK>>
+  --
+  EventId : uuid <<unique>>
+  EntityId : string
+  ' trial1:Device:dev-0091 (DeviceOnboarded);
+  ' trial1:AdverseEvent:ae-1042 (the detector's eventual publish)
+  EventType : string
+  ' DeviceOnboarded | AdverseEventReported
+  TelemetryPointer : string?
+  AuthorityStatus : string
+  AttestedClaims : text?
+}
+
+channel ||--o{ sample : "ChannelId -- real FK,\nevery sample belongs to a declared channel"
+device ..> channel : "PairedToSubjectId -- logical only;\nthe device and the channel both\nresolve to the SAME patient EntityId"
+event ..> channel : "TelemetryPointer.ChannelId -- logical only,\nNOT a DB FK (ADR-031)"
+
+note bottom of sample
+  Composite PK (ChannelId, Timestamp). No ChainHash,
+  no JsonSchema check, no Entity Store fold -- exactly
+  the per-item cost this data plane exists to avoid
+  (full detail in streaming-channels.md).
+end note
+@enduml

@@ -1,0 +1,32 @@
+@startuml
+skinparam StateFontSize 12
+
+[*] --> Reported : CaseReported published\n(AuthorityStatus: pending_review,\nexplicit review-pending marker -- ADR-035/ADR-042)
+Reported --> UnderInvestigation : investigator begins review\n(visible in the Live View, isAuthoritative:false)
+
+state Classified {
+  [*] --> Confirmed
+  [*] --> Probable
+  [*] --> Suspect
+}
+
+UnderInvestigation --> Classified : authorityDecision(decision: confirmed|probable|suspect)\nAuthorityStatus -> accepted (ADR-042 catch-up fold)
+UnderInvestigation --> NotACase : authorityDecision(decision: not_a_case)\nAuthorityStatus -> rejected (ADR-035)
+
+Classified --> ReportedUpstream : IInterchangeFormatAdapter transform +\nADR-060 webhook delivery to state/national system (ADR-072)
+ReportedUpstream --> Closed
+
+NotACase --> Closed : stays visible in the Live View,\nlabeled rejected, never deleted (ADR-042/README.md)
+
+note right of NotACase
+  Terminal for the AUTHORITATIVE Entity Store -- this case was
+  never folded there, so there is nothing to report upstream.
+end note
+
+note right of Classified
+  Confirmed/Probable/Suspect are all AuthorityStatus "accepted" --
+  the distinction is which case-definition tier was met
+  (../README.md Glossary's "Case Definition"), not a difference
+  in trust axis.
+end note
+@enduml

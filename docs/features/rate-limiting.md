@@ -46,6 +46,8 @@ of this shared Gateway mechanism.
 
 ## Sequence diagram — the Gateway selects a limiter by request kind
 
+![Sequence diagram — the Gateway selects a limiter by request kind](../diagrams/features/rate-limiting/01-sequence-diagram-the-gateway-selects-a-limiter-by-.svg)
+
 ```plantuml
 @startuml RateLimiting_Selection_Sequence
 autonumber
@@ -98,6 +100,8 @@ step later, unaffected by anything in this diagram.
 
 ## Sequence diagram — Token Bucket absorbs a burst, then rejects sustained excess
 
+![Sequence diagram — Token Bucket absorbs a burst, then rejects sustained excess](../diagrams/features/rate-limiting/02-sequence-diagram-token-bucket-absorbs-a-burst-then.svg)
+
 ```plantuml
 @startuml RateLimiting_TokenBucket_Sequence
 autonumber
@@ -138,6 +142,8 @@ gateway --> pub: 202
 ```
 
 ## Data model (ER diagram)
+
+![Data model (ER diagram)](../diagrams/features/rate-limiting/03-data-model-er-diagram.svg)
 
 ```plantuml
 @startuml RateLimiting_ER

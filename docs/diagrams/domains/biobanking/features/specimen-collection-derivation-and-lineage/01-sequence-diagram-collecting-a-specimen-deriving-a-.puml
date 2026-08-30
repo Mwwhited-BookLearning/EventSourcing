@@ -1,0 +1,39 @@
+@startuml
+autonumber
+actor "Biobank Staff\n(collection tech)" as staff
+participant "PublishEndpoint\n(Inbox)" as inbox
+participant "Router / EventStore.Fold" as fold
+database "Event Log" as eventLog
+database "Entity Store" as entityStore
+actor "Lab Technician\n(derives DNA extract)" as labTech
+actor "Consuming System\n(lineage viewer)" as viewer
+participant "GraphQL Gateway" as gql
+
+staff -> inbox: POST /publish/SpecimenCollected\n{ payload: { SpecimenId: "spec-001", SpecimenType: "Blood",\n  DonorReference: "donor-77", CollectionDate: "2026-07-01" } }
+inbox -> eventLog: INSERT StoredEvent\n(EntityId: "biobank:Specimen:spec-001", ActorId: "staff-12",\n no parentEventIds -- origin event, ADR-005)
+inbox --> staff: 202 { correlationId, status: "received" }
+fold -> entityStore: INSERT EntityStoreRow\n(EntityId: "biobank:Specimen:spec-001", Data: { SpecimenType: "Blood", ... })
+
+...later, in the lab...
+
+labTech -> inbox: POST /publish/SpecimenDerived\n{ payload: { SpecimenId: "spec-001-dna", DerivedFrom: "spec-001",\n  SpecimenType: "DNA Extract", CollectionDate: "2026-07-03" },\n  parentEventIds: ["<eventId of the SpecimenCollected event above>"] }
+inbox -> eventLog: validate parentEventIds under ParentValidationMode\n(Strict for SpecimenDerived -- parent must already exist, ADR-005)
+alt parent SpecimenCollected event exists (it does here)
+  inbox -> eventLog: INSERT StoredEvent\n(EntityId: "biobank:Specimen:spec-001-dna",\n EventParents row: ChildEventId -> ParentEventId)
+  inbox --> labTech: 202 { correlationId, status: "received" }
+  fold -> entityStore: INSERT EntityStoreRow\n(EntityId: "biobank:Specimen:spec-001-dna",\n Data: { SpecimenType: "DNA Extract", DerivedFrom: "spec-001" })
+end
+
+...a researcher later reviews provenance for the derived sample...
+
+viewer -> gql: QUERY { specimenLineage(entityId: "biobank:Specimen:spec-001-dna") {\n  ancestors { entityId eventType occurredAt }\n  descendants { entityId eventType occurredAt } } }
+gql -> eventLog: walk EventParents transitively from the derived sample's\noriginating event (ADR-005 traversal, event-chains.md)
+eventLog --> gql: [ { entityId: "biobank:Specimen:spec-001",\n    eventType: "SpecimenCollected", occurredAt: "2026-07-01" } ]
+gql --> viewer: 200 { ancestors: [ { specimen "spec-001" } ], descendants: [] }
+note over viewer, gql
+  Every read through this Gateway also writes an ADR-045 AccessLogEntry
+  (ReaderActorId, ReaderTrustBasis) -- not repeated per-call in this
+  diagram, see the second sequence diagram below for the delegated-access
+  case where trust basis actually varies.
+end note
+@enduml

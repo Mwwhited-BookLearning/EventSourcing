@@ -1,0 +1,73 @@
+@startuml
+hide circle
+skinparam linetype ortho
+
+entity "TripScored (StoredEvent)" as trip {
+  * SequenceNumber : bigint <<PK>>
+  --
+  EventId : uuid <<unique>>
+  EntityId : string
+  ' "acme-ubi:Trip:trip-482" -- resolved via EntityIdField "$.TripId"
+  TelemetryPointer : string
+  ' { ChannelId: "veh-773-obd2", FromTimestamp, ToTimestamp } -- ADR-031
+  ActorId : string
+  ' the Trip Scoring Detector's verified service identity (ADR-064)
+  AuthorityStatus : string
+  ' "accepted" -- telemetry-derived, not self-reported (ADR-035)
+  Payload : text
+  ' { TripId, PolicyId, VehicleId, RiskScore, HarshBrakingCount,
+  '   HardAccelerationCount, DistanceMiles }
+}
+
+entity "ClaimFiled (StoredEvent)" as claim {
+  * SequenceNumber : bigint <<PK>>
+  --
+  EventId : uuid <<unique>>
+  EntityId : string
+  ' "acme-ubi:Claim:claim-9911" -- a DIFFERENT EntityId than TripScored's
+  Payload : text
+  ' { ClaimId, PolicyId, TripId, IncidentTimestamp, ClaimAmount, Description }
+}
+
+entity "EventParent" as parent {
+  * ChildEventId : uuid <<PK, FK>>
+  * ParentEventId : uuid <<PK>>
+}
+
+entity "PolicyholderClaimRecord\n(EntityStoreRow)" as record {
+  * EntityId : string <<PK>>
+  --
+  EntityType : string
+  Version : bigint
+  Data : text
+  ' { ClaimId, PolicyId, TripId, RiskScoreAtFiling, ClaimAmount, ClaimStatus }
+  AuthorityStatus : string
+}
+
+entity "AccessGrant (StoredEvent)" as grant {
+  * SequenceNumber : bigint <<PK>>
+  --
+  EventId : uuid <<unique>>
+  Payload : text
+  ' { GranteeDid, DelegatedClaim, EntityScope, ExpiresAt, Reason }
+}
+
+trip ||--o{ parent : "ParentEventId -- ClaimFiled's causal derivation\npoint TO this TripScored event"
+claim ||--o{ parent : "ChildEventId -- real FK (ADR-005)"
+claim "*" --> "1" record : "folds into, same EntityId (ADR-021)"
+grant ..> record : "EntityScope names this claim's EntityId --\nlogical only, not a DB FK (ADR-043)"
+
+note right of trip
+  TripScored's EntityId ("Trip") and ClaimFiled's
+  parentEventIds (pointing at TripScored) are the
+  two deliberately different axes entity-concept.md
+  names: one says "what entity does this patch,"
+  the other says "what is this causally derived from."
+end note
+
+note bottom of grant
+  EntityScope is ADR-043's entity-scope restriction --
+  the same shape ADR-021's EntityId already uses, reused
+  as a claim-narrowing dimension, not a second ID format.
+end note
+@enduml

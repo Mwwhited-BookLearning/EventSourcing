@@ -1,0 +1,61 @@
+@startuml
+hide circle
+skinparam linetype ortho
+
+entity "ControlledTechnicalDataEvent\n(StoredEvent subset, event-log.md)" as event {
+  * SequenceNumber : bigint <<PK>>
+  --
+  EntityId : string <<FK>>
+  EventType : string
+  ActorId : string
+  Payload : text
+  Signature : Signature?
+}
+
+entity "TechnicalDataAssetEntityStoreRow\n(EntityStoreRow subset, entity-store.md)" as assetRow {
+  * EntityId : string <<PK>>
+  --
+  AssetId : string
+  UsmlCategory : string
+  Classification : string
+  AttachmentRef : string?
+  RequiredReadClaim : string?
+}
+
+entity "AppDataResidencyPolicy\n(schema-registry.md, ADR-061 -- already exists,\nnot new)" as residency {
+  * AppId : string <<PK>>
+  --
+  AllowedRegions : string[]
+}
+
+entity "AccessGrant\n(EntityStoreRow.Data shape,\nEntityType AccessGrant, ADR-043)" as grant {
+  * EntityId : string <<PK>>
+  --
+  GranterActorId : string
+  GranteeDid : string
+  DelegatedClaim : string
+  EntityScope : string
+  ExpiresAt : datetime
+  ApprovalSignature : Signature?
+}
+
+event "*" --> "1" assetRow : "folds into\n(ADR-021)"
+residency "1" ..> "*" event : "constrains outbound\nreplication of\n(ADR-061, enforced at\nADR-033's peer-sync outbox --\nnot shown on this diagram)"
+grant "*" --> "1" assetRow : "EntityScope references\n(ADR-043)"
+
+note right of assetRow
+  RequiredReadClaim here is a denormalized copy of
+  EventTypeDefinition.RequiredClaims (ADR-050) for
+  query-time convenience -- the schema registry
+  remains the source of truth, the same
+  denormalization shape EntityStoreRow already uses
+  for EntityType (entity-store.md).
+end note
+
+note right of grant
+  ApprovalSignature denormalizes the accessGrant
+  event's own StoredEvent.Signature (ADR-066,
+  Meaning "export_control_release_approval") --
+  not a second sign-off record.
+end note
+@enduml

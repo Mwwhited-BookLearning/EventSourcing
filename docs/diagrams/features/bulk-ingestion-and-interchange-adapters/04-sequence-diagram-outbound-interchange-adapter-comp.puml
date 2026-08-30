@@ -1,0 +1,16 @@
+@startuml
+autonumber
+database "Event & Schema Store" as db
+participant "Webhook Dispatcher\n(ADR-060, see webhooks.md)" as dispatcher
+participant "IchE2bR3Adapter\n(IInterchangeFormatAdapter, keyed DI)" as adapter
+participant "Webhook delivery\n(signing/retry -- ADR-060, see webhooks.md)" as delivery
+participant "EudraVigilance / FAERS\n(regulatory receiver)" as receiver
+
+db -> dispatcher: an "AdverseEventReported" event matches a\nregistered WebhookSubscription (ADR-060 -- see webhooks.md\nfor FixedClaimsSnapshot/subscription mechanics, not re-derived here)
+dispatcher -> adapter: Transform(event, targetFormat: "ICH-E2B(R3)")
+adapter -> adapter: map this framework's JsonSchema-shaped\npayload to an ICH E2B(R3) XML ICSR document
+adapter --> dispatcher: transformed XML body, ready for delivery
+dispatcher -> delivery: deliver(transformedBody)\n-- signing/retry/outbox mechanics entirely\nADR-060's own, unmodified by this transform step
+delivery -> receiver: POST <ICH E2B(R3) XML>\n(HMAC-signed per Standard Webhooks, ADR-060)
+receiver --> delivery: 2xx / retry-eligible failure\n(same handling as any other webhook delivery)
+@enduml

@@ -1,0 +1,11 @@
+@startsalt
+{
+  { "Order Management System -- New Order Ticket" }
+  ..
+  { "Account" | "acct-42" }
+  { "Symbol" | "^ACME^" } | { "Side" | "^Buy^" } | { "Quantity" | "500" } | { "Limit Price" | "41.10" }
+  ..
+  [ Submit Order ]
+  "Status: -- not yet submitted --"
+}
+@endsalt

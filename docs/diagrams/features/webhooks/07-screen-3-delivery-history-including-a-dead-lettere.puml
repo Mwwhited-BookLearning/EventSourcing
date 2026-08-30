@@ -1,0 +1,12 @@
+@startsalt
+{
+  { "ops.example.com/hooks/order-... -- Delivery History" }
+  ..
+  | SequenceNumber | Status         | Attempts | Last error                  |
+  | 48210          | delivered      | 1        | --                          |
+  | 48213          | delivered      | 3        | 503 (retried, then succeeded) |
+  | 48219          | WebhookDeliveryFailed | 6 | 404 Not Found (exhausted) |
+  ..
+  "Row 48219 is a real, queryable event -- see it via the Lineage API,\nnot just this screen (ADR-060)."
+}
+@endsalt

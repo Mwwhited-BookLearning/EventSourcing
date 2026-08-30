@@ -1,0 +1,60 @@
+@startuml
+autonumber
+actor "Reporting Clinician/Lab\n(authenticated, ADR-006)" as reporter
+participant "PublishEndpoint\n(Inbox)" as inbox
+database "Event Log" as eventLog
+participant "Router / EventStore.Fold" as fold
+database "Live Entity Store\n(ungated, ADR-042)" as liveStore
+actor "Public-Health Investigator" as investigator
+participant "AuthorityDecisionResolver" as resolver
+database "Entity Store\n(authoritative, ADR-042)" as entityStore
+
+reporter -> inbox: POST /publish/CaseReported\n{ payload: { CaseId: "case-9001", ConditionCode: "A36.9",\n  PatientIdentifier: "pt-ref-4471", ReportingFacility: "Riverside General",\n  JurisdictionRegion: "us-east" }, reviewPending: true }
+inbox -> eventLog: INSERT StoredEvent\n(EntityId: "state-example:Case:case-9001", ActorId: "clinician-88",\n AuthorityStatus: "pending_review" -- explicit review-pending marker, ADR-042)
+inbox --> reporter: 202 { correlationId, status: "received",\n  authorityStatus: "pending_review", schemaStatus: "conformant" }
+note right of reporter
+  Persisted immediately, never blocked (ADR-023). An ordinary
+  authenticated clinician/lab publish would otherwise default
+  to AuthorityStatus "accepted" (ADR-042) -- this domain's
+  intake explicitly declares review-pending because a reported
+  case isn't a confirmed CASE until an investigator applies the
+  jurisdiction's case definition (ADR-035, ../README.md Glossary).
+end note
+...asynchronously...
+fold -> liveStore: fold into CaseLiveEntityStoreRow immediately\n(isAuthoritative: false, ADR-042)
+note right of fold
+  The AUTHORITATIVE Entity Store is NOT updated yet. Every read of
+  either view also writes an AccessLogEntry (ADR-045), not shown
+  per call in this diagram.
+end note
+
+investigator -> liveStore: query the case investigation queue\n(reads CaseLiveEntityStoreRow, isAuthoritative: false)
+liveStore --> investigator: [ { CaseId: "case-9001", ConditionCode: "A36.9",\n  AuthorityStatus: "pending_review", ... } ]
+
+investigator -> inbox: POST /publish/authorityDecision\n{ payload: { targetEventId: "<CaseReported eventId>",\n  decision: "confirmed", decidingActorId: "investigator-4" } }
+inbox -> eventLog: INSERT StoredEvent (authorityDecision)
+inbox --> investigator: 202 { correlationId, status: "received" }
+...asynchronously...
+resolver -> eventLog: process authorityDecision event
+alt decision is "confirmed", "probable", or "suspect"
+  resolver -> eventLog: UPDATE target StoredEvent\nSET AuthorityStatus = "accepted",\n    AuthorityDecisionRef = <this event's EventId>
+  resolver -> entityStore: fold target CaseReported event now\n(ADR-042 catch-up, same shape as ADR-027's materialization catch-up)
+  entityStore -> entityStore: UPSERT CaseEntityStoreRow\n(ClassificationStatus = <decision>, AuthorityStatus = "accepted",\n Version++)
+  note right of entityStore
+    The Live View already showed this data (isAuthoritative:false) --
+    the authoritative store only now catches up to it.
+  end note
+else decision is "not_a_case"
+  resolver -> eventLog: UPDATE target StoredEvent\nSET AuthorityStatus = "rejected",\n    AuthorityDecisionRef = <this event's EventId>
+  note right of resolver
+    Never folds into the authoritative Entity Store (ADR-042).
+    Payload untouched -- CaseReported's data itself is not
+    "wrong," just determined not to meet the case definition.
+  end note
+  resolver -> liveStore: UPDATE CaseLiveEntityStoreRow\nSET ClassificationStatus = "NotACase", AuthorityStatus = "rejected"
+  note right of liveStore
+    Stays visible here, relabeled "rejected" -- never deleted
+    (README.md's governing principle, ADR-042).
+  end note
+end
+@enduml

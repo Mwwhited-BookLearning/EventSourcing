@@ -1,0 +1,58 @@
+@startuml
+hide circle
+skinparam linetype ortho
+
+entity "EventTypeDefinition" as etd {
+  * Name : string <<PK>>
+  * Version : int <<PK>>
+  --
+  ExpectedResponse : text?
+  ' { ResponseEventType, Within } -- null = no tracked expectation (ADR-094)
+}
+
+entity "StoredEvent" as event {
+  * SequenceNumber : bigint <<PK>>
+  --
+  EventId : uuid <<unique>>
+  EventType : string
+  Payload : text
+  RespondsToEventId : uuid?
+  ' optional on ANY publish -- Correlation Identifier (ADR-094)
+}
+
+entity "ExpectedResponseTracker" as tracker {
+  * RequestEventId : uuid <<PK>>
+  --
+  RequestEventType : string
+  ExpectedResponseEventType : string
+  DeadlineAt : datetimeoffset
+  SatisfiedByEventId : uuid?
+  SatisfiedAt : datetimeoffset?
+  EscalatedAt : datetimeoffset?
+}
+
+entity "StoredEvent\n(ExpectedResponseMissing, reserved type)" as missing {
+  * SequenceNumber : bigint <<PK>>
+  --
+  EventType : string
+  ' always "ExpectedResponseMissing" for this row shape
+  Payload : text
+  ' { RequestEventId, RequestEventType, ExpectedResponseEventType, DeadlineAt }
+  RespondsToEventId : uuid
+  ' set to the original RequestEventId -- reuses the
+  ' same generic field, not a second mechanism
+}
+
+etd ..> event : "logical only -- ExpectedResponse\nnames which EventType/Version\nthis governs (ADR-094)"
+event ||--o| tracker : "a request event with\nExpectedResponse configured\ngets exactly one tracker row"
+event ..> tracker : "RespondsToEventId on a\nResponseEventType event resolves\nSatisfiedByEventId/SatisfiedAt\n(logical only, not a DB foreign key --\nRespondsToEventId is never existence-validated)"
+tracker ..> missing : "an unsatisfied, past-deadline row\nis what triggers exactly one\nExpectedResponseMissing publish"
+
+note right of event
+  RespondsToEventId is available on every
+  StoredEvent, not gated by whether the
+  request type declared ExpectedResponse --
+  the correlation itself is always generic;
+  only the TRACKING is opt-in (ADR-094).
+end note
+@enduml

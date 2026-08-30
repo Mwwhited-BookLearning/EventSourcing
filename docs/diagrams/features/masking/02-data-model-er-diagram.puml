@@ -1,0 +1,53 @@
+@startuml
+hide circle
+skinparam linetype ortho
+
+entity "EventTypeDefinition" as etd {
+  * Name : string <<PK>>
+  * Version : int <<PK>>
+  --
+  JsonSchema : text
+}
+
+note right of etd
+  Masking rules have no entity or column of
+  their own. They live entirely inside the
+  JsonSchema text, as an x-masking extension:
+
+  "CustomerTaxId": {
+    "type": "string",
+    "x-masking": {
+      "requiredClaim": "pii:view",
+      "strategy": "FixedValue",
+      "maskedValue": "***",
+      "regulatoryClassification": "PHI",
+      "governanceBody": "HHS/OCR",
+      "regulationReference": "HIPAA 45 CFR §164.514(b)"
+    }
+  }
+
+  strategy is "FixedValue" | "PartialReveal" | "Hash"
+  (ADR-009) -- PartialReveal/Hash take their own
+  config shape instead of maskedValue (showFirst/
+  showLast/maskChar/preserveSeparators, or keyId).
+  An optional erasureScope (JSON Pointer, ADR-057)
+  names a different EntityId whose crypto-shredding
+  key protects this field, when it isn't the event's
+  own -- absent means "this event's own EntityId."
+
+  regulatoryClassification/governanceBody/
+  regulationReference are optional, schema-
+  only documentation -- read by nothing at
+  runtime, never in the value/masked/erased wrapper.
+
+  No constraint on the property's own type
+  or required-ness -- CustomerTaxId may be
+  required. Registration rejects (400)
+  x-masking placed directly on an object-
+  or array-typed property (only a scalar
+  node, or an array's scalar items, or a
+  property nested inside a complex-object
+  items schema, is valid), and rejects (400)
+  any strategy value other than the three above.
+end note
+@enduml

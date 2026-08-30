@@ -1,0 +1,65 @@
+@startuml
+hide circle
+skinparam linetype ortho
+
+entity "StoredEvent" as event {
+  * SequenceNumber : bigint <<PK>>
+  --
+  EventId : uuid <<unique>>
+  EntityId : string
+  PayloadHash : string
+  ChainHash : string
+  LateArrivalFlag : bool
+  OccurredAt : datetimeoffset
+  OriginalSequenceNumber : bigint?
+  ' set only on an IMPORTED event -- this environment's own
+  ' SequenceNumber above is always freshly assigned (ADR-068)
+  OriginalChainHash : string?
+  ImportedFrom : string?
+  ' identifies the exporting environment -- never presented
+  ' as if organically published here
+}
+
+entity "AccessLogEntry\n(ADR-045, full shape in ../data/access-log.md)" as accessLog {
+  * SequenceNumber : bigint <<PK>>
+  --
+  ReaderActorId : string
+  Action : string
+  ' "query" | "export" | "download" | ...
+  ResourceRef : string
+  ChainHash : string
+}
+
+class "ExportManifest\n(produced artifact, never a persisted table)" as manifest {
+  EventTypeDefinitionsReferenced : string[]
+  ManifestHash : string
+  ' SHA-256 over ordered ChainHash values + export metadata
+  ExportedByActorId : string
+  ExportedAt : datetimeoffset
+  FrameworkVersion : string
+  ' ADR-062's SemVer -- "matched version reads its own bundles" (ADR-068 §4)
+  RFC3161Timestamp : string?
+  ' TSA TimeStampToken obtained over ManifestHash, proving the export
+  ' existed at or before a specific time independent of the exporting
+  ' party's own system clock (ADR-086) -- matches 03-api-contracts.md's
+  ' exportLineage comment ("manifest hash + RFC 3161 timestamp (ADR-086)
+  ' over that hash"). Optional per ADR-086's own per-deployment posture.
+}
+
+class "SystemTimePlaybackResult\n(produced artifact, computed on demand -- ADR-068 v1)" as playbackResult {
+  EntityId : string
+  AsOfSequenceNumber : bigint
+  ReconstructedDataJson : string
+  LateArrivalCorrectionShown : bool
+}
+
+event ..> accessLog : "every export or playback read writes\none AccessLogEntry (ADR-045), logically,\nnot a DB FK"
+event ..> manifest : "ManifestHash is computed FROM the\nordered ChainHash values of exactly\nthe events an export selects"
+event ..> playbackResult : "folded, in arrival order, up to a\nchosen SequenceNumber cutoff"
+
+note right of event
+  OriginalSequenceNumber/OriginalChainHash/ImportedFrom
+  are ADR-068's own decided shape, reflected in
+  ../data/event-log.md's StoredEvent listing.
+end note
+@enduml

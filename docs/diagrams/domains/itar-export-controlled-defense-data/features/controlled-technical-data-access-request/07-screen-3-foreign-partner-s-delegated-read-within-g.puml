@@ -1,0 +1,13 @@
+@startsalt
+{
+  { "defco:TechnicalDataAsset:td-4471 -- read via TAA-delegated grant" }
+  ..
+  { "Caller" | "foreign-partner-42 (DID token-exchanged, ADR-036)" }
+  { "Entity scope" | "defco:TechnicalDataAsset:td-4471" }
+  ..
+  { "USML Category" | "USML Category XII" }
+  { "Classification" | "ITAR-Controlled" }
+  ..
+  "200 OK -- AccessLogEntry written: ReaderTrustBasis 'Attested', GrantRef ar-2201 (ADR-045)"
+}
+@endsalt

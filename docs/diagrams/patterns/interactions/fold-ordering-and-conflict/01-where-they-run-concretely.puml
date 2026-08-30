@@ -1,0 +1,16 @@
+@startuml
+start
+:incoming event arrives at fold step;
+if (ExpectedVersion supplied AND\n!= EntityStore.Version?) then (yes)
+  :set ConflictFlag;
+endif
+if (OccurredAt <= LastAppliedLogicalTime?) then (yes)
+  :set LateArrivalFlag;
+  :do NOT apply this event's change\nto the affected property;
+else (no)
+  :apply the change normally;
+  :advance LastAppliedLogicalTime;
+endif
+:LastAppliedSequenceNumber always advances\n(replay checkpoint, regardless of either flag);
+stop
+@enduml

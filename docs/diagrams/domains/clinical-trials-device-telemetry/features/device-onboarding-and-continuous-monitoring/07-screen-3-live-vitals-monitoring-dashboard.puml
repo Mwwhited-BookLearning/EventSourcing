@@ -1,0 +1,9 @@
+@startsalt
+{
+  { "Site 04-221 -- Connected Devices" }
+  ..
+  | Device    | Subject | Interface    | Channel        | Last sample        | Status     |
+  | dev-0091  | S-0091  | WebHid       | vitals-s0091   | 2026-07-29 14:03:11 | Streaming  |
+  | dev-0044  | S-0044  | NativeBridge | vitals-s0044   | 2026-07-29 13:58:02 | Streaming  |
+}
+@endsalt

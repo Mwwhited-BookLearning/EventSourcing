@@ -1,0 +1,14 @@
+@startuml
+autonumber
+actor User
+participant "View\n(implements IView interface,\nno logic beyond wiring)" as view
+participant "Presenter\n(implements IPresenter,\nonly thing touching both sides)" as presenter
+participant "Model\n(no UI knowledge)" as model
+
+User -> view: interacts (click, input)
+view -> presenter: OnCommand() (explicit interface call)
+presenter -> model: read/mutate
+model --> presenter: state
+presenter -> view: view.ShowX(value) (explicit interface call)
+view -> view: update widgets directly from the call's arguments
+@enduml

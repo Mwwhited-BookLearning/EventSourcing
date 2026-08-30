@@ -1,0 +1,40 @@
+@startuml
+autonumber
+actor "Publishing System\n(publisher-client, holds private key K1)" as client
+participant "EventStore.DevIdp\n(OpenIddict, in-process)" as idp
+participant "EventStore.Host.Core\n(resource server)" as api
+
+client -> idp: POST /connect/token\ngrant_type=client_credentials, client_id, client_secret\nDPoP: <proof JWT, typ=dpop+jwt, signed with K1,\n  jwk=K1's public key, htm=POST, htu=/connect/token, iat, jti>
+idp -> idp: verify proof signature against its own embedded jwk;\ncheck htm/htu match this request
+idp --> client: 200 { access_token (JWT, cnf.jkt = SHA-256 thumbprint of K1's public key), expires_in }
+client -> api: request (e.g. POST /publish/OrderPlaced)\nAuthorization: Bearer <access_token>\nDPoP: <fresh proof JWT, signed with K1, jwk=K1's public key,\n  htm=POST, htu=<this request's URL>, iat, jti, ath=hash(access_token)>
+api -> api: validate JWT signature/expiry (existing check, ADR-006 -- unchanged)
+alt Authorization header missing or JWT invalid/expired
+  api --> client: 401 (type: unauthenticated)
+else DPoP header missing entirely
+  api --> client: 401 (type: dpop-proof-invalid, reason: "missing Authorization: Bearer token"\nor "access token is not DPoP-bound (missing cnf.jkt)")
+else DPoP proof signature does not verify against its own embedded jwk
+  api --> client: 401 (type: dpop-proof-invalid, reason: "DPoP proof signature invalid: ...")
+else proof's htm/htu does not match this request's method/URL
+  api --> client: 401 (type: dpop-proof-invalid, reason: "DPoP proof \"htm\"/\"htu\" does not\nmatch the request (expected ...)")
+else proof's ath does not match a hash of the presented access_token
+  api --> client: 401 (type: dpop-proof-invalid, reason: "DPoP proof \"ath\" does not match\nthe presented access token")
+else proof's jwk thumbprint does not match the token's cnf.jkt
+  api --> client: 401 (type: dpop-proof-invalid, reason: "DPoP proof key does not match\nthe access token's cnf.jkt")
+  note right: this is the actual value this ADR buys -- a leaked\naccess_token replayed with a different key fails exactly here
+else proof's jti was already seen within its iat freshness window\n(replay)
+  api --> client: 401 (type: dpop-proof-invalid, reason: "DPoP proof \"jti\" has already\nbeen used (replay)")
+else every check passes
+  api --> client: normal response for the underlying request\n(e.g. 202 + SchemaStatus, ADR-023 -- unchanged by this ADR)
+end
+note over api
+  Every "reason" string above is illustrative, not a fixed enum --
+  DpopProofValidator/DpopValidationMiddleware (EventStore.Dpop,
+  EventStore.Host.Core) return free-text sentences describing what
+  failed, not short machine-matchable codes like "missing_proof" or
+  "signature_invalid". AuthScenarioAssertions.cs (the integration
+  tests exercising these branches) only ever asserts the 401 status
+  code, never a specific reason string -- no test locks the exact
+  wording in place, so it should not be treated as a stable contract.
+end note
+@enduml

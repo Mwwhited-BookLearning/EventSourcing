@@ -1,0 +1,10 @@
+@startsalt
+{
+  { "Access Request Queue -- AppId: defco" }
+  ..
+  | Request ID | Asset ID | Requester             | Grant Type    | Status      |
+  | ar-2201    | td-4471  | "foreign-partner-42"  | TAA-delegated | UnderReview |
+  | ar-2198    | td-4471  | "engineer-22"          | RBAC role     | Approved    |
+  | ar-2190    | td-9982  | "foreign-partner-42"  | TAA-delegated | Denied      |
+}
+@endsalt

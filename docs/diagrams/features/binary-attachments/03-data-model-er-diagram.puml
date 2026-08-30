@@ -1,0 +1,41 @@
+@startuml
+hide circle
+skinparam linetype ortho
+
+entity "Attachment" as attachment {
+  * ContentHash : string <<PK>>
+  --
+  Bytes : bytea
+  MimeType : string
+  SizeBytes : bigint
+  FileName : string <<nullable>>
+  UploadedAt : datetimeoffset
+}
+
+entity "AttachmentRef" as ref {
+  * AttachmentRefId : bigint <<PK>>
+  --
+  ContentHash : string <<FK>>
+  EntityId : string <<nullable>>
+  EventId : uuid <<nullable>>
+}
+
+attachment ||--o{ ref : "ContentHash -- real FK; the blob is\nalways uploaded first (two-step handoff)"
+
+note right of ref
+  EntityId (Entity Store, ADR-021) and EventId (StoredEvent,
+  event-log.md) are references into two *other* data planes, not
+  DB-enforced FKs across them -- either or both may be set, per
+  ADR-032, but never neither (nothing to link the attachment to).
+  EventId, when set, always resolves in practice: it's the event
+  created in the same publish call that carried this AttachmentRef.
+end note
+
+note bottom of attachment
+  ContentHash is the real primary key in spirit (SHA-256 of Bytes) --
+  uploading identical bytes twice reuses this row rather than
+  inserting a second one (ADR-032's dedup-by-content-equality).
+  Never deleted or mutated once inserted. FileName is optional,
+  display-name only -- never part of the address.
+end note
+@enduml

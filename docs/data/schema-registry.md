@@ -505,11 +505,24 @@ public class JoinCondition
     public string RightField { get; set; } = default!;
 }
 
+// Two mutually-exclusive shapes (ADR-007 addendum, "Calculated fields"):
+// a straight 1:1 rename/copy (SourceType/SourceField set, Expression null),
+// parsed from "$select=output:Source/field"; or a calculated field
+// (Expression set, SourceType/SourceField null), parsed from
+// "$select=output:=expression". Expression is engine-agnostic text
+// (ADR-053's IUpcastExpressionEvaluator, the same seam UpcastFromPrevious
+// uses), with "event" bound to an object keyed by each declared source's
+// own lowercased name -- e.g.
+// "Total:=event.orderline.Quantity * event.orderline.UnitPrice". Unlike
+// a straight mapping, an unresolvable/failed calculated field is a
+// registration-time compile error (IUpcastExpressionEvaluator.TryCompile),
+// not a silent null.
 public class SelectField
 {
     public string OutputField { get; set; } = default!; // JSON path in the derived type's own Payload
-    public string SourceType { get; set; } = default!;   // which declared source this value comes from
-    public string SourceField { get; set; } = default!;  // JSON path into that source's Payload
+    public string? SourceType { get; set; }   // which declared source this value comes from (null for a calculated field)
+    public string? SourceField { get; set; }  // JSON path into that source's Payload (null for a calculated field)
+    public string? Expression { get; set; }   // engine-agnostic formula text (null for a straight mapping)
 }
 
 public enum JoinTriggerMode

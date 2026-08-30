@@ -1,0 +1,31 @@
+@startuml
+autonumber
+actor "Employer\n(Relying Party / Verifier)" as employer
+actor "Student\n(Credential Holder)" as student
+participant "Registrar\n(Credential Issuer)" as registrar
+participant "IdP / Token Exchange\n(ADR-036/ADR-043)" as idp
+participant "GraphQL Gateway" as gateway
+participant "IPayloadMasker" as masker
+database "Entity Store" as entityStore
+database "AccessLog\n(ADR-045)" as accessLog
+
+alt Employer requests delegated, entity-scoped access through the platform (ADR-043)
+  employer -> registrar: requests verification access for "cred-1001"\n(out of band -- email, portal request)
+  registrar -> idp: issues a UCAN delegation naming the employer's DID,\nclaim "credential:read", EntityScope "sunridge:Credential:cred-1001",\nand an expiration (ADR-043 -- capped to the registrar's own authority)
+  employer -> idp: POST /oauth/token\n(grant_type=token-exchange, subject_token=<UCAN>)\n-- ADR-036's mechanism, reused for a delegation exchange (ADR-043)
+  idp --> employer: bearer JWT carrying "credential:read",\nentity-scoped to "sunridge:Credential:cred-1001" only
+  employer -> gateway: QUERY credential(entityId: "sunridge:Credential:cred-1001")\nBearer <JWT>
+  gateway -> gateway: check claim "credential:read" AND EntityScope match (ADR-043)
+  gateway -> entityStore: SELECT EntityStoreRow WHERE EntityId = "sunridge:Credential:cred-1001"
+  gateway -> masker: Mask(schema, Data, employer's claims)
+  masker -> masker: employer lacks "ferpa:view" --\nStudentId/DateOfBirth wrap as {"masked": "***"} (ADR-009);\nDegreeAwarded/ConferredAt/attachment unwrapped (Directory Information)
+  masker --> gateway: masked payload
+  gateway -> accessLog: write AccessLogEntry\n(ReaderTrustBasis: "Attested", GrantRef: set, ResourceRef: "cred-1001") (ADR-045)
+  gateway --> employer: masked credential + diploma AttachmentRef
+else Student instead hands the employer a self-contained, offline-verifiable presentation (ADR-036, reused)
+  student -> registrar: (at issuance time, out of band) obtains a W3C\nVerifiable Credential presentation for "cred-1001",\nsigned by the institution's issuer DID (ADR-036's DID primitive)\nand wrapped in a UCAN invocation chain (ADR-036's UCAN primitive)
+  student -> employer: hands over the presentation directly\n(file/QR/wallet -- no network call to this platform at all)
+  employer -> employer: verify the signature chain and issuer DID\nlocally, entirely offline -- no API call, no Gateway,\nno AccessLogEntry (this path never touches the platform)
+  employer -> employer: accept/reject based solely on\noffline cryptographic verification
+end
+@enduml

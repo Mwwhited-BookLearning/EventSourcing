@@ -69,6 +69,8 @@ chain the order's own events extend, and the risk-check step names
 *both* the order it evaluates and that role grant as parents — two
 different parents, two different reasons, per `ADR-005`.
 
+![Sequence diagram — order lifecycle, causally linked and hash-chained end to end](../../../diagrams/domains/brokerage-capital-markets/features/trade-order-lifecycle/01-sequence-diagram-order-lifecycle-causally-linked-a.svg)
+
 ```plantuml
 @startuml TradeOrderLifecycle_Sequence
 autonumber
@@ -145,6 +147,8 @@ SAD field succeeds normally and, per `ADR-067`, also appends a
 reserved `SchemaRegistered` control-plane event into the same Event
 Log and hash chain the order lifecycle above extends.
 
+![Sequence diagram — schema registration and the PCI-SAD boundary](../../../diagrams/domains/brokerage-capital-markets/features/trade-order-lifecycle/02-sequence-diagram-schema-registration-and-the-pci-s.svg)
+
 ```plantuml
 @startuml TradeOrderLifecycle_SchemaRegistration_Sequence
 autonumber
@@ -196,6 +200,8 @@ identical to any other event and benefits from participating in the
 same lineage DAG (`ADR-067`'s own stated reasoning).
 
 ## Data model (ER diagram)
+
+![Data model (ER diagram)](../../../diagrams/domains/brokerage-capital-markets/features/trade-order-lifecycle/03-data-model-er-diagram.svg)
 
 ```plantuml
 @startuml TradeOrderLifecycle_ER
@@ -292,6 +298,8 @@ public class EventParent
 
 ### Screen 1: Order Management System — trader's new order ticket
 
+![Screen 1: Order Management System — trader's new order ticket diagram](../../../diagrams/domains/brokerage-capital-markets/features/trade-order-lifecycle/04-screen-1-order-management-system-trader-s-new-orde.svg)
+
 ```plantuml
 @startsalt
 {
@@ -314,6 +322,8 @@ or status page in this doc's scope, the next real action is the risk
 officer's own queue (Screen 2), a different role's screen entirely.
 
 ### Screen 2: Risk Officer's review queue and decision screen
+
+![Screen 2: Risk Officer's review queue and decision screen diagram](../../../diagrams/domains/brokerage-capital-markets/features/trade-order-lifecycle/05-screen-2-risk-officer-s-review-queue-and-decision-.svg)
 
 ```plantuml
 @startsalt
@@ -340,6 +350,8 @@ structurally at `OrderRejected` (no status flag). Either outcome is what
 Screen 3 later displays.
 
 ### Screen 3: Compliance/back-office order-history and lineage screen
+
+![Screen 3: Compliance/back-office order-history and lineage screen diagram](../../../diagrams/domains/brokerage-capital-markets/features/trade-order-lifecycle/06-screen-3-compliance-back-office-order-history-and-.svg)
 
 ```plantuml
 @startsalt

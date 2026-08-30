@@ -1,0 +1,10 @@
+@startsalt
+{
+  { "Adverse Event Review Queue -- Site 04-221  (Live View, isAuthoritative: false)" }
+  ..
+  | AE ID   | Subject | Severity | SAE | AuthorityStatus  |
+  | ae-1042 | S-0091  | Severe   | [X] | pending_review   |
+  | ae-1039 | S-0044  | Moderate | [ ] | pending_review   |
+  | ae-1030 | S-0091  | Mild     | [ ] | accepted         |
+}
+@endsalt

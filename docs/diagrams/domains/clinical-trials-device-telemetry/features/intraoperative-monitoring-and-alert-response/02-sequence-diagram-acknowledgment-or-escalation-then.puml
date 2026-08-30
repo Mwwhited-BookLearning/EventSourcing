@@ -1,0 +1,57 @@
+@startuml
+autonumber
+actor "Neurotechnologist\n(tech-4, in the OR)" as tech
+actor "Attending Neurologist\n(neuro-12)" as neuro
+participant "PublishEndpoint" as inbox
+database "Event Log" as eventLog
+database "ExpectedResponseTracker" as tracker
+database "Entity Store\n(authoritative)" as entityStore
+
+alt acknowledged within the 2-minute window
+  tech -> inbox: POST /publish/IonmAlertAcknowledged\n{ payload: { AlertId: "alert-77",\n  AckedBy: "tech-4" } },\n  respondsToEventId: "alert-evt-1"
+  inbox -> eventLog: INSERT StoredEvent\n(EventId: "ack-evt-1", RespondsToEventId: "alert-evt-1")
+  inbox --> tech: 202
+  note right of eventLog
+    "IonmAlertAcknowledged" also declares EntityIdField
+    "$.AlertId", ChangeKind Partial -- it merges onto the
+    SAME trial1:IonmAlert:alert-77 entity IonmAlertRaised
+    created, so the fold naturally accumulates AckedBy
+    alongside Finding/Severity (ADR-016/ADR-022). Its
+    RespondsToEventId is a SEPARATE, orthogonal fact --
+    which ExpectedResponseTracker row this satisfies
+    (ADR-094) -- not how it folds.
+  end note
+  eventLog -> tracker: UPDATE SatisfiedByEventId = "ack-evt-1",\n  SatisfiedAt = "2026-08-04T09:15:10Z"
+  note right of tracker
+    Within the window -- EscalatedAt never gets set,
+    ExpectedResponseMissing is never published.
+  end note
+else no acknowledgment by the deadline
+  ... periodic sweep, "2026-08-04T09:16:02Z" ...
+  eventLog -> tracker: SELECT WHERE DeadlineAt < now\nAND SatisfiedAt IS NULL AND EscalatedAt IS NULL
+  tracker --> eventLog: row for "alert-evt-1"
+  eventLog -> inbox: POST /publish/ExpectedResponseMissing\n{ respondsToEventId: "alert-evt-1",\n  payload: { RequestEventId: "alert-evt-1",\n  RequestEventType: "IonmAlertRaised",\n  ExpectedResponseEventType: "IonmAlertAcknowledged" } }
+  inbox -> eventLog: INSERT StoredEvent\n(reserved type, never registered via\nPUT /registry/{event-type}, ADR-020's precedent)
+  eventLog -> tracker: UPDATE EscalatedAt = now
+  note right of eventLog
+    Ordinary, Follow-able event -- what the OR's own
+    monitoring dashboard/paging process does with it is
+    entirely this deployment's own choice, the same
+    boundary ADR-031/ADR-094 both draw around detection
+    and escalation. Not specified further here.
+  end note
+end
+... some time later, regardless of which branch above ...
+neuro -> inbox: POST /publish/authorityDecision\n{ payload: { targetEventId: "alert-evt-1",\n  decision: "accepted", decidingActorId: "neuro-12" } }\nBearer <JWT, acr not recent enough>
+alt insufficient step-up
+  inbox --> neuro: 401 step-up required\n(acr_values="urn:trial:step-up", max_age=300)
+  neuro -> neuro: re-authenticate (ADR-066, IdP's own mechanism)
+  neuro -> inbox: retry, same payload, stepped-up token
+end
+inbox -> eventLog: INSERT StoredEvent (authorityDecision)\nSignature: { SignerId: "neuro-12", SignedAt: now,\n  Meaning: "approved", Acr: "urn:trial:step-up" }
+inbox --> neuro: 202
+... asynchronously ...
+eventLog -> eventLog: UPDATE "alert-evt-1" SET AuthorityStatus = "accepted",\n  AuthorityDecisionRef = <this event's EventId>
+eventLog -> entityStore: fold "alert-evt-1" now (catch-up, ADR-042)
+entityStore -> entityStore: UPDATE EntityStoreRow.Data, Version++\n(Finding, Severity, AckedBy all now visible\nas the authoritative record)
+@enduml

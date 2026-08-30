@@ -1,0 +1,11 @@
+@startsalt
+{
+  { "System-Time Playback -- trial1:Patient:S-0091 @ SequenceNumber 48812" }
+  ..
+  { "EnrollmentStatus" | "Enrolled" }
+  { "Last vitals sample" | "flagged LateArrival -- recovered in place at seq 48810" }
+  ..
+  [<] [ Play ] [>]
+  "Scrubbing to seq 48809 hides this correction -- it lands exactly\n at 48810, never smoothed away (ADR-068)"
+}
+@endsalt

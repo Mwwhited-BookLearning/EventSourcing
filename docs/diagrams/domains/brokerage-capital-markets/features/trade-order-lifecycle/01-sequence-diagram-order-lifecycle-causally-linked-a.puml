@@ -1,0 +1,62 @@
+@startuml
+autonumber
+actor "Compliance Admin" as admin
+actor "Order Management System" as oms
+actor "Risk Officer" as reviewer
+actor "Clearing System" as clearing
+participant "RBAC Admin API\n(ADR-046/067)" as rbacApi
+participant "Publish API\n(Inbox, ADR-023)" as endpoint
+participant "EventAppender\n(ChainHash, ADR-019)" as appender
+database "Event Log" as eventLog
+
+admin -> rbacApi: POST /admin/roles/compliance-officer/grant\n{ granteeActorId: "reviewer-1" }
+rbacApi -> appender: append(RoleGranted -- reserved control-plane\nevent type, ADR-067) ActorId: "admin-1"
+appender -> eventLog: INSERT StoredEvent\n(SequenceNumber: 118, EventType: "RoleGranted",\n ChainHash: SHA-256(chain[117] || hash(payload) || 118))
+appender --> rbacApi: ok
+rbacApi --> admin: 201 { eventId: "rg-1" }
+note over eventLog
+  Role/UserPermission (ADR-046) fold from this event the
+  same way EntityStoreRow folds a business event (ADR-067) --
+  same StoredEvent shape, same hash chain, ActorId always set.
+end note
+
+oms -> endpoint: POST /publish/OrderSubmitted\n{ payload: { OrderId: "ord-1", AccountId: "acct-42",\n  Symbol: "ACME", Side: "Buy", Quantity: 500, LimitPrice: 41.10 } }
+endpoint -> appender: append(StoredEvent, no parents -- origin event, ADR-005)
+appender -> eventLog: INSERT StoredEvent\n(SequenceNumber: 119, EntityId: "brokerage:Order:ord-1",\n ActorId: "oms-system", ChainHash: SHA-256(chain[118] || hash || 119))
+endpoint --> oms: 202 { correlationId, status: "received" }
+
+reviewer -> endpoint: POST /publish/OrderRiskChecked\n{ payload: { OrderId: "ord-1", Decision: "Approved", Reviewer: "reviewer-1" },\n  parentEventIds: ["119", "rg-1"] }
+note right: two parents, two different reasons (ADR-005/067) --\n"119" is the OrderSubmitted event this risk check evaluates;\n"rg-1" is the RoleGranted event that authorized reviewer-1\nto perform risk checks at all
+endpoint -> appender: append(StoredEvent, EventParents x2)
+appender -> eventLog: INSERT StoredEvent (SequenceNumber: 120, ActorId: "reviewer-1",\n ChainHash: SHA-256(chain[119] || hash || 120));\nINSERT EventParents (120,119), (120,"rg-1")
+endpoint --> reviewer: 202 { correlationId, status: "received" }
+
+alt Decision = "Approved"
+  oms -> endpoint: POST /publish/OrderExecuted\n{ payload: { OrderId: "ord-1", ExecutionPrice: 41.05, ExecutedQuantity: 500 },\n  parentEventIds: ["120"] }
+  endpoint -> appender: append(StoredEvent, EventParents x1)
+  appender -> eventLog: INSERT StoredEvent (SequenceNumber: 121,\n ChainHash: SHA-256(chain[120] || hash || 121)); INSERT EventParents (121,120)
+  endpoint --> oms: 202
+
+  clearing -> endpoint: POST /publish/OrderSettled\n{ payload: { OrderId: "ord-1", SettledAt: "2026-08-03T00:00:00Z",\n  SettlementAmount: 20525.00 }, parentEventIds: ["121"] }
+  endpoint -> appender: append(StoredEvent, EventParents x1)
+  appender -> eventLog: INSERT StoredEvent (SequenceNumber: 122,\n ChainHash: SHA-256(chain[121] || hash || 122)); INSERT EventParents (122,121)
+  endpoint --> clearing: 202
+  note over eventLog
+    The full T+1 lifecycle is now four causally-linked events
+    (119 -> 120 -> 121 -> 122, ADR-005) that are ALSO four
+    consecutive links in the one store-wide ChainHash sequence
+    (ADR-019) -- replaying SequenceNumber 1..122 and comparing
+    the final ChainHash detects any later tampering with any of them.
+  end note
+else Decision = "Rejected"
+  oms -> endpoint: POST /publish/OrderRejected\n{ payload: { OrderId: "ord-1", Reason: "Exceeds account buying power" },\n  parentEventIds: ["120"] }
+  endpoint -> appender: append(StoredEvent, EventParents x1)
+  appender -> eventLog: INSERT StoredEvent (SequenceNumber: 121,\n ChainHash: SHA-256(chain[120] || hash || 121)); INSERT EventParents (121,120)
+  endpoint --> oms: 202
+  note over eventLog
+    No OrderExecuted/OrderSettled is ever published for ord-1 --
+    the lifecycle terminates structurally at OrderRejected, not
+    via a status flag on OrderSubmitted.
+  end note
+end
+@enduml

@@ -1,0 +1,19 @@
+@startuml
+hide circle
+skinparam linetype ortho
+
+entity "StoredEvent" as event {
+  * SequenceNumber : bigint <<PK>>
+  --
+  EventId : uuid <<unique>>
+  PayloadHash : text
+  ChainHash : text
+}
+
+note right of event
+  ChainHash[n] = SHA-256(ChainHash[n-1] || PayloadHash[n] || SequenceNumber[n])
+  -- computed once, at insert time, by EventAppender (ADR-019).
+  Never recomputed or backfilled; a fixed seed value stands in for
+  ChainHash[0] ahead of SequenceNumber = 1, the store's first-ever event.
+end note
+@enduml

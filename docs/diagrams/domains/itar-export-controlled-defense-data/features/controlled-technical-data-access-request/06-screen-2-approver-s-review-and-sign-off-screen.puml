@@ -1,0 +1,21 @@
+@startsalt
+{
+  { "Access Request  ar-2201  --  defco:TechnicalDataAsset:td-4471" }
+  ..
+  | Field            | Value                                    |
+  | Asset ID         | "td-4471"                                 |
+  | USML Category    | "USML Category XII"                       |
+  | Classification   | "ITAR-Controlled"                          |
+  | Requester        | "M. Dubois  (foreign-partner-42)"          |
+  | Asserted region  | "France"   ( not a US Person )             |
+  | Grant type       | () RBAC role   (X) TAA-delegated           |
+  | TAA reference    | "TAA-2026-0417"                            |
+  | Delegated claim  | "itar:read"                                |
+  | Entity scope     | "defco:TechnicalDataAsset:td-4471"         |
+  | Expires          | "2026-12-31"                               |
+  ..
+  { "Digital sign-off required (ADR-066, RFC 9470 step-up)" | [Re-authenticate & Approve] }
+  ..
+  [Approve] | [Deny]
+}
+@endsalt

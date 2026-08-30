@@ -38,6 +38,8 @@ note; the diagrams below reflect the real, cross-process shape
 
 ## Sequence diagram — token acquisition and an authorized call
 
+![Sequence diagram — token acquisition and an authorized call](../diagrams/features/auth/01-sequence-diagram-token-acquisition-and-an-authoriz.svg)
+
 ```plantuml
 @startuml Auth_TokenFlow_Sequence
 autonumber
@@ -85,6 +87,8 @@ unverified claim into a verified fact.
 
 ## Sequence diagram — RBAC role expansion and federated-IdP claims augmentation (ADR-046, ADR-047)
 
+![Sequence diagram — RBAC role expansion and federated-IdP claims augmentation (ADR-046, ADR-047)](../diagrams/features/auth/02-sequence-diagram-rbac-role-expansion-and-federated.svg)
+
 ```plantuml
 @startuml Auth_RbacClaimsAugmentation_Sequence
 autonumber
@@ -118,6 +122,8 @@ augmented, the same integrity guarantee NIST SP 800-63C's Federation
 Assurance Level requires of a relying party.
 
 ## Sequence diagram — browser SSE via fetch() (ADR-012/ADR-037)
+
+![Sequence diagram — browser SSE via fetch() (ADR-012/ADR-037)](../diagrams/features/auth/03-sequence-diagram-browser-sse-via-fetch-adr-012-adr.svg)
 
 ```plantuml
 @startuml Auth_BrowserSSE_Sequence
@@ -159,6 +165,8 @@ framework's own services (`EventStore.Router`, `.Fold`, `.GraphQL`,
 independent peer servers (`ADR-033`). `ADR-006`'s OAuth2/OIDC is
 completely unaffected by this — the two mechanisms answer different
 questions on different axes and neither substitutes for the other.
+
+![External caller identity vs. internal workload identity (ADR-048) diagram](../diagrams/features/auth/04-external-caller-identity-vs-internal-workload-iden.svg)
 
 ```plantuml
 @startuml Auth_InternalWorkloadIdentity_Sequence
@@ -217,6 +225,8 @@ itself. Shown here only as far as the diagram above touches them; the
 full shape (including the reserved event payloads themselves) is
 `../data/schema-registry.md`'s to define.
 
+![Data model (ER diagram)](../diagrams/features/auth/05-data-model-er-diagram.svg)
+
 ```plantuml
 @startuml Auth_Rbac_ER
 hide circle
@@ -247,6 +257,8 @@ diagram shows the write path that produces the fold input — the same
 shows for a different reserved event type, applied here to RBAC grants
 and `AppTrustRoot` registration instead.
 
+![Sequence diagram — RBAC/trust-root grants as reserved events (ADR-046, ADR-044, ADR-067)](../diagrams/features/auth/06-sequence-diagram-rbac-trust-root-grants-as-reserve.svg)
+
 ```plantuml
 @startuml Auth_RbacTrustRootReservedEvents_Sequence
 autonumber
@@ -267,7 +279,7 @@ else authorized
   eventLog ->> worker: TailAsync (core engine's own Follow API) --\nasynchronous, cross-process, not part of the\nrequest above at all
   worker -> rbac: fold via RoleService/TrustRootService's own\nalready-idempotent methods, entirely inside\nEventStore.DevIdp -- no EntityStoreRow anywhere\nin this path
 end
-note over eventLog, worker, rbac
+note over eventLog, rbac
   None of these four event types is ever registered via
   PUT /registry/{event-type} -- reserved the same way
   ADR-020's EventUpcastFailed already is (ADR-067). Each

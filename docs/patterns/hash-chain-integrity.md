@@ -25,6 +25,8 @@ from the seed gives the same tamper-evidence guarantee with far less
 machinery — the right trade when there's no federation of independently-
 operated logs needing to cross-check partial views of each other.
 
+![The pattern diagram](../diagrams/patterns/hash-chain-integrity/01-the-pattern.svg)
+
 ```plantuml
 @startuml Hash_Chain_Object
 object "Event 1" as E1 {

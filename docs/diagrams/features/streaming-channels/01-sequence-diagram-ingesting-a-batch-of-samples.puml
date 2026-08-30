@@ -1,0 +1,37 @@
+@startuml
+autonumber
+actor "Telemetry Producer" as producer
+participant "Telemetry Ingest API" as endpoint
+participant "Auth\n(JWT Bearer + scope policy)" as auth
+participant "ChannelRegistry" as registry
+participant "TelemetrySampleWriter" as writer
+database "Telemetry Store" as db
+
+producer -> endpoint: POST /telemetry/{channelId}/samples\nAuthorization: Bearer <JWT>\n{ startTimestamp, sampleIntervalMicros, values: [...] } (fixed-rate)\n-- or { samples: [{timestamp, value}, ...] } (irregular)
+endpoint -> auth: validate token + telemetry:ingest scope
+alt missing/invalid token
+  auth --> producer: 401
+else valid token, missing scope
+  auth --> producer: 403
+else authorized
+  endpoint -> registry: lookup ChannelId
+  alt channel unknown
+    registry --> producer: 404
+  else channel found
+    endpoint -> writer: append(batch)
+    loop for each sample in batch
+      writer -> writer: compare Timestamp to channel's LastAppliedLogicalTime\n(ADR-029's mechanism, reused per-channel -- ADR-031)
+      alt Timestamp < LastAppliedLogicalTime
+        writer -> writer: set LateArrivalFlag = true\n(sample is still written -- never dropped, never reordered)
+      end
+    end
+    writer -> writer: compare this batch's receive-time gap\nto the channel's ExpectedInterArrivalInterval
+    alt gap exceeds configured lag threshold
+      writer -> writer: schedule a ChannelLagDetected publish\n(async, via the normal publish path -- see diagram below)
+    end
+    writer -> db: INSERT TelemetrySample rows\n(no JsonSchema check, no ChainHash, no Entity Store fold)
+    writer -> writer: advance LastAppliedLogicalTime to max(Timestamp)\nacross non-late-flagged samples in this batch
+    writer --> producer: 202 { channelId, samplesWritten, lateArrivalCount }
+  end
+end
+@enduml

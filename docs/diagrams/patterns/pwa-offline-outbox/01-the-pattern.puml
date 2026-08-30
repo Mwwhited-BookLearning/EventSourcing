@@ -1,0 +1,25 @@
+@startuml
+autonumber
+actor User
+participant "App shell\n(installed, Service Worker active)" as app
+participant "Persistent Outbox\n(IndexedDB)" as outbox
+participant "Service Worker\n(Background Sync registration)" as sw
+participant "Server API" as server
+
+User -> app: submits a command while offline
+app -> outbox: enqueue command (durable write, survives app close/crash)
+app -> sw: register sync ("flush-outbox")
+note right of sw
+  Browser fires this even if the
+  app itself isn't open, once
+  connectivity returns (where
+  Background Sync is supported;
+  otherwise polyfilled on next
+  app open/focus).
+end note
+== connectivity returns ==
+sw -> outbox: read queued commands, oldest first
+sw -> server: deliver each, in order
+server --> sw: 2xx (or 409/conflict, per ADR-024)
+sw -> outbox: dequeue on confirmed delivery only
+@enduml

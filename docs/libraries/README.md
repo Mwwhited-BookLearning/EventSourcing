@@ -87,6 +87,8 @@ answers "why, and what's the risk."
 | [Pinia](web/pinia.md) | web | Client-side state store (MVVM data layer) | None known affecting this design's usage | Client-side ViewModel state management | `mvvm-client-architecture.md` |
 | [Naive UI](web/naive-ui.md) | web | Vue component library + theming | None known affecting this design's usage | Baseline component/theming layer for entity views; left-hand-nav shell (`n-layout`/`n-menu`) and grid pagination (`n-data-table`) | `ADR-099`, `mvvm-client-architecture.md` |
 | [Vue Router](web/vue-router.md) | web | Client-side routing | None known affecting this design's usage | Route-per-tab navigation behind the left-hand-nav shell, replacing the prior router-free tab switcher | `ADR-099` |
+| [Apache ECharts](web/echarts.md) | web | Charting engine (Canvas or SVG renderer) | None known affecting this design's usage | Gauge chart for confidence-score fields (`MatchConfidence`) | `ADR-100` |
+| [vue-echarts](web/vue-echarts.md) | web | Vue 3 component wrapper for Apache ECharts | None known affecting this design's usage | `<v-chart>` lifecycle binding for the same gauge chart | `ADR-100` |
 | [AsyncAPI React component](web/asyncapi-react.md) | web | AsyncAPI documentation UI | None known affecting this design's usage | Human-readable AsyncAPI documentation UI | `ADR-025` |
 | [GraphQL Code Generator](web/graphql-code-generator.md) | web | GraphQL client SDK generation for TypeScript consumers | None known affecting this design's usage | Generated, type-safe TypeScript GraphQL client SDKs | `ADR-054` |
 | [Vitest](web/vitest.md) | web | Unit-test runner (frontend), Vite-native | Test-time-only dependency — never ships in a production artifact | Frontend unit-test execution | `ADR-055` |

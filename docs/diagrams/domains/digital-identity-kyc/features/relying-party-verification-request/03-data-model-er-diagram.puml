@@ -1,0 +1,59 @@
+@startuml
+hide circle
+skinparam linetype ortho
+
+entity "StoredEvent\n(accessGrant)" as grantEvent {
+  * SequenceNumber : bigint <<PK>>
+  --
+  EventId : uuid <<unique>>
+  EntityId : string
+  ' "kyc:AccessGrant:grant-7001" (ADR-021, own EntityIdField "$.GrantId")
+  Payload : text
+  ' GrantId, GranterActorId, GranteeDid, DelegatedClaim, EntityScope, ExpiresAt
+  ActorId : string
+  ' "applicant-1001" -- the granting customer, verified caller (ADR-064)
+}
+
+entity "StoredEvent\n(accessGrantRevoked)" as revokeEvent {
+  * SequenceNumber : bigint <<PK>>
+  --
+  EventId : uuid <<unique>>
+  Payload : text
+  ' GrantId, RevokedBy, Reason
+}
+
+entity "EntityStoreRow\n(ApplicantIdentity, authoritative)" as entityStore {
+  * EntityId : string <<PK>>
+  --
+  Data : text
+  ' VerificationStatus, Did, ClaimedLegalName (masked), DateOfBirth (masked)
+}
+
+entity "AccessLogEntry" as accessLog {
+  * SequenceNumber : bigint <<PK>>
+  --
+  ReaderActorId : string
+  ' "acme-bank"
+  ReaderTrustBasis : string
+  ' "Attested" -- derived from an ADR-043 delegated grant, per ADR-045
+  GrantRef : uuid?
+  ' "grant-7001" -- set specifically because ReaderTrustBasis=Attested via a grant
+  ViewAccessed : string
+  ' "Authoritative"
+  ResourceRef : string
+  ' "kyc:ApplicantIdentity:applicant-1001"
+  Action : string
+  ' "query"
+}
+
+revokeEvent ..o| grantEvent : "GrantId -- denormalized\nback-pointer, never a DB FK"
+grantEvent ..> entityStore : "EntityScope names the ONE\nEntityId the delegated claim\napplies to (ADR-043)"
+accessLog ..> grantEvent : "GrantRef -- which grant\nauthorized this specific read"
+accessLog ..> entityStore : "ResourceRef -- which entity\nwas actually read"
+
+note right of grantEvent
+  Never a DB foreign key across data planes -- EntityScope
+  reaches into the Entity Store the same "out-of-band,
+  clearly linked" way AttachmentRef.EntityId does (ADR-032).
+end note
+@enduml

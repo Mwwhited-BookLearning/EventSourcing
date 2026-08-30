@@ -1,0 +1,18 @@
+@startsalt
+{
+  { "Specimen Lineage Viewer -- spec-001-dna  (staff-12, holds clearance:specimen-data)" }
+  ..
+  { "Ancestors" | "This specimen" | "Derived children" }
+  ..
+  {
+    { "spec-001\n(Blood, collected 2026-07-01)" } | > | { "spec-001-dna\n(DNA Extract, 2026-07-03)" [selected] } | > | { "(none yet)" }
+  }
+  ..
+  | Property        | Value                          |
+  | SpecimenType     | "DNA Extract"                  |
+  | DonorReference   | "donor-77"  ( unmasked -- staff-12 holds clearance:specimen-data ) |
+  | CollectionDate   | "2026-07-03"                    |
+  ..
+  [ Grant external researcher access ] | [ View full ancestor chain ]
+}
+@endsalt

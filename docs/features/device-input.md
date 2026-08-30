@@ -44,6 +44,8 @@ named as a possibility but not re-derived here.
 
 ## Sequence diagram — capturing via a browser Web Hardware API adapter
 
+![Sequence diagram — capturing via a browser Web Hardware API adapter](../diagrams/features/device-input/01-sequence-diagram-capturing-via-a-browser-web-hardw.svg)
+
 ```plantuml
 @startuml DeviceInput_BrowserCapture_Sequence
 autonumber
@@ -85,6 +87,8 @@ end note
 
 ## Sequence diagram — Firefox/Safari fallback via a native bridge companion app
 
+![Sequence diagram — Firefox/Safari fallback via a native bridge companion app](../diagrams/features/device-input/02-sequence-diagram-firefox-safari-fallback-via-a-nat.svg)
+
 ```plantuml
 @startuml DeviceInput_NativeBridge_Sequence
 autonumber
@@ -119,6 +123,8 @@ real BLE-health-device bridges already use," not a mechanism invented
 here.
 
 ## Sequence diagram — server-side mapping choice and non-authoritative default
+
+![Sequence diagram — server-side mapping choice and non-authoritative default](../diagrams/features/device-input/03-sequence-diagram-server-side-mapping-choice-and-no.svg)
 
 ```plantuml
 @startuml DeviceInput_ServerMapping_Sequence
@@ -155,6 +161,8 @@ choice `ADR-070` states explicitly, not a framework-wide rule — the
 same reading type is never split across both paths.
 
 ## Data model (ER diagram)
+
+![Data model (ER diagram)](../diagrams/features/device-input/04-data-model-er-diagram.svg)
 
 ```plantuml
 @startuml DeviceInput_ER
@@ -230,6 +238,8 @@ comparison).
 this list is populated from whichever `IDeviceInputSource`
 implementations are registered for this client build.
 
+![Salt (UI mockup) diagram](../diagrams/features/device-input/05-salt-ui-mockup.svg)
+
 ```plantuml
 @startsalt
 {
@@ -255,6 +265,8 @@ screen 2.
 shown for completeness, since the sequence diagram above depends on it,
 but its exact appearance is the browser's own, not designed here.
 
+![Salt (UI mockup) diagram](../diagrams/features/device-input/06-salt-ui-mockup.svg)
+
 ```plantuml
 @startsalt
 {
@@ -274,6 +286,8 @@ which now shows that device as connected — screen 3.
 **Screen 3: Connected Devices dashboard** — one row per active adapter,
 live readings streaming in, using the same generic flag convention
 `mvvm-client.md` already establishes for `AuthorityStatus`.
+
+![Salt (UI mockup) diagram](../diagrams/features/device-input/07-salt-ui-mockup.svg)
 
 ```plantuml
 @startsalt
@@ -296,6 +310,8 @@ Selecting a reading's detail opens screen 4.
 itself is downstream application-level analysis (`ADR-083`), not a new
 framework mechanism, but the two captured values are exactly what a
 diagnostic view like this one would render side by side.
+
+![Salt (UI mockup) diagram](../diagrams/features/device-input/08-salt-ui-mockup.svg)
 
 ```plantuml
 @startsalt

@@ -1,0 +1,26 @@
+@startuml
+autonumber
+actor "AMI Head-End\n(smart meter fleet aggregator)" as ami
+participant "API Gateway\n(YARP, ADR-049)" as gateway
+participant "Streaming Channel Service\nIngest Limiter\n(Token Bucket per AppId, ADR-058)" as limiter
+participant "ChannelRegistry" as registry
+participant "TelemetrySampleWriter" as writer
+database "Telemetry Store" as db
+
+ami -> gateway: POST /telemetry/meter-482-kwh-interval/samples\nAuthorization: Bearer <JWT, telemetry:ingest scope>\n{ startTimestamp: "2026-07-30T14:00:00Z",\n  sampleIntervalMicros: 900000000,\n  values: [4.10, 4.35, 4.02, 4.21] }
+gateway -> limiter: check token bucket for AppId "gridops"
+alt tenant "gridops" has budget remaining
+  limiter -> registry: lookup ChannelId "meter-482-kwh-interval"
+  registry --> limiter: found, EntityId "gridops:Meter:m-482"
+  limiter -> writer: append(batch)
+  loop for each of the 4 samples
+    writer -> writer: compare Timestamp to channel's high-water mark\n(ADR-029's mechanism, reused per-channel, ADR-031)
+    note right: none late this batch -- see the streaming-channels.md\nfeature doc for the late-arrival branch itself, not repeated here
+  end
+  writer -> db: INSERT 4 TelemetrySample rows\n(no JSON Schema check, no ChainHash, no Entity Store fold -- ADR-031)
+  writer --> ami: 202 { channelId: "meter-482-kwh-interval",\n  samplesWritten: 4, lateArrivalCount: 0 }
+else tenant "gridops" has exhausted its token bucket this window
+  limiter --> ami: 429 Too Many Requests\nRetry-After: 12
+  note right: bounds this one tenant's meter-fleet ingest volume\nwithout touching any other tenant's share (ADR-058) --\nthe batch is never written, never partially applied
+end
+@enduml

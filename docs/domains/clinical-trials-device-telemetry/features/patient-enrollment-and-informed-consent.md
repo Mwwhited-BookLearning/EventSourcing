@@ -71,6 +71,8 @@ Every event type below is registered under `AppId` `"trial1"`
 
 ## Sequence diagram — screening and non-authoritative consent capture
 
+![Sequence diagram — screening and non-authoritative consent capture](../../../diagrams/domains/clinical-trials-device-telemetry/features/patient-enrollment-and-informed-consent/01-sequence-diagram-screening-and-non-authoritative-c.svg)
+
 ```plantuml
 @startuml Enrollment_Capture_Sequence
 autonumber
@@ -121,6 +123,8 @@ exactly, applied to consent: a `ConsentApproval` event, keyed by
 same way that doc's `authorityDecision` is keyed, resolved by a sibling
 `ConsentApprovalResolver`, gated behind the same `ADR-066` step-up
 challenge.
+
+![Sequence diagram — investigator countersignature, role separation, and catch-up fold](../../../diagrams/domains/clinical-trials-device-telemetry/features/patient-enrollment-and-informed-consent/02-sequence-diagram-investigator-countersignature-rol.svg)
 
 ```plantuml
 @startuml ConsentApproval_Sequence
@@ -174,6 +178,8 @@ end
 ```
 
 ## Data model (ER diagram)
+
+![Data model (ER diagram)](../../../diagrams/domains/clinical-trials-device-telemetry/features/patient-enrollment-and-informed-consent/03-data-model-er-diagram.svg)
 
 ```plantuml
 @startuml Enrollment_ER
@@ -344,6 +350,8 @@ Rights](trial-data-export-and-subject-rights.md)'s own intake case: a
 data-subject-rights caller identifies themselves by name and date of
 birth, not by an internal `SubjectId` they were never given.
 
+![Searchable encryption — duplicate-subject detection across sites (`ADR-096`) diagram](../../../diagrams/domains/clinical-trials-device-telemetry/features/patient-enrollment-and-informed-consent/04-searchable-encryption-duplicate-subject-detection-.svg)
+
 ```plantuml
 @startuml DuplicateSubjectDetection_Sequence
 autonumber
@@ -369,6 +377,8 @@ end note
 ```
 
 ## State machine — `PatientRecord` enrollment lifecycle
+
+![State machine — `PatientRecord` enrollment lifecycle diagram](../../../diagrams/domains/clinical-trials-device-telemetry/features/patient-enrollment-and-informed-consent/05-state-machine-patientrecord-enrollment-lifecycle.svg)
 
 ```plantuml
 @startuml Enrollment_State
@@ -400,6 +410,8 @@ to the consent countersignature instead of the AE review decision.
 
 ### Screen 1: Site Coordinator's screening form
 
+![Screen 1: Site Coordinator's screening form diagram](../../../diagrams/domains/clinical-trials-device-telemetry/features/patient-enrollment-and-informed-consent/06-screen-1-site-coordinator-s-screening-form.svg)
+
 ```plantuml
 @startsalt
 {
@@ -420,6 +432,8 @@ coordinator continues on the same client to Screen 2 to capture consent
 for the same subject.
 
 ### Screen 2: Coordinator's informed consent capture
+
+![Screen 2: Coordinator's informed consent capture diagram](../../../diagrams/domains/clinical-trials-device-telemetry/features/patient-enrollment-and-informed-consent/07-screen-2-coordinator-s-informed-consent-capture.svg)
 
 ```plantuml
 @startsalt
@@ -447,6 +461,8 @@ workflow hands off from the coordinator to the Principal Investigator.
 
 ### Screen 3: PI's countersignature queue, gated on step-up authentication
 
+![Screen 3: PI's countersignature queue, gated on step-up authentication diagram](../../../diagrams/domains/clinical-trials-device-telemetry/features/patient-enrollment-and-informed-consent/08-screen-3-pi-s-countersignature-queue-gated-on-step.svg)
+
 ```plantuml
 @startsalt
 {
@@ -473,6 +489,8 @@ current token doesn't already satisfy `RequiredSignature.AcrValues`/
 move to Screen 4.
 
 ### Screen 4: Confirmation — subject is now an active participant
+
+![Screen 4: Confirmation — subject is now an active participant diagram](../../../diagrams/domains/clinical-trials-device-telemetry/features/patient-enrollment-and-informed-consent/09-screen-4-confirmation-subject-is-now-an-active-par.svg)
 
 ```plantuml
 @startsalt

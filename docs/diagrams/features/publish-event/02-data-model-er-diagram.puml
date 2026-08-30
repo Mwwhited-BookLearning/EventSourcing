@@ -1,0 +1,41 @@
+@startuml
+hide circle
+skinparam linetype ortho
+
+entity "EventTypeDefinition" as etd {
+  * Name : string <<PK>>
+  * Version : int <<PK>>
+  --
+  JsonSchema : text
+  IsActive : bool
+  ParentValidationMode : enum {Strict, Permissive}
+}
+
+entity "StoredEvent" as event {
+  * SequenceNumber : bigint <<PK>>
+  --
+  EventId : uuid <<unique>>
+  EntityId : string?   -- {appId}:{entityType}:{uniqueId}, required once resolved;\nnull until the Router resolves it (ADR-021); supersedes the old optional StreamId
+  EventType : string
+  SchemaVersion : int
+  Payload : text
+  Status : enum {received, processing, applied, rejected} -- transport-level only (ADR-023)
+  SchemaStatus : enum {unknown, invalid, conformant}?      -- advisory, never gates Status (ADR-023)
+  OccurredAt : datetimeoffset
+}
+
+etd ..> event : "(EventType, SchemaVersion) = (Name, Version)\n-- logical only, NOT a DB foreign key;\nchecked by the async Router, never blocks the append (ADR-023)"
+
+note right of event
+  Every append starts Status = "received",
+  SchemaStatus = null, EntityId = null --
+  regardless of whether the payload turns out
+  schema-valid. The Router updates all three
+  once validation/resolution completes.
+end note
+
+note right of etd
+  Publish reads the row where
+  Name = event-type AND IsActive = true.
+end note
+@enduml

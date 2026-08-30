@@ -1,0 +1,24 @@
+@startuml
+autonumber
+actor "Browser\n(fetch(), not EventSource)" as browser
+participant "GraphQL Gateway\n(HotChocolate, graphql-sse over SSE)" as gateway
+
+note over browser
+  Follow is QUERY, not GET (ADR-012) --
+  EventSource can only issue GET and can't
+  set headers, so it can't be used here at
+  all. fetch() can do both: a QUERY request
+  with a real Authorization header, reading
+  the text/event-stream response body manually.
+  The request body is now a GraphQL subscription
+  document, not an OData $filter string (ADR-037) --
+  see follow-subscribe.md for the full shape.
+end note
+browser -> gateway: QUERY /graphql\nAuthorization: Bearer <JWT>\nbody: subscription { onOrderPlaced(where: {...}) { ... } }
+gateway -> gateway: validate token + events:follow scope\n(identical to every other caller -- no query-string fallback exists)
+alt token missing/invalid
+  gateway --> browser: connection rejected 401
+else valid
+  gateway --> browser: graphql-sse "distinct connections" SSE stream open (200)
+end
+@enduml

@@ -1,0 +1,42 @@
+@startuml
+skinparam shadowing false
+skinparam defaultTextAlignment center
+skinparam wrapWidth 220
+skinparam rectangle<<Component>> {
+  BackgroundColor #85BBF0
+  FontColor black
+}
+skinparam database<<Container>> {
+  BackgroundColor #438DD5
+  FontColor white
+}
+skinparam rectangle<<Boundary>> {
+  BackgroundColor transparent
+  BorderColor #666666
+  BorderStyle dashed
+}
+skinparam ArrowColor #666666
+
+note as N
+  This traversal logic is unchanged from the OData era --
+  only its transport moved (QUERY-body $filter -> GraphQL
+  query, ADR-037). It lives inside the GraphQL Gateway now,
+  not a standalone "Lineage API" container.
+end note
+
+rectangle "Lineage Resolver (part of GraphQL Gateway)" <<Boundary>> as lineageResolver {
+    rectangle "**EventParentReader**\n<<Component>>\n//EF Core (LINQ)//\n--\nImmediate parents/children via a plain join on EventParents" <<Component>> as directReader
+    rectangle "**IEventLineageQueryProvider (impl per provider)**\n<<Component>>\n//SQLite/Postgres/SqlServer raw SQL//\n--\nAncestors/descendants via provider-specific WITH RECURSIVE CTE" <<Component>> as recursiveReader
+    rectangle "**CycleGuard**\n<<Component>>\n//In-process//\n--\nBounds traversal depth / rejects a revisited node (ADR-005)" <<Component>> as cycleGuard
+    rectangle "**Per-node visibility check**\n<<Component>>\n//restrictedTypes set//\n--\nADR-008 -- stubs a discovered node as restricted:true rather than failing the request" <<Component>> as nodeVisibility
+}
+
+database "Event Log" <<Container>> as eventLog
+
+directReader --> nodeVisibility : stubs a restricted direct node
+recursiveReader --> cycleGuard : guards recursion
+recursiveReader --> nodeVisibility : stops expansion past a restricted node
+directReader --> eventLog : SELECT ... FROM EventParents JOIN Events
+recursiveReader --> eventLog : WITH RECURSIVE ... (native per provider)
+
+@enduml

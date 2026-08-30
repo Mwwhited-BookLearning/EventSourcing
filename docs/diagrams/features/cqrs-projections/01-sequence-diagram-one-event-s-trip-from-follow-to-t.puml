@@ -1,0 +1,26 @@
+@startuml
+autonumber
+participant "ProjectionHost" as host
+participant "FollowClient" as followClient
+participant "Follow.Api\n(QUERY /follow/{event-type}, ADR-012)" as followApi
+participant "SnapshotMerger\n(plain JsonNode merge, ADR-016)" as merger
+database "ProjectionSnapshot\n(read side)" as snapshotDb
+participant "OrderSummaryProjection" as proj
+database "OrderSummary\n(read side)" as readDb
+database "ProjectionCheckpoint\n(read side)" as checkpointDb
+
+host -> checkpointDb: read LastSequenceNumber for "order-summary"
+host -> followClient: TailAsync("OrderAddressUpdated", appId, fromSequenceNumber: <checkpoint>)
+followClient -> followApi: QUERY /follow/OrderAddressUpdated\nAuthorization: Bearer <JWT>, DPoP: <proof>\nbody: { appId, mode: "Replay", fromSequenceNumber: <checkpoint> }
+followApi --> followClient: 200, text/event-stream\ndata: { eventId, sequenceNumber, occurredAt,\n  parentEventIds, payload: { OrderId: "o-1", Address: "221B Baker St" } }\n\n
+followClient --> host: FollowedEventEnvelope { OrderId: "o-1", Address: "221B Baker St" }
+host -> snapshotDb: load snapshot("order-summary", "o-1")
+snapshotDb --> host: { CustomerName: "A. Smith", Address: "old address", Amount: 42.00 }
+host -> merger: Merge(ChangeKind.Partial, existing, incoming)
+merger --> host: { CustomerName: "A. Smith", Address: "221B Baker St", Amount: 42.00 }
+host -> snapshotDb: upsert merged snapshot, LastAppliedSequenceNumber
+host -> proj: Project("o-1", mergedSnapshot)
+proj --> host: OrderSummary { OrderId: "o-1", CustomerName: "A. Smith", Address: "221B Baker St", Amount: 42.00 }
+host -> readDb: upsert OrderSummary
+host -> checkpointDb: advance LastSequenceNumber
+@enduml

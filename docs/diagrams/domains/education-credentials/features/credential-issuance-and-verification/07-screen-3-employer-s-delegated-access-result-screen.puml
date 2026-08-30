@@ -1,0 +1,15 @@
+@startsalt
+{
+  { "Credential Verification -- cred-1001 (Sunridge University)" }
+  ..
+  | Field           | Value                                     |
+  | Institution      | "Sunridge University"                     |
+  | Degree Awarded   | "B.S. Computer Science"                    |
+  | Conferred        | "2019-05-18"                                |
+  | Student ID       | "***"  ( FERPA -- masked, no "ferpa:view" ) |
+  | Date of Birth    | "***"  ( FERPA -- masked, no "ferpa:view" ) |
+  | Diploma (PDF)    | [ View attachment ]                        |
+  ..
+  { "Access basis:" | "delegated grant, entity-scoped to cred-1001, expires 2026-08-04" }
+}
+@endsalt

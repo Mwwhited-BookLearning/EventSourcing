@@ -1,0 +1,10 @@
+@startsalt
+{
+  { "Claims Queue -- Adjuster A" }
+  ..
+  | Claim ID   | Policy | Trip     | Risk Score | Claim Amount | Status        |
+  | claim-9911 | pol-55 | trip-482 | 72         | $4,200.00    | under_review  |
+  | claim-8800 | pol-31 | trip-410 | 38         | $1,150.00    | approved      |
+  | claim-7765 | pol-55 | trip-399 | 91         | $9,800.00    | disputed      |
+}
+@endsalt

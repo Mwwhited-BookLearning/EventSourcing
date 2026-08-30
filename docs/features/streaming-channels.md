@@ -51,6 +51,8 @@ no stale-scenario banner.
 
 ## Sequence diagram — ingesting a batch of samples
 
+![Sequence diagram — ingesting a batch of samples](../diagrams/features/streaming-channels/01-sequence-diagram-ingesting-a-batch-of-samples.svg)
+
 ```plantuml
 @startuml Streaming_Ingest_Sequence
 autonumber
@@ -93,6 +95,8 @@ end
 
 ## Sequence diagram — a detector publishing a linked event
 
+![Sequence diagram — a detector publishing a linked event](../diagrams/features/streaming-channels/02-sequence-diagram-a-detector-publishing-a-linked-ev.svg)
+
 ```plantuml
 @startuml Streaming_Detector_Publish_Sequence
 autonumber
@@ -127,6 +131,8 @@ end
 with `additionalProperties`/JSON Schema validation.
 
 ## Sequence diagram — a correlated detection across a `ThreadId`-grouped session
+
+![Sequence diagram — a correlated detection across a `ThreadId`-grouped session](../diagrams/features/streaming-channels/03-sequence-diagram-a-correlated-detection-across-a-t.svg)
 
 ```plantuml
 @startuml Streaming_ThreadId_Correlated_Detection_Sequence
@@ -170,6 +176,8 @@ the same mechanism with more entries, not a different shape.
 
 ## Sequence diagram — tail/replay with a `RedactedRange` applied
 
+![Sequence diagram — tail/replay with a `RedactedRange` applied](../diagrams/features/streaming-channels/04-sequence-diagram-tail-replay-with-a-redactedrange-.svg)
+
 ```plantuml
 @startuml Streaming_RedactedRange_Read_Sequence
 autonumber
@@ -204,6 +212,8 @@ already holds it) sees the same real underlying data, not a
 once-redacted-forever copy.
 
 ## Data model (ER diagram)
+
+![Data model (ER diagram)](../diagrams/features/streaming-channels/05-data-model-er-diagram.svg)
 
 ```plantuml
 @startuml StreamingChannels_ER

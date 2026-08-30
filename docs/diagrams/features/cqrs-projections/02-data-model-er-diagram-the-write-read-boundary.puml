@@ -1,0 +1,50 @@
+@startuml
+hide circle
+skinparam linetype ortho
+
+package "Write side (EventStoreContext)" {
+  entity "StoredEvent" as event {
+    * SequenceNumber : bigint <<PK>>
+    --
+    EventId : uuid <<unique>>
+    EventType : string
+    Payload : text
+  }
+  entity "EventTypeDefinition" as etd {
+    * Name : string <<PK>>
+    * Version : int <<PK>>
+    --
+    ChangeKind : string
+  }
+}
+
+package "Read side (ProjectionsDbContext) -- separate database" {
+  entity "ProjectionCheckpoint" as checkpoint {
+    * ProjectionName : string <<PK>>
+    --
+    LastSequenceNumber : bigint
+  }
+  entity "ProjectionSnapshot" as snapshot {
+    * ProjectionName : string <<PK>>
+    * Key : string <<PK>>
+    --
+    SnapshotJson : text
+    LastAppliedSequenceNumber : bigint
+  }
+  entity "OrderSummary" as summary {
+    * OrderId : string <<PK>>
+    --
+    CustomerName : string
+    Address : string
+    Amount : decimal
+    ShippedAt : datetimeoffset?
+    CancelledAt : datetimeoffset?
+  }
+}
+
+event .[hidden]. etd
+snapshot ..> summary : "Project() maps\nsnapshot -> row"
+note "The only connection between\nthe two packages is FollowClient's\nplain HTTP QUERY /follow/{event-type}\ncall + raw SSE parsing (Follow.Api,\nADR-012) -- never a GraphQL document,\nnever a shared DbContext or a join\nacross the boundary." as N
+event .. N
+N .. checkpoint
+@enduml

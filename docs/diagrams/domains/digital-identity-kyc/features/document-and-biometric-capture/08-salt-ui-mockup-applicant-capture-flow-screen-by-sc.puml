@@ -1,0 +1,11 @@
+@startsalt
+{
+  { "Identity Verification -- Step 3 of 3: Confirm Identity" }
+  ..
+  "Documents received: passport, proof of address"
+  "Biometric capture: complete"
+  ..
+  "Next, you'll prove control of your digital identity (DID)\nto complete your identity claim."
+  [ Continue ]
+}
+@endsalt

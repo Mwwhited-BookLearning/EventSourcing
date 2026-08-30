@@ -1,0 +1,15 @@
+@startuml
+autonumber
+database "Event Log" as Log
+participant "Reader" as R
+participant "UpcastChain" as U
+
+Log -> R: event stored at SchemaVersion 1
+R -> U: reshape to current version (3)
+U -> U: apply v1 -> v2 mapping
+U -> U: apply v2 -> v3 mapping
+U --> R: payload in v3 shape
+note over Log: The stored event itself is\nnever rewritten -- only the\nread-time view changes.
+
+R -> R: unrecognized property?\n=> route to Extensions bag,\nnot rejected (Tolerant Reader)
+@enduml

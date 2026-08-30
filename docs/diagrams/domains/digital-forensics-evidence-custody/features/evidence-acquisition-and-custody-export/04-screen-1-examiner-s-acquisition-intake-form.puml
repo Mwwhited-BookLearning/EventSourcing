@@ -1,0 +1,13 @@
+@startsalt
+{
+  { "Acquire Evidence -- Case 24-CR-118" }
+  ..
+  { "Disk image" | [Choose file...]  "disk-ev1.img (128 GB)" }
+  { "Evidence ID" | "^ev-1^" }
+  { "Source device" | "^Dell Latitude 5410, S/N ABC123^" }
+  { "Acquisition tool" | "^FTK Imager 4.7^" }
+  { "Write blocker used" | [X] }
+  ..
+  [ Upload and Publish EvidenceAcquired ] | [ Cancel ]
+}
+@endsalt

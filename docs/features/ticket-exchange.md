@@ -35,6 +35,8 @@ mechanism exists only for the two named header-incapable surfaces above.
 
 ## Sequence diagram — issue, sign, and hand off to a header-incapable element
 
+![Sequence diagram — issue, sign, and hand off to a header-incapable element](../diagrams/features/ticket-exchange/01-sequence-diagram-issue-sign-and-hand-off-to-a-head.svg)
+
 ```plantuml
 @startuml TicketExchange_Issuance_Sequence
 autonumber
@@ -65,6 +67,8 @@ end note
 ```
 
 ## Sequence diagram — resolution at the receiving service
+
+![Sequence diagram — resolution at the receiving service](../diagrams/features/ticket-exchange/02-sequence-diagram-resolution-at-the-receiving-servi.svg)
 
 ```plantuml
 @startuml TicketExchange_Resolution_Sequence
@@ -143,6 +147,8 @@ dual-secret check in `/oauth/introspect`'s own HMAC verification. See
 
 ### Screen 1: Clinician's dashboard, before the video element loads
 
+![Screen 1: Clinician's dashboard, before the video element loads diagram](../diagrams/features/ticket-exchange/03-screen-1-clinician-s-dashboard-before-the-video-el.svg)
+
 ```plantuml
 @startsalt
 {
@@ -161,6 +167,8 @@ already-established session — nothing here is visible to the clinician
 beyond a brief loading state.
 
 ### Screen 2: Playback begins, using the signed ticket URL
+
+![Screen 2: Playback begins, using the signed ticket URL diagram](../diagrams/features/ticket-exchange/04-screen-2-playback-begins-using-the-signed-ticket-u.svg)
 
 ```plantuml
 @startsalt

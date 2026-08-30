@@ -1,0 +1,22 @@
+@startuml
+autonumber
+actor "Compliance officer\n(identity:aml-review)" as officer
+participant "PublishEndpoint\n(Inbox)" as inbox
+database "Event Log" as eventLog
+database "Entity Store\n(kyc:ApplicantIdentity)" as entityStore
+
+officer -> inbox: POST /publish/SarFilingRecorded\n{ ApplicantId, TargetScreeningEventId,\n  FilingReferenceId, Narrative }\nBearer <JWT, acr not recent enough>
+alt caller's token doesn't satisfy RequiredSignature.AcrValues/MaxAge\n(this playbook's own seed data starts here)
+  inbox --> officer: 401 WWW-Authenticate: step-up required\n(acr_values="urn:kyc:acr:step-up")
+  officer -> officer: re-authenticate (IdP's own mechanism, ADR-066) --\nSamples.Meridian.Seed simulates this by attaching\n"acr"/"auth_time" claims directly, no real DevIdp round trip
+  officer -> inbox: retry POST /publish/SarFilingRecorded\n(same payload, stepped-up token, Meaning: "approved filing")
+end
+inbox -> eventLog: INSERT StoredEvent (SarFilingRecorded)\nSignature: { SignerId, SignedAt, Meaning: "approved filing",\n  Acr: "urn:kyc:acr:step-up" }
+inbox -> entityStore: fold (Partial) onto ApplicantIdentity,\nAuthorityStatus: "accepted"
+note right: the actual FinCEN BSA E-Filing submission is out of scope\n(ADR-072's IInterchangeFormatAdapter seam, not built here)
+
+== Later: staff browse the result via client-web ==
+participant "Duplex Client\n(client-web-meridian-sarfiling)" as client
+client -> entityStore: (via GraphQL Subscription on_kyc_SarFilingRecorded, REPLAY)
+client -> officer: Detail view -- FilingReferenceId renders plainly;\nNarrative renders masked ("***", x-masking requiredClaim\n"identity:aml-review")
+@enduml

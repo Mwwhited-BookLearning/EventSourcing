@@ -1,0 +1,17 @@
+@startuml
+[*] --> Unpaired
+
+Unpaired --> Paired : DeviceOnboarded\n(WebHid or NativeBridge, ADR-070)
+Paired --> ChannelProvisioned : ChannelRegistry POST\n(Origin TelemetryChannel, ADR-031)
+ChannelProvisioned --> Streaming : first TelemetrySample batch ingested
+
+state Streaming {
+  Streaming : continuous TelemetrySample ingestion,\nno per-sample validation/fold (ADR-031)
+  [*] --> Tailing
+  Tailing --> Tailing : detector polls, nothing found
+  Tailing --> AnomalyEscalated : detector's threshold rule fires
+  AnomalyEscalated --> Tailing : AdverseEventReported published --\nsee adverse-event-capture-and-review.md\nfor what happens next; monitoring\nitself is uninterrupted
+}
+
+Streaming --> Unpaired : device unpaired / connection lost
+@enduml

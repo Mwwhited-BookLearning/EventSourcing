@@ -34,24 +34,59 @@ lose or corrupt data.
 *(as of 2026-08-29, branch `dev/cryptoshredding` off `main` — update this
 whole section, don't just bump the date)*
 
-All 95 pre-existing ADRs Accepted; `ADR-096`–`099` added since. `08-build-
-plan.md` has 56 items: the original 53 Done, item 54 Done, item 55 built
-but not Done (own exit criteria need a dedicated security review, not
-performed), item 56 SQL Server built+verified / PostgreSQL
-written+unverified (not Done). `client-web`'s reference app grew from one
-generic entity view into 8 tabs across 12 real, Playwright-verified
-playbooks (`docs/playbooks/README.md`), then `ADR-099` replaced its
-plain-HTML tab-button shell with Naive UI + Vue Router behind a
-left-hand-nav rail, restyling every existing component in the same pass
-(`docs/changes/2026-08-29.md` has the full build narrative, including 5
-real bugs found only by running things — Naive UI's own `n-card`/
-`n-form-item` accessibility gaps, and `n-data-table` pagination breaking
-findability of a known `EntityId` under live simulator load). `TODO.md`
-has one Postgres-noise item (investigated, two fix attempts tried and
-reverted, real fix not yet built — read it before touching that code
-path) plus two smaller, fully-scoped UI follow-ons (a real paged server
-query for entity lists; a charting-library decision). `docs/10-open-
-questions.md` is empty.
+All 100 ADRs Accepted (`ADR-100` added this session, configurable
+presentation-type/charting). `08-build-plan.md`'s item 54/55/56 status is
+unchanged from the paragraph below (not touched this pass — this
+session's work was entirely `TODO.md` items, not build-plan items).
+`client-web`'s reference app grew from one generic entity view into 8
+tabs across 12 real, Playwright-verified playbooks
+(`docs/playbooks/README.md`); `ADR-099` then replaced its plain-HTML
+tab-button shell with Naive UI + Vue Router behind a left-hand-nav rail,
+restyling every existing component in the same pass; `docs/style-
+guide.md` was written from real captured pages of that shell.
+
+This session (2026-08-29, full narrative in `docs/changes/2026-08-29.md`)
+worked every remaining *decided* `TODO.md` item, one at a time, per
+direct instruction ("all the decided things can be worked one at a
+time"): a real paged/filtered server-side entity-list GraphQL query
+(replacing the old always-subscribe Browse pattern); root-caused and
+fixed the Postgres `40001` serialization-error noise after two earlier
+documented failed attempts (transaction-scoped `pg_advisory_xact_lock` +
+Read Committed isolation, Postgres-only — see
+`docs/bugs/framework/database/postgres-routine-40001-serialization-noise.md`,
+the first bug report filed under the new bug-report-tracking protocol);
+adopted Apache ECharts for configurable-presentation-type charting
+(`ADR-100`, `docs/comparisons/charting-library.md` — catching a real
+ApexCharts dual-license disqualifier and a real CSS/testability bug
+chain only visible via an actual Playwright screenshot, not Vitest);
+extended `JsonSchemaInstanceValidator` twice with real, spec-verified
+JSON Schema Draft 2019-09+ keywords (string/number constraints + `enum`
++ `format`, then `dependentRequired`/`if`-`then`-`else`/`const`) —
+finding and correctly handling a real `ADR-038` `x-enum-fallback`
+compatibility conflict before it could regress an existing test; and
+extended `ADR-007`'s derivation mechanism with calculated fields
+(`SelectField.Expression`, evaluated via the already-adopted
+`IUpcastExpressionEvaluator`/`ADR-053` seam — reused, not a third
+expression mechanism); and, after explicitly confirming the flagged
+tradeoff with the user first, built the PlantUML `.puml`-extraction +
+Docker-`.svg`-rendering pipeline (`scripts/extract-diagrams.mjs`,
+`scripts/render-diagrams.mjs`) — every diagram's fenced block stays
+inline, untouched, with a rendered `docs/diagrams/**/*.svg` image
+reference inserted above it, so the doc stays plain-text readable *and*
+actually renders on GitHub. Found and fixed 6 genuine, previously-
+undiscovered PlantUML syntax bugs only a real render caught (escaped
+quotes, a 3-participant `note over` this PlantUML build rejects, an
+`actor` mixed into an object diagram, literal braces nested inside a
+Salt cell's own quoted string, one doc missing `@startuml`/`@enduml`
+outright) — see `docs/changes/2026-08-29.md` for the exact list and
+fixes. **`TODO.md` is now fully done — every item, including the DSL
+fork's own tracker row in `docs/10-open-questions.md`, is either closed
+or (that one row) explicitly still an open, undecided fork, not
+forgotten work.** The diagram pipeline isn't wired into CI (not asked
+for); re-running both scripts after editing any diagram is a real,
+currently-manual step to keep the checked-in `.svg` in sync, flagged as
+such in `TODO.md` rather than assumed automatic. A fresh session should
+ask the user what's next rather than assume more `TODO.md` work exists.
 
 This session (full narrative split across three passes in
 `docs/changes/2026-08-27.md`): designed searchable equality/range
@@ -99,9 +134,11 @@ review; item 56's PostgreSQL `plpython3u` function is written but
 unverified (needs a custom Postgres image); both item 56 evaluators stay
 `Local`-backend-only regardless of the cloud `ISearchIndexKeyStore` work
 (the evaluators themselves would still need their own network access to
-a real KMS/Vault). `dev/cryptoshredding` has four commits ahead of
-`main`, not yet merged or opened as a PR — a fresh session should
-confirm with the user before assuming either is wanted.
+a real KMS/Vault). `dev/cryptoshredding` has 37 commits ahead of `main`
+as of 2026-08-29 (pushed incrementally through this session, one
+isolated unit of work per commit, per direct standing instruction), not
+yet merged or opened as a PR — a fresh session should confirm with the
+user before assuming either is wanted.
 
 ## How to resume cold
 

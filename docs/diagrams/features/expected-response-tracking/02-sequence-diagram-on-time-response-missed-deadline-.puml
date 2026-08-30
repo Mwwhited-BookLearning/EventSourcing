@@ -1,0 +1,43 @@
+@startuml
+autonumber
+actor "Neurotechnologist" as tech
+participant "PublishEndpoint" as inbox
+database "Event Log" as eventLog
+participant "ExpectedResponseWatcher" as watcher
+database "ExpectedResponseTracker" as tracker
+
+alt response arrives before DeadlineAt
+  tech -> inbox: POST /publish/IonmAlertAcknowledged\n{ respondsToEventId: "req-1", payload: { AckedBy: "tech-4" } }
+  inbox -> eventLog: INSERT StoredEvent\n(EventId: "resp-1", RespondsToEventId: "req-1")
+  inbox --> tech: 202
+  watcher -> eventLog: observe "resp-1" carries RespondsToEventId "req-1"
+  watcher -> tracker: UPDATE SatisfiedByEventId = "resp-1", SatisfiedAt = now
+  note right of tracker
+    EscalatedAt never gets set for this row --
+    ExpectedResponseMissing is never published.
+  end note
+else no matching response by DeadlineAt
+  ... periodic sweep ...
+  watcher -> tracker: SELECT WHERE DeadlineAt < now\nAND SatisfiedAt IS NULL AND EscalatedAt IS NULL
+  tracker --> watcher: row for "req-1"
+  watcher -> inbox: POST /publish/ExpectedResponseMissing\n{ respondsToEventId: "req-1",\n  payload: { RequestEventId: "req-1",\n  RequestEventType: "IonmAlertRaised",\n  ExpectedResponseEventType: "IonmAlertAcknowledged",\n  DeadlineAt: "..." } }
+  inbox -> eventLog: INSERT StoredEvent\n(EventType: "ExpectedResponseMissing", reserved -- never\nregistered via PUT /registry/{event-type}, ADR-020's\nEventUpcastFailed precedent)
+  watcher -> tracker: UPDATE EscalatedAt = now
+  note right of tracker
+    Fires exactly once per row -- a later sweep skips
+    this row because EscalatedAt is no longer null,
+    even if it's still unsatisfied.
+  end note
+  ... later, a genuinely late acknowledgment still arrives ...
+  tech -> inbox: POST /publish/IonmAlertAcknowledged\n{ respondsToEventId: "req-1", payload: { AckedBy: "tech-4" } }
+  inbox -> eventLog: INSERT StoredEvent (EventId: "resp-2")
+  watcher -> tracker: UPDATE SatisfiedByEventId = "resp-2", SatisfiedAt = now
+  note right of tracker
+    Recorded, not rejected and not an error --
+    "never lose data" applies here exactly as
+    everywhere else in this design (ADR-094).
+    EscalatedAt is left as already set; the
+    escalation already happened and stays true.
+  end note
+end
+@enduml

@@ -1,0 +1,10 @@
+@startsalt
+{
+  { "IONM -- S-0091, Case in Progress (fast channel, live)" }
+  ..
+  { "^[waveform: ionm-s0091-fast]^" }
+  ..
+  { "! ALERT: SSEP amplitude drop >50%, left lower extremity" | [ Acknowledge ] }
+  "Raised 09:14:02 -- respond within 2:00"
+}
+@endsalt

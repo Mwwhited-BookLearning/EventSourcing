@@ -1,0 +1,42 @@
+@startuml
+autonumber
+actor "Bedside Monitor\n(device, ADR-031/ADR-070)" as device
+actor "Site Coordinator's client" as coordinator
+participant "PublishEndpoint\n(Inbox)" as inbox
+participant "Router" as router
+participant "EventStore.Fold" as fold
+database "Event Log" as eventLog
+database "Live View\n(LiveEntityStoreRow, ADR-042)" as liveView
+database "Entity Store\n(authoritative, ADR-042)" as entityStore
+
+alt device-linked AE, referencing an existing telemetry channel
+  device -> inbox: POST /publish/AdverseEventReported\n{ payload: { AeId: "ae-1042", SubjectId: "S-0091",\n  Severity: "Severe", SeriousAdverseEvent: true },\n  telemetryPointer: [{ ChannelId: "vitals-s0091", FromTimestamp: "2026-07-29T14:02:10Z" }],\n  attestedClaims: { reviewPending: true, reason: "auto-detected desaturation event" } }
+  note right of device
+    TelemetryPointer links this event to the raw
+    waveform (ADR-031) -- how that channel itself
+    is ingested is out of scope, see
+    streaming-channels.md.
+  end note
+else site-coordinator-entered AE
+  coordinator -> inbox: POST /publish/AdverseEventReported\n{ payload: { AeId: "ae-1039", SubjectId: "S-0044",\n  Severity: "Moderate", SeriousAdverseEvent: false },\n  attestedClaims: { reviewPending: true, reason: "clinical-judgment-required" } }
+  note right of coordinator
+    Coordinator is an ordinary authenticated caller
+    (ADR-006) -- AuthorityStatus would default to
+    "accepted" without the explicit review-pending
+    marker (ADR-042's second trigger case).
+  end note
+end
+inbox -> eventLog: INSERT StoredEvent\n(Status: received, AuthorityStatus: "pending_review")
+inbox --> device: 202 { status: "received", authorityStatus: "pending_review" }
+... asynchronously (ADR-023) ...
+router -> eventLog: validate schema, resolve EntityId "trial1:AdverseEvent:ae-1042"
+router -> fold: fold(StoredEvent)
+fold -> liveView: UPSERT LiveEntityStoreRow\n(Data: {...}, AuthorityStatus: "pending_review")
+note right of liveView
+  Every read of this row is wrapped isAuthoritative:
+  false at the query surface (ADR-042) -- a whole-row
+  marker, distinct from ADR-009's per-field masking.
+end note
+fold -> entityStore: (not updated -- AuthorityStatus\nhasn't reached "accepted" yet, ADR-042)
+fold -> eventLog: UPDATE StoredEvent SET Status = "applied"
+@enduml

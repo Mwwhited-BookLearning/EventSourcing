@@ -192,6 +192,8 @@ engine (Publish/Follow/Lineage/Router/GraphQL/Masking/Erasure/Multi-
 Tenancy/RBAC/feature flags/etc.), the majority tier by node count, exactly
 as expected for a backend-first event-sourcing engine.
 
+![Dependency overview diagram](diagrams/08-build-plan/01-dependency-overview.svg)
+
 ```plantuml
 @startuml BuildPlan_All
 state "External Services" as tierExternal {

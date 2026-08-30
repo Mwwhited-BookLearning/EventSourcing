@@ -1,0 +1,39 @@
+@startuml
+autonumber
+actor "Biobank Staff\n(IRB-cleared granter,\nclearance:specimen-data)" as granter
+actor "External Researcher\n(holds own DID)" as researcher
+participant "PublishEndpoint\n(Inbox)" as inbox
+participant "EventStore.DevIdp\n(OAuth Token Exchange, ADR-036)" as idp
+participant "GraphQL Gateway" as gql
+database "Event Log" as eventLog
+database "Access Audit Log" as accessLog
+
+== IRB-approved grant issuance ==
+granter -> granter: issue UCAN delegation naming\nresearcher's DID, claim "clearance:specimen-data",\nentityScope "biobank:Specimen:spec-001-dna", exp: 2026-08-06T00:00Z
+granter -> inbox: POST /publish/accessGrant\n{ payload: { GranteeDid: "did:key:z6Mk...researcher",\n  DelegatedClaim: "clearance:specimen-data",\n  EntityScope: "biobank:Specimen:spec-001-dna",\n  ExpiresAt: "2026-08-06T00:00:00Z" } }
+inbox -> eventLog: INSERT StoredEvent (accessGrant, ActorId: "staff-12")
+inbox --> granter: 202 { correlationId, status: "received" }
+
+== Researcher exchanges the UCAN for a bearer JWT ==
+researcher -> idp: POST /oauth/token\ngrant_type=urn:ietf:params:oauth:grant-type:token-exchange\nsubject_token=<UCAN invocation>\nrequested_token_type=urn:ietf:params:oauth:token-type:jwt
+idp -> idp: validate UCAN delegation chain\n(self-verifying, capped to granter's own clearance -- ADR-036/ADR-043)
+idp --> researcher: 200 { access_token }\nJWT claims include clearance:specimen-data,\nentityScope: "biobank:Specimen:spec-001-dna", exp
+
+== Successful read, within scope and before expiration ==
+researcher -> gql: QUERY { specimen(entityId: "biobank:Specimen:spec-001-dna") { specimenType donorReference collectionDate } }\nAuthorization: Bearer <exchanged JWT>
+gql -> gql: check claim "clearance:specimen-data" AND entityScope\nmatches requested EntityId (ADR-043/ADR-008 extension)
+gql --> researcher: 200 { specimenType: "DNA Extract",\n  donorReference: { "masked": "***" }, collectionDate: "2026-07-03" }
+gql -> accessLog: INSERT AccessLogEntry\n(ReaderActorId: researcher DID, ReaderTrustBasis: "Attested",\n GrantRef: <accessGrant eventId>, ResourceRef: "biobank:Specimen:spec-001-dna")
+
+alt researcher attempts to read a specimen OUTSIDE the granted entityScope
+  researcher -> gql: QUERY { specimen(entityId: "biobank:Specimen:spec-002") { specimenType } }\nAuthorization: Bearer <same exchanged JWT>
+  gql -> gql: claim "clearance:specimen-data" present,\nbut entityScope "biobank:Specimen:spec-001-dna" != "biobank:Specimen:spec-002"
+  gql --> researcher: 403 (claim does not apply to this EntityId)
+  gql -> accessLog: INSERT AccessLogEntry\n(Action: "query", denied -- ADR-045 logs attempted reads too)
+else grant has since expired or been revoked
+  researcher -> idp: POST /oauth/token (same exchange, after ExpiresAt\nor after an accessGrantRevoked event for this grant)
+  idp -> idp: check UCAN exp / revocation status at exchange time\n(not just relying on a previously issued JWT's own exp)
+  idp --> researcher: 400 invalid_grant
+  note right: revocation depends on the IdP actually checking revocation\nstatus at each exchange, same operational requirement ADR-040's\nticket consumption already has (ADR-043 Consequences)
+end
+@enduml

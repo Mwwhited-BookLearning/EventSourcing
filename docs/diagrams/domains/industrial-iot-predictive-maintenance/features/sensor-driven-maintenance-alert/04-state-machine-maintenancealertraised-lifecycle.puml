@@ -1,0 +1,24 @@
+@startuml
+[*] --> Raised
+
+state "Raised\n(AuthorityStatus: accepted --\nhigh-confidence detector publish, ADR-042 default)" as Raised
+state "PendingReview\n(AuthorityStatus: pending_review --\nlow-confidence detector publish,\nreview-pending marker set, ADR-042)" as PendingReview
+state "Accepted\n(authoritative Entity Store updated,\nADR-042 catch-up; webhook fires, ADR-060)" as Accepted
+state "Dismissed\n(AuthorityStatus: rejected --\nauthorityDecision event, ADR-035)" as Dismissed
+state "WorkOrderDispatched\n(app-specific downstream state,\nCMMS/ERP-owned, out of framework scope)" as WorkOrderDispatched
+
+Raised --> Accepted : detector publish already at\nAuthorityStatus accepted (default)
+PendingReview --> Accepted : technician field-verification\nconfirms (authorityDecision: accepted)
+PendingReview --> Dismissed : technician field-verification\nrejects (authorityDecision: rejected)
+Accepted --> WorkOrderDispatched : CMMS/ERP acts on the\nwebhook notification (ADR-060)
+Dismissed --> [*]
+WorkOrderDispatched --> [*]
+
+note right of PendingReview
+  Never blocks the Event Log write (ADR-023) --
+  this state only gates the AUTHORITATIVE Entity
+  Store fold and the webhook match (ADR-042/ADR-060).
+  The Live View reflects Raised/PendingReview data
+  immediately either way, labeled isAuthoritative: false.
+end note
+@enduml

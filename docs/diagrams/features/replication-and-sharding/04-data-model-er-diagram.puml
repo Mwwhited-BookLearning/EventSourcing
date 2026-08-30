@@ -1,0 +1,53 @@
+@startuml
+hide circle
+skinparam linetype ortho
+
+entity "EntityStoreRow" as entityStore {
+  * EntityId : string <<PK>>
+  --
+  EntityType : string
+  ShardKey : string
+  Version : bigint
+  LastAppliedSequenceNumber : bigint
+  LastAppliedOriginId : string <<nullable>>
+  LateArrivalFlag : bool
+}
+
+entity "StoredEvent" as event {
+  * SequenceNumber : bigint <<PK>>
+  --
+  EventId : uuid <<unique>>
+  EntityId : string <<FK>>
+  OriginId : string
+  LogicalClock : string
+  ConflictFlag : bool
+}
+
+entity "PeerSyncCursor" as cursor {
+  * PeerId : string <<PK>>
+  --
+  LastReceivedSequenceNumber : bigint
+  LastAckedSequenceNumber : bigint
+  LastSyncAttemptAt : datetimeoffset
+  LastSyncSuccessAt : datetimeoffset
+}
+
+event }o--|| entityStore : "EntityId -- real FK,\nfolded into current state"
+entityStore ..> cursor : "LastAppliedOriginId = PeerId --\nlogical only, no DB FK\n(OriginId travels per-event, ADR-033)"
+event ..> cursor : "OriginId = PeerId --\nsame logical link, on the\nsource-of-truth event row"
+
+note right of entityStore
+  ShardKey computed from EntityType
+  (ADR-034) -- every entity of a given
+  type lands on the same shard,
+  independently of which site wrote it.
+end note
+
+note right of cursor
+  Durable per-peer resumption point --
+  survives an unclean process
+  termination (ADR-033). Merkle-tree
+  catch-up starts its range comparison
+  from here, not from SequenceNumber 0.
+end note
+@enduml

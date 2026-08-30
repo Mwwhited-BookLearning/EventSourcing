@@ -1,0 +1,12 @@
+@startsalt
+{
+  { "Acme Bank is requesting access" }
+  ..
+  "Acme Bank wants to confirm:"
+  "  - Your identity verification status"
+  "Access expires in 24 hours. Acme Bank will NOT see your"
+  "legal name or date of birth."
+  ..
+  [ Approve ] | [ Deny ]
+}
+@endsalt

@@ -1,0 +1,67 @@
+@startuml
+hide circle
+skinparam linetype ortho
+
+entity "StoredEvent\n(IdentityDocumentUploaded)" as docEvent {
+  * SequenceNumber : bigint <<PK>>
+  --
+  EventId : uuid <<unique>>
+  EntityId : string
+  ' "kyc:ApplicantIdentity:applicant-1001"
+  Payload : text
+  ' ApplicantId, DocumentType, ExtractedDocumentNumber (masked)
+  AuthorityStatus : string
+  ' "accepted" -- ordinary authenticated publish, no detector involved
+}
+
+entity "StoredEvent\n(BiometricCaptureRecorded)" as bioEvent {
+  * SequenceNumber : bigint <<PK>>
+  --
+  EventId : uuid <<unique>>
+  EntityId : string
+  Payload : text
+  ' ApplicantId, CaptureType, LivenessCheckResult, LivenessConfidence
+  AuthorityStatus : string {accepted|pending_review}
+  ' pending_review set via the explicit review-pending marker (ADR-042)
+  AuthorityDecisionRef : uuid?
+}
+
+entity "Attachment" as attachment {
+  * ContentHash : string <<PK>>
+  --
+  Bytes : bytea
+  MimeType : string
+  SizeBytes : bigint
+}
+
+entity "AttachmentRef" as ref {
+  * AttachmentRefId : bigint <<PK>>
+  --
+  ContentHash : string <<FK>>
+  EntityId : string <<nullable>>
+  EventId : uuid <<nullable>>
+}
+
+entity "LiveEntityStoreRow\n(ApplicantIdentity, ungated)" as liveView {
+  * EntityId : string <<PK>>
+  --
+  Data : text
+  ' merges DocumentType/ExtractedDocumentNumber/LivenessCheckResult
+  ' as they arrive, regardless of AuthorityStatus (ADR-042)
+  AuthorityStatus : string
+}
+
+attachment ||--o{ ref : "ContentHash -- real FK,\ntwo-step handoff (ADR-032)"
+ref }o--|| docEvent : "EventId, when linkToThisEvent=true"
+ref }o--|| bioEvent : "EventId, when linkToThisEvent=true"
+docEvent "*" --> "1" liveView : "folds immediately (accepted)"
+bioEvent "*" --> "1" liveView : "folds immediately regardless\nof AuthorityStatus (ADR-042)"
+
+note right of liveView
+  Both event types target the SAME EntityId the downstream
+  doc's IdentityClaimSubmitted event does -- arriving first
+  in time. ChangeKind.Partial merge (ADR-016/ADR-022) means
+  a later analyst review sees documents + biometric result
+  already folded alongside the identity claim itself.
+end note
+@enduml

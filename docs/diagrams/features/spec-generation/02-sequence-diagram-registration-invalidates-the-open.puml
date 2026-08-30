@@ -1,0 +1,30 @@
+@startuml
+autonumber
+actor "Platform Operator" as operator
+participant "Registry\n(RegistrationEndpoint)" as registryEndpoint
+participant "IMemoryCache" as cache
+actor "Any caller" as caller
+participant "OpenApiDocumentBuilder" as docBuilder
+
+operator -> registryEndpoint: PUT /registry/OrderPlaced (new version)
+registryEndpoint -> registryEndpoint: validate, persist, mark IsActive\n(see schema-registry.md)
+registryEndpoint -> cache: Remove("openapi-document")
+registryEndpoint --> operator: 201
+
+caller -> docBuilder: GET /openapi.json (next request, any time after)
+docBuilder -> cache: TryGetValue("openapi-document")
+cache --> docBuilder: miss (just invalidated)
+note right of docBuilder
+  Rebuilds from current registry state --
+  the new version is visible immediately,
+  not after waiting out the 60s TTL.
+end note
+note over registryEndpoint
+  The per-AppId GraphQL SDL isn't invalidated here because
+  EventStore.SpecGeneration doesn't cache it -- 03-api-contracts.md's
+  "Generation timing" states the *same* on-demand-plus-short-cache
+  behavior applies identically to it (ADR-037), just inside
+  EventStore.GraphQL/HotChocolate, a different project this doc
+  doesn't own the internals of.
+end note
+@enduml

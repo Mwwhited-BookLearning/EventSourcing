@@ -1,0 +1,11 @@
+@startuml
+autonumber
+actor Client
+participant "JSON:API endpoint" as api
+database "Resources" as db
+
+Client -> api: GET /articles?include=author&fields[articles]=title,body
+api -> db: fetch articles (sparse fieldset) + related authors (compound doc)
+db --> api: rows
+api --> Client: { data: [...articles], included: [...authors] }
+@enduml

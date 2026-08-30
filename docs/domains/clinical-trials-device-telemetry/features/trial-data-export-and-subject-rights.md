@@ -51,6 +51,8 @@ Every event type below is registered under `AppId` `"trial1"`
 
 ## Sequence diagram — sponsor/regulator lineage export with a chain-of-custody manifest
 
+![Sequence diagram — sponsor/regulator lineage export with a chain-of-custody manifest](../../../diagrams/domains/clinical-trials-device-telemetry/features/trial-data-export-and-subject-rights/01-sequence-diagram-sponsor-regulator-lineage-export-.svg)
+
 ```plantuml
 @startuml LineageExport_Sequence
 autonumber
@@ -92,6 +94,8 @@ end
 
 ## Sequence diagram — bitemporal system-time playback, a correction recovered in place
 
+![Sequence diagram — bitemporal system-time playback, a correction recovered in place](../../../diagrams/domains/clinical-trials-device-telemetry/features/trial-data-export-and-subject-rights/02-sequence-diagram-bitemporal-system-time-playback-a.svg)
+
 ```plantuml
 @startuml SystemTimePlayback_Sequence
 autonumber
@@ -121,6 +125,8 @@ playback is a second, parallel way to view the *same* history, computed
 on demand (`ADR-068` v1), never a replacement for the authoritative fold.
 
 ## Sequence diagram — GDPR erasure for a withdrawn subject
+
+![Sequence diagram — GDPR erasure for a withdrawn subject](../../../diagrams/domains/clinical-trials-device-telemetry/features/trial-data-export-and-subject-rights/03-sequence-diagram-gdpr-erasure-for-a-withdrawn-subj.svg)
 
 ```plantuml
 @startuml Erasure_Sequence
@@ -195,6 +201,8 @@ never arrives pre-addressed to a `SubjectId` the requester was never
 given.
 
 ## Data model (ER diagram)
+
+![Data model (ER diagram)](../../../diagrams/domains/clinical-trials-device-telemetry/features/trial-data-export-and-subject-rights/04-data-model-er-diagram.svg)
 
 ```plantuml
 @startuml ExportErasure_ER
@@ -312,6 +320,8 @@ public class SystemTimePlaybackResult
 
 ## State machine — a subject's data-rights lifecycle
 
+![State machine — a subject's data-rights lifecycle diagram](../../../diagrams/domains/clinical-trials-device-telemetry/features/trial-data-export-and-subject-rights/05-state-machine-a-subject-s-data-rights-lifecycle.svg)
+
 ```plantuml
 @startuml SubjectRights_State
 [*] --> Active : PatientScreened / InformedConsentCaptured / ConsentApproval\n(see patient-enrollment-and-informed-consent.md)
@@ -340,6 +350,8 @@ would).
 
 ### Export flow — Screen 1: export/playback request form
 
+![Export flow — Screen 1: export/playback request form diagram](../../../diagrams/domains/clinical-trials-device-telemetry/features/trial-data-export-and-subject-rights/06-export-flow-screen-1-export-playback-request-form.svg)
+
 ```plantuml
 @startsalt
 {
@@ -362,6 +374,8 @@ Screen 2, the reconstruction viewer for the chosen `asOfSequenceNumber`.
 
 ### Export flow — Screen 2: bitemporal playback viewer
 
+![Export flow — Screen 2: bitemporal playback viewer diagram](../../../diagrams/domains/clinical-trials-device-telemetry/features/trial-data-export-and-subject-rights/07-export-flow-screen-2-bitemporal-playback-viewer.svg)
+
 ```plantuml
 @startsalt
 {
@@ -382,6 +396,8 @@ own valid-time-corrected rule — with the late-arriving correction visibly
 landing in place rather than smoothed into the record's current shape.
 
 ### Erasure flow — Screen 1: subject-rights / erasure request
+
+![Erasure flow — Screen 1: subject-rights / erasure request diagram](../../../diagrams/domains/clinical-trials-device-telemetry/features/trial-data-export-and-subject-rights/08-erasure-flow-screen-1-subject-rights-erasure-reque.svg)
 
 ```plantuml
 @startsalt
@@ -406,6 +422,8 @@ for `trial1:Patient:S-0077` and irreversibly destroys its `DEK`
 
 ### Erasure flow — Screen 2: confirmation, record intact but identifying fields erased
 
+![Erasure flow — Screen 2: confirmation, record intact but identifying fields erased diagram](../../../diagrams/domains/clinical-trials-device-telemetry/features/trial-data-export-and-subject-rights/09-erasure-flow-screen-2-confirmation-record-intact-b.svg)
+
 ```plantuml
 @startsalt
 {
@@ -413,8 +431,8 @@ for `trial1:Patient:S-0077` and irreversibly destroys its `DEK`
   ..
   { "SubjectId" | "S-0077" } | { "SiteId" | "04-221" }
   { "EnrollmentStatus" | "Withdrawn" }
-  { "LegalName" | "{ erased: true }" }
-  { "DateOfBirth" | "{ erased: true }" }
+  { "LegalName" | "[erased: true]" }
+  { "DateOfBirth" | "[erased: true]" }
 }
 @endsalt
 ```

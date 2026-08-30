@@ -24,6 +24,8 @@ mechanics, covered by `ADR-023` itself, not re-derived in this doc.
 
 ## Sequence diagram
 
+![Sequence diagram](../diagrams/features/publish-event/01-sequence-diagram.svg)
+
 ```plantuml
 @startuml Publish_Sequence
 autonumber
@@ -81,6 +83,8 @@ end
 ```
 
 ## Data model (ER diagram)
+
+![Data model (ER diagram)](../diagrams/features/publish-event/02-data-model-er-diagram.svg)
 
 ```plantuml
 @startuml PublishEvent_ER

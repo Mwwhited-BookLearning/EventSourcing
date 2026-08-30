@@ -52,6 +52,8 @@ Both checks live in the same fold step, applied in this order (checking
 `ExpectedVersion` first is a convention, not a hard requirement — the two
 are independent enough that either order produces the same two flags):
 
+![Where they run, concretely diagram](../../diagrams/patterns/interactions/fold-ordering-and-conflict/01-where-they-run-concretely.svg)
+
 ```plantuml
 @startuml Fold_Both_Checks
 start

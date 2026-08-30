@@ -1,0 +1,21 @@
+@startsalt
+{
+  { "Claim claim-9911 -- under review  (Adjuster A)" }
+  ..
+  { "Policy" | "pol-55" }
+  { "Trip"   | "trip-482" }
+  { "Risk score at filing" | "72 / 100" }
+  { "Harsh braking events" | "4" }
+  { "Claim amount" | "$4,200.00" }
+  ..
+  [ View raw telemetry window (trip-482, t=0..612s) ]
+  ..
+  { "Secondary opinion" }
+  { "Grant to:" | "[ did:key:zAdjusterB ]" }
+  { "Claim:"    | "^claims:read^"        }
+  { "Expires:"  | "[ 2026-08-01 ]"       }
+  [ Grant secondary-opinion access ] | [ Revoke existing grant ]
+  ..
+  [ Approve ] | [ Deny ] | [ File dispute export ]
+}
+@endsalt

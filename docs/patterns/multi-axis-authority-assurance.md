@@ -22,6 +22,8 @@ than one:
   *assertion*, when a federated IdP is vouching for someone rather than
   authenticating them directly.
 
+![The pattern diagram](../diagrams/patterns/multi-axis-authority-assurance/01-the-pattern.svg)
+
 ```plantuml
 @startuml MultiAxis_Authority
 object "A request/submission" as req

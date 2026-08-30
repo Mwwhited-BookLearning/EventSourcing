@@ -1,0 +1,64 @@
+@startuml
+hide circle
+skinparam linetype ortho
+
+entity "StoredEvent" as event {
+  * SequenceNumber : bigint <<PK>>
+  --
+  EventId : uuid <<unique>>
+  EntityId : string
+  ' trial1:IonmAlert:alert-77
+  EventType : string
+  ' IonmAlertRaised | IonmAlertAcknowledged | authorityDecision | ExpectedResponseMissing
+  Payload : text
+  AuthorityStatus : string {unattested|pending_review|accepted|rejected}
+  AuthorityDecisionRef : uuid?
+  TelemetryPointer : string?
+  ' {ChannelId: "ionm-s0091-fast", FromTimestamp} -- IonmAlertRaised only
+  RespondsToEventId : uuid?
+  ' set on IonmAlertAcknowledged and ExpectedResponseMissing,\n' both naming IonmAlertRaised's EventId (ADR-094)
+  Signature : text?
+  ' {SignerId, SignedAt, Meaning, Acr} -- set only on a signed authorityDecision
+}
+
+entity "EntityStoreRow\n(trial1:IonmAlert:alert-77)" as entityStore {
+  * EntityId : string <<PK>>
+  --
+  Version : bigint
+  Data : text
+  ' Finding, Severity, AckedBy -- accumulated via\n' Full (IonmAlertRaised) + Partial (IonmAlertAcknowledged) folds
+  AuthorityStatus : string
+}
+
+entity "ExpectedResponseTracker" as tracker {
+  * RequestEventId : uuid <<PK>>
+  --
+  RequestEventType : string
+  ExpectedResponseEventType : string
+  DeadlineAt : datetimeoffset
+  SatisfiedByEventId : uuid?
+  SatisfiedAt : datetimeoffset?
+  EscalatedAt : datetimeoffset?
+}
+
+entity "TelemetryChannel" as channel {
+  * ChannelId : string <<PK>>
+  --
+  EntityId : string
+  ' trial1:Patient:S-0091
+  Purpose : string
+  ' "fast" | "full" -- domain/device metadata, not a framework concept (ADR-031)
+}
+
+event ||--o| tracker : "an IonmAlertRaised with\nExpectedResponse configured gets\nexactly one tracker row (ADR-094)"
+event ..> channel : "TelemetryPointer.ChannelId\n(logical only, not a DB foreign key)"
+event ..> event : "AuthorityDecisionRef -- authorityDecision\nback-pointing to IonmAlertRaised (ADR-035);\nRespondsToEventId -- IonmAlertAcknowledged/\nExpectedResponseMissing back-pointing to the\nSAME IonmAlertRaised (ADR-094) -- two distinct\nrelationships, never conflated (CLAUDE.md)"
+event ||--o| entityStore : "folds in ONLY once\nAuthorityStatus = accepted (ADR-042)"
+
+note right of channel
+  "ionm-s0091-fast" and "ionm-s0091-full" are both
+  Origin channels on the SAME EntityId -- the dual-
+  channel special concern in ../README.md, not a
+  second mechanism this doc introduces.
+end note
+@enduml

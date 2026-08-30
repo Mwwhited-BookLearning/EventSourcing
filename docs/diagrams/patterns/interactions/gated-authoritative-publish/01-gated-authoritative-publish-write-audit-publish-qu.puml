@@ -1,0 +1,19 @@
+@startuml
+autonumber
+participant "Event Log\n(Write -- always, Event Sourcing)" as log
+participant "AuthorityStatus review\n(Audit -- WAP)" as audit
+participant "Authoritative Entity Store\n(Publish, gated -- WAP + Quarantine's\ntrusted side)" as auth
+participant "Live View\n(Quarantine's untrusted side,\nmade VISIBLE instead of blocked --\na second Materialized View, CQRS)" as live
+
+log -> live: fold immediately, no gate
+log -> audit: AuthorityStatus lifecycle runs independently
+audit -> auth: fold ONLY once accepted (the WAP/Quarantine gate)
+note over live
+  This is Quarantine's "untrusted store" --
+  but readable, explicitly labeled
+  isAuthoritative: false, not blocked.
+  The deliberate deviation from Quarantine
+  is exactly this: visible-but-labeled,
+  not hidden-until-trusted.
+end note
+@enduml

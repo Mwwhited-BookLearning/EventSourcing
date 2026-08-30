@@ -1,0 +1,12 @@
+@startsalt
+{
+  { "Export Lineage -- lab1:Evidence:ev-1" }
+  ..
+  { "Starting entity" | "^lab1:Evidence:ev-1^" }
+  { "Purpose" | ^Litigation hold^ }
+  ..
+  "! Export enforces YOUR OWN claims -- a field you can't\n  see live, you can't see in the export either (ADR-068)"
+  ..
+  [ Build Export Bundle ] | [ Cancel ]
+}
+@endsalt

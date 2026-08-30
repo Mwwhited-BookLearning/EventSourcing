@@ -1,0 +1,28 @@
+@startuml
+autonumber
+participant "Samples.Meridian.Simulator" as simulator
+participant "PublishEndpoint\n(Inbox)" as inbox
+participant "Duplex Client\n(Queue tab, AuthorityQueue.vue)" as client
+actor "Compliance officer\n(identity:aml-review)" as officer
+database "Entity Store" as entityStore
+database "Live View" as liveView
+
+simulator -> inbox: POST /publish/SanctionsScreeningPerformed\n{ ApplicantId, ScreeningDate, ListsChecked,\n  MatchFound: true, MatchConfidence, MatchedName, MatchedListEntryId }\n(every ~25s; roughly 1 in 3 ticks is a match)
+inbox -> inbox: AuthorityStatus: "pending_review" (ADR-042) --\nalways captured regardless of MatchConfidence
+inbox -> liveView: fold into the Live View only (not yet authoritative)
+client -> inbox: subscription on_kyc_SanctionsScreeningPerformed (REPLAY)\n+ subscription on_kyc_authorityDecision (REPLAY)
+inbox --> client: new pending item appears in the Queue list\n(isPending: payload.matchFound === true)
+
+officer -> client: fill Meaning, click Accept
+client -> inbox: POST /publish/authorityDecision\n{ targetEventId, decision: "accepted", decidingActorId, reason }\nBearer <meridian-analyst-client token, claims: identity:aml-review>
+
+alt caller instead lacks "identity:review"/"identity:aml-review"
+  inbox --> client: 403 Forbidden
+else officer clicks Reject instead (false positive)
+  inbox -> inbox: AuthorityStatus: "rejected" --\nnever folds into the authoritative Entity Store, Payload untouched (Annotate)
+end
+
+inbox -> entityStore: fold now (catch-up) -- MatchedName/MatchedListEntryId\njoin the authoritative record
+inbox --> client: authorityDecision arrives over the live subscription
+client -> client: remove the resolved item from the Queue list
+@enduml

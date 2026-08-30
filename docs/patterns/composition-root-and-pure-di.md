@@ -28,6 +28,8 @@ application code is the **Service Locator** anti-pattern (Seemann's own
 term for it), because it hides a class's real dependencies behind a
 runtime lookup instead of a visible constructor signature.
 
+![The pattern diagram](../diagrams/patterns/composition-root-and-pure-di/01-the-pattern.svg)
+
 ```plantuml
 @startuml Composition_Root
 skinparam shadowing false

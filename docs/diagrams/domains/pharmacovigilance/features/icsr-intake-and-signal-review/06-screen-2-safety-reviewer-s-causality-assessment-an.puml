@@ -1,0 +1,13 @@
+@startsalt
+{
+  { "icsr-2031 -- Case Review (Live View, isAuthoritative: false)" }
+  ..
+  { "SuspectDrug" | "DrugX" } | { "ReactionTerm" | "Angioedema" } | { "Seriousness" | "serious" }
+  { "ReporterType" | "prescriber" } | { "MedDraCode" | "10002424 (Angioedema, PT)" }
+  ..
+  { "Causality Assessment" | [ "Probable (WHO-UMC)" ] }
+  ..
+  { [Step-up & Sign: Accept] | [Step-up & Sign: Reject] | [View lineage] }
+  "Sign-off requires RFC 9470 step-up (ADR-066), Signature Meaning 'causality_assessment'"
+}
+@endsalt

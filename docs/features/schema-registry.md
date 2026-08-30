@@ -43,6 +43,8 @@ entity, covered by [`auth.md`](auth.md) and
 
 ## Sequence diagram
 
+![Sequence diagram](../diagrams/features/schema-registry/01-sequence-diagram.svg)
+
 ```plantuml
 @startuml SchemaRegistry_Sequence
 autonumber
@@ -97,6 +99,8 @@ end
 ```
 
 ## Data model (ER diagram)
+
+![Data model (ER diagram)](../diagrams/features/schema-registry/02-data-model-er-diagram.svg)
 
 ```plantuml
 @startuml SchemaRegistry_ER

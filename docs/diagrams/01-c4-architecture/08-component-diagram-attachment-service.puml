@@ -1,0 +1,39 @@
+@startuml
+skinparam shadowing false
+skinparam defaultTextAlignment center
+skinparam wrapWidth 220
+skinparam rectangle<<Component>> {
+  BackgroundColor #85BBF0
+  FontColor black
+}
+skinparam database<<Container>> {
+  BackgroundColor #438DD5
+  FontColor white
+}
+skinparam rectangle<<Boundary>> {
+  BackgroundColor transparent
+  BorderColor #666666
+  BorderStyle dashed
+}
+skinparam ArrowColor #666666
+
+rectangle "Attachment Service" <<Boundary>> as attachmentSvc {
+    rectangle "**Upload Endpoint**\n<<Component>>\n//Minimal API//\n--\nComputes ContentHash (SHA-256) -- the real PK, content-addressed (ADR-032)" <<Component>> as upload
+    rectangle "**Content-Defined Chunker**\n<<Component>>\n//Above a configurable size threshold//\n--\nIndependently-addressable ChunkRefs, each own ContentProviderKey/Ref -- enables partial sync (ADR-032)" <<Component>> as chunker
+    rectangle "**IAttachmentContentStore**\n<<Component>>\n//Pluggable, keyed by ContentProviderKey//\n--\nAzure Blob\\|S3\\|local dev store, multiple backends active simultaneously (ADR-032)" <<Component>> as contentStore
+    rectangle "**Retrieval Endpoint**\n<<Component>>\n//Plain GET + HTTP Range//\n--\nRFC 7233 byte-range seeking; browsable via GraphQL against the owning entity" <<Component>> as retrieval
+    rectangle "**Tiering Mover**\n<<Component>>\n//Background service//\n--\nAccess-pattern-driven hot/cool/cold, keyed on LastAccessedAt (ADR-032)" <<Component>> as tiering
+}
+
+database "Attachment / ChunkRef metadata" <<Container>> as attachmentDb
+
+upload --> attachmentDb : INSERT Attachment (or ChunkRef rows if chunked)
+upload --> chunker : if size above threshold
+chunker --> contentStore : PUT each chunk independently
+upload --> contentStore : PUT whole blob, if not chunked
+retrieval --> attachmentDb : resolve ContentHash -> ContentProviderKey/Ref (or ChunkIndex)
+retrieval --> contentStore : GET bytes (Range-aware)
+tiering --> attachmentDb : read LastAccessedAt per Attachment
+tiering --> contentStore : move blob to a colder/warmer backend tier
+
+@enduml

@@ -1,0 +1,31 @@
+@startuml
+autonumber
+actor "Sponsor auditor" as auditor
+participant "Duplex Client\n(Lineage & Playback tab)" as client
+participant "GraphQL\n(exportLineage / playbackAsOf)" as graphql
+participant "GET /lineage-exports/{exportId}" as bundleEndpoint
+database "Event Log" as eventLog
+
+auditor -> client: Entity ID: trial1:patient:S-0091, click Export Lineage Bundle
+client -> graphql: query exportLineage(entityId)\nBearer <follower-client token, events:lineage:read>
+graphql -> graphql: CheckRootAsync -- caller holds the required\nRead claim for this entity's own root event(s)?
+alt caller lacks the required Read claim
+  graphql --> client: Forbidden
+else caller is authorized (this playbook's own scenario)
+  graphql -> eventLog: build the bundle (manifest + every\nevent in this entity's own chain)
+  graphql --> client: { bundleUrl: "/lineage-exports/{exportId}" }
+  client -> bundleEndpoint: GET {bundleUrl}\nBearer <same token> (15-minute retrieval window)
+  bundleEndpoint --> client: NDJSON (manifest line + one line per event)
+  client -> client: parseNdjson + verifyBundle (manifest hash\nrecomputed from each event's own ChainHash) --\nrendered via OfflineBundleViewer.vue, no server round trip
+end
+
+== Separately: System-Time Playback (VCR-style, arrival-order fold) ==
+auditor -> client: Entity ID + As-of SequenceNumber, click Play
+client -> graphql: query playbackAsOf(entityId, asOfSequenceNumber)
+alt no reconstruction exists at or before that SequenceNumber
+  graphql --> client: null
+else a reconstruction exists
+  graphql --> client: { data, lateArrivalCorrectionShown }
+  client -> auditor: [<] and [>] step to the adjacent SequenceNumber,\nre-fetching fresh each time -- never a cached snapshot
+end
+@enduml

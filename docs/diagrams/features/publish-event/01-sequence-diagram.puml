@@ -1,0 +1,53 @@
+@startuml
+autonumber
+actor "Publishing System" as publisher
+participant "Inbox\n(InboxEndpoint, ADR-023)" as endpoint
+participant "Auth\n(JWT Bearer + scope policy)" as auth
+participant "SchemaRegistryClient" as registryClient
+participant "ParentLinkService" as parentLink
+participant "EventAppender" as appender
+participant "Router\n(async validation, ADR-023)" as router
+participant "SchemaValidationService" as validator
+database "Event & Schema Store" as db
+
+publisher -> endpoint: POST /publish/{event-type}\nAuthorization: Bearer <JWT>\n{ schemaVersion, payload, parentEventIds?, eventId?, uniqueId? }
+endpoint -> auth: validate token + events:publish scope + Publish-direction RequiredClaims (ADR-008/050)
+alt missing/invalid token
+  auth --> publisher: 401
+else valid token, missing scope/claim
+  auth --> publisher: 403
+else authorized
+  endpoint -> registryClient: does {event-type} have any registered version at all?
+  alt event-type never registered
+    registryClient --> publisher: 404 (ADR-023 does not cover this -- there is no\nschema/AppId context to persist against at all)
+  else registered (some version exists)
+    alt eventId supplied
+      endpoint -> db: SELECT StoredEvent WHERE EventId = eventId (ADR-011)
+      alt found, PayloadHash matches
+        endpoint --> publisher: 202 (idempotent replay of the original\nresponse -- no new write, no further validation)
+      else found, PayloadHash differs
+        endpoint --> publisher: 409 (eventId already used with different content)
+      end
+    end
+    group only reached if eventId absent, or supplied-but-not-found
+      endpoint -> parentLink: validate(parentEventIds, ParentValidationMode) -- still synchronous and blocking (ADR-005)
+      alt Strict and any parentEventId unresolved
+        parentLink --> publisher: 400 (parent event not found -- NOT superseded\nby ADR-023, see ADR-013's error table)
+      else Permissive, or all parents resolved, or no parents
+        endpoint -> appender: append(StoredEvent [Status: received, SchemaStatus: null,\nEntityId: null], EventParents rows)
+        appender -> db: INSERT (single transaction) -- always succeeds once parseable\nand parent-checked, never gated on schema/version validity (ADR-023)
+        appender --> publisher: 202 { correlationId, status: "received", entityId: null,\nschemaStatus: null, authorityStatus: "accepted", sequenceNumber }
+        appender ->> router: hand off for async validation (ADR-023)
+        router -> registryClient: get schema for schemaVersion (or active version if omitted)
+        router -> validator: validate(payload, schema)
+        alt schemaVersion unknown, or payload violates schema, or upcast fails
+          router -> db: UPDATE StoredEvent SET SchemaStatus = 'unknown'|'invalid'\n(known properties still fold to Extensions, ADR-022; never re-rejected)
+        else payload conformant against the resolved version
+          router -> router: resolve EntityId from uniqueId + EntityIdField (ADR-021)
+          router -> db: UPDATE StoredEvent SET SchemaStatus = 'conformant',\nStatus = 'applied', EntityId = <resolved> -- folded into Entity Store
+        end
+      end
+    end
+  end
+end
+@enduml

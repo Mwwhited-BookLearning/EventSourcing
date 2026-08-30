@@ -1,0 +1,26 @@
+@startuml
+autonumber
+actor "Publishing System" as publisher
+participant "Inbox\n(InboxEndpoint, ADR-023)" as endpoint
+participant "SchemaValidationService\n(async, non-blocking, ADR-023)" as validator
+participant "ParentLinkService\n(still synchronous, blocking)" as parentLink
+participant "EventAppender" as appender
+database "Event & Schema Store" as db
+
+publisher -> endpoint: POST /publish/OrderShipped\n{ payload, parentEventIds: [orderPlacedId, paymentReceivedId] }
+endpoint -> parentLink: validate(parentEventIds, ParentValidationMode)
+alt ParentValidationMode = Strict
+  parentLink -> db: SELECT EventId FROM Events WHERE EventId IN (parentEventIds)
+  alt any parentEventId not found
+    parentLink --> publisher: 400 (parent event not found -- unaffected by\nADR-023's persist-everything posture, see this doc's Context)
+  else all found
+    parentLink --> endpoint: ok
+  end
+else ParentValidationMode = Permissive
+  parentLink --> endpoint: ok (dangling references allowed as-is)
+end
+endpoint -> appender: append(StoredEvent [Status: received, SchemaStatus: null],\nEventParents rows for each parentEventId)
+appender -> db: INSERT StoredEvent; INSERT EventParents (ChildEventId, ParentEventId) x N
+appender --> publisher: 202 { correlationId, status: "received", schemaStatus: null, sequenceNumber }
+appender ->> validator: hand off for async schema validation (ADR-023,\nsee publish-event.md -- never blocks this response, whatever it finds)
+@enduml

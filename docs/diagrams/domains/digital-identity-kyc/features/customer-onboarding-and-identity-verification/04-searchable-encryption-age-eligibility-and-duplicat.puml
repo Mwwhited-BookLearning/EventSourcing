@@ -1,0 +1,17 @@
+@startuml
+autonumber
+actor "Onboarding Analyst" as analyst
+participant "GraphQL Gateway" as gateway
+database "EncryptedFieldIndexEntry\n(ADR-096)" as index
+
+analyst -> gateway: subscription { on_kyc_IdentityClaimSubmitted(\n  where: [{ field: "DateOfBirth", gte: "1900-01-01",\n            lte: "2008-08-28" }]) { applicantId } }
+note right of analyst
+  A real applicant-eligibility cutoff (18th birthday as
+  of today) expressed as a bounded range -- both bounds
+  required (ADR-096); an open-ended "born before X" query
+  is refused rather than enumerating an unbounded bucket set.
+end note
+gateway -> index: narrow via bucket lookup (Year/Month/Day),\nthen exact-match the remainder (IEncryptedPredicateEvaluator, ADR-098)
+index --> gateway: matching ApplicantIds -- Payload never\nextracted as plaintext to evaluate the predicate
+gateway --> analyst: applicants eligible for full review
+@enduml

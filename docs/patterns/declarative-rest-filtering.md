@@ -16,6 +16,8 @@ Both project a REST (or REST-plus-GraphQL, for Hasura) surface directly
 over a relational schema, generated rather than hand-written per
 endpoint.
 
+![The pattern diagram](../diagrams/patterns/declarative-rest-filtering/01-the-pattern.svg)
+
 ```plantuml
 @startuml Declarative_Filter_Sequence
 autonumber

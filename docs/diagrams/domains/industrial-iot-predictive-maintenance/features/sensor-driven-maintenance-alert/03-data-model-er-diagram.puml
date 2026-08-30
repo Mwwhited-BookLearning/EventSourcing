@@ -1,0 +1,61 @@
+@startuml
+hide circle
+skinparam linetype ortho
+
+entity "TelemetryChannel" as channel {
+  * ChannelId : string <<PK>>
+  --
+  AppId : string
+  EntityId : string
+  ContentKind : enum {RawScalar}
+  SampleType : enum {Float64}
+  SampleIntervalMicros : bigint
+  Origin : enum {Origin}
+}
+
+entity "TelemetrySample" as sample {
+  * ChannelId : string <<PK, FK>>
+  * Timestamp : datetimeoffset <<PK>>
+  --
+  Value : bytes
+  LateArrivalFlag : bool
+}
+
+entity "StoredEvent (MaintenanceAlertRaised)" as event {
+  * SequenceNumber : bigint <<PK>>
+  --
+  EventId : uuid <<unique>>
+  EntityId : string
+  Payload : text
+  TelemetryPointer : string?
+  AuthorityStatus : string {unattested|pending_review|accepted|rejected}
+  AttestedClaims : text?
+}
+
+entity "EntityStoreRow (MaintenanceAlert)" as entityStore {
+  * EntityId : string <<PK>>
+  --
+  EntityType : string
+  Version : bigint
+  Data : text
+  AuthorityStatus : string
+}
+
+entity "EventParent" as parent {
+  * ChildEventId : uuid <<PK>>
+  * ParentEventId : uuid <<PK>>
+}
+
+channel ||--o{ sample : "ChannelId -- real FK (ADR-031)"
+event ..> channel : "TelemetryPointer.ChannelId -- logical\nonly, NOT a DB FK (ADR-031)"
+event ..> event : "parentEventIds via EventParent --\ncausal DAG (ADR-005), a DIFFERENT\nquestion from TelemetryPointer above"
+event "*" --> "1" entityStore : "folds into, once AuthorityStatus\nreaches accepted (ADR-042)"
+
+note right of event
+  This entity is this doc's own illustrative sketch of the
+  MaintenanceAlertRaised payload shape -- not a copy of an
+  existing docs/data/*.md class. TelemetryChannel/TelemetrySample
+  are likewise sketched here from ADR-031's prose description;
+  no C# class exists for them yet under docs/data/.
+end note
+@enduml

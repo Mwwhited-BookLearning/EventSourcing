@@ -1,0 +1,11 @@
+@startsalt
+{
+  { "Site 04-221 -- Patient Screening (Site Coordinator: coord-3)" }
+  ..
+  { "Subject ID" | "^S-0091^" }
+  { "Protocol ID" | "^trial1-proto-A^" }
+  { "Screening date" | "^2026-07-20^" } | { "Eligibility" | "^Eligible^" }
+  [ Submit PatientScreened ]
+  "Status: Screened (AuthorityStatus accepted immediately, ADR-042)"
+}
+@endsalt

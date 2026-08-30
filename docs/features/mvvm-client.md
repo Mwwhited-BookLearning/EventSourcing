@@ -27,6 +27,8 @@ mechanism (see the PWA pattern doc and `ADR-033`).
 
 ## Sequence diagram — command dispatched while offline, delivered on reconnect
 
+![Sequence diagram — command dispatched while offline, delivered on reconnect](../diagrams/features/mvvm-client/01-sequence-diagram-command-dispatched-while-offline-.svg)
+
 ```plantuml
 @startuml MvvmClient_OfflineCommand_Sequence
 autonumber
@@ -161,6 +163,8 @@ mechanism silently introduces.
 
 ## Sequence diagram — rendering a `ViewDefinition`, with generic fallback
 
+![Sequence diagram — rendering a `ViewDefinition`, with generic fallback](../diagrams/features/mvvm-client/02-sequence-diagram-rendering-a-viewdefinition-with-g.svg)
+
 ```plantuml
 @startuml MvvmClient_ViewDefinition_Fallback_Sequence
 autonumber
@@ -202,6 +206,8 @@ end
 ```
 
 ## Data model (ER diagram)
+
+![Data model (ER diagram)](../diagrams/features/mvvm-client/03-data-model-er-diagram.svg)
 
 ```plantuml
 @startuml MvvmClient_ER
@@ -302,6 +308,8 @@ is the other half `ADR-039` requires: the **native, non-web** generic
 property-list fallback, for an entity type/version with no matching
 `ViewDefinition` at all.
 
+![Salt (UI mockup) — `EntityView` (generic fallback) diagram](../diagrams/features/mvvm-client/04-salt-ui-mockup-entityview-generic-fallback.svg)
+
 ```plantuml
 @startsalt
 {
@@ -387,6 +395,8 @@ which every read-only instance already trusts with nothing more than
 
 ### Sequence diagram — composing and publishing an arbitrary registered event
 
+![Sequence diagram — composing and publishing an arbitrary registered event](../diagrams/features/mvvm-client/05-sequence-diagram-composing-and-publishing-an-arbit.svg)
+
 ```plantuml
 @startuml MvvmClient_EventComposer_Sequence
 autonumber
@@ -416,6 +426,8 @@ end
 ```
 
 ### Salt (UI mockup) — Event Composer tab
+
+![Salt (UI mockup) — Event Composer tab diagram](../diagrams/features/mvvm-client/06-salt-ui-mockup-event-composer-tab.svg)
 
 ```plantuml
 @startsalt
@@ -575,6 +587,8 @@ correlation need, not special-cased to this screen.
 
 ### Sequence diagram — a Principal Investigator resolves a pending IONM alert
 
+![Sequence diagram — a Principal Investigator resolves a pending IONM alert](../diagrams/features/mvvm-client/07-sequence-diagram-a-principal-investigator-resolves.svg)
+
 ```plantuml
 @startuml MvvmClient_AuthorityQueue_Sequence
 autonumber
@@ -605,6 +619,8 @@ vm --> PI: queue updated -- item resolved
 ```
 
 ### Salt (UI mockup) — Queue tab
+
+![Salt (UI mockup) — Queue tab diagram](../diagrams/features/mvvm-client/08-salt-ui-mockup-queue-tab.svg)
 
 ```plantuml
 @startsalt

@@ -48,7 +48,7 @@ public class EntityQueryTypeModule(IServiceScopeFactory scopeFactory) : ITypeMod
     // colliding with one of these (see the comment where this is consumed).
     private static readonly HashSet<string> ReservedEnvelopeFieldNames = new(StringComparer.Ordinal)
     {
-        "isAuthoritative", "authorityStatus", "version", "schemaVersion", "lateArrivalFlag", "updatedAt",
+        "entityId", "isAuthoritative", "authorityStatus", "version", "schemaVersion", "lateArrivalFlag", "updatedAt",
     };
 
     public async ValueTask<IReadOnlyCollection<ITypeSystemMember>> CreateTypesAsync(IDescriptorContext context, CancellationToken cancellationToken)
@@ -97,6 +97,14 @@ public class EntityQueryTypeModule(IServiceScopeFactory scopeFactory) : ITypeMod
             types.Add(entityGraphType);
 
             queryExtension.Fields.Add(BuildEntityQueryField(appId, entityType, safeAppId, safeEntityType, entityGraphType, contributing));
+            // TODO.md -- "Data grids: a real paged server query": a genuine
+            // server-side page over LiveEntityStore, an ALTERNATIVE data
+            // source to the always-subscribe-in-REPLAY-mode pattern
+            // EntityBrowser.vue used exclusively before this. Sibling
+            // fields to entity_{...} above, same per-(AppId,EntityType)
+            // group, same entityGraphType as the page's own item type.
+            queryExtension.Fields.Add(BuildEntityListQueryField(appId, entityType, safeAppId, safeEntityType, entityGraphTypeName, contributing));
+            queryExtension.Fields.Add(BuildEntityCountQueryField(appId, entityType, safeAppId, safeEntityType, contributing));
         }
 
         types.Add(ObjectTypeExtension.CreateUnsafe(queryExtension));
@@ -161,6 +169,15 @@ public class EntityQueryTypeModule(IServiceScopeFactory scopeFactory) : ITypeMod
     // rather than throwing when read off the Live View.
     private static IEnumerable<ObjectFieldConfiguration> BuildEntityEnvelopeFields()
     {
+        // entityId -- the single-entity query's own caller already supplies
+        // this as the "id" argument, so it never needed to come back on the
+        // result; entities_{...}'s own list query has no such per-row
+        // argument, so without this field a caller has no way to tell which
+        // row is which. Found only by actually running the new list query
+        // (a real HotChocolate "field does not exist" error), not assumed
+        // from the single-entity query's own already-working shape.
+        yield return new ObjectFieldConfiguration("entityId", type: TypeReference.Parse("String!"))
+        { PureResolver = ctx => ctx.Parent<EntityQueryResult>().EntityId };
         // No "!" non-null wrappers here -- matches FollowSubscriptionTypeModule's
         // own BuildEnvelopeFlagFields precedent exactly (plain "Boolean"/"String"),
         // and "updatedAt" is a plain ISO-8601 "String" rather than the
@@ -321,6 +338,169 @@ public class EntityQueryTypeModule(IServiceScopeFactory scopeFactory) : ITypeMod
             LateArrivalFlag: authoritative?.LateArrivalFlag ?? false,
             UpdatedAt: authoritative?.UpdatedAt ?? live!.UpdatedAt,
             MaskedData: maskedData);
+    }
+
+    // TODO.md, "Data grids: a real paged server query" -- a real,
+    // server-side page over LiveEntityStore, so a large entity set no
+    // longer has to be fully streamed to the client (via an always-
+    // REPLAY-mode subscription) before any grid can render a row.
+    // `first`/`skip` plain int arguments, not a HotChocolate [UsePaging]
+    // Relay Connection -- matches LineageQueries' own already-established
+    // precedent in this exact schema (its own comment: "first/skip...
+    // rather than a bespoke offset/limit pair... [UsePaging] Connection-
+    // wrapping wasn't adopted... honestly narrower than a full Relay
+    // cursor implementation"), not the Connection/edges/node shape.
+    //
+    // Reads LiveEntityStore only, never overlaid with the authoritative
+    // EntityStore per row (unlike the single-entity query above) --
+    // deliberate simplification for a LIST, not an oversight: LiveEntityStore
+    // is unconditionally populated for every entity this AppId/EntityType
+    // has ever folded (ADR-042), so it's the only source that can answer
+    // "list every entity of this type" at all; EntityStore is a strict
+    // subset (authoritative-only). A caller who needs the authoritative
+    // view for one specific row already has entity_{appId}_{entityType}(id)
+    // for that. Matches current EntityBrowser.vue behavior exactly (its
+    // REPLAY-mode cache is itself sourced from live fold data, not an
+    // authoritative overlay) -- no regression relative to today.
+    private ObjectFieldConfiguration BuildEntityListQueryField(
+        string appId, string entityType, string safeAppId, string safeEntityType, string entityGraphTypeName, List<EventTypeDefinition> contributing)
+    {
+        // entityGraphType.Name (the ObjectType instance's own property, not
+        // the string used to construct it) isn't populated yet at this
+        // point in schema build -- ObjectType.CreateUnsafe's name only
+        // completes later in the type system's own completion phase.
+        // Found by actually running a query against this field: TypeReference.
+        // Parse threw "Expected a `Name`-token, but found a `Bang`-token"
+        // because the interpolated string came out as the empty-name "[!]!".
+        // The plain string this same loop already computed the graph type's
+        // name FROM has no such problem -- passed in directly instead.
+        var fieldName = $"entities_{safeAppId}_{safeEntityType}";
+        var config = new ObjectFieldConfiguration(fieldName, type: TypeReference.Parse($"[{entityGraphTypeName}!]!"))
+        {
+            Resolver = async ctx => await ResolveEntityListAsync(ctx, appId, entityType, contributing),
+        };
+        config.Arguments.Add(new ArgumentConfiguration("first", type: TypeReference.Parse("Int!")));
+        config.Arguments.Add(new ArgumentConfiguration("skip", type: TypeReference.Parse("Int!")));
+        // TODO.md's own "client wiring" follow-up: a real server-side
+        // narrowing, not a full EventFilterInput-style multi-clause filter
+        // -- deliberately scoped to the one concrete problem that motivated
+        // EntityBrowser.vue's filter box in the first place (ADR-099: a
+        // known EntityId like the seed data's own continuity subject
+        // becoming unreachable once pagination pushed it past page 1), not
+        // a search over summarized payload content too. A plain substring
+        // match on EntityId, applied BEFORE Skip/Take so it narrows the
+        // whole matching set server-side, not just whatever page happens
+        // to already be loaded.
+        config.Arguments.Add(new ArgumentConfiguration("contains", type: TypeReference.Parse("String")));
+        return config;
+    }
+
+    // A sibling scalar, not folded into the list field's own result shape
+    // (e.g. a `{ items, totalCount }` wrapper type) -- kept as two plain
+    // fields for the identical reason LineageQueries' own comment gives
+    // for declining a Connection wrapper: this is a narrower, simpler
+    // shape than a full paging abstraction, sufficient for what
+    // EntityBrowser.vue's own page-number UI (n-data-table) actually
+    // needs (the total row count, queried only when the page-number
+    // control needs to know how many pages exist).
+    private ObjectFieldConfiguration BuildEntityCountQueryField(
+        string appId, string entityType, string safeAppId, string safeEntityType, List<EventTypeDefinition> contributing)
+    {
+        var config = new ObjectFieldConfiguration($"entityCount_{safeAppId}_{safeEntityType}", type: TypeReference.Parse("Int!"))
+        {
+            Resolver = async ctx => await ResolveEntityCountAsync(ctx, appId, entityType, contributing),
+        };
+        // Same "contains" filter as entities_{...}'s own -- must accept the
+        // identical argument so a caller can ask "how many pages does THIS
+        // filtered set have," not just the unfiltered total.
+        config.Arguments.Add(new ArgumentConfiguration("contains", type: TypeReference.Parse("String")));
+        return config;
+    }
+
+    private static async ValueTask<object> ResolveEntityListAsync(
+        IResolverContext ctx, string appId, string entityType, IReadOnlyList<EventTypeDefinition> contributing)
+    {
+        var db = ctx.Service<EventStoreContext>();
+        var user = ctx.Service<ClaimsPrincipal>();
+        var authorizationService = ctx.Service<IAuthorizationService>();
+        var payloadMasker = ctx.Service<IPayloadMasker>();
+
+        await GraphQlAuth.RequireScopeAsync(authorizationService, user, "events:follow");
+
+        var readClaims = contributing.SelectMany(d => d.RequiredClaims.Where(c => c.Direction == ClaimDirection.Read)).ToList();
+        if (!RequiredClaimEvaluator.HasAny(readClaims, ClaimDirection.Read, user))
+            throw new GraphQLException("Forbidden -- caller lacks the required Read claim for this entity type.");
+
+        var first = ctx.ArgumentValue<int>("first");
+        var skip = ctx.ArgumentValue<int>("skip");
+        var contains = ctx.ArgumentValue<string?>("contains");
+        var lowerEntityType = entityType.ToLowerInvariant();
+        var entityIdPrefix = $"{appId}:{lowerEntityType}:";
+
+        var query = db.LiveEntityStore.AsNoTracking()
+            .Where(r => r.EntityType == lowerEntityType && r.EntityId.StartsWith(entityIdPrefix));
+        if (!string.IsNullOrEmpty(contains))
+            query = query.Where(r => r.EntityId.Contains(contains));
+
+        var page = await query
+            .OrderBy(r => r.EntityId)
+            .Skip(skip)
+            .Take(first)
+            .ToListAsync(ctx.RequestAborted);
+
+        var mergedSchema = BuildMergedSchema(contributing);
+        var results = new List<EntityQueryResult>(page.Count);
+        foreach (var row in page)
+        {
+            var maskedData = await payloadMasker.MaskAsync(
+                mergedSchema, JsonNode.Parse(row.Data), row.EntityId, claim => RequiredClaimEvaluator.HasClaim(user, claim), ctx.RequestAborted) as JsonObject;
+            results.Add(new EntityQueryResult(
+                EntityId: row.EntityId, IsAuthoritative: false, AuthorityStatus: row.AuthorityStatus,
+                Version: null, SchemaVersion: null, LateArrivalFlag: false, UpdatedAt: row.UpdatedAt, MaskedData: maskedData));
+        }
+
+        // ADR-045 -- one AccessLogEntry for the browse action itself, not
+        // one per row returned: N sequential Serializable-isolation
+        // hash-chain appends per page load would multiply exactly the
+        // routine Postgres contention TODO.md's own "Reduce routine
+        // Postgres 40001..." item already documents, for an audit
+        // granularity ADR-045 never actually requires (it names "every
+        // GraphQL query," not "every entity a query happens to touch").
+        // ResourceRef has no specific EntityId -- there isn't one, this
+        // read spans a whole EntityType -- a new, distinct "browse"
+        // action makes that explicit rather than overloading "read".
+        var (readerActorId, readerTrustBasis, grantRef) = AccessLogReaderContext.Resolve(user);
+        await AccessLogAppender.AppendAsync(
+            db, readerActorId, readerTrustBasis, grantRef, "Live", $"{appId}:{lowerEntityType}", "browse", ctx.RequestAborted);
+
+        return results;
+    }
+
+    private static async ValueTask<object> ResolveEntityCountAsync(
+        IResolverContext ctx, string appId, string entityType, IReadOnlyList<EventTypeDefinition> contributing)
+    {
+        var db = ctx.Service<EventStoreContext>();
+        var user = ctx.Service<ClaimsPrincipal>();
+        var authorizationService = ctx.Service<IAuthorizationService>();
+
+        await GraphQlAuth.RequireScopeAsync(authorizationService, user, "events:follow");
+
+        // Same Read-claim check as the list/single-entity queries -- a
+        // count is a smaller information leak than the data itself, but
+        // still reveals real volume about entities the caller may lack
+        // any claim to know about at all.
+        var readClaims = contributing.SelectMany(d => d.RequiredClaims.Where(c => c.Direction == ClaimDirection.Read)).ToList();
+        if (!RequiredClaimEvaluator.HasAny(readClaims, ClaimDirection.Read, user))
+            throw new GraphQLException("Forbidden -- caller lacks the required Read claim for this entity type.");
+
+        var contains = ctx.ArgumentValue<string?>("contains");
+        var lowerEntityType = entityType.ToLowerInvariant();
+        var entityIdPrefix = $"{appId}:{lowerEntityType}:";
+        var query = db.LiveEntityStore.AsNoTracking()
+            .Where(r => r.EntityType == lowerEntityType && r.EntityId.StartsWith(entityIdPrefix));
+        if (!string.IsNullOrEmpty(contains))
+            query = query.Where(r => r.EntityId.Contains(contains));
+        return await query.CountAsync(ctx.RequestAborted);
     }
 
     // A synthesized schema object -- {"type":"object","properties": {...}} --

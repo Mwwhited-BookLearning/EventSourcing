@@ -1,0 +1,34 @@
+@startuml
+autonumber
+actor "Warehouse Scanner\n(Rotterdam site)" as publisher
+participant "Inbox\n(Origin site: Rotterdam)" as originInbox
+participant "EventAppender\n(Origin site)" as originAppender
+database "Event Log\n(Origin site)" as originLog
+participant "Router\n(Origin site)" as originRouter
+database "Entity Store\n(Origin site)" as originEntityStore
+participant "Peer Sync Outbox\n(Origin site, ADR-033)" as outbox
+participant "Peer Sync Inbox\n(Destination site: Hamburg, ADR-033)" as destInbox
+participant "EventAppender\n(Destination site)" as destAppender
+database "Event Log\n(Destination site)" as destLog
+participant "Router\n(Destination site)" as destRouter
+database "Entity Store\n(Destination site)" as destEntityStore
+
+publisher -> originInbox: POST /publish/CustodyHandoff\n{ payload: { ShipmentId: "shp-4471", HandoffType: "OriginWarehouseToCarrier",\n  FromParty: "Acme Warehouse", ToParty: "Swift Freight", Location: "Rotterdam" } }
+originInbox -> originAppender: append(StoredEvent)
+originAppender -> originLog: INSERT StoredEvent\n(SequenceNumber = 118, PayloadHash = H, ChainHash = SHA256(ChainHash[117] || H || 118)) (ADR-019)
+note right of originAppender: OriginId = "site-rotterdam", LogicalClock = hlc(...)\ntravel with the event (ADR-033) -- not yet a StoredEvent column,\nsee this doc's Context paragraph
+originInbox --> publisher: 202 { correlationId, status: "received", entityId: null }
+...picked up by the origin site's own Router, asynchronously (ADR-023)...
+originRouter -> originEntityStore: resolve EntityId "freightco:Shipment:shp-4471"\nfold: CurrentCustodian = "Swift Freight", HandoffCount + 1
+originRouter -> originLog: UPDATE StoredEvent SET Status = "applied", EntityId = "freightco:Shipment:shp-4471"
+...independently, the origin site's outbox drains on its own schedule...
+outbox -> originLog: poll for events not yet acked by peer "site-hamburg"\n(per-peer PeerSyncCursor.LastAckedSequenceNumber, ADR-033)
+outbox -> destInbox: push StoredEvent (full envelope: Payload, PayloadHash, OriginId, LogicalClock, ActorId, ...)
+destInbox -> destAppender: append(StoredEvent) -- lands exactly as if it arrived\nfrom this site's own client Inbox (ADR-033)
+destAppender -> destLog: INSERT StoredEvent\n(Destination's OWN SequenceNumber = 57, ChainHash = SHA256(destChainHash[56] || H || 57))
+note right of destAppender: PayloadHash (H) is unchanged -- content-based (ADR-011).\nSequenceNumber/ChainHash are each site's OWN local chain (ADR-019) --\nnever copied from the origin's chain, never require it to match.
+outbox -> originLog: UPDATE PeerSyncCursor SET LastAckedSequenceNumber = 118,\nLastSyncSuccessAt = now() (row keyed by PeerId "site-hamburg")
+...picked up by the destination site's own Router, asynchronously -- no routing\nor schema-validation logic runs during sync itself (ADR-033)...
+destRouter -> destEntityStore: resolve the SAME EntityId "freightco:Shipment:shp-4471"\nfold: CurrentCustodian = "Swift Freight", LastAppliedOriginId = "site-rotterdam"
+destRouter -> destLog: UPDATE StoredEvent SET Status = "applied"
+@enduml

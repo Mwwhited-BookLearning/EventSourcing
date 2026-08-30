@@ -1,0 +1,28 @@
+@startuml
+autonumber
+actor "Release Engineer" as releng
+participant "Deployment N\n(old binary)" as depN
+participant "Deployment N+1\n(new binary)" as depNplus1
+database "Event & Schema Store" as db
+
+== Expand ==
+releng -> db: apply migration: ADD COLUMN RefundReason NULLABLE\n(existing columns/tables untouched -- ADR-038 Expand step)
+note right: Deployment N (still running the old binary)\nis unaffected -- it never selects the new column
+
+== Migrate: deploy new code, old code kept serving ==
+releng -> depNplus1: deploy new binary (writes RefundReason on new events)
+depNplus1 -> db: INSERT StoredEvent (..., SchemaVersion: 4, RefundReason: "damaged")
+note over depN, depNplus1: rolling deploy -- some requests still land on\nDeployment N while N+1 comes up (ADR-038's "no forced\nrenegotiation" -- no session affinity to a specific version)
+depN -> db: INSERT StoredEvent (..., SchemaVersion: 3)\n-- old code, unaware RefundReason even exists
+db --> depN: accepted -- old code's writes are still valid rows,\nno NOT NULL constraint on the new column
+
+== Rollback drill (08-build-plan.md, "Compatibility & Deployment\nDiscipline" exit criterion) ==
+releng -> depNplus1: publish an event tagged SchemaVersion 4
+depNplus1 -> db: INSERT StoredEvent (Status: received, SchemaVersion: 4)
+releng -> depNplus1: roll back -- redeploy Deployment N (doesn't know version 4)
+depN -> db: poll/route pending events
+db --> depN: the SchemaVersion-4 event is present\n(never lost -- ADR-023's status envelope keeps\n"durably persisted" separate from "successfully routed")
+depN -> depN: no upcaster/schema known for version 4 --\nevent stays Status: received, unrouted, never dropped
+releng -> depNplus1: re-forward-deploy Deployment N+1
+depNplus1 -> db: resume routing -- the version-4 event becomes\nroutable and folds normally, no data loss, no database restore
+@enduml

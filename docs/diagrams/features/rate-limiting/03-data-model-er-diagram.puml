@@ -1,0 +1,43 @@
+@startuml
+hide circle
+skinparam linetype ortho
+
+entity "TenantRateLimitPolicy" as policy {
+  * AppId : string <<PK>>
+  * ResourceKind : enum {Publish, Subscription, Query} <<PK>>
+  --
+  Algorithm : enum {TokenBucket, ConcurrencyLimiter, SlidingWindow}
+  PermitLimit : int
+  WindowOrReplenishmentPeriod : duration
+  QueueLimit : int
+}
+
+entity "EventTypeDefinition" as etd {
+  * AppId : string <<PK>>
+  * Name : string <<PK>>
+  * Version : int <<PK>>
+}
+
+policy .. etd : "same AppId scoping key (ADR-030);\nno DB FK -- config, not registry data"
+
+note right of policy
+  Ordinary Microsoft.Extensions.Configuration
+  values (ADR-041), read per-AppId at the
+  Gateway -- ADR-058 deliberately leaves
+  whether this is a config-file section or a
+  DB-backed record as a build-time detail, not
+  a settled schema. Shown here as an entity for
+  clarity; it may never be an actual table.
+end note
+
+note bottom of policy
+  In-flight limiter STATE (current token
+  count, open connection count, current
+  window's request count) is deliberately
+  NOT shown here -- it lives in the
+  RateLimiting middleware's own in-memory
+  partition state at the Gateway, never
+  persisted. Only the configured LIMITS are
+  data; the counters enforcing them are not.
+end note
+@enduml

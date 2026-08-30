@@ -1,0 +1,17 @@
+@startsalt
+{
+  { "Event Composer" }
+  ..
+  { "Event type" | ^PatientScreened^ }
+  ..
+  { "SubjectId *"        | "S-0099"        }
+  { "SiteId *"           | "site-1"        }
+  { "ProtocolId"         | "proto-1"       }
+  { "ScreeningDate"      | "2026-08-12"    }
+  { "EligibilityStatus *"| "Eligible"      }
+  { "LegalName (masked field -- publish only, not shown here)" | [ ] }
+  ..
+  [ Publish PatientScreened ]
+  "Status: queued in outbox -- will publish when online"
+}
+@endsalt

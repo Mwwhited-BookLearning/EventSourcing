@@ -62,6 +62,8 @@ Every event type below is registered under `AppId` `"trial1"`
 
 ## Sequence diagram — dual-channel provisioning, continuous ingestion, and a detector's tracked alert
 
+![Sequence diagram — dual-channel provisioning, continuous ingestion, and a detector's tracked alert](../../../diagrams/domains/clinical-trials-device-telemetry/features/intraoperative-monitoring-and-alert-response/01-sequence-diagram-dual-channel-provisioning-continu.svg)
+
 ```plantuml
 @startuml Ionm_Alert_Sequence
 autonumber
@@ -101,6 +103,8 @@ watcher -> tracker: INSERT ExpectedResponseTracker\n{ RequestEventId: "alert-evt
 ```
 
 ## Sequence diagram — acknowledgment or escalation, then the neurologist's authoritative interpretation
+
+![Sequence diagram — acknowledgment or escalation, then the neurologist's authoritative interpretation](../../../diagrams/domains/clinical-trials-device-telemetry/features/intraoperative-monitoring-and-alert-response/02-sequence-diagram-acknowledgment-or-escalation-then.svg)
 
 ```plantuml
 @startuml Ionm_Response_Sequence
@@ -174,6 +178,8 @@ minutes to hours to reach the neurologist's own signed interpretation;
 both facts are real, independently useful, and never collapsed into one.
 
 ## Data model (ER diagram)
+
+![Data model (ER diagram)](../../../diagrams/domains/clinical-trials-device-telemetry/features/intraoperative-monitoring-and-alert-response/03-data-model-er-diagram.svg)
 
 ```plantuml
 @startuml IonmMonitoring_ER
@@ -249,6 +255,8 @@ what this workflow's own events read/write.
 
 ## State machine — `IonmAlert` lifecycle
 
+![State machine — `IonmAlert` lifecycle diagram](../../../diagrams/domains/clinical-trials-device-telemetry/features/intraoperative-monitoring-and-alert-response/04-state-machine-ionmalert-lifecycle.svg)
+
 ```plantuml
 @startuml IonmAlert_State
 [*] --> Raised
@@ -288,6 +296,8 @@ end note
 
 ### Screen 1: OR live monitoring view
 
+![Screen 1: OR live monitoring view diagram](../../../diagrams/domains/clinical-trials-device-telemetry/features/intraoperative-monitoring-and-alert-response/05-screen-1-or-live-monitoring-view.svg)
+
 ```plantuml
 @startsalt
 {
@@ -307,6 +317,8 @@ active view for the rest of the case if acknowledged in time.
 
 ### Screen 2: Escalation surfaced (deadline elapsed, unacknowledged)
 
+![Screen 2: Escalation surfaced (deadline elapsed, unacknowledged) diagram](../../../diagrams/domains/clinical-trials-device-telemetry/features/intraoperative-monitoring-and-alert-response/06-screen-2-escalation-surfaced-deadline-elapsed-unac.svg)
+
 ```plantuml
 @startsalt
 {
@@ -321,6 +333,8 @@ active view for the rest of the case if acknowledged in time.
 ```
 
 ### Screen 3: Neurologist's post-case review and sign-off
+
+![Screen 3: Neurologist's post-case review and sign-off diagram](../../../diagrams/domains/clinical-trials-device-telemetry/features/intraoperative-monitoring-and-alert-response/07-screen-3-neurologist-s-post-case-review-and-sign-o.svg)
 
 ```plantuml
 @startsalt

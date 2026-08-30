@@ -1,0 +1,18 @@
+@startuml
+autonumber
+actor "Consuming System" as client
+participant "GraphQL Handler" as handler
+participant "History Resolver\n(ADR-024 §8.4)" as historyResolver
+database "Event Log" as eventLog
+
+client -> handler: QUERY { entityHistory(entityId: "demo:Order:o-1") {\n  eventId sequenceNumber occurredAt expectedVersion conflictFlag schemaStatus } }
+handler -> historyResolver: resolve(entityId)
+historyResolver -> eventLog: SELECT * FROM StoredEvent\nWHERE EntityId = "demo:Order:o-1"\nORDER BY SequenceNumber
+alt no event has ever resolved to this EntityId
+  eventLog --> historyResolver: empty
+  historyResolver --> client: empty list (not a 404 -- an entity is\nonly ever known by having been folded at least once)
+else at least one event found
+  eventLog --> historyResolver: every event that ever patched this entity,\nin append order, each with its own ConflictFlag/SchemaStatus
+  historyResolver --> client: [ { eventId, sequenceNumber, occurredAt,\n    expectedVersion, conflictFlag, schemaStatus }, ... ]
+end
+@enduml

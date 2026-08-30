@@ -1,0 +1,20 @@
+@startuml
+autonumber
+actor "Publishing System" as publisher
+participant "BatchInboxEndpoint\n(ADR-072)" as batchEndpoint
+participant "InboxEndpoint\n(per-event, ADR-023)" as endpoint
+database "Event & Schema Store" as db
+
+publisher -> batchEndpoint: POST /publish/batch\nContent-Type: application/x-ndjson\n{event 1}\n{event 2}\n{event 3, malformed envelope}\n{event 4}
+batchEndpoint -> batchEndpoint: parse NDJSON/JSON-array body into N\nindividual publish requests, preserving\nsubmission order
+loop for each parsed request, in submission order
+  batchEndpoint -> endpoint: delegate exactly as a solo\nPOST /publish/{event-type} would receive it
+  alt envelope itself unparseable (the one pre-storage rejection\nADR-023 still allows, per publish-event.md)
+    endpoint --> batchEndpoint: 400-shaped status envelope\nfor THIS ITEM ONLY
+  else parseable (whatever its SchemaStatus turns out to be)
+    endpoint -> db: INSERT StoredEvent (own SequenceNumber, ChainHash,\nADR-011 idempotency check) -- same transaction\nshape as a solo publish, not a shared batch transaction
+    endpoint --> batchEndpoint: 202-shaped status envelope\n{ correlationId, status, entityId, schemaStatus,\n  authorityStatus, sequenceNumber }
+  end
+end
+batchEndpoint --> publisher: 202 [\n  { ...event 1's envelope, "received" },\n  { ...event 2's envelope, "received" },\n  { ...event 3's envelope, 400-shaped malformed-envelope entry },\n  { ...event 4's envelope, "received" } ]\n-- ARRAY body, one entry per submitted event, submission\norder; the outer HTTP status stays 202 (03-api-contracts.md --\n"same 202 + status-envelope-per-item semantics") even though\nevent 3's own entry reports a per-item rejection
+@enduml

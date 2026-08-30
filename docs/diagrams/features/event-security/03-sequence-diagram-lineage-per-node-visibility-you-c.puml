@@ -1,0 +1,25 @@
+@startuml
+autonumber
+actor "Consuming System" as client
+participant "GraphQL Gateway\n(Lineage query fields)" as gateway
+participant "Auth\n(events:lineage:read scope)" as scopeAuth
+database "Event & Schema Store" as db
+
+client -> gateway: QUERY /graphql\nBearer <JWT>\nbody: query { event(eventId: "...") { ancestors(first: 50) { ... } } }
+gateway -> scopeAuth: validate events:lineage:read scope
+alt missing scope
+  scopeAuth --> client: 403
+else scope present
+  gateway -> db: does the named eventId exist?
+  alt unknown eventId
+    gateway --> client: 404
+  else known eventId, but caller lacks a Read-direction RequiredClaims\nentry for ITS OWN type
+    gateway --> client: 403 for the whole request\n(can't query the lineage of something you can't see at all)
+  else root visible
+    gateway -> db: resolve full node set (root + transitive closure, per event-chains.md;\nrecursion stops at any node whose type is restricted -- see 06-solution-structure.md)
+    gateway -> gateway: independently, per DISCOVERED node (not the root, already handled above):\ncheck Read-direction RequiredClaims against caller's claims
+    gateway -> gateway: a node the caller can't see -> { eventId, resolved: true, restricted: true } stub, leaf, no recursion past it.\nEvery other node -- reachable via a different path, or unrelated -- returns normally, regardless.
+    gateway --> client: 200 [ mix of full nodes and restricted:true stubs, per event-chains.md ]
+  end
+end
+@enduml

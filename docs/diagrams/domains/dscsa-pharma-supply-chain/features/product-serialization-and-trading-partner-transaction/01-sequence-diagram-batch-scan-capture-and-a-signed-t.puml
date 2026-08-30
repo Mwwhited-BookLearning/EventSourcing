@@ -1,0 +1,25 @@
+@startuml
+autonumber
+actor "Warehouse Scanner\n(barcode/RFID, ADR-070)" as scanner
+participant "IDeviceInputSource\n(WebHidInputSource)" as deviceInput
+participant "Batch Publish Endpoint\n(POST /publish/batch, ADR-072)" as batchEndpoint
+database "Event Log\n(AppId: mfr)" as eventLog
+actor "Shipping Clerk" as clerk
+participant "Publish Endpoint\n(Inbox)" as inbox
+
+scanner -> deviceInput: raw scan reads (NDC + SerialNumber per unit,\nhundreds of units in one shipment)
+deviceInput -> deviceInput: decode GTIN/serial from each barcode/RFID read
+deviceInput -> batchEndpoint: POST /publish/batch\n(NDJSON, one UnitScanned submission per unit, ADR-072)
+loop for each unit in the batch
+  batchEndpoint -> eventLog: INSERT StoredEvent "UnitScanned"\n(EntityId "mfr:SerializedUnit:{ndc}-{serial}",\nAuthorityStatus: "pending_review" -- ADR-035,\nown SequenceNumber/ChainHash, ADR-023/019)
+end
+batchEndpoint --> deviceInput: 202 [ { status: "received" }, ... ]\n(one per-event envelope, submission order, ADR-072)
+== shipping clerk closes out the shipment as one trading-partner transaction ==
+clerk -> inbox: POST /publish/TradingPartnerTransaction\n{ payload: { TransactionId: "t-88", FromAppId: "mfr", ToAppId: "whl-7",\n  EpcList: [ "mfr:SerializedUnit:...", ... ] },\n  parentEventIds: [ every UnitScanned.EventId in this shipment ] (ADR-005),\n  signature: { Meaning: "transaction statement" } } (ADR-066, DSCSA's "TS")
+alt caller's token satisfies TradingPartnerTransaction's RequiredSignature
+  inbox -> eventLog: INSERT StoredEvent "TradingPartnerTransaction"\n(EntityId "mfr:Transaction:t-88", Signature set, EventParents -> every scanned unit)
+  inbox --> clerk: 202 { status: "received", entityId: "mfr:Transaction:t-88" }
+else caller's token does not satisfy RequiredSignature
+  inbox --> clerk: 401 WWW-Authenticate: step-up required\n(acr_values, max_age -- RFC 9470, ADR-066)
+end
+@enduml

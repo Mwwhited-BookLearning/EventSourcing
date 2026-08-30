@@ -2,6 +2,21 @@
 import { h, onMounted, onUnmounted, reactive, ref } from 'vue'
 import { NButton, NCard, NDataTable, NInput, type DataTableColumns } from 'naive-ui'
 import { usePendingAuthorityQueue, type PendingAuthorityItem } from '@eventstore/mvvm-client'
+import GaugeChart from '../chart/GaugeChart.vue'
+
+// ADR-100 -- the declarative presentation-type config this ADR
+// establishes, kept out of AuthorityQueue.vue's own field knowledge the
+// same way every other domain specific already is (raiserEventType,
+// isPending, ...): the domain-specific wrapper (MeridianAnalystQueue.vue)
+// supplies WHICH payload field is chartable and how, this component just
+// renders whatever it's told. Deliberately narrow -- one chart type
+// (`gauge`, for a 0.0-1.0 confidence-shaped field), not a general
+// presentation-type schema speculatively covering types nothing needs yet.
+export interface ChartableField {
+  field: string
+  chartType: 'gauge'
+  label?: string
+}
 
 // "Domain Decision Queues" -- deliberately generic (docs/features/
 // mvvm-client.md's own "never hardcodes a Vitals or Meridian field name"
@@ -21,6 +36,7 @@ const props = defineProps<{
   title: string
   reviewerLabel: string
   reviewerDefault: string
+  chartableFields?: ChartableField[]
 }>()
 
 const queue = usePendingAuthorityQueue({
@@ -50,9 +66,14 @@ function draftFor(eventId: string): { reason: string; meaning: string } {
 // a payload with a masked field present -- MeridianWorkflowC's own
 // MatchedName/MatchedListEntryId). EntityBrowser.vue's own summarize()
 // already established the fix for this exact shape; mirrored here.
+// ADR-100 -- a chartable field (rendered as its own gauge column, below)
+// is excluded from the plain-text summary here, not shown in both places
+// redundantly.
+const chartableFieldNames = new Set((props.chartableFields ?? []).map((cf) => cf.field))
+
 function summarize(payload: Record<string, unknown>): string {
   return Object.entries(payload)
-    .filter(([key]) => key !== 'eventId')
+    .filter(([key]) => key !== 'eventId' && !chartableFieldNames.has(key))
     .map(([key, value]) => `${key}: ${typeof value === 'object' && value !== null ? '[masked/complex]' : String(value)}`)
     .join(', ')
 }
@@ -77,8 +98,24 @@ onUnmounted(() => queue.stopSubscription())
 // crossed the wire via the underlying subscription).
 const pagination = { pageSize: 10 } as const
 
+// ADR-100 -- one column per configured chartable field, right after the
+// plain-text summary. A non-numeric or missing value renders nothing
+// rather than a broken chart -- a real, not hypothetical, case: a pending
+// item's own payload can lack this field entirely if it arrived before
+// the field was even part of the schema (ADR-back-compat is a routine
+// concern this whole design already treats seriously elsewhere).
+const chartColumns: DataTableColumns<PendingAuthorityItem> = (props.chartableFields ?? []).map((cf) => ({
+  title: cf.label ?? cf.field,
+  key: `chart-${cf.field}`,
+  render: (row) => {
+    const value = row.payload[cf.field]
+    return typeof value === 'number' ? h(GaugeChart, { value, label: cf.label ?? cf.field }) : null
+  },
+}))
+
 const columns: DataTableColumns<PendingAuthorityItem> = [
   { title: 'Item', key: 'summary', render: (row) => summarize(row.payload) },
+  ...chartColumns,
   {
     title: 'Reason',
     key: 'reason',

@@ -1,0 +1,20 @@
+@startuml
+skinparam shadowing false
+skinparam defaultTextAlignment center
+
+actor Requestor
+participant "Replier" as replier
+database "Durable Store\n(here: the Event Log)" as store
+
+Requestor -> store: publish Request\n(EventId = R1)
+replier -> store: read Request R1
+replier -> store: publish Reply\n(RespondsToEventId = R1)
+Requestor -> store: query "reply where RespondsToEventId = R1"
+store --> Requestor: the matching Reply, however long it took to arrive
+note right of store
+  The pairing survives any delay between
+  request and reply -- nothing about the
+  transport itself has to preserve order
+  or timing for the join to still work.
+end note
+@enduml

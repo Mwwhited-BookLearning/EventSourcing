@@ -18,6 +18,8 @@ me updates." **Sources:**
 [AIP-161 — Field masks](https://google.aip.dev/161),
 [AIP-157 — Partial responses](https://google.aip.dev/157).
 
+![The pattern diagram](../diagrams/patterns/grpc-protobuf-services/01-the-pattern.svg)
+
 ```plantuml
 @startuml Grpc_Sequence
 autonumber

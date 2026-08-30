@@ -1,0 +1,38 @@
+@startuml
+autonumber
+actor "Schema Author" as author
+participant "Registry\n(RegistrationEndpoint)" as endpoint
+participant "SchemaRegistryService" as registry
+participant "EventAppender\n(ChainHash, ADR-019)" as appender
+database "Event & Schema Store" as db
+
+author -> endpoint: PUT /registry/CardDepositAuthorized\nAuthorization: Bearer <JWT registry:admin>\n{ jsonSchema: { properties: { PAN: {...}, Cvv2: { type: "string",\n  "x-masking": { "regulatoryClassification": "PCI-SAD" } } } } }
+endpoint -> registry: register(eventType, jsonSchema, ...)
+registry -> registry: scan every property's x-masking.regulatoryClassification (ADR-071)
+alt any property declares regulatoryClassification == "PCI-SAD"
+  registry --> endpoint: 400 (Sensitive Authentication Data may never be\nregistered as a schema field, encrypted or not -- PCI-DSS Req 3.2/3.2.2)
+  endpoint --> author: 400
+  note right
+    Registration hard-rejects the WHOLE event type outright --
+    the one place this design still enforces reject-on-invalid
+    after ADR-023's persist-everything posture (ADR-071). No
+    StoredEvent, no SchemaRegistered event -- nothing is appended.
+  end note
+else no PCI-SAD field declared\n(author instead registers PAN alone, regulatoryClassification "PCI",\nno CVV/track-data/PIN-block field at all)
+  registry -> db: BEGIN TRANSACTION
+  registry -> db: INSERT EventTypeDefinition, FilterableField rows\n(CardDepositAuthorized v1)
+  registry -> db: mark version IsActive = true
+  registry -> appender: append(SchemaRegistered -- reserved\ncontrol-plane event, ADR-067) ActorId: "schema-author-1"
+  appender -> db: INSERT StoredEvent\n(SequenceNumber: 205, EventType: "SchemaRegistered",\n ChainHash: SHA-256(chain[204] || hash(payload) || 205))
+  registry -> db: COMMIT
+  registry -> registry: invalidate OpenAPI/AsyncAPI cache (ADR-002)
+  registry --> endpoint: 201
+  endpoint --> author: 201 { eventTypeName: "CardDepositAuthorized", version: 1 }
+  note right
+    Same StoredEvent shape, same Event Log, same ChainHash
+    sequence every ordinary business event above already
+    extends (ADR-067) -- EventTypeDefinition is itself now a
+    read model folded from this event, not hand-authored state.
+  end note
+end
+@enduml

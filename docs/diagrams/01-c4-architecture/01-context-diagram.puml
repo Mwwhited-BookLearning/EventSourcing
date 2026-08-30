@@ -1,0 +1,39 @@
+@startuml
+skinparam shadowing false
+skinparam defaultTextAlignment center
+skinparam wrapWidth 220
+skinparam rectangle<<Person>> {
+  BackgroundColor #08427B
+  FontColor white
+}
+skinparam rectangle<<System>> {
+  BackgroundColor #1168BD
+  FontColor white
+}
+skinparam rectangle<<System_Ext>> {
+  BackgroundColor #999999
+  FontColor white
+}
+skinparam ArrowColor #666666
+
+rectangle "**Publishing System**\n<<Person>>\n--\nEmits domain patches/actions -- may be self-attested (ADR-035/036)" <<Person>> as publisher
+rectangle "**Consuming System**\n<<Person>>\n--\nQueries current state, history, and subscribes to live changes" <<Person>> as follower
+rectangle "**Platform Operator**\n<<Person>>\n--\nRegisters event types / schemas, per AppId (ADR-030)" <<Person>> as operator
+
+rectangle "**Open Event-Sourced Entity Platform**\n<<System>>\n--\nDedicated, siloed deployment per tenant (ADR-075): persists everything, folds into an Entity Store, exposes GraphQL. May itself span multiple sites for one tenant's own fault tolerance (ADR-033)." <<System>> as eventStore
+rectangle "**EventStore.DevIdp**\n<<System_Ext>>\n--\nDev-mode OIDC token issuer + OAuth Token Exchange (OpenIddict, in-process) -- ADR-006/036" <<System_Ext>> as idp
+rectangle "**Peer Site**\n<<System_Ext>>\n--\nAnother instance of the same platform, replicating shared shards -- ADR-033" <<System_Ext>> as peerSite
+
+publisher --> idp : Obtains Bearer token (ordinary, or exchanged from a self-attested UCAN)\n//OAuth2 client_credentials / RFC 8693//
+follower --> idp : Obtains Bearer token\n//OAuth2 client_credentials//
+operator --> idp : Obtains Bearer token\n//OAuth2 client_credentials//
+
+publisher --> eventStore : POST /publish/{event-type}\nBearer <JWT> + DPoP proof -- always 202, never 400 for shape/authority problems (ADR-023)\n//HTTPS/JSON//
+follower --> eventStore : GraphQL Query (current state, history) / Subscription (live changes)\nBearer <JWT>, over HTTP QUERY -- never GET, keeps PII/PHI out of URLs (ADR-037)\n//HTTPS//
+operator --> eventStore : PUT /registry/{event-type}\nBearer <JWT>\n//HTTPS/JSON//
+eventStore --> idp : Validates Bearer token + DPoP proof; exchanges self-attested UCANs (ADR-017/036)\n//OIDC discovery + JWKS//
+eventStore --> peerSite : Gossip replication -- durable, fault/abend/restart-tolerant peer-sync outbox/inbox (ADR-033)\n//HTTPS/JSON, bidirectional//
+eventStore --> publisher : OpenAPI contract (anonymous)\n//HTTPS//
+eventStore --> follower : GraphQL SDL, per AppId (anonymous)\n//HTTPS//
+
+@enduml

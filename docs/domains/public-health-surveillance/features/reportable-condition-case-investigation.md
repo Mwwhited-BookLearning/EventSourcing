@@ -74,6 +74,8 @@ This doc deliberately does **not** re-derive:
 
 ## Sequence diagram — case intake through investigator classification
 
+![Sequence diagram — case intake through investigator classification](../../../diagrams/domains/public-health-surveillance/features/reportable-condition-case-investigation/01-sequence-diagram-case-intake-through-investigator-.svg)
+
 ```plantuml
 @startuml CaseIntake_Classification_Sequence
 autonumber
@@ -139,6 +141,8 @@ end
 
 ## Sequence diagram — an accepted case's outbound path: region-pinned replication and upstream regulatory reporting
 
+![Sequence diagram — an accepted case's outbound path: region-pinned replication and upstream regulatory reporting](../../../diagrams/domains/public-health-surveillance/features/reportable-condition-case-investigation/02-sequence-diagram-an-accepted-case-s-outbound-path-.svg)
+
 ```plantuml
 @startuml AcceptedCase_Outbound_Sequence
 autonumber
@@ -184,6 +188,8 @@ end note
 ```
 
 ## Data model (ER diagram)
+
+![Data model (ER diagram)](../../../diagrams/domains/public-health-surveillance/features/reportable-condition-case-investigation/03-data-model-er-diagram.svg)
 
 ```plantuml
 @startuml CaseInvestigation_ER
@@ -298,6 +304,8 @@ public class ContactTracingLink
 
 ## State machine — one case's lifecycle
 
+![State machine — one case's lifecycle diagram](../../../diagrams/domains/public-health-surveillance/features/reportable-condition-case-investigation/04-state-machine-one-case-s-lifecycle.svg)
+
 ```plantuml
 @startuml CaseInvestigation_Lifecycle_State
 skinparam StateFontSize 12
@@ -337,6 +345,8 @@ end note
 
 ### Screen 1: Case Investigation Queue — Live View, ungated
 
+![Screen 1: Case Investigation Queue — Live View, ungated diagram](../../../diagrams/domains/public-health-surveillance/features/reportable-condition-case-investigation/05-screen-1-case-investigation-queue-live-view-ungate.svg)
+
 ```plantuml
 @startsalt
 {
@@ -359,6 +369,8 @@ directly. Clicking the `case-9001` row opens Screen 2, the investigator's
 own classification decision for that one case.
 
 ### Screen 2: Investigator's classification decision screen
+
+![Screen 2: Investigator's classification decision screen diagram](../../../diagrams/domains/public-health-surveillance/features/reportable-condition-case-investigation/06-screen-2-investigator-s-classification-decision-sc.svg)
 
 ```plantuml
 @startsalt
@@ -387,6 +399,8 @@ stays on Screen 1, relabeled `rejected`, never reaching Screen 3 at all
 (`ADR-042`).
 
 ### Screen 3: Confirmed case record — authoritative, after region-pinned replication and upstream reporting
+
+![Screen 3: Confirmed case record — authoritative, after region-pinned replication and upstream reporting diagram](../../../diagrams/domains/public-health-surveillance/features/reportable-condition-case-investigation/07-screen-3-confirmed-case-record-authoritative-after.svg)
 
 ```plantuml
 @startsalt

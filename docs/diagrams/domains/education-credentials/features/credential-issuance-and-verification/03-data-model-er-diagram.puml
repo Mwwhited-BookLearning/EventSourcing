@@ -1,0 +1,75 @@
+@startuml
+hide circle
+skinparam linetype ortho
+
+entity "StoredEvent (DiplomaIssued)" as event {
+  * SequenceNumber : bigint <<PK>>
+  --
+  EventId : uuid <<unique>>
+  EntityId : string <<FK>>
+  EventType : string
+  ' "DiplomaIssued"
+  Payload : text
+  ' StudentId/DateOfBirth ciphertext (ADR-057); DegreeAwarded/ConferredAt plaintext
+  ActorId : string
+  ' registrar's verified identity, always populated (ADR-064)
+  AuthorityStatus : string
+  ' stays "accepted" -- ordinary authoritative institutional issuance
+}
+
+entity "EntityStoreRow (Credential)" as credential {
+  * EntityId : string <<PK>>
+  --
+  EntityType : string
+  ' "Credential"
+  Version : bigint
+  Data : text
+  ' folded payload -- FERPA fields still ciphertext until read-time decrypt (ADR-057)
+  AuthorityStatus : string
+}
+
+entity "EntityStoreRow (AccessGrant)" as grant {
+  * EntityId : string <<PK>>
+  --
+  EntityType : string
+  ' "AccessGrant" -- same EntityStoreRow table as Credential above,
+  ' just a different EntityType (ADR-021) -- not a second mechanism
+  Version : bigint
+  Data : text
+  ' { GranteeDid, DelegatedClaim, EntityScope, ExpiresAt } (ADR-043)
+}
+
+entity "AttachmentRef" as attref {
+  * ContentHash : string <<FK>>
+  ' -> Attachment (full shape in
+  ' ../../../data/streaming-and-attachments.md, not repeated here)
+  --
+  EntityId : string?
+  EventId : uuid?
+}
+
+event ..> credential : "folds into, in OccurredAt order (ADR-021)"
+event ..> attref : "publish carries the ContentHash returned by an\nearlier POST /attachments (ADR-032) -- logical only, no DB FK"
+attref }o..|| credential : "EntityId links the diploma PDF\nto this credential"
+grant ..> credential : "EntityScope names the Credential's\nown EntityId (ADR-043)"
+
+note right of grant
+  Not a bespoke new table -- accessGrant/
+  accessGrantRevoked are ordinary registered
+  events (ADR-043) that fold into the same
+  always-on EntityStoreRow table as Credential,
+  distinguished only by EntityType, exactly
+  the way ADR-021 already treats every entity
+  type.
+end note
+
+note bottom of event
+  FERPA-classified fields (StudentId, DateOfBirth)
+  carry x-masking.regulatoryClassification "FERPA"
+  in the registered schema
+  (../../../data/schema-registry.md) -- encrypted
+  before Payload is ever written (ADR-057),
+  masked at read time regardless of encryption
+  state (ADR-009).
+end note
+@enduml

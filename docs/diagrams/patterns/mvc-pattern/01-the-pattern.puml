@@ -1,0 +1,14 @@
+@startuml
+autonumber
+actor User
+participant "Controller" as controller
+participant "Model" as model
+participant "View\n(may read Model directly to render)" as view
+
+User -> controller: request/input
+controller -> model: update
+model --> controller: ack
+controller -> view: select + invoke this View for the result
+view -> model: read state directly (no mediation wall)
+view --> User: rendered output
+@enduml

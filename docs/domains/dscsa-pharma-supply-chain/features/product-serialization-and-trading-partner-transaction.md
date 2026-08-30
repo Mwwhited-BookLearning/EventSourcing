@@ -62,6 +62,8 @@ re-derive:
 
 ## Sequence diagram — batch scan capture and a signed trading-partner transaction
 
+![Sequence diagram — batch scan capture and a signed trading-partner transaction](../../../diagrams/domains/dscsa-pharma-supply-chain/features/product-serialization-and-trading-partner-transaction/01-sequence-diagram-batch-scan-capture-and-a-signed-t.svg)
+
 ```plantuml
 @startuml Dscsa_Scan_Transaction_Sequence
 autonumber
@@ -92,6 +94,8 @@ end
 
 ## Sequence diagram — outbound EPCIS delivery, inbound receipt, and cross-tenant verification
 
+![Sequence diagram — outbound EPCIS delivery, inbound receipt, and cross-tenant verification](../../../diagrams/domains/dscsa-pharma-supply-chain/features/product-serialization-and-trading-partner-transaction/02-sequence-diagram-outbound-epcis-delivery-inbound-r.svg)
+
 ```plantuml
 @startuml Dscsa_Epcis_Interchange_Sequence
 autonumber
@@ -119,6 +123,8 @@ end
 ```
 
 ## Data model (ER diagram)
+
+![Data model (ER diagram)](../../../diagrams/domains/dscsa-pharma-supply-chain/features/product-serialization-and-trading-partner-transaction/03-data-model-er-diagram.svg)
 
 ```plantuml
 @startuml Dscsa_ER
@@ -237,6 +243,8 @@ public class EpcisObjectEventWireShape
 
 ### Screen 1: Manufacturer's shipment scan queue (Live View, pending reconciliation)
 
+![Screen 1: Manufacturer's shipment scan queue (Live View, pending reconciliation) diagram](../../../diagrams/domains/dscsa-pharma-supply-chain/features/product-serialization-and-trading-partner-transaction/04-screen-1-manufacturer-s-shipment-scan-queue-live-v.svg)
+
 ```plantuml
 @startsalt
 {
@@ -262,6 +270,8 @@ opens Screen 2, the sign-off screen for the aggregating
 `TradingPartnerTransaction`.
 
 ### Screen 2: Manufacturer's transaction statement sign-off screen
+
+![Screen 2: Manufacturer's transaction statement sign-off screen diagram](../../../diagrams/domains/dscsa-pharma-supply-chain/features/product-serialization-and-trading-partner-transaction/05-screen-2-manufacturer-s-transaction-statement-sign.svg)
 
 ```plantuml
 @startsalt
@@ -289,6 +299,8 @@ transaction to the receiving partner with no further screen on the
 manufacturer's side — Screen 3 belongs to a different tenant entirely.
 
 ### Screen 3: Receiving partner's inbound reconciliation screen (whl-7, Live View)
+
+![Screen 3: Receiving partner's inbound reconciliation screen (whl-7, Live View) diagram](../../../diagrams/domains/dscsa-pharma-supply-chain/features/product-serialization-and-trading-partner-transaction/06-screen-3-receiving-partner-s-inbound-reconciliatio.svg)
 
 ```plantuml
 @startsalt

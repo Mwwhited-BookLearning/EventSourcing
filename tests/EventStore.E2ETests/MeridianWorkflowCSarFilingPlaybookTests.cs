@@ -94,7 +94,12 @@ public class MeridianWorkflowCSarFilingPlaybookTests
         // running this playbook, not assumed).
         await _page.GetByTestId("entity-browser-filter").FillAsync("applicant-1001");
         var applicantRow = _page.GetByRole(AriaRole.Row).Filter(new() { HasText = "applicant-1001" });
-        await Assertions.Expect(applicantRow).ToBeVisibleAsync(new() { Timeout = 30_000 }); // REPLAY-mode subscription needs a moment to catch up on first load
+        // See VitalsWorkflowAPlaybookTests.cs's identical comment -- waits
+        // for the debounced server-side "contains" filter to actually take
+        // effect (table settles to 1 row), not just for the target row's
+        // own visibility, which can be trivially true before that happens.
+        await Assertions.Expect(_page.Locator("tbody tr")).ToHaveCountAsync(1, new() { Timeout = 30_000 });
+        await Assertions.Expect(applicantRow).ToBeVisibleAsync();
         await recorder.RecordStepAsync(_page, "Switching to the Browse tab. The seed's SAR filing for applicant-1001 (Samples.Meridian.Seed) is already present via REPLAY-mode catch-up -- a compliance officer's step-up-authenticated publish, gated by MeridianWorkflowC.cs's RequiredSignature: [\"urn:kyc:acr:step-up\"] (RFC 9470, ADR-066).");
 
         await applicantRow.GetByRole(AriaRole.Button, new() { Name = "View" }).ClickAsync();

@@ -1,0 +1,26 @@
+@startuml
+package "Schema Registry\n(data/schema-registry.md)" {
+  class EventTypeDefinition
+  class FilterableField
+}
+
+package "Event Log\n(data/event-log.md)" {
+  class StoredEvent
+  class EventParent
+}
+
+package "Entity Store\n(data/entity-store.md)" {
+  class EntityStoreRow
+}
+
+EventTypeDefinition "1" --> "*" StoredEvent : validates/governs shape of\n(AppId, Name, Version) -- ADR-030
+StoredEvent "1" --> "*" EventParent : causal lineage (ADR-005)
+StoredEvent "*" --> "1" EntityStoreRow : folds into, in OccurredAt\norder, not arrival order (ADR-021, ADR-029)
+StoredEvent "1" --> "0..1" StoredEvent : UpcastMaterialization\nof (ADR-027, dashed --\nnever folded)
+
+note bottom of EntityStoreRow
+  The only thing ever read for
+  "current state of X" -- never
+  the Event Log directly.
+end note
+@enduml

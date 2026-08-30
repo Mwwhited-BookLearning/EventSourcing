@@ -1,0 +1,32 @@
+@startuml
+[*] --> Raised
+
+state Raised {
+  Raised : AuthorityStatus = pending_review (ADR-035)
+  Raised : ExpectedResponseTracker row created,\nDeadlineAt = +2 minutes (ADR-094)
+  [*] --> AwaitingAck
+  AwaitingAck --> Acknowledged : IonmAlertAcknowledged within the window
+  AwaitingAck --> Escalated : deadline elapses with no ack --\nExpectedResponseMissing published, exactly once
+  Escalated --> Acknowledged : a late IonmAlertAcknowledged still\narrives -- recorded, never an error (ADR-094)
+}
+
+Raised --> Accepted : neurologist's authorityDecision "accepted",\nvalid step-up Signature (ADR-066)
+Raised --> Rejected : neurologist's authorityDecision "rejected"
+
+Accepted : AuthorityStatus = accepted
+Accepted : folded into the authoritative\nEntity Store (catch-up, ADR-042)
+Accepted --> [*]
+
+Rejected : AuthorityStatus = rejected
+Rejected : never reaches the authoritative\nEntity Store -- stays visible in the\nEvent Log and Live View, re-labeled "rejected"
+Rejected --> [*]
+
+note right of Raised
+  Acknowledged/Escalated (the fast, same-session
+  ADR-094 loop) and Accepted/Rejected (the slower,
+  signed clinical interpretation) are independent
+  axes -- a case can be Acknowledged AND still
+  awaiting the neurologist's Accepted/Rejected
+  decision at the same time.
+end note
+@enduml

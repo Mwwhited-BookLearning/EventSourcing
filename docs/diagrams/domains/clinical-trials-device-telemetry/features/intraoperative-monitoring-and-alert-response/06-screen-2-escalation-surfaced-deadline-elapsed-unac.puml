@@ -1,0 +1,10 @@
+@startsalt
+{
+  { "IONM Monitoring -- Escalations" }
+  ..
+  | AlertId  | Subject | Raised at | Status                |
+  | alert-77 | S-0091  | 09:14:02  | [ ESCALATED -- unacknowledged ] |
+  ..
+  "ExpectedResponseMissing published 09:16:02 -- a real,\nqueryable event (Follow/Lineage), not just this row.\nWhat happens next (paging, a louder alarm) is this\ndeployment's own policy, not a framework mechanism (ADR-094)."
+}
+@endsalt

@@ -52,6 +52,8 @@ done this pass"), now done.
 
 ## Context diagram
 
+![Context diagram](diagrams/01-c4-architecture/01-context-diagram.svg)
+
 ```plantuml
 @startuml C4_Context
 skinparam shadowing false
@@ -95,6 +97,8 @@ eventStore --> follower : GraphQL SDL, per AppId (anonymous)\n//HTTPS//
 ```
 
 ## Container diagram
+
+![Container diagram](diagrams/01-c4-architecture/02-container-diagram.svg)
 
 ```plantuml
 @startuml C4_Container
@@ -196,6 +200,8 @@ projectionHost --> readDb : Upsert snapshot + read-model rows\n//EF Core//
 
 ## Component diagram — Inbox & Router (Publish path)
 
+![Component diagram — Inbox & Router (Publish path)](diagrams/01-c4-architecture/03-component-diagram-inbox-router-publish-path.svg)
+
 ```plantuml
 @startuml C4_Component_Publish
 skinparam shadowing false
@@ -251,6 +257,8 @@ router --> eventLog : append routed event, materialization, or EventUpcastFailed
 ```
 
 ## Component diagram — GraphQL Gateway
+
+![Component diagram — GraphQL Gateway](diagrams/01-c4-architecture/04-component-diagram-graphql-gateway.svg)
 
 ```plantuml
 @startuml C4_Component_GraphQL
@@ -321,6 +329,8 @@ for the full mechanism.
 
 ## Component diagram — Lineage traversal (now inside the GraphQL Gateway)
 
+![Component diagram — Lineage traversal (now inside the GraphQL Gateway)](diagrams/01-c4-architecture/05-component-diagram-lineage-traversal-now-inside-the.svg)
+
 ```plantuml
 @startuml C4_Component_Lineage
 skinparam shadowing false
@@ -367,6 +377,8 @@ recursiveReader --> eventLog : WITH RECURSIVE ... (native per provider)
 ```
 
 ## Component diagram — Projection Host (CQRS read side)
+
+![Component diagram — Projection Host (CQRS read side)](diagrams/01-c4-architecture/06-component-diagram-projection-host-cqrs-read-side.svg)
 
 ```plantuml
 @startuml C4_Component_ProjectionHost
@@ -422,6 +434,8 @@ exact same `runner` loop shown above runs again from scratch (`ADR-015`).
 
 ## Component diagram — Streaming Channel Service
 
+![Component diagram — Streaming Channel Service](diagrams/01-c4-architecture/07-component-diagram-streaming-channel-service.svg)
+
 ```plantuml
 @startuml C4_Component_StreamingChannel
 skinparam shadowing false
@@ -465,6 +479,8 @@ derivation --> ingest : append transformed samples to derived channel
 ```
 
 ## Component diagram — Attachment Service
+
+![Component diagram — Attachment Service](diagrams/01-c4-architecture/08-component-diagram-attachment-service.svg)
 
 ```plantuml
 @startuml C4_Component_Attachment
@@ -515,6 +531,8 @@ Details the fold-time split `ADR-042` decided, shown only as a single
 diagram is that arrow's own internals, the composition already
 documented in `docs/patterns/interactions/gated-authoritative-
 publish.md`.
+
+![Component diagram — Live View (gated authoritative fold)](diagrams/01-c4-architecture/09-component-diagram-live-view-gated-authoritative-fo.svg)
 
 ```plantuml
 @startuml C4_Component_LiveView

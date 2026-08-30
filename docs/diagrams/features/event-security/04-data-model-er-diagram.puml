@@ -1,0 +1,37 @@
+@startuml
+hide circle
+skinparam linetype ortho
+
+entity "EventTypeDefinition" as etd {
+  * Name : string <<PK>>
+  * Version : int <<PK>>
+  --
+  IsActive : bool
+}
+
+entity "RequiredClaim" as rc {
+  * EventTypeName : string <<FK>>
+  * EventTypeVersion : int <<FK>>
+  --
+  Direction : enum {Publish, Read}
+  Claim : string <<"type:value">>
+}
+
+entity "StoredEvent" as event {
+  * SequenceNumber : bigint <<PK>>
+  --
+  EventType : string
+  SchemaVersion : int
+}
+
+etd ||--o{ rc : "(Name, Version) = (EventTypeName, EventTypeVersion)"
+etd ..> event : "logical only -- EventType/SchemaVersion,\nNOT a DB foreign key (same as elsewhere)"
+
+note right of rc
+  RequiredClaims generalizes RequiredPublishClaim/RequiredReadClaim
+  from one fixed claim per direction to a list (ADR-050). Multiple
+  entries for the same Direction are OR'ed by default -- holding
+  ANY ONE of them satisfies the gate; ADR-008's original "exactly
+  one claim per direction" limitation no longer applies.
+end note
+@enduml

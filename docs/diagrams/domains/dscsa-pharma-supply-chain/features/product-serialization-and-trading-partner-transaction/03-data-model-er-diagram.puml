@@ -1,0 +1,63 @@
+@startuml
+hide circle
+skinparam linetype ortho
+
+entity "UnitScanned" as unit {
+  * EventId : uuid <<PK>>
+  --
+  EntityId : string
+  ' mfr:SerializedUnit:{NDC}-{SerialNumber}
+  NDC : string
+  SerialNumber : string
+  ScanMethod : string
+  ' Barcode | RFID (ADR-070)
+  BizStep : string
+  ' GS1 CBV term, e.g. "shipping"
+  AuthorityStatus : string
+  ' "pending_review" until reconciled (ADR-035)
+}
+
+entity "TradingPartnerTransaction" as txn {
+  * EventId : uuid <<PK>>
+  --
+  EntityId : string
+  ' mfr:Transaction:{TransactionId}
+  FromAppId : string
+  ToAppId : string
+  EpcList : string[]
+  Signature : Signature
+  ' Meaning "transaction statement" -- DSCSA's "TS" (ADR-066)
+}
+
+entity "EpcisObjectEvent" as epcis {
+  eventTime : datetime
+  action : string
+  ' ADD | OBSERVE | DELETE
+  bizStep : string
+  disposition : string
+  epcList : string[]
+  readPoint : string
+  bizLocation : string
+}
+
+entity "AccessLogEntry" as accessLog {
+  * SequenceNumber : bigint <<PK>>
+  --
+  ReaderActorId : string
+  Action : string
+  ResourceRef : string
+}
+
+unit <.. txn : "parentEventIds --\naggregation of scanned units\ninto one shipment (ADR-005)"
+txn ..> epcis : "Gs1EpcisAdapter outbound transform\n(ADR-072) -- not a StoredEvent,\nthe external wire shape"
+epcis ..> unit : "Gs1EpcisAdapter inbound transform,\nat the RECEIVING tenant --\nproduces a fresh UnitReceived per epc"
+txn ..> accessLog : "cross-tenant verification reads\nare logged the same as any other (ADR-045)"
+
+note right of epcis
+  GS1 EPCIS core vocabulary --
+  the interchange wire format,
+  never persisted as-is; it exists
+  only between adapterOut's transform
+  and adapterIn's reverse transform.
+end note
+@enduml

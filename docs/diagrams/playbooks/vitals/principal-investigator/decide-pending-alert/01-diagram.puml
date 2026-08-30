@@ -1,0 +1,26 @@
+@startuml
+autonumber
+participant "Samples.Vitals.Simulator" as simulator
+participant "PublishEndpoint\n(Inbox)" as inbox
+participant "Duplex Client\n(Queue tab, AuthorityQueue.vue)" as client
+actor "Principal Investigator\n(review:ionm)" as pi
+database "Entity Store" as entityStore
+
+simulator -> inbox: POST /publish/IonmAlertRaised\n{ AlertId, SubjectId, Finding, Severity }\nReviewPending: true (every ~20s, forever)
+inbox -> inbox: AuthorityStatus: "pending_review"
+client -> inbox: subscription on_trial1_IonmAlertRaised (REPLAY)\n+ subscription on_trial1_authorityDecision (REPLAY)
+inbox --> client: new pending item appears in the Queue list
+
+pi -> client: fill Meaning, click Accept
+client -> inbox: POST /publish/authorityDecision\n{ targetEventId, decision: "accepted", decidingActorId, reason }\nBearer <vitals-pi-client token, claims: review:ionm>
+
+alt caller instead lacks "review:ionm"
+  inbox --> client: 403 Forbidden
+else PI clicks Reject instead of Accept
+  inbox -> inbox: AuthorityStatus: "rejected" --\nnever folds into the authoritative Entity Store
+end
+
+inbox -> entityStore: fold now (catch-up) -- AuthorityStatus: "accepted"
+inbox --> client: authorityDecision arrives over the live subscription
+client -> client: remove the resolved item from the Queue list
+@enduml

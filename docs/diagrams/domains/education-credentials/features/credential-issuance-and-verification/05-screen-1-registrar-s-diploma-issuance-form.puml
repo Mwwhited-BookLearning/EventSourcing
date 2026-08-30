@@ -1,0 +1,12 @@
+@startsalt
+{
+  { "Sunridge University -- Issue Diploma" }
+  ..
+  { "Credential Id" | "cred-1001" }
+  { "Student Id" | "S-4471" } | { "Date of Birth" | "1997-03-02" }
+  { "Degree Awarded" | "B.S. Computer Science" } | { "Conferred" | "2019-05-18" }
+  { "Diploma (PDF)" | [ Attach file... ] }
+  ..
+  [ Issue Diploma ]
+}
+@endsalt

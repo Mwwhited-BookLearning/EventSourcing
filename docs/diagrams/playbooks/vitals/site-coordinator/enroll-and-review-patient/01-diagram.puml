@@ -1,0 +1,20 @@
+@startuml
+autonumber
+actor "Site staff" as user
+participant "Duplex Client\n(client-web-vitals)" as client
+participant "GraphQL Subscription\n(on_trial1_PatientScreened)" as graphql
+database "Event Log" as eventLog
+
+user -> client: open client-web-vitals
+client -> graphql: subscription (mode: REPLAY)\nBearer <follower-client token, events:follow>
+graphql -> eventLog: SELECT PatientScreened events\nWHERE AppId="trial1" ORDER BY SequenceNumber
+eventLog --> graphql: PatientScreened{S-0091,\n LegalName (masked), DateOfBirth (masked), ...}
+graphql --> client: SSE stream (REPLAY catch-up, then TAIL)
+client -> client: fold into local entity cache\n(IndexedDB, per-instance, ADR-039)
+user -> client: Browse tab -> select S-0091
+client -> user: Detail view (Patient Detail ViewDefinition)\nLegalName/DateOfBirth render "REDACTED"\n(x-masking, requiredClaim "clearance:phi")
+
+alt caller's own token instead holds "clearance:phi"
+  client -> user: LegalName/DateOfBirth render their real values
+end
+@enduml

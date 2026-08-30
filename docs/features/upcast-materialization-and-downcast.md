@@ -65,6 +65,8 @@ first trigger changes only what the Router does **on a conformant-but-
 lagging hit**: the upcasted result `ADR-020` originally discarded is now
 persisted as its own `UpcastMaterialization` event instead.
 
+![Sequence diagram — publish-time materialization (Trigger 1, `ADR-027`)](../diagrams/features/upcast-materialization-and-downcast/01-sequence-diagram-publish-time-materialization-trig.svg)
+
 ```plantuml
 @startuml UpcastMaterialization_PublishTime_Sequence
 autonumber
@@ -120,6 +122,8 @@ directly, since no pub/sub mechanism exists elsewhere in this design for
 that — functionally equivalent, at the accepted "no batching/pacing
 guarantee" cost `ADR-027`'s own Consequences already name.
 
+![Sequence diagram — background `UpcastMaterializer` reconciling the existing backlog (Trigger 2, `ADR-027`)](../diagrams/features/upcast-materialization-and-downcast/02-sequence-diagram-background-upcastmaterializer-rec.svg)
+
 ```plantuml
 @startuml UpcastMaterializer_Backlog_Sequence
 autonumber
@@ -173,6 +177,8 @@ that explicit request; this diagram reuses
 transport with that one added argument, rather than inventing a new
 query surface.
 
+![Sequence diagram — read-time `downcastToPrevious` walk for an explicitly requested older version (`ADR-028`)](../diagrams/features/upcast-materialization-and-downcast/03-sequence-diagram-read-time-downcasttoprevious-walk.svg)
+
 ```plantuml
 @startuml Downcast_ReadTime_Sequence
 autonumber
@@ -211,6 +217,8 @@ original's own `EventId`). A materialization is an ordinary row in the
 same `StoredEvent` table, published through the same append path as any
 other event, not a parallel mechanism. `downcastToPrevious` (`ADR-028`)
 never persists anything at all — it has no row of its own to show here.
+
+![Data model (ER diagram)](../diagrams/features/upcast-materialization-and-downcast/04-data-model-er-diagram.svg)
 
 ```plantuml
 @startuml UpcastMaterializationDowncast_ER

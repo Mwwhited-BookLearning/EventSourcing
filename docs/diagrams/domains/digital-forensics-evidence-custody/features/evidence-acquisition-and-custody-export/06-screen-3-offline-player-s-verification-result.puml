@@ -1,0 +1,14 @@
+@startsalt
+{
+  { "Offline Player -- ev-1-export-2026-08-03.bundle" }
+  ..
+  { "Recomputing ChainHash sequence and manifest hash from embedded data..." }
+  ..
+  { "Result: Verified except 1 masked field -- chain linkage intact" }
+  ..
+  | Field masked                  | Reason                                  |
+  | ArtifactExtracted.SourcePath  | exporting actor lacked its requiredClaim |
+  ..
+  [ View full event list ] | [ Close ]
+}
+@endsalt

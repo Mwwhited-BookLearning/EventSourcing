@@ -49,6 +49,8 @@ This doc deliberately does **not** re-derive:
 
 ## Sequence diagram — publish gated by `RequiredSignature` (RFC 9470 step-up)
 
+![Sequence diagram — publish gated by `RequiredSignature` (RFC 9470 step-up)](../diagrams/features/digital-signoff/01-sequence-diagram-publish-gated-by-requiredsignatur.svg)
+
 ```plantuml
 @startuml DigitalSignoff_StepUp_Sequence
 autonumber
@@ -91,6 +93,8 @@ end
 
 ## Sequence diagram — RFC 3161 timestamp obtained for a `Signature`-bearing event (`ADR-086`)
 
+![Sequence diagram — RFC 3161 timestamp obtained for a `Signature`-bearing event (`ADR-086`)](../diagrams/features/digital-signoff/02-sequence-diagram-rfc-3161-timestamp-obtained-for-a.svg)
+
 ```plantuml
 @startuml DigitalSignoff_Rfc3161_Sequence
 autonumber
@@ -125,6 +129,8 @@ independent of this codebase — the same trust-chain verification
 
 ## Sequence diagram — an erasure request against a signed event's `SignerId` is refused (`ADR-057`/`ADR-066` exemption)
 
+![Sequence diagram — an erasure request against a signed event's `SignerId` is refused (`ADR-057`/`ADR-066` exemption)](../diagrams/features/digital-signoff/03-sequence-diagram-an-erasure-request-against-a-sign.svg)
+
 ```plantuml
 @startuml DigitalSignoff_ErasureExemption_Sequence
 autonumber
@@ -152,6 +158,8 @@ end note
 ```
 
 ## Data model (ER diagram)
+
+![Data model (ER diagram)](../diagrams/features/digital-signoff/04-data-model-er-diagram.svg)
 
 ```plantuml
 @startuml DigitalSignoff_ER
@@ -217,6 +225,8 @@ and its optional RFC 3161 timestamping actually read/write.
 
 ### Screen 1: Records pending sign-off
 
+![Screen 1: Records pending sign-off diagram](../diagrams/features/digital-signoff/05-screen-1-records-pending-sign-off.svg)
+
 ```plantuml
 @startsalt
 {
@@ -232,6 +242,8 @@ and its optional RFC 3161 timestamping actually read/write.
 Clicking a row opens Screen 2 for that one record.
 
 ### Screen 2: Sign-off action
+
+![Screen 2: Sign-off action diagram](../diagrams/features/digital-signoff/06-screen-2-sign-off-action.svg)
 
 ```plantuml
 @startsalt
@@ -254,6 +266,8 @@ completes (the sequence diagram above) — only then does the flow move to
 Screen 3.
 
 ### Screen 3: Signed record
+
+![Screen 3: Signed record diagram](../diagrams/features/digital-signoff/07-screen-3-signed-record.svg)
 
 ```plantuml
 @startsalt

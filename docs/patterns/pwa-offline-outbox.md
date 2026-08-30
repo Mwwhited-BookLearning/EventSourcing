@@ -24,6 +24,8 @@ in Safari/WebKit as of this writing**; a polyfill (retry-on-visibility/
 retry-on-focus, rather than a true OS-level wakeup) is required for that
 engine, stated here rather than glossed over.
 
+![The pattern diagram](../diagrams/patterns/pwa-offline-outbox/01-the-pattern.svg)
+
 ```plantuml
 @startuml PWA_Offline_Outbox_Sequence
 autonumber

@@ -1,0 +1,14 @@
+@startsalt
+{
+  { "Claim claim-9911 -- Dispute Export & Playback  (Compliance Officer)" }
+  ..
+  { "Lineage"  | "ClaimFiled -> TripScored -> veh-773-obd2 window" }
+  { "Manifest" | "SHA-256 over ordered ChainHash values"           }
+  [ Download portable bundle ]
+  ..
+  { "System-time playback  asOfSequenceNumber:" | "[ 641 ]" }
+  { "RiskScoreAtFiling (as observed)"           | "81  (was 72 as of SequenceNumber 500)" }
+  { "LateArrivalFlag"                            | "true -- corrected TripScored landed here" }
+  [ << Step back ] | [ Step forward >> ]
+}
+@endsalt

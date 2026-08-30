@@ -1,0 +1,53 @@
+@startuml
+hide circle
+skinparam linetype ortho
+
+entity "ClientOutboxEntry" as outbox {
+  * CommandId : uuid <<PK>>
+  --
+  InstanceId : string
+  Patch : text
+  Status : string
+}
+
+entity "TelemetrySample" as sample {
+  * ChannelId : string <<FK>>
+  * Timestamp : datetimeoffset
+  --
+  MonotonicElapsedMicros : bigint <<nullable>>
+  ' elapsed time since the recording agent's session
+  ' start -- ADR-083, immune to wall-clock tampering
+  Value : bytes
+  LateArrivalFlag : bool
+}
+
+entity "StoredEvent" as event {
+  * SequenceNumber : bigint <<PK>>
+  --
+  AuthorityStatus : string
+  ' defaults non-authoritative for a device-sourced
+  ' discrete reading, ADR-035, unless self-attested
+  AttestedClaims : text <<nullable>>
+}
+
+outbox .. sample : "continuous mapping (per-integration\nchoice) -- flush delivers into a\nStreaming Channel, ADR-031"
+outbox .. event : "discrete mapping (per-integration\nchoice) -- flush delivers as an\nordinary publish, ADR-023"
+
+note right of sample
+  MonotonicElapsedMicros is optional --
+  not every producer has a meaningful
+  monotonic session concept. Populated by
+  the recording agent (the client-side
+  component owning the capture session),
+  not the raw device sensor and not the
+  server (ADR-083).
+end note
+
+note bottom of outbox
+  Unchanged from mvvm-client.md's own
+  ClientOutboxEntry -- device input writes
+  into the identical outbox row shape as
+  any other client-originated command; no
+  new client-side durability primitive.
+end note
+@enduml

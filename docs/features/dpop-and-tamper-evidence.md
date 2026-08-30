@@ -53,6 +53,8 @@ itself, including scope/claims, is `auth.md`'s `Auth_TokenFlow_Sequence`
 and isn't repeated. What's new here is the DPoP proof this design adds
 to both steps, and the resource-server checks against it.
 
+![Sequence diagram — DPoP-proof validation on an API request (`ADR-017`)](../diagrams/features/dpop-and-tamper-evidence/01-sequence-diagram-dpop-proof-validation-on-an-api-r.svg)
+
 ```plantuml
 @startuml DPoP_ProofValidation_Sequence
 autonumber
@@ -98,6 +100,8 @@ end note
 
 ## Sequence diagram — hash-chain verification (`ADR-019`)
 
+![Sequence diagram — hash-chain verification (`ADR-019`)](../diagrams/features/dpop-and-tamper-evidence/02-sequence-diagram-hash-chain-verification-adr-019.svg)
+
 ```plantuml
 @startuml TamperEvidence_ChainVerification_Sequence
 autonumber
@@ -127,6 +131,8 @@ data-model note for the base token flow: client key pairs and the
 OpenIddict store, never in `EventStoreContext`. The only columns this
 doc's scenarios touch are `StoredEvent`'s existing hash-chain fields —
 full column list in [`../data/event-log.md`](../data/event-log.md).
+
+![Data model (ER diagram)](../diagrams/features/dpop-and-tamper-evidence/03-data-model-er-diagram.svg)
 
 ```plantuml
 @startuml TamperEvidence_ER

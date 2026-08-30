@@ -1,0 +1,60 @@
+@startuml
+hide circle
+skinparam linetype ortho
+
+entity "StoredEvent" as event {
+  * SequenceNumber : bigint <<PK>>
+  --
+  EventId : uuid <<unique>>
+  EntityId : string
+  ' trial1:Patient:S-0077 (ConsentWithdrawn, EntityErasureRequested);
+  ' trial1:AdverseEvent:ae-1042 / trial1:Patient:S-0091 (exported/played back)
+  EventType : string
+  Payload : text
+  ' classified fields stored as ciphertext once a DEK exists (ADR-057)
+  ChainHash : string
+  LateArrivalFlag : bool?
+  ' relevant only for playback's arrival-order fold (ADR-068)
+}
+
+entity "EntityErasureKey\n(ADR-057)" as erasureKey {
+  * EntityId : string <<PK>>
+  --
+  AppId : string
+  WrappedDek : bytes
+  ' never the key material itself -- lives only in IErasureKeyStore
+  KeyStoreBackendKey : string
+  ' which registered IErasureKeyStore backend holds this entity's DEK
+  CreatedAt : datetimeoffset
+  DestroyedAt : datetimeoffset?
+}
+
+entity "EntityStoreRow\n(Patient)" as entityStore {
+  * EntityId : string <<PK>>
+  --
+  Data : text
+  ' LegalName/DateOfBirth render {"erased": true} once DestroyedAt is set
+}
+
+entity "AccessLogEntry\n(ADR-045, full shape in ../../../data/access-log.md)" as accessLog {
+  * SequenceNumber : bigint <<PK>>
+  --
+  ReaderActorId : string
+  EntityId : string
+  ' the export/playback target, logged like any other read
+  CredentialKind : enum {Authoritative, Attested}
+}
+
+event ..> erasureKey : "EntityId -- the DEK this entity's\nclassified fields were encrypted\nunder (ADR-057)"
+erasureKey ..> entityStore : "DestroyedAt set --\nsubsequent reads of classified\nfields render erased: true"
+event ..> accessLog : "an export or playback query writes\none AccessLogEntry per read (ADR-045),\nlogically, not a DB FK"
+
+note right of erasureKey
+  ExportManifest / SystemTimePlayback results are
+  produced ARTIFACTS, not persisted rows -- shown as
+  C# DTOs below, not in this ER diagram, since neither
+  is a new database table (ADR-068's own "v1 computes
+  this on demand" decision for playback; an export
+  bundle is likewise never stored server-side).
+end note
+@enduml

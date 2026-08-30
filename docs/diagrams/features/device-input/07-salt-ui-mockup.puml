@@ -1,0 +1,11 @@
+@startsalt
+{
+  { "Connected Devices" }
+  ..
+  | Device              | Adapter    | Last reading      | AuthorityStatus    |
+  | SerialMonitor-A4F2   | WebSerial  | 98.6 (2s ago)      | non_authoritative  |
+  | BLE-HR-Strap-01      | NativeBridge | 72 bpm (1s ago)  | non_authoritative  |
+  ..
+  [ Connect another device ] | [ View reading detail ]
+}
+@endsalt

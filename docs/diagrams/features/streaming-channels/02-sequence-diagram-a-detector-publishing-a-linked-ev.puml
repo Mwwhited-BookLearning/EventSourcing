@@ -1,0 +1,26 @@
+@startuml
+autonumber
+participant "Detector Worker\n(app-specific, out of framework scope)" as detector
+participant "Telemetry Read API" as read
+database "Telemetry Store" as tdb
+participant "Publish API" as publish
+participant "SchemaValidationService" as validator
+participant "EventAppender" as appender
+database "Event & Schema Store" as edb
+
+detector -> read: GET /telemetry/{channelId}/samples?mode=tail\n(or mode=replay&fromTimestamp=<t> -- ADR-010's shape, reused as-is)
+read -> tdb: SELECT ... WHERE Timestamp > lastSeen
+tdb --> read: TelemetrySample rows
+read --> detector: streamed samples
+detector -> detector: apply domain-specific detection logic\n(an EEG anomaly rule, a voltage threshold, ... -- ADR-031 takes no position)
+alt something worth recording is found
+  detector -> publish: POST /publish/{event-type}\n{ payload, telemetryPointer: [{ channelId, fromTimestamp, toTimestamp? }] }
+  publish -> validator: validate(payload, schema)
+  validator --> publish: SchemaStatus (conformant | invalid | unknown -- ADR-023, never blocks the write)
+  publish -> appender: append(StoredEvent { ..., TelemetryPointer })
+  appender -> edb: INSERT StoredEvent\n(the completely normal publish pipeline -- ADR-020/ADR-023, unchanged)
+  appender --> detector: 202 { correlationId, status, schemaStatus, entityId }
+else nothing found this poll
+  detector -> detector: continue tailing
+end
+@enduml

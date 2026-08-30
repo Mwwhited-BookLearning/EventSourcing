@@ -1,0 +1,20 @@
+@startuml
+autonumber
+actor "External user\n(via federated corporate IdP)" as user
+participant "Federated IdP\n(any OIDC issuer registered as\na TrustedFederationIssuer)" as fedIdp
+participant "EventStore.DevIdp\n(Token Exchange endpoint, ADR-047)" as idp
+participant "Role / UserPermission\n(EventStore.DevIdp-owned tables, folded from\nRoleGranted/RoleRevoked/PermissionGranted via\nRbacProjectionWorker's own cross-process Follow --\nNEVER a core-engine EntityStoreRow fold, ADR-067)" as rbac
+participant "API" as api
+
+user -> fedIdp: authenticate (out of band)
+fedIdp --> user: externally-issued access token\n(sub, email, ... -- authoritative for identity)
+user -> idp: POST /connect/token\ngrant_type=urn:ietf:params:oauth:grant-type:token-exchange (RFC 8693)\nsubject_token=<externally-issued token>
+idp -> idp: verify subject_token against the registered\nTrustedFederationIssuer's JWKS (ADR-047)
+idp -> idp: resolve (Issuer, Sub) -> ActorId\n(FederatedIdentityMapping, JIT-provisioned on first sight)
+idp -> rbac: look up ActorId's assigned Role(s)\nand any direct UserPermission grants, for this AppId\n(RoleService's own already-idempotent read, in-process\nwithin DevIdp -- these tables are DevIdp-local, not a\nsecond network hop)
+rbac --> idp: flattened union of permissions\n(ADR-046 -- additive-only, no explicit-deny concept exists)
+idp --> user: 200 { access_token (JWT) }\n-- external identity claims (sub/email) pass through unchanged;\nlocal role/direct permissions are ADDED, never replacing them
+user -> api: request\nAuthorization: Bearer <access_token>
+api -> api: validate + check scope/claim -- identical to the\nclient_credentials flow above; the check cannot tell (and\ndoesn't need to) whether a claim arrived via a role or directly
+api --> user: 200 / 202 / 403 (same outcomes as the plain flow above)
+@enduml

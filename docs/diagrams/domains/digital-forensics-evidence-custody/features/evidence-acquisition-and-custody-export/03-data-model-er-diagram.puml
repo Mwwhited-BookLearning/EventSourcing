@@ -1,0 +1,61 @@
+@startuml
+hide circle
+skinparam linetype ortho
+
+entity "EvidenceAcquired" as acquired {
+  * EventId : uuid <<PK>>
+  --
+  EntityId : string
+  ' lab:Evidence:{EvidenceId}
+  EvidenceId : string
+  CaseNumber : string
+  SourceDeviceDescription : string
+  AcquisitionToolName : string
+  WriteBlockerUsed : bool
+  AttachmentRef : string
+  ' ContentHash of the disk image (ADR-032)
+}
+
+entity "CustodyTransferred" as transfer {
+  * EventId : uuid <<PK>>
+  --
+  EntityId : string
+  FromActorId : string
+  ToActorId : string
+  Reason : string
+  Signature : Signature
+  ' Meaning "custody transfer", required (ADR-066)
+}
+
+entity "ArtifactExtracted" as artifact {
+  * EventId : uuid <<PK>>
+  --
+  EntityId : string
+  ' lab:Artifact:{ArtifactId}
+  ArtifactType : string
+  ExtractionToolName : string
+  AttachmentRef : string
+}
+
+entity "AccessLogEntry" as accessLog {
+  * SequenceNumber : bigint <<PK>>
+  --
+  ReaderActorId : string
+  Action : string
+  ' "query" | "export" | "download"
+  ResourceRef : string
+  ChainHash : string
+}
+
+acquired <.. transfer : "same EntityId --\nCustodyTransferred is a Partial\npatch on the evidence entity"
+acquired <.. artifact : "parentEventIds\n(ADR-005 lineage DAG)"
+acquired ..> accessLog : "every read of this entity,\nincluding the litigation export,\nis a logged ResourceRef (ADR-045)"
+
+note bottom of transfer
+  Chain of custody, structurally: each
+  CustodyTransferred event is itself a
+  hash-chained (ADR-019), signed (ADR-066)
+  StoredEvent -- there is no separate
+  "custody log" table.
+end note
+@enduml

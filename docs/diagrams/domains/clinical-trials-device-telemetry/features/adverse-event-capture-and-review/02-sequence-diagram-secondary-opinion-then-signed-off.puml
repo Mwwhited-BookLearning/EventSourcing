@@ -1,0 +1,65 @@
+@startuml
+autonumber
+actor "Principal Investigator\n(PI)" as pi
+actor "Colleague\n(secondary reviewer)" as colleague
+actor "Unrelated caller\n(no grant)" as stranger
+participant "EventStore.DevIdp" as idp
+participant "GraphQL Gateway" as gateway
+participant "PublishEndpoint\n(Inbox)" as inbox
+participant "AuthorityDecisionResolver" as resolver
+database "Event Log" as eventLog
+database "Live View" as liveView
+database "Entity Store\n(authoritative)" as entityStore
+
+== Delegated secondary-opinion access (ADR-043) ==
+pi -> inbox: POST /publish/accessGrant\n{ payload: { GrantId: "grant-1", GranteeDid: "did:key:colleague-2",\n  DelegatedClaim: "review:secondary-opinion",\n  EntityScope: "trial1:AdverseEvent:ae-1042",\n  ExpiresAt: "2026-07-30T14:00:00Z" } }
+inbox -> eventLog: INSERT StoredEvent (accessGrant)
+note right of pi
+  UCAN delegation is capped to the PI's own claim
+  level by construction (ADR-036) -- how the UCAN
+  itself is minted/exchanged is out of scope here,
+  see did-ucan-attestation.md.
+end note
+colleague -> idp: POST /oauth/token\ngrant_type=...:token-exchange, subject_token=<UCAN>
+idp --> colleague: 200 { access_token (JWT) }\nclaims: review:secondary-opinion,\n  entityScope: "trial1:AdverseEvent:ae-1042"
+colleague -> gateway: QUERY liveAdverseEvent(entityId: "trial1:AdverseEvent:ae-1042")\nBearer <delegated JWT>
+gateway -> gateway: HasClaim("review:secondary-opinion")\nAND entityScope matches "ae-1042" (ADR-043)
+gateway -> liveView: read
+liveView --> colleague: { Data, AuthorityStatus: "pending_review",\n  isAuthoritative: false }
+stranger -> gateway: QUERY liveAdverseEvent(entityId: "trial1:AdverseEvent:ae-1042")\nBearer <ordinary JWT, no grant>
+gateway -> gateway: HasClaim check fails -- no\n"review:secondary-opinion" claim scoped to this EntityId
+gateway --> stranger: 403 (claim missing/not entity-scoped)
+
+== PI's review decision, gated on step-up (ADR-066) ==
+pi -> inbox: POST /publish/authorityDecision\n{ payload: { targetEventId: "ae-1042-evt", decision: "accepted",\n  decidingActorId: "pi-7" } }\nBearer <JWT, acr not recent enough>
+alt caller's token doesn't satisfy RequiredSignature.AcrValues/MaxAge
+  inbox --> pi: 401 WWW-Authenticate: step-up required\n(acr_values="urn:trial:step-up", max_age=300)
+  note right of inbox
+    Publish is turned away BEFORE storage -- the one
+    new pre-storage rejection case ADR-066 names,
+    alongside ADR-023's existing envelope-parse
+    exception. The event's own content is never
+    rejected for shape/content reasons.
+  end note
+  pi -> idp: re-authenticate (password re-entry / OTP / WebAuthn --\n  IdP's own mechanism, not this framework's, ADR-066)
+  idp --> pi: new token, acr = "urn:trial:step-up", auth_time recent
+  pi -> inbox: retry POST /publish/authorityDecision\n(same payload, stepped-up token)
+end
+inbox -> eventLog: INSERT StoredEvent (authorityDecision)\nSignature: { SignerId: "pi-7", SignedAt: now,\n  Meaning: "approved", Acr: "urn:trial:step-up" }
+inbox --> pi: 202 { status: "received" }
+... asynchronously ...
+resolver -> eventLog: SELECT target StoredEvent "ae-1042-evt"
+alt decision = "accepted"
+  resolver -> eventLog: UPDATE target SET AuthorityStatus = "accepted",\n  AuthorityDecisionRef = <this event's EventId>
+  resolver -> entityStore: fold target event now (catch-up, ADR-042)
+  entityStore -> entityStore: UPDATE EntityStoreRow.Data, Version++
+else decision = "rejected"
+  resolver -> eventLog: UPDATE target SET AuthorityStatus = "rejected",\n  AuthorityDecisionRef = <this event's EventId>
+  note right of resolver
+    Never folded into the authoritative Entity Store
+    at all (ADR-042) -- it never satisfied the gate.
+    Stays visible in the Event Log and Live View,
+    re-labeled "rejected", never deleted.
+  end note
+end
+@enduml

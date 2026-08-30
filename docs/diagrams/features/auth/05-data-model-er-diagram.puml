@@ -1,0 +1,18 @@
+@startuml
+hide circle
+skinparam linetype ortho
+
+entity "Role" as role {
+  * AppId : string
+  * RoleName : string
+  --
+  Permissions : List<string>
+}
+
+entity "UserPermission" as perm {
+  * ActorId : string
+  * AppId : string
+  --
+  Permission : string
+}
+@enduml

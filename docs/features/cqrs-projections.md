@@ -94,6 +94,8 @@ refined by `ADR-022`'s `Optional<T>`-aware fold below.
 
 ## Sequence diagram — one event's trip from Follow to the read model
 
+![Sequence diagram — one event's trip from Follow to the read model](../diagrams/features/cqrs-projections/01-sequence-diagram-one-event-s-trip-from-follow-to-t.svg)
+
 ```plantuml
 @startuml CqrsProjection_Apply_Sequence
 autonumber
@@ -136,6 +138,8 @@ whose value is JSON `null` enumerates with a `null` CLR reference, so
 `result[key] = value` clears it, matching `Specified(null)`).
 
 ## Data model (ER diagram) — the write/read boundary
+
+![Data model (ER diagram) — the write/read boundary](../diagrams/features/cqrs-projections/02-data-model-er-diagram-the-write-read-boundary.svg)
 
 ```plantuml
 @startuml CqrsProjection_ER

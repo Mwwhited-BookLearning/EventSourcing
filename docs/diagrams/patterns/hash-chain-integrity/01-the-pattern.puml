@@ -1,0 +1,25 @@
+@startuml
+object "Event 1" as E1 {
+  PayloadHash = "a1b2..."
+  ChainHash = "SHA256(seed || a1b2 || 1)" = "c3d4..."
+}
+object "Event 2" as E2 {
+  PayloadHash = "e5f6..."
+  ChainHash = "SHA256(c3d4 || e5f6 || 2)" = "g7h8..."
+}
+object "Event 3" as E3 {
+  PayloadHash = "i9j0..."
+  ChainHash = "SHA256(g7h8 || i9j0 || 3)" = "k1l2..."
+}
+
+E1 --> E2 : ChainHash feeds forward
+E2 --> E3 : ChainHash feeds forward
+note bottom of E1
+  Altering Event 1's Payload after the fact
+  changes PayloadHash, which changes E1's
+  ChainHash, which changes E2's, which
+  changes E3's -- every hash downstream of
+  a tampered record no longer matches what's
+  stored, all the way to the end of the chain.
+end note
+@enduml

@@ -44,6 +44,8 @@ This doc deliberately does **not** re-derive:
 
 ## Sequence diagram — ICSR intake through causality-assessment sign-off
 
+![Sequence diagram — ICSR intake through causality-assessment sign-off](../../../diagrams/domains/pharmacovigilance/features/icsr-intake-and-signal-review/01-sequence-diagram-icsr-intake-through-causality-ass.svg)
+
 ```plantuml
 @startuml Icsr_Intake_And_Review_Sequence
 autonumber
@@ -129,6 +131,8 @@ report that arrived late (`LateArrivalFlag`) — a corrected `Seriousness`
 — landing exactly where it was actually learned, not smoothed backward
 into the timeline it logically describes.
 
+![Sequence diagram — bitemporal system-time playback of a case](../../../diagrams/domains/pharmacovigilance/features/icsr-intake-and-signal-review/02-sequence-diagram-bitemporal-system-time-playback-o.svg)
+
 ```plantuml
 @startuml Icsr_Bitemporal_Playback_Sequence
 autonumber
@@ -166,6 +170,8 @@ handler --> auditor: [ { sequenceNumber: 4088, occurredAt: "Jan 3",\n    lateArr
 ```
 
 ## Data model (ER diagram)
+
+![Data model (ER diagram)](../../../diagrams/domains/pharmacovigilance/features/icsr-intake-and-signal-review/03-data-model-er-diagram.svg)
 
 ```plantuml
 @startuml Icsr_ER
@@ -278,6 +284,8 @@ event's status," per `../../data/entity-store.md`). `Amended`/`Closed`
 are likewise this domain's own vocabulary for recognizable points along
 that same underlying `AuthorityStatus` timeline, not new schema.
 
+![State diagram — one ICSR case's lifecycle](../../../diagrams/domains/pharmacovigilance/features/icsr-intake-and-signal-review/04-state-diagram-one-icsr-case-s-lifecycle.svg)
+
 ```plantuml
 @startuml Icsr_Case_Lifecycle
 [*] --> Captured : IcsrReported published\n(AuthorityStatus: pending_review, ADR-042)
@@ -305,6 +313,8 @@ end note
 
 ### Screen 1: ICSR Case Review Queue — Live View, ungated
 
+![Screen 1: ICSR Case Review Queue — Live View, ungated diagram](../../../diagrams/domains/pharmacovigilance/features/icsr-intake-and-signal-review/05-screen-1-icsr-case-review-queue-live-view-ungated.svg)
+
 ```plantuml
 @startsalt
 {
@@ -328,6 +338,8 @@ capture.md`'s convention directly. Clicking `icsr-2031` opens Screen 2,
 the reviewer's own causality-assessment decision for that one case.
 
 ### Screen 2: Safety reviewer's causality-assessment and sign-off screen
+
+![Screen 2: Safety reviewer's causality-assessment and sign-off screen diagram](../../../diagrams/domains/pharmacovigilance/features/icsr-intake-and-signal-review/06-screen-2-safety-reviewer-s-causality-assessment-an.svg)
 
 ```plantuml
 @startsalt
@@ -355,6 +367,8 @@ challenge before the click actually completes, exactly as that diagram's
 
 ### Screen 3: Confirmed case record — authoritative, outbound-reporting eligible
 
+![Screen 3: Confirmed case record — authoritative, outbound-reporting eligible diagram](../../../diagrams/domains/pharmacovigilance/features/icsr-intake-and-signal-review/07-screen-3-confirmed-case-record-authoritative-outbo.svg)
+
 ```plantuml
 @startsalt
 {
@@ -379,6 +393,8 @@ redesigned. **System-time playback** opens Screen 4, the second sequence
 diagram's own bitemporal reconstruction query, as a real view.
 
 ### Screen 4: Regulator's bitemporal system-time playback
+
+![Screen 4: Regulator's bitemporal system-time playback diagram](../../../diagrams/domains/pharmacovigilance/features/icsr-intake-and-signal-review/08-screen-4-regulator-s-bitemporal-system-time-playba.svg)
 
 ```plantuml
 @startsalt

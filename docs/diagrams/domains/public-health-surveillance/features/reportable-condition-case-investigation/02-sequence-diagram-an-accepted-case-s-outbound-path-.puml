@@ -1,0 +1,41 @@
+@startuml
+autonumber
+database "Entity Store\n(authoritative)" as entityStore
+participant "Peer Sync Outbox\n(AppId: state-example, ADR-033)" as syncOutbox
+participant "Peer Sync Service" as syncService
+participant "Site EastRegional\n(Region: us-east)" as peerEast
+participant "Site WestRegional\n(Region: us-west)" as peerWest
+participant "Webhook Outbox\n(ADR-060)" as webhookOutbox
+participant "Hl7V2Adapter\n(ADR-072)" as hl7Adapter
+participant "State PHIN Interface Engine\n(MLLP/TCP listener)" as stateSystem
+
+== Region-pinned peer-sync replication (ADR-061) ==
+entityStore -> syncOutbox: enqueue accepted "case-9001" event for outbound sync\n(AppId "state-example", AllowedRegions: ["us-east"])
+syncOutbox -> syncOutbox: filter candidate destination peers by AllowedRegions\nBEFORE building each sync batch (ADR-061 -- not a query-time check)
+alt destination peer tagged with an allowed region (Site EastRegional, "us-east")
+  syncOutbox -> syncService: include "case-9001" event in the batch bound for Site EastRegional
+  syncService -> peerEast: push batch (ADR-033 gossip exchange)
+  peerEast --> syncService: ack up to this SequenceNumber
+else destination peer tagged with a disallowed region (Site WestRegional, "us-west")
+  syncOutbox -> syncOutbox: "case-9001" event is simply never included\nin any batch bound for Site WestRegional
+  note right of syncOutbox
+    Filtered at the outbox itself, at the point sync destinations
+    are already being selected (ADR-033) -- no separate residency
+    component, no read/query-time gate.
+  end note
+end
+
+== Upward regulatory reporting via interchange adapter + webhook (ADR-072/ADR-060) ==
+entityStore -> webhookOutbox: enqueue accepted "case-9001" event\nmatching WebhookSubscription "notify-state-health-dept"
+webhookOutbox -> hl7Adapter: transform CaseReported payload into an\nHL7v2 case-report message (Hl7V2Adapter, ADR-072)
+hl7Adapter -> stateSystem: deliver over MLLP/TCP\n(HL7v2's real transport -- NOT an HTTP POST, ADR-072)
+stateSystem --> hl7Adapter: MLLP application ACK
+note right of stateSystem
+  A FhirAdapter subscription would instead POST a FHIR Bundle over
+  ordinary HTTP with webhook-id/webhook-timestamp/webhook-signature
+  headers (Standard Webhooks, ADR-060) -- FHIR is HTTP-native and
+  needs no MLLP bridge. Both adapters compose ahead of the same
+  webhook delivery step; this diagram shows the HL7v2 path since its
+  transport is the one easy to misrepresent (ADR-072).
+end note
+@enduml

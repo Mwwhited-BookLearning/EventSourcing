@@ -1,0 +1,11 @@
+@startsalt
+{
+  { "Risk Officer Queue -- reviewer-1 (compliance-officer, RoleGranted rg-1)" }
+  ..
+  | OrderId | Account | Symbol | Side | Qty | LimitPrice |
+  | ord-1   | acct-42 | ACME   | Buy  | 500 | 41.10      |
+  ..
+  { [ Approve ] | [ Reject ] }
+  "Decision parents: OrderSubmitted (119) + RoleGranted (rg-1) -- ADR-005/067"
+}
+@endsalt

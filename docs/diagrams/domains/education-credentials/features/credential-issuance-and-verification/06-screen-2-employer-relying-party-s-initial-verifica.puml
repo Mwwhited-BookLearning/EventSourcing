@@ -1,0 +1,17 @@
+@startsalt
+{
+  { "Credential Verification -- cred-1001 (Sunridge University)" }
+  ..
+  | Field           | Value                                     |
+  | Institution      | "Sunridge University"                     |
+  | Degree Awarded   | "B.S. Computer Science"                    |
+  | Conferred        | "2019-05-18"                                |
+  | Student ID       | "***"  ( FERPA -- masked, no claim held )  |
+  | Date of Birth    | "***"  ( FERPA -- masked, no claim held )  |
+  | Diploma (PDF)    | [ View attachment ]                        |
+  ..
+  { "Access basis:" | "none yet -- request required" }
+  ..
+  [ Request verification access ] | [ Verify offline presentation instead ]
+}
+@endsalt

@@ -1,0 +1,27 @@
+@startuml
+autonumber
+participant "Consumer's own build\n(CLI or CI step)" as consumerBuild
+participant "EventStore.Host.Core\n(GET /openapi.json)" as endpoint
+participant "OpenApiDocumentBuilder" as docBuilder
+participant "EventStore.GraphQL\n(HotChocolate introspection)" as graphql
+participant "Kiota" as kiota
+participant "GraphQL Code Generator /\nStrawberry Shake" as gqlCodegen
+
+consumerBuild -> endpoint: GET /openapi.json (no Authorization header needed)
+endpoint -> docBuilder: GetOrBuildJsonAsync() (see diagram above)
+docBuilder --> consumerBuild: current openapi.json
+consumerBuild -> kiota: generate(openapi.json) -> C# and/or TypeScript client
+kiota --> consumerBuild: generated request builders + models\n(not committed to this repo)
+
+consumerBuild -> graphql: introspect SDL
+graphql --> consumerBuild: current schema
+consumerBuild -> gqlCodegen: generate(SDL) -> typed operations/client\n(GraphQL Code Generator for TypeScript,\nStrawberry Shake for .NET)
+gqlCodegen --> consumerBuild: generated client code\n(not committed to this repo)
+note over consumerBuild
+  A schema/spec change is discovered at the
+  consumer's *next* build, the same on-demand-
+  plus-short-cache freshness this doc's two
+  diagrams above already guarantee (ADR-054) --
+  no new freshness mechanism needed.
+end note
+@enduml

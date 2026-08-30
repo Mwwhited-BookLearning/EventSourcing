@@ -92,6 +92,8 @@ gets triggered.
 
 ## Sequence diagram — connect-time setup and per-event masking
 
+![Sequence diagram — connect-time setup and per-event masking](../diagrams/features/masking/01-sequence-diagram-connect-time-setup-and-per-event-.svg)
+
 ```plantuml
 @startuml Masking_Sequence
 autonumber
@@ -129,6 +131,8 @@ step, not logic embedded in the Follow Subscription resolver, `ADR-037`
 having retired the old `FollowEndpoint` name).
 
 ## Data model (ER diagram)
+
+![Data model (ER diagram)](../diagrams/features/masking/02-data-model-er-diagram.svg)
 
 ```plantuml
 @startuml Masking_ER

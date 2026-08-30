@@ -1,0 +1,10 @@
+@startsalt
+{
+  { "ICSR Case Review Queue -- Live View (isAuthoritative: false)" }
+  ..
+  | ReportId    | SuspectDrug | ReactionTerm  | Seriousness   | AuthorityStatus |
+  | "icsr-2031" | "DrugX"     | "Angioedema"  | "serious"     | pending_review  |
+  | "icsr-2044" | "DrugY"     | "Rash"        | "non-serious" | pending_review  |
+  | "icsr-1998" | "DrugX"     | "Anaphylaxis" | "serious"     | rejected        |
+}
+@endsalt

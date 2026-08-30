@@ -1,0 +1,17 @@
+@startuml
+autonumber
+actor "Consuming System\n(older build)" as client
+participant "GraphQL Gateway" as gateway
+participant "SchemaRegistryService" as registry
+
+client -> gateway: QUERY /graphql, connection open\ndeclares supportedSchemaVersions: [2, 3] for "OrderPlaced"\n(this doc's own realization of ADR-038's abstract\n"declares supported schema version(s)... at connection start")
+gateway -> registry: what versions of "demo:OrderPlaced" does this\ndeployment currently serve (active version, plus the\nN-1/N+1 window's still-supported neighbors)?
+registry --> gateway: activeVersion: 3, supportedWindow: [2, 3, 4]\n(version 4 not yet active; 2 kept per the N-1/N+1 window)
+alt client's declared versions overlap supportedWindow (this scenario: {2,3} ∩ {2,3,4} = {2,3})
+  gateway --> client: connection accepted\nserverCapabilities: { activeVersion: 3, supportedWindow: [2,3,4] }
+  note right: client can now choose to request either version's shape --\nself-describing payloads (SchemaVersion on every event/entity)\nmean it never has to guess which one it actually got
+else client's declared versions have zero overlap with supportedWindow\n(e.g. client only knows version 1, already outside the window\nand its upcaster since removed)
+  gateway --> client: connection rejected -- capability mismatch\n(no schema version this client understands is still served)
+  note right: a genuine, no-longer-bridgeable gap -- distinct from an\nordinary N-1/N+1 rollback, where the older version's upcaster\nis still guaranteed present and this branch never triggers
+end
+@enduml

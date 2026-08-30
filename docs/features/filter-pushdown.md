@@ -14,6 +14,8 @@ otherwise unaffected by either transport detail.
 
 ## Sequence diagram
 
+![Sequence diagram](../diagrams/features/filter-pushdown/01-sequence-diagram.svg)
+
 ```plantuml
 @startuml FilterPushdown_Sequence
 autonumber
@@ -60,6 +62,8 @@ ef --> gateway: matching StoredEvent(s) -- payload field selection happens\nlate
 ```
 
 ## Data model (ER diagram)
+
+![Data model (ER diagram)](../diagrams/features/filter-pushdown/02-data-model-er-diagram.svg)
 
 ```plantuml
 @startuml FilterPushdown_ER

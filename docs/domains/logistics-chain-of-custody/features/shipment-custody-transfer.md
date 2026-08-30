@@ -77,6 +77,8 @@ are decided in `ADR-033` but not yet reflected as columns in
 Propagation status, not something invented for this doc; shown below as
 metadata that travels with the event regardless.)
 
+![Sequence diagram — a normal handoff, published at the origin site and replicated to a destination-site peer](../../../diagrams/domains/logistics-chain-of-custody/features/shipment-custody-transfer/01-sequence-diagram-a-normal-handoff-published-at-the.svg)
+
 ```plantuml
 @startuml ShipmentCustody_Handoff_Replication_Sequence
 autonumber
@@ -139,6 +141,8 @@ that happened at Rotterdam) — the referenced handoff may not have
 replicated over yet via `ADR-033`'s gossip sync, so `Permissive` is the
 only mode that doesn't reject a legitimate, timely report.
 
+![Sequence diagram — an exception event parented off a specific prior handoff](../../../diagrams/domains/logistics-chain-of-custody/features/shipment-custody-transfer/02-sequence-diagram-an-exception-event-parented-off-a.svg)
+
 ```plantuml
 @startuml ShipmentCustody_Exception_Parenting_Sequence
 autonumber
@@ -190,6 +194,8 @@ end
 ```
 
 ## Data model (ER diagram)
+
+![Data model (ER diagram)](../../../diagrams/domains/logistics-chain-of-custody/features/shipment-custody-transfer/03-data-model-er-diagram.svg)
 
 ```plantuml
 @startuml ShipmentCustody_ER
@@ -315,6 +321,8 @@ territory, not repeated in this diagram.
 
 ### Screen 1: Warehouse scanner's handoff capture (Rotterdam, origin site)
 
+![Screen 1: Warehouse scanner's handoff capture (Rotterdam, origin site) diagram](../../../diagrams/domains/logistics-chain-of-custody/features/shipment-custody-transfer/04-screen-1-warehouse-scanner-s-handoff-capture-rotte.svg)
+
 ```plantuml
 @startsalt
 {
@@ -340,6 +348,8 @@ continues on Screen 2, filed by whichever site holds the concern.
 
 ### Screen 2: Customs officer's cross-site exception report (Hamburg, different site than the handoff)
 
+![Screen 2: Customs officer's cross-site exception report (Hamburg, different site than the handoff) diagram](../../../diagrams/domains/logistics-chain-of-custody/features/shipment-custody-transfer/05-screen-2-customs-officer-s-cross-site-exception-re.svg)
+
 ```plantuml
 @startsalt
 {
@@ -364,6 +374,8 @@ event type uses `Permissive`, not `Strict`, in the first place
 "awaiting sync" row on Screen 3, the dispatcher's timeline.
 
 ### Screen 3: Dispatcher/compliance officer's shipment custody timeline
+
+![Screen 3: Dispatcher/compliance officer's shipment custody timeline diagram](../../../diagrams/domains/logistics-chain-of-custody/features/shipment-custody-transfer/06-screen-3-dispatcher-compliance-officer-s-shipment-.svg)
 
 ```plantuml
 @startsalt

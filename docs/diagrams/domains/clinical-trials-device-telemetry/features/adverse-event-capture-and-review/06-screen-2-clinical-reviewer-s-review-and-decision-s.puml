@@ -1,0 +1,13 @@
+@startsalt
+{
+  { "ae-1042 -- Review (Live View, isAuthoritative: false)" }
+  ..
+  { "Subject" | "S-0091" } | { "Severity" | "Severe" } | { "SAE" | "true" }
+  { "TelemetryPointer" | "vitals-s0091 @ 2026-07-29T14:02:10Z" }
+  ..
+  { "Grant secondary opinion (ADR-043):" | "^did:key:colleague-2^" | [ Grant 24h, this AE only ] }
+  ..
+  { [ Sign off: Approve ] | [ Sign off: Reject ] }
+  "Sign-off requires step-up authentication (RFC 9470) -- ADR-066"
+}
+@endsalt

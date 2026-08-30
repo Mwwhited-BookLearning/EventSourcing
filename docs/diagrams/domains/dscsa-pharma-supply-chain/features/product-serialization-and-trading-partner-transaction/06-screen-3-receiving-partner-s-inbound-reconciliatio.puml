@@ -1,0 +1,12 @@
+@startsalt
+{
+  { "Shipment s-1 Received -- whl-7 Inbound Reconciliation (Live View, isAuthoritative: false)" }
+  ..
+  | NDC          | Serial     | BizStep    | AuthorityStatus  |
+  | 12345-678-90 | SN00019283 | receiving  | pending_review   |
+  | 12345-678-90 | SN00019284 | receiving  | pending_review   |
+  | ...          | ...        | ...        | ...              |
+  ..
+  [ Verify against manufacturer's transaction t-88 ]
+}
+@endsalt

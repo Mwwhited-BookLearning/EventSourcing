@@ -1,0 +1,14 @@
+@startsalt
+{
+  { "Specimen Record -- did:key:z6Mk...researcher's session" }
+  ..
+  { "Query: biobank:Specimen:spec-001-dna" }
+  | Property        | Value                          |
+  | SpecimenType     | "DNA Extract"                  |
+  | DonorReference   | "donor-77"  ( unmasked -- entityScope matches this grant ) |
+  | CollectionDate   | "2026-07-03"                    |
+  ..
+  { "Query: biobank:Specimen:spec-002" }
+  { "403 -- clearance:specimen-data does not apply to this EntityId" }
+}
+@endsalt

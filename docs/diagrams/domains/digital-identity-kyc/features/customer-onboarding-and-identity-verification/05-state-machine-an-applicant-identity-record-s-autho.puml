@@ -1,0 +1,38 @@
+@startuml
+[*] --> Unattested : IdentityClaimSubmitted published\nwith AttestedClaims (raw UCAN) (ADR-035)
+Unattested --> Unattested : token exchange attempted,\nUCAN chain invalid (ADR-036)\n-- retried on next connectivity window
+Unattested --> PendingReview : token exchange succeeds\n(JWT: provenance/authority_status/\ndelegation_chain_ref) (ADR-036)
+PendingReview --> Accepted : authorityDecision{decision: accepted}\npublished by a caller holding\n"identity:review" (ADR-046)
+PendingReview --> Rejected : authorityDecision{decision: rejected}\npublished by a caller holding\n"identity:review" (ADR-046)
+Accepted --> [*]
+Rejected --> [*]
+
+note right of Unattested
+  A syntactically/cryptographically invalid UCAN never
+  blocks or discards the claim (ADR-023) -- it just stays
+  unattested until a later exchange attempt succeeds.
+end note
+
+note right of PendingReview
+  Visible immediately via LiveEntityStoreRow, wrapped
+  isAuthoritative: false (ADR-042) -- the authoritative
+  Entity Store does not reflect this applicant at all yet.
+  A valid token exchange is NOT authority approval (ADR-036).
+end note
+
+note right of Accepted
+  Unlocks: the authoritative Entity Store now folds this
+  claim (ADR-042). The applicant is now a real, claims-
+  bearing identity record other reads and the relying
+  party's webhook (ADR-060) can rely on -- gated by
+  RequiredClaims (Read direction)/the caller's flattened claim set
+  (ADR-046/ADR-050), same as any other classified data.
+end note
+
+note right of Rejected
+  Never reaches the authoritative Entity Store (ADR-042).
+  Payload stays unchanged (Annotate, ADR-035's default for
+  this event type) -- still visible in the Event Log and
+  Live View, re-labeled rejected, never deleted.
+end note
+@enduml

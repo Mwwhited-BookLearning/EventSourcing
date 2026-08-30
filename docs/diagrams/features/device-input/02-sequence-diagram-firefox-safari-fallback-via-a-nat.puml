@@ -1,0 +1,25 @@
+@startuml
+autonumber
+actor User
+participant "MVVM Client\n(Firefox or Safari)" as client
+participant "NativeBridgeInputSource\n(IDeviceInputSource adapter)" as adapter
+participant "Native companion app\n(local process, OS-level hardware access)" as bridge
+participant "Physical device\n(e.g. a BLE monitor)" as device
+participant "ClientOutbox\n(IndexedDB, unchanged -- ADR-039)" as outbox
+
+client -> adapter: requestDevice() (no Web Bluetooth API available in this browser)
+adapter -> bridge: open localhost WebSocket connection
+alt companion app not running
+  bridge --> adapter: connection refused
+  adapter --> client: capture unavailable -- prompt user to launch the\ncompanion app (out of this framework's scope\nto auto-launch a native process)
+else companion app running
+  bridge --> adapter: connection established
+  bridge -> device: OS-level BLE pairing/read (outside the browser sandbox)
+  loop while connected
+    device -> bridge: raw reading
+    bridge -> adapter: reading forwarded over the localhost WebSocket
+    adapter -> adapter: parse into { Timestamp, Value,\nMonotonicElapsedMicros? }
+    adapter -> outbox: enqueue reading\n(identical shape/path to the browser-API adapter above --\nthe outbox has no awareness of which adapter produced an entry)
+  end
+end
+@enduml

@@ -1,0 +1,40 @@
+@startuml
+autonumber
+participant "Load-Management Detector\n(app-specific, out of framework scope)" as detector
+participant "Telemetry Read API" as read
+database "Telemetry Store" as tdb
+participant "PublishEndpoint\n(Inbox)" as inbox
+participant "Router / EventStore.Fold" as fold
+database "Event Log" as eventLog
+database "Live View\n(LiveEntityStoreRow, ADR-042)" as liveView
+database "Entity Store\n(MeterEntityStoreRow, authoritative)" as entityStore
+actor "Grid-Ops Reviewer" as reviewer
+
+detector -> read: GET /telemetry/meter-482-kwh-interval/samples?mode=tail
+read -> tdb: SELECT ... WHERE Timestamp > lastSeen
+tdb --> read: interval samples
+read --> detector: streamed samples
+detector -> detector: apply grid-stress threshold logic\n(ADR-031 takes no position on the algorithm itself)
+alt observed load crosses the configured grid-stress threshold
+  detector -> inbox: POST /publish/DemandResponseTriggered\n{ payload: { MeterId: "m-482", ThresholdKw: 950, ObservedKw: 987.4 },\n  telemetryPointer: [{ channelId: "meter-482-kwh-interval",\n    fromTimestamp: "2026-07-30T14:15:00Z" }],\n  reviewPending: true }
+  inbox -> eventLog: INSERT StoredEvent\n(EventType: DemandResponseTriggered, TelemetryPointer set,\n AuthorityStatus: "pending_review" -- ADR-042's detector-output case,\n ActorId: detector's own verified service identity, ADR-064)
+  inbox --> detector: 202 { correlationId, status: "received",\n  authorityStatus: "pending_review" }
+  fold -> fold: resolve EntityId "gridops:Meter:m-482" via EntityIdField "$.MeterId"
+  fold -> liveView: UPSERT LiveEntityStoreRow\nData.ActiveDemandResponseStatus = "PendingValidation"\n(folds immediately regardless of AuthorityStatus -- ADR-042)
+  note right of liveView: every read of this row is wrapped\nisAuthoritative: false at the query surface
+  fold -> entityStore: (no write yet -- AuthorityStatus below "accepted", ADR-042)
+  ...time passes -- a grid-ops reviewer checks the underlying interval data...
+  alt reviewer confirms the reading against feeder telemetry -- not a tamper artifact
+    reviewer -> inbox: POST /publish/authorityDecision\n{ targetEventId: <DemandResponseTriggered's EventId>,\n  decision: "accept", decidingActorId: "reviewer-88",\n  reason: "confirmed against feeder load, dispatching DR" }
+    inbox -> eventLog: INSERT StoredEvent (authorityDecision)\nUPDATE target StoredEvent SET AuthorityStatus = "accepted",\n  AuthorityDecisionRef = <this decision's EventId> (ADR-035)
+    fold -> entityStore: UPSERT MeterEntityStoreRow\nData.ActiveDemandResponseStatus = "Accepted"\n(fold finally runs now that AuthorityStatus = "accepted" -- ADR-042)
+    fold -> entityStore: advance Data.ActiveDemandResponseStatus = "Dispatched"\n(demand-response action executed -- app-level, may notify via ADR-060 webhook)
+  else reviewer determines this was a tamper/false-positive artifact
+    reviewer -> inbox: POST /publish/authorityDecision\n{ targetEventId: <DemandResponseTriggered's EventId>,\n  decision: "reject", decidingActorId: "reviewer-88",\n  reason: "meter bypass flagged same interval -- tamper, not real demand" }
+    inbox -> eventLog: INSERT StoredEvent (authorityDecision)\nUPDATE target StoredEvent SET AuthorityStatus = "rejected",\n  AuthorityDecisionRef = <this decision's EventId>
+    note right of entityStore: MeterEntityStoreRow is never patched by the\nrejected event's Data -- rejection is a label,\nnot a deletion (README.md's governing principle)
+  end
+else observed load stays under threshold
+  detector -> detector: continue tailing, publish nothing
+end
+@enduml

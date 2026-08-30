@@ -1,0 +1,13 @@
+@startsalt
+{
+  { "Site 04-221 -- Informed Consent Capture (Subject: S-0091)" }
+  ..
+  { "Consent version" | "^v3^" }
+  { "Consent obtained at" | "^2026-07-22T09:10:00Z^" }
+  { "Witness (this coordinator)" | "^coord-3^" }
+  { "Attach scanned, signed consent form" | [ Upload PDF ] }
+  "Uploaded: sha256:9f1c... (AttachmentRef, ADR-032)"
+  [ Submit InformedConsentCaptured ]
+  "Status: ConsentPending -- awaiting investigator countersignature"
+}
+@endsalt

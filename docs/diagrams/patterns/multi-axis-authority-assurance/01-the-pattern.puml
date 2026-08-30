@@ -1,0 +1,18 @@
+@startuml
+object "A request/submission" as req
+object "IAL: how well was\nthe identity proofed?" as ial
+object "AAL: how strong was\nthe authentication?" as aal
+object "FAL: how trustworthy\nis the assertion\n(if federated)?" as fal
+
+req --> ial
+req --> aal
+req --> fal
+note bottom
+  Three independent answers, not one
+  collapsed score -- a relying party
+  can require IAL2+AAL2 for one
+  operation and only AAL1 for another,
+  a distinction a single "trust level"
+  field could never express.
+end note
+@enduml

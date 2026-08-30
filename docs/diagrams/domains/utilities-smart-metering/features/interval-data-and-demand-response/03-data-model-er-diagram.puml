@@ -1,0 +1,65 @@
+@startuml
+hide circle
+skinparam linetype ortho
+
+entity "TelemetryChannel" as channel {
+  * ChannelId : string <<PK>>
+  --
+  AppId : string
+  EntityId : string
+  ContentKind : enum {RawScalar}
+  SampleType : enum {Float64}
+  SampleIntervalMicros : bigint
+  Origin : enum {Origin}
+}
+
+entity "StoredEvent" as event {
+  * SequenceNumber : bigint <<PK>>
+  --
+  EventId : uuid <<unique>>
+  EntityId : string
+  EventType : string
+  TelemetryPointer : string?
+  AuthorityStatus : string
+  AuthorityDecisionRef : uuid?
+  ActorId : string
+}
+
+entity "MeterEntityStoreRow" as entityStore {
+  * EntityId : string <<PK>>
+  --
+  EntityType : string
+  Version : bigint
+  Data : text
+  LastAppliedSequenceNumber : bigint
+}
+
+channel ||--o{ event : "TelemetryPointer.ChannelId --\nlogical only, NOT a DB FK (ADR-031)"
+event "*" --> "1" entityStore : "folds into, ONLY once\nAuthorityStatus reaches accepted (ADR-042)"
+
+note right of channel
+  ChannelId "meter-482-kwh-interval", AppId "gridops",
+  EntityId "gridops:Meter:m-482" (ADR-021).
+  SampleIntervalMicros = 900000000 (15 min) doubles as this
+  channel's ExpectedInterArrivalInterval for lag detection
+  (ADR-031) -- one field, not two.
+end note
+
+note right of event
+  This is the DemandResponseTriggered StoredEvent shape.
+  AuthorityStatus starts "pending_review" here specifically
+  because the publish declared a review-pending marker
+  (ADR-042's "unvalidated detector output" trigger case) --
+  it does NOT default to "accepted" the way an ordinary
+  authenticated publish would.
+end note
+
+note bottom of entityStore
+  Full column list is in ../../../data/entity-store.md --
+  this is that same generic EntityStoreRow shape, scoped to
+  meter entities for this doc. An ungated LiveEntityStoreRow
+  counterpart (ADR-042) folds every DemandResponseTriggered
+  event immediately, pending_review included, wrapped
+  isAuthoritative: false -- not drawn here, see entity-store.md.
+end note
+@enduml

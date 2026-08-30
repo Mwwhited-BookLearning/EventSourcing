@@ -1,0 +1,14 @@
+@startuml
+[*] --> Active : PatientScreened / InformedConsentCaptured / ConsentApproval\n(see patient-enrollment-and-informed-consent.md)
+
+Active --> Active : exported (ADR-068) or played back (ADR-068) --\na READ, never changes this lifecycle state
+Active --> Withdrawn : ConsentWithdrawn published\n(retained forever, ICH-GCP)
+
+Withdrawn --> ErasureRequested : EntityErasureRequested published\n(ADR-057) -- itself hash-chained,\nretained forever
+ErasureRequested --> Erased : IErasureKeyStore destroys the DEK\n(irreversible)
+
+Erased : classified PHI fields render\n{"erased": true} on every subsequent read
+Erased : non-PHI structural/clinical fields\nremain fully readable (ICH-GCP retention)
+Erased : the EVENTS themselves, and the fact\nof erasure, are retained forever
+Erased --> [*]
+@enduml

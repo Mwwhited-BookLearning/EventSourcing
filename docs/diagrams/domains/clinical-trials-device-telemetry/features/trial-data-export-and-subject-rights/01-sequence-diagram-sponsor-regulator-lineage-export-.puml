@@ -1,0 +1,36 @@
+@startuml
+autonumber
+actor "Sponsor Auditor\n(auditor-3)" as auditor
+participant "GraphQL Gateway" as gateway
+participant "LineageExportResolver" as resolver
+database "Event Log" as eventLog
+participant "IPayloadMasker\n(ADR-009/057)" as masker
+database "Access Audit Log\n(ADR-045)" as accessLog
+
+auditor -> gateway: QUERY exportLineage(entityId: "trial1:AdverseEvent:ae-1042")\nBearer <JWT>
+gateway -> gateway: HasClaim("export:lineage") (ADR-008)
+alt missing claim
+  gateway --> auditor: 403 (claim "export:lineage" missing)
+else authorized
+  gateway -> resolver: exportLineage("trial1:AdverseEvent:ae-1042")
+  resolver -> eventLog: walk Lineage DAG (ADR-005) --\ngather ae-1042's AdverseEventReported event,\nits accessGrant "grant-1", and its authorityDecision
+  eventLog --> resolver: StoredEvent rows, SequenceNumber order
+  resolver -> masker: mask/decrypt each Payload per auditor-3's OWN claims\n(ADR-009 claims check, ADR-057 erased-branch check)
+  masker --> resolver: rendered Payloads (value / masked / erased per field)
+  note right of masker
+    No bypass -- a field auditor-3 couldn't see live,
+    they can't see exported either (ADR-068's own
+    stated rule). If ae-1042's subject had ever been
+    erased, those fields would render "erased": true
+    in the bundle too.
+  end note
+  resolver -> accessLog: INSERT AccessLogEntry\n(ReaderActorId: "auditor-3", CredentialKind: "Authoritative")
+  note right of accessLog
+    An export IS an ordinary logged read (ADR-045) --
+    not a privileged escape hatch around it.
+  end note
+  resolver -> resolver: build NDJSON bundle (SequenceNumber order)\n+ manifest { EventTypeDefinitions referenced,\n  ManifestHash = SHA256(ordered ChainHash values\n  + ExportedByActorId + ExportedAt), FrameworkVersion }\n(ADR-068, reusing ADR-019's hash primitive)
+  resolver --> gateway: bundle.ndjson + manifest.json
+  gateway --> auditor: 200 { bundle.ndjson, manifest.json }
+end
+@enduml

@@ -13,6 +13,8 @@ implementation-defined `filter` query parameter, and standard pagination/
 sorting conventions. **Source:**
 [JSON:API v1.1](https://jsonapi.org/format/).
 
+![The pattern diagram](../diagrams/patterns/jsonapi-specification/01-the-pattern.svg)
+
 ```plantuml
 @startuml JsonApi_Sequence
 autonumber

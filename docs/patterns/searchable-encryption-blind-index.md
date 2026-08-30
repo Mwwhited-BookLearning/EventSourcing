@@ -20,6 +20,8 @@ encryption (this pattern's core primitive) is one layer.
 
 ## The core mechanism
 
+![The core mechanism diagram](../diagrams/patterns/searchable-encryption-blind-index/01-the-core-mechanism.svg)
+
 ```plantuml
 @startuml BlindIndex_Sequence
 participant "Writer" as writer

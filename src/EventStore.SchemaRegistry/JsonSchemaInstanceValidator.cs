@@ -1,5 +1,7 @@
+using System.Net.Mail;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using System.Text.RegularExpressions;
 
 namespace EventStore.SchemaRegistry;
 
@@ -81,7 +83,223 @@ public static class JsonSchemaInstanceValidator
                     ok = false;
         }
 
+        // TODO.md, "Field-level validation and datatype rules" -- this
+        // validator's own real, previously-open gap: type/required/
+        // properties/items only, no pattern/length/range/enum/format at
+        // all. Extends the SAME hand-written, x-masking-tolerant approach
+        // (see the class comment for why JsonSchema.Net's own dialect
+        // isn't used) rather than switching implementations -- adding
+        // keywords is additive, doesn't touch the x-masking-exemption
+        // reasoning that made this hand-written in the first place. Only
+        // ever runs once the payload already matched its declared `type`
+        // above (a string-only keyword against a non-string payload is
+        // simply not applicable, not a separate failure).
+        if (!CheckStringConstraints(schemaObject, payload, errors, path)) ok = false;
+        if (!CheckNumberConstraints(schemaObject, payload, errors, path)) ok = false;
+        if (!CheckEnum(schemaObject, payload, errors, path)) ok = false;
+        if (!CheckConst(schemaObject, payload, errors, path)) ok = false;
+
+        // TODO.md, "Custom/dependent-field validation" -- real JSON
+        // Schema keywords (Draft 2019-09+), not bespoke syntax: verified
+        // against the spec before writing this, per this project's own
+        // verify-before-citing rule. `dependentRequired` for the simple
+        // "if X is present, Y must be too" case; `if`/`then`/`else` for
+        // the general conditional case (Y's own shape/range depends on
+        // X's value, not just X's presence).
+        if (!CheckDependentRequired(schemaObject, payload, errors, path)) ok = false;
+        if (!CheckIfThenElse(schemaObject, payload, errors, path)) ok = false;
+
         return ok;
+    }
+
+    // "if I is present, J must be too" -- e.g. { "dependentRequired": {
+    // "creditCardNumber": ["billingAddress", "expiryDate"] } }. Only
+    // meaningful for an object payload; a non-object payload has no
+    // properties to depend on each other at all.
+    private static bool CheckDependentRequired(JsonObject schemaObject, JsonNode? payload, List<string> errors, string path)
+    {
+        if (schemaObject["dependentRequired"] is not JsonObject dependentRequired || payload is not JsonObject payloadObject)
+            return true;
+
+        var ok = true;
+        foreach (var (triggerProperty, dependents) in dependentRequired)
+        {
+            if (!payloadObject.ContainsKey(triggerProperty) || dependents is not JsonArray dependentNames)
+                continue;
+            foreach (var dependentName in dependentNames)
+            {
+                var name = dependentName!.GetValue<string>();
+                if (!payloadObject.ContainsKey(name))
+                {
+                    errors.Add($"{path}: '{name}' is required when '{triggerProperty}' is present");
+                    ok = false;
+                }
+            }
+        }
+        return ok;
+    }
+
+    // The general conditional case JSON Schema itself defines: IF the
+    // payload validates against the `if` subschema, THEN it must also
+    // validate against `then` (or, when `if` fails, against `else` when
+    // given). `if`'s own failure is never itself an error -- it's a pure
+    // boolean test, evaluated into a throwaway error list precisely so a
+    // non-matching `if` branch reports nothing about itself, only about
+    // whichever of `then`/`else` actually applies.
+    private static bool CheckIfThenElse(JsonObject schemaObject, JsonNode? payload, List<string> errors, string path)
+    {
+        if (schemaObject["if"] is not { } ifSchema)
+            return true;
+
+        var matchesIf = Validate(ifSchema, payload, [], path);
+        if (matchesIf)
+            return schemaObject["then"] is not { } thenSchema || Validate(thenSchema, payload, errors, path);
+        return schemaObject["else"] is not { } elseSchema || Validate(elseSchema, payload, errors, path);
+    }
+
+    private static bool CheckStringConstraints(JsonObject schemaObject, JsonNode? payload, List<string> errors, string path)
+    {
+        if (payload is not JsonNode { } node || node.GetValueKind() != JsonValueKind.String)
+            return true;
+        var value = node.GetValue<string>();
+        var ok = true;
+
+        if (schemaObject["minLength"] is { } minLengthNode && value.Length < minLengthNode.GetValue<int>())
+        {
+            errors.Add($"{path}: length {value.Length} is below minLength {minLengthNode.GetValue<int>()}");
+            ok = false;
+        }
+        if (schemaObject["maxLength"] is { } maxLengthNode && value.Length > maxLengthNode.GetValue<int>())
+        {
+            errors.Add($"{path}: length {value.Length} exceeds maxLength {maxLengthNode.GetValue<int>()}");
+            ok = false;
+        }
+        if (schemaObject["pattern"] is { } patternNode)
+        {
+            var pattern = patternNode.GetValue<string>();
+            // A malformed `pattern` in the schema itself is a schema-
+            // authoring bug, not something this payload can be blamed
+            // for -- reported as a validation error against THIS payload
+            // (so it's visible at all, via the same SchemaStatus channel
+            // every other failure already surfaces through) rather than
+            // thrown, which would take down the whole fold for every
+            // future event of this type until the schema is fixed.
+            try
+            {
+                if (!Regex.IsMatch(value, pattern))
+                {
+                    errors.Add($"{path}: value does not match pattern '{pattern}'");
+                    ok = false;
+                }
+            }
+            catch (ArgumentException)
+            {
+                errors.Add($"{path}: schema's own pattern '{pattern}' is not a valid regular expression");
+                ok = false;
+            }
+        }
+        if (schemaObject["format"] is { } formatNode && !MatchesFormat(formatNode.GetValue<string>(), value))
+        {
+            errors.Add($"{path}: value does not match format '{formatNode.GetValue<string>()}'");
+            ok = false;
+        }
+
+        return ok;
+    }
+
+    // A deliberately small, real-standard-library-backed set, not a
+    // bespoke reimplementation of the full JSON Schema format vocabulary
+    // (buy over build -- .NET's own Uri/MailAddress parsers, not a hand-
+    // rolled regex, for the two formats this project has an actual use
+    // for so far). An unrecognized format name is tolerated, not failed
+    // -- the same "don't fail closed on our own uncertainty" posture
+    // MatchesType already takes for an unrecognized `type` value.
+    private static bool MatchesFormat(string format, string value) => format switch
+    {
+        "date-time" => DateTimeOffset.TryParse(value, System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.None, out _),
+        "email" => MailAddress.TryCreate(value, out _),
+        "uri" => Uri.TryCreate(value, UriKind.Absolute, out _),
+        _ => true,
+    };
+
+    private static bool CheckNumberConstraints(JsonObject schemaObject, JsonNode? payload, List<string> errors, string path)
+    {
+        if (payload is not JsonNode { } node || node.GetValueKind() != JsonValueKind.Number)
+            return true;
+        var value = node.GetValue<double>();
+        var ok = true;
+
+        if (schemaObject["minimum"] is { } minNode && value < minNode.GetValue<double>())
+        {
+            errors.Add($"{path}: value {value} is below minimum {minNode.GetValue<double>()}");
+            ok = false;
+        }
+        if (schemaObject["maximum"] is { } maxNode && value > maxNode.GetValue<double>())
+        {
+            errors.Add($"{path}: value {value} exceeds maximum {maxNode.GetValue<double>()}");
+            ok = false;
+        }
+        if (schemaObject["exclusiveMinimum"] is { } exMinNode && value <= exMinNode.GetValue<double>())
+        {
+            errors.Add($"{path}: value {value} does not exceed exclusiveMinimum {exMinNode.GetValue<double>()}");
+            ok = false;
+        }
+        if (schemaObject["exclusiveMaximum"] is { } exMaxNode && value >= exMaxNode.GetValue<double>())
+        {
+            errors.Add($"{path}: value {value} does not fall below exclusiveMaximum {exMaxNode.GetValue<double>()}");
+            ok = false;
+        }
+
+        return ok;
+    }
+
+    // Applies regardless of type (JSON Schema's own `enum` is valid
+    // alongside any `type`, including mixed-type enums) -- deep JSON
+    // equality via a normalized string comparison (JsonNode has no
+    // built-in structural equality), sufficient for the scalar/short-
+    // array enum values this design's own schemas actually use.
+    private static bool CheckEnum(JsonObject schemaObject, JsonNode? payload, List<string> errors, string path)
+    {
+        if (schemaObject["enum"] is not JsonArray allowedValues)
+            return true;
+
+        // ADR-038's own explicit contract: "every enum-like field...
+        // declares a fallback... the raw string travels through
+        // unmodified, never substituted or dropped" -- a value outside
+        // the declared list is the EXPECTED forward-compatibility case
+        // this flag exists for (a newer publisher, an older schema
+        // registration this Router hasn't caught up to yet), not a real
+        // schema violation. Found before shipping, not after: a real
+        // existing test (CompatibilityGraphQlHttpSqliteTests) already
+        // published exactly this scenario and asserts the event travels
+        // through unmodified -- this check would have started marking
+        // every one of those "invalid" the moment enum enforcement was
+        // added, silently contradicting ADR-038's own contract. Same
+        // "vendor extension flag changes how validation behaves for this
+        // field" shape as the x-masking exemption at the top of Validate.
+        if (schemaObject["x-enum-fallback"]?.GetValue<bool>() == true)
+            return true;
+
+        var payloadJson = payload?.ToJsonString();
+        if (allowedValues.Any(allowed => allowed?.ToJsonString() == payloadJson))
+            return true;
+        errors.Add($"{path}: value is not one of the allowed enum values");
+        return false;
+    }
+
+    // `const` is JSON Schema's own single-value shorthand for `enum` --
+    // used here by `if`/`then`/`else`'s own real, concrete test cases
+    // ("if seriousAdverseEvent is exactly true...") rather than a
+    // one-element `enum` array, matching how a real schema author would
+    // actually write it.
+    private static bool CheckConst(JsonObject schemaObject, JsonNode? payload, List<string> errors, string path)
+    {
+        if (schemaObject["const"] is not { } constNode)
+            return true;
+        if (constNode.ToJsonString() == payload?.ToJsonString())
+            return true;
+        errors.Add($"{path}: value does not equal the required const value");
+        return false;
     }
 
     private static bool MatchesType(string type, JsonNode? value)

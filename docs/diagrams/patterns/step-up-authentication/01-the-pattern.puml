@@ -1,0 +1,19 @@
+@startuml
+autonumber
+actor User
+participant "Client" as client
+participant "Authorization Server\n(IdP)" as idp
+participant "Resource Server\n(e.g. the publish endpoint)" as rs
+
+User -> client: attempts a regulated action\n(e.g. approve a high-value transfer)
+client -> rs: request, Bearer <token acr=urn:...:pwd>
+rs -> rs: this action requires\nacr=urn:...:mfa, max_age=300 --\ncurrent token doesn't qualify
+rs --> client: 401\nWWW-Authenticate: Bearer error="insufficient_user_authentication",\n  error_description="...",\n  acr_values="urn:...:mfa", max_age=300
+client -> idp: authorization request,\nacr_values=urn:...:mfa, max_age=300
+idp -> User: re-authenticate at the required strength\n(however the IdP implements it --\npassword + OTP, WebAuthn, ...)
+User -> idp: completes step-up
+idp --> client: new token, acr=urn:...:mfa,\nauth_time recent enough
+client -> rs: retry, Bearer <new token>
+rs -> rs: acr/max_age now satisfied
+rs --> client: 2xx
+@enduml

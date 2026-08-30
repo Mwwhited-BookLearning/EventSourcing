@@ -43,6 +43,8 @@ silently assumed:**
 
 ## Sequence diagram — independent registration, no collision
 
+![Sequence diagram — independent registration, no collision](../diagrams/features/multi-tenancy/01-sequence-diagram-independent-registration-no-colli.svg)
+
 ```plantuml
 @startuml MultiTenancy_Registration_Sequence
 autonumber
@@ -69,6 +71,8 @@ registry --> opB: 201 (app-b's own OrderPlaced v1 -- unrelated to app-a's)
 ```
 
 ## Sequence diagram — publish resolution never crosses an `AppId` boundary
+
+![Sequence diagram — publish resolution never crosses an `AppId` boundary](../diagrams/features/multi-tenancy/02-sequence-diagram-publish-resolution-never-crosses-.svg)
 
 ```plantuml
 @startuml MultiTenancy_Isolation_Sequence
@@ -122,6 +126,8 @@ registered per tenant pair in that tenant's own composition root — see
 `docs/features/bulk-ingestion-and-interchange-adapters.md` for that
 seam's general shape; this doc only covers the transport half.
 
+![Tenant-to-tenant federation mapping (ADR-082) diagram](../diagrams/features/multi-tenancy/03-tenant-to-tenant-federation-mapping-adr-082.svg)
+
 ```plantuml
 @startuml MultiTenancy_Federation_Sequence
 autonumber
@@ -163,6 +169,8 @@ in-process; see
 for that endpoint's own general shape.
 
 ## Data model (ER diagram)
+
+![Data model (ER diagram)](../diagrams/features/multi-tenancy/04-data-model-er-diagram.svg)
 
 ```plantuml
 @startuml MultiTenancy_ER

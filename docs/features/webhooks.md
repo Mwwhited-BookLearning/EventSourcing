@@ -54,6 +54,8 @@ This doc deliberately does **not** re-derive:
 
 ## Sequence diagram — subscription registration (fixed claim snapshot)
 
+![Sequence diagram — subscription registration (fixed claim snapshot)](../diagrams/features/webhooks/01-sequence-diagram-subscription-registration-fixed-c.svg)
+
 ```plantuml
 @startuml Webhooks_Registration_Sequence
 autonumber
@@ -81,6 +83,8 @@ granted), this subscription keeps masking against the snapshot taken here,
 exactly as `ADR-009` already requires for a live Follow connection.
 
 ## Sequence diagram — event delivery, durable outbox, retry/backoff, dead-letter
+
+![Sequence diagram — event delivery, durable outbox, retry/backoff, dead-letter](../diagrams/features/webhooks/02-sequence-diagram-event-delivery-durable-outbox-ret.svg)
 
 ```plantuml
 @startuml Webhooks_Delivery_Sequence
@@ -145,6 +149,8 @@ before the erasure are the real exposure.
 
 ## Sequence diagram — signing-secret rotation with dual-signature emission (`ADR-093`)
 
+![Sequence diagram — signing-secret rotation with dual-signature emission (`ADR-093`)](../diagrams/features/webhooks/03-sequence-diagram-signing-secret-rotation-with-dual.svg)
+
 ```plantuml
 @startuml Webhooks_SecretRotation_Sequence
 autonumber
@@ -180,6 +186,8 @@ supports, which `ADR-060` had already adopted more fully than it originally
 exercised.
 
 ## Data model (ER diagram)
+
+![Data model (ER diagram)](../diagrams/features/webhooks/04-data-model-er-diagram.svg)
 
 ```plantuml
 @startuml Webhooks_ER
@@ -247,6 +255,8 @@ only what registration, delivery, and dead-lettering actually read/write.
 
 ### Screen 1: Register a webhook subscription
 
+![Screen 1: Register a webhook subscription diagram](../diagrams/features/webhooks/05-screen-1-register-a-webhook-subscription.svg)
+
 ```plantuml
 @startsalt
 {
@@ -265,6 +275,8 @@ only what registration, delivery, and dead-lettering actually read/write.
 
 ### Screen 2: Subscriptions dashboard
 
+![Screen 2: Subscriptions dashboard diagram](../diagrams/features/webhooks/06-screen-2-subscriptions-dashboard.svg)
+
 ```plantuml
 @startsalt
 {
@@ -282,6 +294,8 @@ sequence diagram above, "signing-secret rotation" diagram); clicking
 **History** opens Screen 3 for that subscription.
 
 ### Screen 3: Delivery history, including a dead-lettered event
+
+![Screen 3: Delivery history, including a dead-lettered event diagram](../diagrams/features/webhooks/07-screen-3-delivery-history-including-a-dead-lettere.svg)
 
 ```plantuml
 @startsalt

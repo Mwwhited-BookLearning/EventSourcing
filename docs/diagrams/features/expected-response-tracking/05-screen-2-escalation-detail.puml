@@ -1,0 +1,11 @@
+@startsalt
+{
+  { "req-3 -- ExpectedResponseMissing" }
+  ..
+  { "RequestEventType" | "IonmAlertRaised" }
+  { "ExpectedResponseEventType" | "IonmAlertAcknowledged" }
+  { "DeadlineAt" | "2026-08-04 13:58 UTC" }
+  ..
+  "This row is a real, queryable event -- see it via Follow/Lineage,\nnot just this screen (ADR-094, same posture ADR-060's\nWebhookDeliveryFailed already established)."
+}
+@endsalt

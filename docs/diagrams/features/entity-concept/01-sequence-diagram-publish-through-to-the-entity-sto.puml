@@ -1,0 +1,49 @@
+@startuml
+autonumber
+actor "Publishing System" as publisher
+participant "PublishEndpoint\n(Inbox)" as inbox
+participant "Router" as router
+participant "SchemaValidationService" as validator
+participant "Entity Resolver" as resolver
+participant "EventStore.Fold\n(always-on projector, ADR-021)" as fold
+database "Event Log" as eventLog
+database "Entity Store" as entityStore
+
+publisher -> inbox: POST /publish/OrderShipped\n{ payload: { OrderId: "o-1", Carrier: "UPS" }, expectedVersion: 1 }
+inbox -> eventLog: INSERT StoredEvent\n(Status: received, EntityId: null yet, ExpectedVersion: 1)
+inbox --> publisher: 202 { correlationId, status: "received",\n  entityId: null, schemaStatus: null }
+...picked up by the Router, asynchronously (ADR-023)...
+router -> validator: validate(payload, schema)
+alt payload violates the registered schema
+  validator --> router: SchemaStatus: invalid
+  note right: known properties (here, both OrderId and Carrier)\nstill fold normally -- never rejected (ADR-023)
+else payload conforms
+  validator --> router: SchemaStatus: conformant
+end
+router -> resolver: resolve EntityId via EntityIdField "$.OrderId"
+resolver --> router: EntityId = "demo:Order:o-1"
+router -> router: set (in-memory, not yet saved) StoredEvent.EntityId, .SchemaStatus
+note right of router
+  No persisted "processing" row ever exists (RouterWorker.ProcessEventAsync,
+  "Entity-Centric Core Rebuild"). Every mutation below -- EntityId,
+  SchemaStatus, the fold itself, and Status = "applied" -- happens against
+  the SAME tracked StoredEvent/EntityStoreRow entities in one worker tick
+  and commits in a single SaveChangesAsync() call after the whole received
+  batch is processed. The row is only ever observed as "received" (before
+  this tick) or "applied" (after it) -- never as an intermediate persisted
+  state in between.
+end note
+router -> fold: fold(StoredEvent)
+fold -> entityStore: SELECT EntityStoreRow WHERE EntityId = "demo:Order:o-1"
+alt no existing row (origin event for this entity)
+  fold -> entityStore: track new EntityStoreRow\n(Version: 1, Data: { OrderId: "o-1", Carrier: "UPS" })
+else existing row found
+  alt ExpectedVersion supplied and stale\n(does not match EntityStoreRow.Version)
+    fold -> fold: set (in-memory) StoredEvent.ConflictFlag = true
+    note right: the patch still applies -- ExpectedVersion\nnever blocks a fold, only flags it (ADR-024)
+  end
+  fold -> entityStore: track EntityStoreRow update\nData = <folded per ChangeKind/Optional<T>>, Version = Version + 1
+end
+router -> router: set (in-memory) StoredEvent.Status = "applied"
+router -> eventLog: SaveChangesAsync() -- one commit for this whole tick's\nbatch of received events AND their EntityStoreRow folds together
+@enduml

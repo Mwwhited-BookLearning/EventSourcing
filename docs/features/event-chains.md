@@ -26,6 +26,8 @@ a given input to the traversal, not derives it.
 
 ## Sequence diagram — publishing with parents
 
+![Sequence diagram — publishing with parents](../diagrams/features/event-chains/01-sequence-diagram-publishing-with-parents.svg)
+
 ```plantuml
 @startuml EventChains_Publish_Sequence
 autonumber
@@ -56,6 +58,8 @@ appender ->> validator: hand off for async schema validation (ADR-023,\nsee publ
 ```
 
 ## Sequence diagram — querying lineage
+
+![Sequence diagram — querying lineage](../diagrams/features/event-chains/02-sequence-diagram-querying-lineage.svg)
 
 ```plantuml
 @startuml EventChains_Query_Sequence
@@ -112,6 +116,8 @@ discovered-node distinction (the root fails the whole request with `403`;
 every other node is checked independently and stubbed).
 
 ## Data model (ER diagram)
+
+![Data model (ER diagram)](../diagrams/features/event-chains/03-data-model-er-diagram.svg)
 
 ```plantuml
 @startuml EventChains_ER

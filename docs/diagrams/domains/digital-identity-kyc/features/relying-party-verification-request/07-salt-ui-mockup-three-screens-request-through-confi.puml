@@ -1,0 +1,12 @@
+@startsalt
+{
+  { "Acme Bank -- Verification Result: applicant-1001" }
+  ..
+  { "Verification status" | "accepted" }
+  { "DID"                 | "did:key:z6Mkf7..." }
+  { "Legal name"           | "***  ( masked -- claim not granted )" }
+  { "Date of birth"        | "***  ( masked -- claim not granted )" }
+  ..
+  "Access granted via delegated credential, expires in 23h 41m."
+}
+@endsalt

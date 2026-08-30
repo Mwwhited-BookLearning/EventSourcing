@@ -81,6 +81,8 @@ This doc deliberately does **not** re-derive:
 
 ## Sequence diagram — `POST /publish/batch`, one malformed event not blocking the rest
 
+![Sequence diagram — `POST /publish/batch`, one malformed event not blocking the rest](../diagrams/features/bulk-ingestion-and-interchange-adapters/01-sequence-diagram-post-publish-batch-one-malformed-.svg)
+
 ```plantuml
 @startuml BulkIngestion_Batch_Sequence
 autonumber
@@ -115,12 +117,14 @@ per-event path, never a single all-or-nothing transaction.
 
 ## Sequence diagram — inbound HL7v2 adapter via a dedicated MLLP listener
 
+![Sequence diagram — inbound HL7v2 adapter via a dedicated MLLP listener](../diagrams/features/bulk-ingestion-and-interchange-adapters/02-sequence-diagram-inbound-hl7v2-adapter-via-a-dedic.svg)
+
 ```plantuml
 @startuml BulkIngestion_Hl7v2Inbound_Sequence
 autonumber
 participant "Hospital EMR\n(HL7v2 sender)" as emr
 participant "Hl7V2MllpListener\n(BackgroundService, TCP,\nno inherent security -- ADR-072)" as mllp
-participant "Hl7V2Adapter\n(IInterchangeFormatAdapter,\nkeyed DI, key \"Hl7V2\")" as adapter
+participant "Hl7V2Adapter\n(IInterchangeFormatAdapter,\nkeyed DI, key 'Hl7V2')" as adapter
 participant "PublishService" as publish
 database "Event & Schema Store" as db
 
@@ -138,12 +142,14 @@ mllp --> emr: MLLP ACK (application-level acknowledgment,\nHL7v2's own conventio
 
 ## Sequence diagram — inbound FHIR adapter, ordinary HTTP, no bridge
 
+![Sequence diagram — inbound FHIR adapter, ordinary HTTP, no bridge](../diagrams/features/bulk-ingestion-and-interchange-adapters/03-sequence-diagram-inbound-fhir-adapter-ordinary-htt.svg)
+
 ```plantuml
 @startuml BulkIngestion_FhirInbound_Sequence
 autonumber
 participant "Hospital EMR\n(FHIR client)" as emr
 participant "InterchangeEndpoints\n(generic POST /interchange/{adapterKey}/{appId},\nADR-072/082 -- ONE route, not one per adapter/resource type)" as interchange
-participant "FhirAdapter\n(IInterchangeFormatAdapter,\nkeyed DI, key \"Fhir\")" as adapter
+participant "FhirAdapter\n(IInterchangeFormatAdapter,\nkeyed DI, key 'Fhir')" as adapter
 participant "PublishService" as publish
 database "Event & Schema Store" as db
 
@@ -178,6 +184,8 @@ per-resource-type route like `/interchange/fhir/Observation`.
 
 ## Sequence diagram — outbound interchange adapter composing with webhook delivery
 
+![Sequence diagram — outbound interchange adapter composing with webhook delivery](../diagrams/features/bulk-ingestion-and-interchange-adapters/04-sequence-diagram-outbound-interchange-adapter-comp.svg)
+
 ```plantuml
 @startuml BulkIngestion_Outbound_Sequence
 autonumber
@@ -205,6 +213,8 @@ is the identical composition point with a different transform target,
 not a second mechanism.
 
 ## Data model (ER diagram)
+
+![Data model (ER diagram)](../diagrams/features/bulk-ingestion-and-interchange-adapters/05-data-model-er-diagram.svg)
 
 ```plantuml
 @startuml BulkIngestion_ER

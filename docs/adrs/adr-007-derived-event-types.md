@@ -129,3 +129,26 @@ Consequences / why this doesn't block v1, and what to remember meanwhile:
 With the above, this ADR carries no unresolved technical questions of its
 own anymore — like `ADR-009`, it's a pure priority/sequencing decision
 (build after Phases 0–6, not because anything here is still undecided).
+
+**Implementation note, added when built ("Calculated fields," `TODO.md`)**:
+`$select`'s original grammar (`"output:Source/field"`, a straight 1:1
+rename/copy) is extended, not replaced, with a second entry form,
+`"output:=expression"` — a genuine formula/aggregation over one or more
+arrived sources (e.g. `Total:=double(event.orderline.Quantity) *
+event.orderline.UnitPrice`), rather than a second, parallel mechanism.
+The expression is engine-agnostic text evaluated through the
+already-registered `IUpcastExpressionEvaluator` (`ADR-053`) — the exact
+same seam `UpcastFromPrevious` already uses, reused rather than inventing
+a third expression mechanism, per this project's own buy-over-build
+convention. `"event"` binds to an object keyed by each declared source's
+own lowercased name, so a calculated field can read any arrived source's
+fields, not just one. Compiled (not evaluated) at registration time via
+`TryCompile`, so a malformed expression is a `400` at registration, the
+same posture `ADR-018` already established for `UpcastFromPrevious`
+itself, never a silent per-event failure discovered later. One real,
+non-obvious gotcha found by actually running this against CEL (not
+assumed from its docs): CEL has no implicit `int`/`double` coercion, so
+a whole-number JSON field (`"Quantity": 3`) multiplied against a
+decimal field fails to compile at evaluation time unless explicitly cast
+(`double(...)`) — an expression author's problem to know about, not a
+bug in this mechanism.

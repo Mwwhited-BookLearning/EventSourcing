@@ -64,6 +64,8 @@ This doc deliberately does **not** re-derive:
 
 ## Sequence diagram — self-attested claim, captured then exchanged
 
+![Sequence diagram — self-attested claim, captured then exchanged](../../../diagrams/domains/digital-identity-kyc/features/customer-onboarding-and-identity-verification/01-sequence-diagram-self-attested-claim-captured-then.svg)
+
 ```plantuml
 @startuml Onboarding_CaptureThenExchange_Sequence
 autonumber
@@ -107,6 +109,8 @@ end
 ```
 
 ## Sequence diagram — analyst review, gated fold, and relying-party notification
+
+![Sequence diagram — analyst review, gated fold, and relying-party notification](../../../diagrams/domains/digital-identity-kyc/features/customer-onboarding-and-identity-verification/02-sequence-diagram-analyst-review-gated-fold-and-rel.svg)
 
 ```plantuml
 @startuml Onboarding_AnalystReview_Sequence
@@ -165,6 +169,8 @@ end
 ```
 
 ## Data model (ER diagram)
+
+![Data model (ER diagram)](../../../diagrams/domains/digital-identity-kyc/features/customer-onboarding-and-identity-verification/03-data-model-er-diagram.svg)
 
 ```plantuml
 @startuml Onboarding_ER
@@ -335,6 +341,8 @@ it). An age-eligibility query supplies **both** bounds in one clause,
 per `ADR-096`'s own bounded-range requirement — an open-ended query
 would need to enumerate an unbounded number of buckets:
 
+![Searchable encryption — age eligibility and duplicate-applicant detection (`ADR-096`) diagram](../../../diagrams/domains/digital-identity-kyc/features/customer-onboarding-and-identity-verification/04-searchable-encryption-age-eligibility-and-duplicat.svg)
+
 ```plantuml
 @startuml AgeEligibility_Sequence
 autonumber
@@ -356,6 +364,8 @@ gateway --> analyst: applicants eligible for full review
 ```
 
 ## State machine — an applicant identity record's `AuthorityStatus` lifecycle
+
+![State machine — an applicant identity record's `AuthorityStatus` lifecycle diagram](../../../diagrams/domains/digital-identity-kyc/features/customer-onboarding-and-identity-verification/05-state-machine-an-applicant-identity-record-s-autho.svg)
 
 ```plantuml
 @startuml Onboarding_AuthorityStatus_State
@@ -399,6 +409,8 @@ end note
 ```
 
 ## Salt (UI mockup) — verification analyst review queue
+
+![Salt (UI mockup) — verification analyst review queue diagram](../../../diagrams/domains/digital-identity-kyc/features/customer-onboarding-and-identity-verification/06-salt-ui-mockup-verification-analyst-review-queue.svg)
 
 ```plantuml
 @startsalt

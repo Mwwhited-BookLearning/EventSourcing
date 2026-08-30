@@ -1,0 +1,37 @@
+@startuml
+autonumber
+actor "Signing Actor" as signer
+participant "Inbox Endpoint" as inbox
+participant "SchemaRegistryClient" as registry
+participant "EventStore.DevIdp\n(or a real IdP, ADR-006)" as idp
+database "Event & Schema Store" as db
+
+signer -> inbox: POST /publish/PolicyApproval\nBearer <JWT, acr insufficient/stale>\n{ payload: {...}, meaning: "approved" }
+inbox -> registry: get EventTypeDefinition("PolicyApproval").RequiredSignature
+alt RequiredSignature is null (not configured for this type)
+  inbox -> inbox: proceed exactly as an ordinary publish\n(ADR-023) -- completely unaffected, purely additive
+else RequiredSignature = { AcrValues, MaxAge } and caller's token\ndoesn't carry a satisfying "acr" claim / isn't recent enough
+  inbox --> signer: 401\nWWW-Authenticate: step-up required\n(acr_values="urn:...:step-up", max_age=300)
+  note right of inbox
+    Turned away BEFORE storage -- the one new
+    pre-storage rejection case ADR-066 names,
+    alongside ADR-023's existing envelope-parse
+    exception. The event's own DATA is never
+    rejected for shape/content reasons.
+  end note
+  signer -> idp: re-authenticate (password re-entry / OTP / WebAuthn --\nthe IdP's own mechanism, never this framework's, ADR-066)
+  idp --> signer: new token, acr = "urn:...:step-up", auth_time recent
+  signer -> inbox: retry POST /publish/PolicyApproval\n(same payload, stepped-up token)
+else RequiredSignature satisfied, but "meaning" is absent from the request
+  inbox --> signer: 400 -- Signature.Meaning is required\n(envelope metadata, not Payload -- treated like any\nother missing required transport field under\nADR-023's envelope-shape exception, never persisted)
+else RequiredSignature satisfied and meaning present
+  inbox -> db: INSERT StoredEvent\n{ ..., ActorId: signer's verified sub,\n  Signature: { SignerId: ActorId, SignedAt: now,\n    Meaning: "approved", Acr: "urn:...:step-up" } }
+  inbox --> signer: 202 { status: "received" }
+  note right of db
+    Signature is envelope metadata on the SAME
+    StoredEvent ChainHash already covers (ADR-019)
+    -- exactly as tamper-evident as everything else
+    in the log, no separately-secured artifact.
+  end note
+end
+@enduml

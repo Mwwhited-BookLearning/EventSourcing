@@ -1,0 +1,80 @@
+@startuml
+hide circle
+skinparam linetype ortho
+
+entity "StoredEvent\n(IdentityClaimSubmitted)" as claimEvent {
+  * SequenceNumber : bigint <<PK>>
+  --
+  EventId : uuid <<unique>>
+  EntityId : string
+  ' "kyc:ApplicantIdentity:applicant-1001" (ADR-021)
+  EventType : string
+  Payload : text
+  ' ApplicantId, Did, ClaimedLegalName (masked),
+  ' DateOfBirth (masked), DocumentType, DocumentAttachmentRef
+  AttestedClaims : text?
+  ' raw UCAN, then JWT claims post-exchange (ADR-036)
+  AuthorityStatus : string {unattested|pending_review|accepted|rejected}
+  AuthorityDecisionRef : uuid?
+}
+
+entity "StoredEvent\n(authorityDecision)" as decisionEvent {
+  * SequenceNumber : bigint <<PK>>
+  --
+  EventId : uuid <<unique>>
+  Payload : text
+  ' targetEventId, decision, decidingActorId, reason
+  ActorId : string
+  ' the analyst -- always populated, verified caller (ADR-064)
+}
+
+entity "EntityStoreRow\n(ApplicantIdentityRecord, authoritative)" as entityStore {
+  * EntityId : string <<PK>>
+  --
+  EntityType : string
+  ' "ApplicantIdentity"
+  Version : bigint
+  Data : text
+  ' claim fields, folded ONLY once AuthorityStatus = accepted (ADR-042)
+  AuthorityStatus : string
+}
+
+entity "LiveEntityStoreRow\n(ungated counterpart)" as liveView {
+  * EntityId : string <<PK>>
+  --
+  Data : text
+  AuthorityStatus : string
+  ' reflects unattested/pending_review immediately;\n every read wrapped isAuthoritative: false (ADR-042)
+}
+
+entity "Role" as role {
+  * AppId : string <<PK>>
+  * RoleName : string <<PK>>
+  --
+  Permissions : string[]
+  ' e.g. ["identity:review"] -- flattened into the analyst's\n JWT at token issuance (ADR-046)
+}
+
+entity "WebhookSubscription" as webhookSub {
+  * SubscriptionId : uuid <<PK>>
+  --
+  AppId : string
+  TargetUrl : string
+  EventTypes : string[]
+  ' e.g. ["authorityDecision"] -- what the relying party is notified of
+  FixedClaimsSnapshot : text
+  ' claim set fixed at registration; masks every delivery (ADR-060)
+}
+
+decisionEvent ..o| claimEvent : "targetEventId -- denormalized\nback-pointer, sets AuthorityDecisionRef\n(ADR-035), never a DB FK"
+claimEvent "*" --> "0..1" entityStore : "folds into, ONLY once\nAuthorityStatus = accepted (ADR-042)"
+claimEvent "*" --> "1" liveView : "folds into immediately,\nregardless of AuthorityStatus (ADR-042)"
+role ..> decisionEvent : "RoleName's Permissions must include\nidentity:review for the publisher's\nflattened claims to satisfy\nRequiredClaims (ADR-046/ADR-008/ADR-050)"
+webhookSub ..> decisionEvent : "EventTypes match triggers a\nmasked outbound notification (ADR-060)"
+
+note right of entityStore
+  A rejected claimEvent never reaches this
+  table at all (ADR-042) -- there is no
+  "reverted" ApplicantIdentityRecord to find.
+end note
+@enduml

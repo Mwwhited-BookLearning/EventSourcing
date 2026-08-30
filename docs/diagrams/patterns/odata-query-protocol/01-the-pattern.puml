@@ -1,0 +1,17 @@
+@startuml
+autonumber
+actor Client
+participant "OData endpoint" as api
+participant "UriParser" as parser
+participant "Predicate translator" as translator
+database "Data store" as db
+
+Client -> api: GET /resource?$filter=Amount gt 100&$top=10
+api -> parser: parse query string into AST (FilterClause, TopClause, ...)
+parser --> api: AST
+api -> translator: translate AST -> native query predicate
+translator -> db: SELECT ... WHERE ... LIMIT ...
+db --> translator: rows
+translator --> api: results
+api --> Client: 200 (collection response)
+@enduml

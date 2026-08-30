@@ -113,7 +113,15 @@ public class VitalsWorkflowAPlaybookTests
         // running this playbook, not assumed).
         await _page.GetByTestId("entity-browser-filter").FillAsync("S-0091");
         var patientRow = _page.GetByRole(AriaRole.Row).Filter(new() { HasText = "S-0091" });
-        await Assertions.Expect(patientRow).ToBeVisibleAsync(new() { Timeout = 30_000 }); // REPLAY-mode subscription needs a moment to catch up on first load
+        // Waits for the table to actually settle to 1 row, not just for the
+        // target row to be visible -- S-0091 can already be on the default
+        // unfiltered first page (sorted ahead of most seed/simulator IDs),
+        // so "is it visible" can pass before the debounced server-side
+        // "contains" filter's own fetch has even run, capturing a screenshot
+        // of the STALE, unfiltered list with the filter box merely typed
+        // into (found only by actually reviewing a real screenshot).
+        await Assertions.Expect(_page.Locator("tbody tr")).ToHaveCountAsync(1, new() { Timeout = 30_000 });
+        await Assertions.Expect(patientRow).ToBeVisibleAsync();
         await recorder.RecordStepAsync(_page, "Switching to the Browse tab. The continuity subject S-0091 (Samples.Vitals.Seed) is already present -- REPLAY mode (not TAIL) means the full historical PatientScreened stream is caught up on first subscribe, not just new arrivals.");
 
         await patientRow.GetByRole(AriaRole.Button, new() { Name = "View" }).ClickAsync();

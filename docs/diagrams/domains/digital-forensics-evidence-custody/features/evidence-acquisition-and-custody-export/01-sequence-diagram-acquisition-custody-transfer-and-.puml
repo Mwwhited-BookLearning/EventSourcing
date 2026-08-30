@@ -1,0 +1,28 @@
+@startuml
+autonumber
+actor "Examiner" as examiner
+participant "Attachment Upload\n(ADR-032)" as attachUpload
+participant "Publish Endpoint\n(Inbox, ADR-023)" as inbox
+database "Attachment Store" as attachStore
+database "Event Log" as eventLog
+actor "Analyst" as analyst
+
+examiner -> attachUpload: POST /attachments\n(raw disk-image bytes, acquired through a write blocker)
+attachUpload -> attachStore: store bytes, compute ContentHash\n(SHA-256, ADR-032)
+attachStore --> attachUpload: ContentHash "sha256:9f3a..."
+attachUpload --> examiner: 201 { contentHash }
+examiner -> inbox: POST /publish/EvidenceAcquired\n{ payload: { EvidenceId: "ev-1", CaseNumber: "24-CR-118",\n  SourceDeviceDescription: "...", AcquisitionToolName: "...",\n  WriteBlockerUsed: true },\n  attachmentRef: { contentHash: "sha256:9f3a..." } } (ADR-032)
+inbox -> eventLog: INSERT StoredEvent\n(EntityId "lab:Evidence:ev-1", ActorId = examiner (ADR-064),\nChainHash computed off prior SequenceNumber's, ADR-019)
+inbox --> examiner: 202 { status: "received", entityId: "lab:Evidence:ev-1" }
+== custody changes hands ==
+examiner -> inbox: POST /publish/CustodyTransferred\n{ payload: { EvidenceId: "ev-1", FromActorId: "examiner-1",\n  ToActorId: "analyst-2", Reason: "handoff for analysis" } }\n(RequiredSignature configured, ADR-066)
+alt caller's token satisfies RequiredSignature (acr/max_age)
+  inbox -> eventLog: INSERT StoredEvent "CustodyTransferred"\n(Signature: { SignerId: "examiner-1", Meaning: "custody transfer",\nAcr: "urn:lab:acr:step-up" }, ADR-066)
+  inbox --> examiner: 202 { status: "received" }
+else caller's token does not satisfy RequiredSignature
+  inbox --> examiner: 401 WWW-Authenticate: step-up required\n(acr_values, max_age -- RFC 9470, ADR-066)
+  note right: rejected BEFORE storage -- the one exception to\npersist-everything for insufficient auth strength (ADR-066)
+end
+analyst -> inbox: POST /publish/ArtifactExtracted\n{ payload: { ArtifactId: "art-1", ArtifactType: "DeletedFileRecovery",\n  ExtractionToolName: "..." },\n  attachmentRef: { contentHash: "sha256:aa77..." },\n  parentEventIds: [EvidenceAcquired.EventId] } (ADR-005)
+inbox -> eventLog: INSERT StoredEvent "ArtifactExtracted"\n(EntityId "lab:Artifact:art-1", EventParents -> EvidenceAcquired,\nParentValidationMode Strict -- parent must already exist, ADR-005)
+@enduml

@@ -1,0 +1,33 @@
+@startuml
+autonumber
+actor "Registrar\n(Sunridge University)" as registrar
+participant "Attachment Service" as attach
+participant "PublishEndpoint\n(Inbox)" as inbox
+participant "Router" as router
+participant "SchemaValidationService" as validator
+participant "Entity Resolver" as resolver
+participant "EventStore.Fold\n(always-on projector, ADR-021)" as fold
+database "Attachment Store\n(ADR-032)" as attachStore
+database "Event Log" as eventLog
+database "Entity Store" as entityStore
+
+registrar -> attach: POST /attachments\n(diploma PDF bytes)
+attach -> attachStore: store bytes, content-addressed (ADR-032)
+attach --> registrar: { contentHash: "sha256:abc123" }
+registrar -> inbox: POST /publish/DiplomaIssued\n{ payload: { CredentialId: "cred-1001", StudentId: "S-4471",\n  DateOfBirth: "1997-03-02", DegreeAwarded: "B.S. Computer Science",\n  ConferredAt: "2019-05-18", IssuingInstitutionDid: "did:key:z6MkSunridge..." },\n  attachmentRef: { contentHash: "sha256:abc123" } }
+inbox -> inbox: encrypt FERPA-classified fields (StudentId, DateOfBirth)\nwith this EntityId's DEK before Payload is ever written (ADR-057)\n-- mechanics not re-derived here
+inbox -> eventLog: INSERT StoredEvent\n(Status: received, ActorId: registrar's verified identity (ADR-064),\n AuthorityStatus: "accepted" -- ordinary authoritative issuance, ADR-006)
+inbox -> eventLog: INSERT AttachmentRef\n(ContentHash: "sha256:abc123", EntityId: null yet)
+inbox --> registrar: 202 { correlationId, status: "received",\n  entityId: null, schemaStatus: null }
+...picked up by the Router, asynchronously (ADR-023)...
+router -> validator: validate(payload, schema)
+validator --> router: SchemaStatus: conformant
+router -> resolver: resolve EntityId via EntityIdField "$.CredentialId"
+resolver --> router: EntityId = "sunridge:Credential:cred-1001"
+router -> eventLog: UPDATE StoredEvent SET EntityId, SchemaStatus, Status = "processing"
+router -> eventLog: UPDATE AttachmentRef SET EntityId = "sunridge:Credential:cred-1001"
+router -> fold: fold(StoredEvent)
+fold -> entityStore: SELECT EntityStoreRow WHERE EntityId = "sunridge:Credential:cred-1001"
+fold -> entityStore: INSERT EntityStoreRow\n(EntityType: "Credential", Version: 1,\n Data: <folded payload -- FERPA fields still ciphertext>,\n AuthorityStatus: "accepted")
+fold -> eventLog: UPDATE StoredEvent SET Status = "applied"
+@enduml

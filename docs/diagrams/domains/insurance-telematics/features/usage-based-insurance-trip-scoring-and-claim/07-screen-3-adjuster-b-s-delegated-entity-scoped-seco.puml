@@ -1,0 +1,14 @@
+@startsalt
+{
+  { "Claim claim-9911 -- secondary opinion  (Adjuster B, read-only)" }
+  ..
+  { "Access"     | "claims:read, scoped to acme-ubi:Claim:claim-9911 only" }
+  { "Granted by" | "Adjuster A, expires 2026-08-01"                        }
+  ..
+  { "Risk score at filing" | "72 / 100"     }
+  { "Claim amount"         | "$4,200.00"    }
+  { "Status"               | "under_review" }
+  ..
+  "Attempting to open claim-8800 with this token: rejected -- entityScope does not cover a different claim"
+}
+@endsalt

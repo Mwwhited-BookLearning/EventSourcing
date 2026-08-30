@@ -1,0 +1,20 @@
+@startuml
+autonumber
+participant "Writer A" as A
+participant "Writer B" as B
+database "Record\n(version-stamped)" as Rec
+
+A -> Rec: read (version=5)
+B -> Rec: read (version=5)
+A -> Rec: commit change, expectedVersion=5
+Rec -> Rec: 5 == current version (5) -- OK\nversion becomes 6
+Rec --> A: committed
+
+B -> Rec: commit change, expectedVersion=5
+Rec -> Rec: 5 != current version (6) -- CONFLICT
+alt pessimistic-lock alternative (not chosen)
+  Rec --> B: would have been blocked from the start
+else optimistic (this pattern)
+  Rec --> B: flagged, not silently overwritten,\nnot silently discarded -- a policy\ndecision resolves it (e.g. stream-order LWW)
+end
+@enduml

@@ -1,0 +1,56 @@
+@startuml
+skinparam shadowing false
+skinparam defaultTextAlignment center
+skinparam wrapWidth 220
+skinparam rectangle<<Component>> {
+  BackgroundColor #85BBF0
+  FontColor black
+}
+skinparam database<<Container>> {
+  BackgroundColor #438DD5
+  FontColor white
+}
+skinparam rectangle<<Boundary>> {
+  BackgroundColor transparent
+  BorderColor #666666
+  BorderStyle dashed
+}
+skinparam ArrowColor #666666
+
+rectangle "GraphQL Gateway" <<Boundary>> as graphql {
+    rectangle "**GraphQL Handler**\n<<Component>>\n//QUERY method (queries/subscriptions), POST (mutations, unused here)//\n--\nADR-037 -- one schema per AppId (ADR-030)" <<Component>> as handler
+    rectangle "**events:follow / events:lineage:read scope check**\n<<Component>>\n//ScopeRequirement//\n--\nADR-006" <<Component>> as scopeCheck
+    rectangle "**RequiredClaims (Read direction) / per-node visibility check**\n<<Component>>\n//HasAnyRequiredClaim(...)//\n--\nADR-008/ADR-050 -- per-node for history/lineage traversal, once at connect time for a live subscription" <<Component>> as claimCheck
+    rectangle "**Entity Resolver**\n<<Component>>\n//Reads Entity Store (shard-aware, ADR-034)//\n--\nCurrent-state queries" <<Component>> as entityResolver
+    rectangle "**History Resolver**\n<<Component>>\n//Reads Event Log by EntityId//\n--\nADR-024 §8.4 -- entityHistory(entityId, property)" <<Component>> as historyResolver
+    rectangle "**Subscription Resolver**\n<<Component>>\n//Bridges the same tail/replay poll loop ADR-010 established//\n--\nLive changes -- GraphQL's transport, not a new polling mechanism" <<Component>> as subResolver
+    rectangle "**Depth/Cost Limiter**\n<<Component>>\n//Guards against unbounded hierarchical fan-out//\n--\nMandatory, not optional (ADR-037)" <<Component>> as depthLimiter
+    rectangle "**Batching (DataLoader pattern)**\n<<Component>>\n//Per-resolver batching//\n--\nAvoids N+1 across shards/replicas" <<Component>> as dataLoader
+    rectangle "**UpcastChain**\n<<Component>>\n//Same executor as the Router uses//\n--\nADR-018/027 -- reshapes a stored/materialized event to current shape on read" <<Component>> as upcaster
+    rectangle "**IPayloadMasker**\n<<Component>>\n//schema+data transform//\n--\nADR-009 -- 08-build-plan.md's \"Property-Level Masking\" item, not yet built" <<Component>> as masker
+    rectangle "**ExportLineage Resolver**\n<<Component>>\n//Walks the Lineage DAG (same IEventLineageQueryProvider/\nCycleGuard as History Resolver), NDJSON+manifest bundle//\n--\nADR-068 -- a read, full claims/masking/audit pipeline, no bypass" <<Component>> as exportResolver
+    rectangle "**PlaybackAsOf Resolver**\n<<Component>>\n//Folds events <= a given SequenceNumber\nin ARRIVAL order, not logical order//\n--\nADR-068 -- bitemporal system-time reconstruction, opposite of Entity Resolver's fold" <<Component>> as playbackResolver
+}
+
+database "Entity Store" <<Container>> as entityStore
+database "Event Log" <<Container>> as eventLog
+
+handler --> scopeCheck : validate scope
+handler --> depthLimiter : validate before execution
+handler --> claimCheck : validate RequiredClaims (Read direction)
+handler --> entityResolver : Query: current state
+handler --> historyResolver : Query: entityHistory
+handler --> subResolver : Subscription: live changes
+handler --> exportResolver : Query: exportLineage(entityId)
+handler --> playbackResolver : Query: playbackAsOf(entityId, asOfSequenceNumber)
+entityResolver --> dataLoader : batch reads
+dataLoader --> entityStore : SELECT ... (sharded)
+historyResolver --> eventLog : SELECT ... WHERE EntityId = ... ORDER BY SequenceNumber
+entityResolver --> upcaster : reshape if needed
+upcaster --> masker : mask before returning
+exportResolver --> eventLog : recursive CTE, cycle-safe (ADR-005), SequenceNumber order
+exportResolver --> masker : mask each event's payload before bundling
+playbackResolver --> eventLog : SELECT ... WHERE EntityId = ... AND SequenceNumber <= T\nORDER BY SequenceNumber ASC (arrival order)
+playbackResolver --> masker : mask each event's payload before returning
+
+@enduml

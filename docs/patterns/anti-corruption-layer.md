@@ -24,6 +24,8 @@ system requires. Either direction, the layer contains *all* of the
 translation logic — nothing downstream (or upstream) needs to know the
 other system's model exists.
 
+![The pattern diagram](../diagrams/patterns/anti-corruption-layer/01-the-pattern.svg)
+
 ```plantuml
 @startuml AntiCorruptionLayer_Sequence
 autonumber

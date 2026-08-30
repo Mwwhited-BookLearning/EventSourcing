@@ -1,0 +1,15 @@
+@startuml
+autonumber
+actor Client
+participant "GraphQL Gateway" as gw
+participant "Resolvers\n(+ DataLoader batching)" as resolver
+database "Data source(s)" as db
+
+Client -> gw: query document (Query/Mutation) or\nsubscribe (Subscription)
+gw -> gw: parse, validate against schema,\ncheck depth/complexity limit
+gw -> resolver: resolve each requested field,\nrecursively, for nested selections
+resolver -> db: batched fetch per resolver level (DataLoader)
+db --> resolver: rows
+resolver --> gw: field values (or per-field errors)
+gw --> Client: { data: {...}, errors: [...] } (partial success)
+@enduml

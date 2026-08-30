@@ -1,0 +1,34 @@
+@startuml
+autonumber
+actor Publisher
+participant "Inbox\n(Idempotent Receiver)" as Inbox
+participant "Router\n(Tolerant Reader)" as Router
+participant "UpcastChain" as Upcast
+database "Event Log" as Log
+
+Publisher -> Inbox: publish(eventId, schemaVersion, payload)
+Inbox -> Log: lookup eventId
+alt eventId already seen, same PayloadHash
+  Inbox --> Publisher: 202 (replayed -- Idempotent Receiver, ADR-011)
+else eventId already seen, DIFFERENT PayloadHash
+  Inbox --> Publisher: 409 (caller bug, not silently accepted)
+else new eventId
+  Inbox -> Log: append "received" (Inbox pattern, ADR-023)
+  Inbox --> Publisher: 202 {status: "received"}
+  Inbox -> Router: notify
+
+  Router -> Router: known properties typed;\nunknown -> Extensions bag\n(Tolerant Reader, ADR-022)
+
+  alt schemaVersion behind active
+    Router -> Upcast: live-validate (ADR-020)
+    alt upcast succeeds
+      Router -> Log: append EventUpcastFailed=false path\n(original stored unchanged, ADR-020)
+      Router -> Log: (optionally) persist UpcastMaterialization\n(ADR-027 -- never folded, see below)
+    else upcast fails
+      Router -> Log: append EventUpcastFailed instead\n(Dead Letter Channel, ADR-020)
+    end
+  end
+
+  Router -> Log: fold into Entity Store\n(ADR-021, checked against\nADR-024 + ADR-029 -- see the\nother interaction doc)
+end
+@enduml

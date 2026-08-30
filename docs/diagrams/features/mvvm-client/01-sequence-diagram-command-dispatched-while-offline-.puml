@@ -1,0 +1,44 @@
+@startuml
+autonumber
+actor User
+participant "View\n(HTML+JS ViewDefinition,\nembedded web engine)" as view
+participant "ViewModel" as vm
+participant "ClientOutbox\n(IndexedDB / local durable store)" as outbox
+participant "Service Worker\n(Background Sync, web target)" as sw
+participant "Entity Store API\n(server, ADR-021)" as server
+database "Client entity cache\n(last-known-good)" as cache
+
+User -> view: submits a command (e.g. edit Amount)
+view -> vm: dispatch command
+vm -> outbox: enqueue { CommandId, EntityId, ExpectedVersion, patch }\n(durable write, never mutates local state directly)
+outbox --> vm: enqueued
+vm --> view: bindable state unchanged\n(optimistic write assumed NOT true, ADR-039)
+note right of outbox
+  Survives tab close, app crash,
+  device restart -- same durability
+  bar as ADR-033's peer-sync outbox.
+end note
+== client is offline ==
+outbox -> sw: register sync ("flush-outbox") [web target]
+note right of sw
+  Fires once connectivity returns,
+  even if the app isn't open. Where
+  Background Sync isn't supported
+  (Safari/WebKit), "flush on next
+  open/focus" is the same-outcome
+  fallback -- see pwa-offline-outbox.md.
+end note
+== connectivity returns ==
+sw -> outbox: read queued commands, oldest first
+outbox -> server: deliver command { CommandId as EventId (ADR-011 dedup) }
+alt no conflict
+  server --> outbox: 2xx { confirmed entity state, Version }
+else conflicting concurrent write (ADR-024)
+  server --> outbox: 2xx { confirmed entity state, ConflictFlag: true }
+end
+outbox -> outbox: dequeue on confirmed delivery only
+outbox -> cache: update last-known-good snapshot
+cache --> vm: confirmed state flows back (incremental update, ADR-022)
+vm --> view: bindable property changes (reactive)
+view -> view: re-render bound elements only
+@enduml

@@ -16,6 +16,8 @@ parsing/translation is a solved problem with mature library support
 (`Microsoft.OData.UriParser` for .NET), not something every API team
 re-derives.
 
+![The pattern diagram](../diagrams/patterns/odata-query-protocol/01-the-pattern.svg)
+
 ```plantuml
 @startuml OData_Sequence
 autonumber

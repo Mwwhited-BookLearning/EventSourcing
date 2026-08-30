@@ -1,0 +1,45 @@
+@startuml
+autonumber
+actor "Cleared US Engineer\n(engineer-17)" as usEngineer
+actor "TAA-Authorized Foreign Partner\n(foreign-partner-42)" as foreignPartner
+participant "IdP / Token Exchange\n(ADR-036)" as idp
+participant "GraphQL Gateway" as gateway
+participant "Entity Resolver" as resolver
+database "Entity Store" as entityStore
+database "Access Log" as accessLog
+
+alt Cleared US engineer, ordinary RBAC-gated read (ADR-046)
+  usEngineer -> idp: (token already issued at login -- role "ClearedEngineer"\n  expanded into claim "itar:read" at issuance time, not per-request)
+  usEngineer -> gateway: QUERY { technicalDataAsset(entityId: "defco:TechnicalDataAsset:td-4471") {\n  usmlCategory classification } }\nAuthorization: Bearer <JWT, claims: ["itar:read"]>
+  gateway -> resolver: resolve(entityId, callerClaims)
+  resolver -> resolver: HasClaim("itar:read")? -- yes, RequiredReadClaim satisfied (ADR-008/ADR-050)
+  resolver -> entityStore: SELECT TechnicalDataAssetEntityStoreRow\nWHERE EntityId = "defco:TechnicalDataAsset:td-4471"
+  entityStore --> resolver: { usmlCategory: "USML Category XII", classification: "ITAR-Controlled" }
+  resolver -> accessLog: INSERT AccessLogEntry\n(ReaderActorId: "engineer-17", ReaderTrustBasis: "Authoritative",\n ViewAccessed: "Authoritative", ResourceRef: entityId) (ADR-045)
+  resolver --> gateway: 200 { usmlCategory, classification }
+  gateway --> usEngineer: response
+else TAA-scoped foreign partner, delegated UCAN-exchanged read, within granted entityScope (ADR-043)
+  foreignPartner -> idp: POST /oauth/token\n{ grant_type: "urn:ietf:params:oauth:grant-type:token-exchange",\n  subject_token: "<UCAN: claim itar:read,\n  entityScope defco:TechnicalDataAsset:td-4471, exp 2026-12-31>" }\n(ADR-036)
+  idp --> foreignPartner: 200 { access_token: <JWT, claims: [itar:read],\n  entityScope: defco:TechnicalDataAsset:td-4471> }
+  foreignPartner -> gateway: QUERY { technicalDataAsset(entityId: "defco:TechnicalDataAsset:td-4471") {\n  usmlCategory classification } }\nAuthorization: Bearer <JWT>
+  gateway -> resolver: resolve(entityId, callerClaims, entityScope)
+  resolver -> resolver: HasClaim("itar:read") AND entityScope == entityId? -- yes (ADR-043)
+  resolver -> entityStore: SELECT TechnicalDataAssetEntityStoreRow\nWHERE EntityId = "defco:TechnicalDataAsset:td-4471"
+  entityStore --> resolver: { usmlCategory: "USML Category XII", classification: "ITAR-Controlled" }
+  resolver -> accessLog: INSERT AccessLogEntry\n(ReaderActorId: "foreign-partner-42", ReaderTrustBasis: "Attested",\n GrantRef: <grant id>, ViewAccessed: "Authoritative") (ADR-045)
+  resolver --> gateway: 200 { usmlCategory, classification }
+  gateway --> foreignPartner: response
+else same TAA-scoped foreign partner, asset OUTSIDE the grant's entityScope
+  foreignPartner -> gateway: QUERY { technicalDataAsset(entityId: "defco:TechnicalDataAsset:td-9982") {\n  usmlCategory classification } }\nAuthorization: Bearer <JWT, entityScope: "defco:TechnicalDataAsset:td-4471">
+  gateway -> resolver: resolve(entityId, callerClaims, entityScope)
+  resolver -> resolver: HasClaim("itar:read") AND entityScope == entityId?\n-- entityScope "td-4471" != requested "td-9982" -- no
+  resolver --> gateway: 403 { error: "entity outside granted scope" }
+  gateway --> foreignPartner: 403 { error: "entity outside granted scope" }
+  note right of resolver
+    Whether a denied attempt itself writes an AccessLogEntry, and how
+    (AccessLogEntry, access-log.md, has no outcome/denied field today),
+    is left unspecified here -- not re-deriving ADR-045's own mechanics,
+    per this doc's out-of-scope list above.
+  end note
+end
+@enduml

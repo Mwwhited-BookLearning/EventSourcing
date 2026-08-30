@@ -1,0 +1,69 @@
+@startuml
+autonumber
+actor "Reporter\n(prescriber/manufacturer/patient)" as reporter
+participant "Inbox Endpoint" as inbox
+participant "Router\n(async, ADR-023)" as router
+participant "Entity Resolver" as resolver
+participant "Live View fold\n(ungated, ADR-042)" as liveFold
+database "Event Log" as eventLog
+actor "Safety Reviewer" as reviewer
+participant "IdP\n(RFC 9470 step-up, ADR-066)" as idp
+participant "AuthorityDecisionResolver" as decisionResolver
+participant "Entity Store fold\n(authoritative, ADR-042)" as authFold
+
+reporter -> inbox: POST /publish/IcsrReported\n{ payload: { ReportId: "icsr-2031", SuspectDrug: "DrugX",\n  ReactionTerm: "Angioedema", Seriousness: "serious",\n  ReporterType: "prescriber" },\n  attestedClaims: { reviewPendingReason: "routine_icsr_intake" } }
+inbox -> eventLog: INSERT StoredEvent\n(AuthorityStatus: "pending_review" -- AttestedClaims present, ADR-042)
+inbox --> reporter: 202 { correlationId, status: "received",\n  authorityStatus: "pending_review", entityId: null }
+note right of reporter
+  Persisted immediately, never blocked --
+  ADR-023's persist-everything posture.
+  A prescriber's report is never delayed
+  waiting on a reviewer.
+end note
+... picked up by the Router, asynchronously ...
+router -> resolver: resolve EntityId via EntityIdField "$.ReportId"
+resolver --> router: EntityId = "pv:IcsrCase:icsr-2031"
+router -> liveFold: fold(StoredEvent) -- ungated (ADR-042)
+liveFold -> eventLog: UPSERT LiveEntityStoreRow\n(Data: { SuspectDrug: "DrugX", ReactionTerm: "Angioedema", ... },\n AuthorityStatus: "pending_review")
+router -> eventLog: UPDATE StoredEvent SET Status = "applied"
+note right of router
+  Authoritative Entity Store is NOT updated
+  yet (ADR-042) -- only a caller reading the
+  Live View sees this case at all, wrapped
+  isAuthoritative:false.
+end note
+
+... reviewer opens the case-review queue, reading the Live View ...
+reviewer -> eventLog: query pending Live View rows\n(AuthorityStatus = "pending_review")
+eventLog --> reviewer: [ "icsr-2031" { ..., isAuthoritative: false } ]
+reviewer -> reviewer: applies WHO-UMC/Naranjo causality assessment\n(this domain's README Glossary -- a human judgment,\nnot computed by this framework)
+reviewer -> idp: authenticate for RequiredSignature\n(EventTypeDefinition "authorityDecision"\nAcrValues: ["urn:pv:step-up"], MaxAge: 300)
+idp --> reviewer: token with acr = "urn:pv:step-up" (fresh)
+reviewer -> inbox: POST /publish/authorityDecision\n{ payload: { targetEventId: "<icsr-2031's EventId>",\n  decision: "accepted" | "rejected", decidingActorId: "reviewer-9",\n  causalityAssessment: "Probable (WHO-UMC)", reason: "..." },\n  signature: { meaning: "causality_assessment" } }
+inbox -> eventLog: INSERT StoredEvent (authorityDecision, Signature{\n  SignerId: "reviewer-9", SignedAt, Meaning: "causality_assessment",\n  Acr: "urn:pv:step-up" }) -- ADR-066
+inbox --> reviewer: 202 { correlationId, status: "received" }
+... asynchronously ...
+router -> decisionResolver: process authorityDecision event
+alt decision = "accepted"
+  decisionResolver -> eventLog: UPDATE target StoredEvent\nSET AuthorityStatus = "accepted"
+  decisionResolver -> authFold: apply target IcsrReported event\nto the authoritative Entity Store now
+  authFold -> eventLog: INSERT/UPDATE EntityStoreRow\n(Data, Version++) -- catches up to what\nthe Live View already showed (ADR-042)
+  note right of authFold
+    Once accepted+folded, case leaves this
+    doc's scope to ADR-072's IchE2bR3Adapter/
+    ADR-060 webhook path for outbound
+    EudraVigilance/FAERS delivery -- not
+    redesigned here.
+  end note
+else decision = "rejected"
+  decisionResolver -> eventLog: UPDATE target StoredEvent\nSET AuthorityStatus = "rejected"
+  note right of decisionResolver
+    Never folds to the authoritative Entity
+    Store at all (ADR-042) -- by construction,
+    it never satisfied the gate. Stays visible
+    in the Live View, relabeled "rejected",
+    never deleted (README's governing
+    principle).
+  end note
+end
+@enduml

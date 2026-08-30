@@ -1,0 +1,37 @@
+@startuml
+hide circle
+skinparam linetype ortho
+
+entity "StoredEvent" as event {
+  * SequenceNumber : bigint <<PK>>
+  --
+  EventId : uuid <<unique>>
+  EntityId : string
+  EventType : string
+  Payload : text
+  Status : string
+  SchemaStatus : string?
+  AttestedActorId : string?
+  AttestedClaims : text?
+  AuthorityStatus : string {unattested|pending_review|accepted|rejected}
+  AuthorityDecisionRef : uuid?
+  OccurredAt : datetimeoffset
+}
+
+entity "EventTypeDefinition" as etd {
+  * AppId : string <<PK>>
+  * Name : string <<PK>>
+  * Version : int <<PK>>
+  --
+  RejectionBehavior : enum {Annotate, Compensate}
+}
+
+event ..o| event : "AuthorityDecisionRef -- self-referential,\ndenormalized back-pointer to the\nauthorityDecision event that last set\nAuthorityStatus (set by the fold step,\nnever a correction of history)"
+etd ..> event : "EventType = Name -- logical only,\ngoverns RejectionBehavior for a\nrejected event of this type"
+
+note right of event
+  AuthorityStatus and SchemaStatus (event-log.md)
+  are two INDEPENDENT trust axes -- neither ever
+  gates Status (ADR-023, ADR-035).
+end note
+@enduml

@@ -20,6 +20,8 @@ editing one function's branches, that's an acceptable `switch`. If a new
 case should be addable as a new class with zero changes to existing code
 — the Open/Closed half of SOLID — that's Strategy.
 
+![The pattern diagram](../diagrams/patterns/strategy-pattern-extensible-masking/01-the-pattern.svg)
+
 ```plantuml
 @startuml Strategy_Pattern_Masking
 interface IMaskingStrategy {

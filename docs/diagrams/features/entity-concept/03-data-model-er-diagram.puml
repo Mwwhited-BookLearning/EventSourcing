@@ -1,0 +1,68 @@
+@startuml
+hide circle
+skinparam linetype ortho
+
+entity "EventTypeDefinition" as etd {
+  * Name : string <<PK>>
+  * Version : int <<PK>>
+  --
+  ChangeKind : string
+  EntityIdField : string
+}
+
+entity "StoredEvent" as event {
+  * SequenceNumber : bigint <<PK>>
+  --
+  EventId : uuid <<unique>>
+  EntityId : string <<FK>>
+  EventType : string
+  ExpectedVersion : bigint?
+  ConflictFlag : bool
+  LateArrivalFlag : bool
+  OccurredAt : datetimeoffset
+  SchemaStatus : string?
+  Status : string
+  Payload : text
+}
+
+entity "EntityStoreRow" as entityStore {
+  * EntityId : string <<PK>>
+  --
+  EntityType : string
+  Version : bigint
+  Data : text
+  Extensions : text
+  SchemaVersion : int
+  LastAppliedSequenceNumber : bigint
+  LastAppliedLogicalTime : datetimeoffset
+}
+
+etd ..> event : "EntityIdField resolves\nEntityId at fold time\n-- logical only, not a DB FK"
+event "*" --> "1" entityStore : "folds into, in OccurredAt order,\nnever the other direction (ADR-021)"
+
+note right of entityStore
+  One row per EntityId, always present --
+  not opt-in like a custom CQRS read model
+  (ProjectionSnapshot/OrderSummary live in
+  a separate ProjectionsDbContext entirely).
+  Version bumps only when Data actually
+  changes; ExpectedVersion on the event is
+  compared against this column at fold time.
+end note
+
+note right of event
+  ConflictFlag and LateArrivalFlag answer two
+  different questions at fold time (ADR-029;
+  see also docs/patterns/interactions/fold-
+  ordering-and-conflict.md): ConflictFlag
+  compares ExpectedVersion against
+  EntityStoreRow.Version (a stale causal
+  basis) and never blocks the write.
+  LateArrivalFlag compares OccurredAt against
+  EntityStoreRow.LastAppliedLogicalTime (a
+  chronologically-stale event) and DOES
+  withhold that event's change from the
+  affected property. A single event can set
+  both, independently.
+end note
+@enduml

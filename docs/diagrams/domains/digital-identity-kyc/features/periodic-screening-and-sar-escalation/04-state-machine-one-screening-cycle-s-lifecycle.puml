@@ -1,0 +1,27 @@
+@startuml
+[*] --> ScreeningClear : SanctionsScreeningPerformed{MatchFound: false}\npublished by PeriodicScreeningWorker\n(AuthorityStatus accepted immediately, ADR-042 default)
+[*] --> PendingSanctionsReview : SanctionsScreeningPerformed{MatchFound: true}\npublished with the explicit review-pending marker\n(AuthorityStatus pending_review, ADR-042's\nautomated-detector trigger -- NEVER auto-accepted)
+PendingSanctionsReview --> FalsePositiveCleared : authorityDecision{decision: "rejected"}\npublished by a caller holding "identity:review"\nOR "identity:aml-review" (ADR-050's OR-evaluated RequiredClaims)
+PendingSanctionsReview --> ConfirmedHit : authorityDecision{decision: "accepted"}\npublished by a caller holding either claim above
+ConfirmedHit --> SarFiled : SarFilingRecorded published by a caller\nholding "identity:aml-review", RFC 9470 step-up\nsatisfied, Signature captured (ADR-066)
+ScreeningClear --> [*]
+FalsePositiveCleared --> [*]
+SarFiled --> [*] : FinCEN BSA E-Filing submission itself is a\nseparate, out-of-scope step (ADR-072's\nIInterchangeFormatAdapter seam, not built here)
+
+note right of PendingSanctionsReview
+  Deliberately never auto-confirmed, regardless of
+  MatchConfidence -- unlike document-and-biometric-
+  capture.md's liveness check (which DOES default to
+  "accepted" on a confident "pass"), a sanctions hit
+  always requires an explicit human decision. Domain
+  policy, not a framework rule -- the review-pending
+  marker is simply always set when MatchFound is true.
+end note
+
+note right of SarFiled
+  This state machine describes ONE screening cycle for
+  one identity. PeriodicScreeningWorker re-enters at [*]
+  for the SAME applicant on its next scheduled run,
+  independent of where a prior cycle ended.
+end note
+@enduml
