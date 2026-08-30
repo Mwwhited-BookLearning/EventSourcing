@@ -1,0 +1,9 @@
+@startsalt
+{
+  { "icsr-3050 -- System-Time Playback (asOfSequenceNumber: 4102)" }
+  ..
+  | SequenceNumber | OccurredAt   | LateArrivalFlag | Seriousness   |
+  | 4088            | "2026-01-03" | false           | "non-serious" |
+  | 4102            | "2026-01-02" | true            | "serious"     |
+}
+@endsalt

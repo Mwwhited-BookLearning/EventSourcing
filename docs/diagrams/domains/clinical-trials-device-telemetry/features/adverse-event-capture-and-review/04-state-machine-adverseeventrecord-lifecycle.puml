@@ -1,0 +1,26 @@
+@startuml
+[*] --> Captured
+
+state Captured {
+  Captured : AuthorityStatus = pending_review (ADR-035/042)
+  Captured : visible only in the Live View,\nisAuthoritative: false
+  [*] --> AwaitingReview
+  AwaitingReview --> SecondaryOpinionInProgress : PI issues accessGrant (ADR-043)
+  SecondaryOpinionInProgress --> AwaitingReview : grant expires or is revoked\n(accessGrantRevoked)
+  AwaitingReview --> AwaitingReview : colleague reads under delegated,\nentity-scoped grant (no AuthorityStatus change)
+}
+
+Captured --> StepUpChallenged : PI submits authorityDecision\nwithout sufficient acr/max_age (ADR-066)
+StepUpChallenged --> Captured : RFC 9470 challenge issued,\nevent never stored (ADR-066)
+
+Captured --> Accepted : authorityDecision "accepted",\nwith valid step-up Signature (ADR-066)
+Captured --> Rejected : authorityDecision "rejected",\nwith valid step-up Signature (ADR-066)
+
+Accepted : AuthorityStatus = accepted
+Accepted : folded into the authoritative\nEntity Store (catch-up, ADR-042)
+Accepted --> [*]
+
+Rejected : AuthorityStatus = rejected
+Rejected : never reaches the authoritative\nEntity Store (ADR-042) -- stays visible\nin the Event Log and Live View
+Rejected --> [*]
+@enduml

@@ -1,0 +1,38 @@
+@startuml
+autonumber
+actor "Cleared Engineer\n(defco)" as engineer
+participant "PublishEndpoint\n(Inbox)" as inbox
+participant "Router" as router
+participant "EventStore.Fold" as fold
+database "Event Log" as eventLog
+database "Entity Store" as entityStore
+participant "PeerSync Outbox\n(ADR-033)" as outbox
+participant "us-east-1 Peer\n(Region: us-east)" as peerUsEast
+participant "us-west-1 Peer\n(Region: us-west)" as peerUsWest
+participant "eu-west-1 Peer\n(Region: eu-west)" as peerEuWest
+
+engineer -> inbox: POST /publish/TechnicalDataAssetPublished\n{ payload: { AssetId: "td-4471", UsmlCategory: "USML Category XII",\n  Classification: "ITAR-Controlled", AttachmentRef: "sha256:9f2c..." } }\nAuthorization: Bearer <JWT, ActorId "engineer-17">
+inbox -> eventLog: INSERT StoredEvent\n(EntityId: null yet, ActorId: "engineer-17" (ADR-064), AppId: "defco")
+inbox --> engineer: 202 { correlationId, status: "received" }
+...picked up by the Router, asynchronously (ADR-023)...
+router -> fold: resolve EntityId via "$.AssetId", fold
+fold -> entityStore: UPSERT TechnicalDataAssetEntityStoreRow\n(EntityId: "defco:TechnicalDataAsset:td-4471",\n AssetId: "td-4471", UsmlCategory: "USML Category XII",\n Classification: "ITAR-Controlled")
+fold -> eventLog: UPDATE StoredEvent SET EntityId, Status = "applied"
+...picked up by the PeerSync Outbox, asynchronously (ADR-033)...
+outbox -> outbox: SELECT AppDataResidencyPolicy WHERE AppId = "defco"\n-> AllowedRegions: ["us-east", "us-west"] (ADR-061)
+alt AppId is region-constrained ("defco", ITAR-scoped)
+  outbox -> peerUsEast: sync batch { events: [...] }\n(Region "us-east" is in AllowedRegions)
+  outbox -> peerUsWest: sync batch { events: [...] }\n(Region "us-west" is in AllowedRegions)
+  note right of outbox
+    eu-west-1 (Region "eu-west") is filtered out of the
+    candidate destination list before a sync batch is even
+    built -- it never receives, and never holds, a copy of
+    this event (ADR-061). Not a read-time/query-time check:
+    a foreign site structurally has nothing to serve.
+  end note
+else AppId is unconstrained ("acme", no AppDataResidencyPolicy row)
+  outbox -> peerUsEast: sync batch { events: [...] }
+  outbox -> peerUsWest: sync batch { events: [...] }
+  outbox -> peerEuWest: sync batch { events: [...] }
+end
+@enduml

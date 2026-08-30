@@ -1,0 +1,29 @@
+@startuml
+autonumber
+actor "Publishing System\n(still on schema v1)" as publisher
+participant "PublishEndpoint\n(Inbox, ADR-023)" as endpoint
+participant "RouterWorker\n(Router, ADR-023)" as router
+participant "UpcastChain\n(ADR-018)" as upcastChain
+participant "IUpcastExpressionEvaluator\n(CEL by default, ADR-053)" as evaluator
+database "Event Log" as eventLog
+
+publisher -> endpoint: POST /publish/OrderPlaced\n{ schemaVersion: 1, payload: { OrderId: "o-1", Amount: 42.00 } }
+note right: "demo:OrderPlaced" v2 is the active version\n(upcastFromPrevious "Amount, 'Unknown' as Status", schema-registry.md)
+endpoint -> eventLog: INSERT StoredEvent\n(EventKind: Original, SchemaVersion: 1, Status: "received",\nPayload: { OrderId: "o-1", Amount: 42.00 } -- verbatim, unchanged)
+endpoint --> publisher: 202 { status: "received" } -- unconditional, ADR-023
+...next Router tick, asynchronously...
+router -> eventLog: SELECT events WHERE Status = "received"
+router -> router: validate against the DECLARED version (1) --\nconformant; also schemaVersion (1) < active version (2)
+router -> upcastChain: upcast(payload, fromVersion: 1, toVersion: 2)
+upcastChain -> evaluator: evaluate "Amount, 'Unknown' as Status"\nagainst { OrderId: "o-1", Amount: 42.00 }
+evaluator --> upcastChain: { OrderId: "o-1", Amount: 42.00, Status: "Unknown" }
+upcastChain -> upcastChain: validate result against v2's JSON Schema
+alt every hop parses, evaluates, and the result validates
+  router -> eventLog: INSERT StoredEvent\n(EventKind: UpcastMaterialization, SchemaVersion: 2,\nMaterializationOfEventId: <original's EventId>,\nPayload: { OrderId: "o-1", Amount: 42.00, Status: "Unknown" })
+  note right: the new row is what ADR-020 used to discard --\nADR-027 persists it instead of recomputing it on every future read
+  router -> eventLog: UPDATE original StoredEvent\n(Status: "applied", SchemaStatus: "conformant")
+else a hop fails to parse, fails to evaluate, or its output fails v2's schema
+  router -> eventLog: UPDATE original StoredEvent\n(Status: "applied", SchemaStatus: "invalid" -- no materialization created)
+  note right: ~~originally routed to a reserved "EventUpcastFailed"\ndead-letter event type (ADR-020)~~ -- superseded by ADR-023:\nthe original just persists as SchemaStatus: invalid,\nlike any other schema-shape problem, no substituted event type
+end
+@enduml

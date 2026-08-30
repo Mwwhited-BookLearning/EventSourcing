@@ -1,0 +1,23 @@
+@startuml
+autonumber
+participant "Inbox Endpoint" as inbox
+participant "ITimestampAuthorityClient\n(pluggable, ADR-086)" as tsaClient
+participant "Time Stamping Authority\n(any RFC-3161-compliant TSA)" as tsa
+database "Event & Schema Store" as db
+
+inbox -> db: INSERT StoredEvent (Signature set, per the diagram above)
+alt this event type's RequiredSignature does NOT also opt into RFC3161Timestamp
+  inbox -> inbox: Signature.RFC3161Timestamp stays null -- optional,\nnot every Signature-requiring type needs\nthird-party-verifiable timing (ADR-086)
+else opted in (same EventTypeDefinition configuration surface as RequiredSignature)
+  inbox -> tsaClient: request timestamp over hash(ChainHash)
+  tsaClient -> tsa: RFC 3161 TimeStampReq { hashedMessage: hash(ChainHash) }
+  tsa --> tsaClient: TimeStampToken (signed, over that same hash)
+  tsaClient --> inbox: TimeStampToken bytes
+  inbox -> db: UPDATE StoredEvent SET Signature.RFC3161Timestamp = TimeStampToken
+  note right of tsa
+    Timestamped over ChainHash, not Payload directly --
+    ChainHash already transitively commits to the full
+    event content (ADR-019), so one hash covers both.
+  end note
+end
+@enduml

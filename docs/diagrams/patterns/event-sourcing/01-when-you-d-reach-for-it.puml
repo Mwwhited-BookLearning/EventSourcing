@@ -1,0 +1,15 @@
+@startuml
+autonumber
+actor Writer
+participant "Event Log\n(append-only)" as Log
+actor Reader
+
+Writer -> Log: append(OrderPlaced)
+Writer -> Log: append(OrderShipped)
+Writer -> Log: append(OrderCancelled)
+note over Log: Nothing is ever updated or deleted here --\nonly ever appended, in order.
+
+Reader -> Log: replay from SequenceNumber 0
+Log --> Reader: OrderPlaced, OrderShipped, OrderCancelled (in order)
+Reader -> Reader: fold events left-to-right\n=> current state, derived, never stored as primary record
+@enduml

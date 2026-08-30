@@ -1,0 +1,18 @@
+@startuml
+autonumber
+actor "Publishing System\n(publisher-client)" as client
+participant "EventStore.DevIdp\n(OpenIddict, in-process)" as idp
+participant "API\n(any of Publish/Follow/Lineage/Registry)" as api
+
+client -> idp: POST /connect/token\ngrant_type=client_credentials\nclient_id, client_secret
+idp --> client: 200 { access_token (JWT), expires_in }
+client -> api: request\nAuthorization: Bearer <access_token>
+api -> api: validate JWT signature/expiry against DevIdp's\n/.well-known/openid-configuration (JWKS, cached)
+alt token missing or invalid
+  api --> client: 401
+else token valid, required scope not present in "scope" claim
+  api --> client: 403
+else token valid and scope present
+  api --> client: 200 / 202 (operation proceeds -- publish is always\n202 + SchemaStatus, ADR-023, never 201/400 for a shape problem)
+end
+@enduml

@@ -1,0 +1,23 @@
+@startuml
+skinparam StateFontSize 12
+
+[*] --> Collected : SpecimenCollected
+Collected --> Stored : SpecimenStored
+Stored --> Derived : SpecimenDerived\n(creates a NEW child specimen,\nparentEventIds -> this one, ADR-005)
+Derived --> Stored : (the derived child specimen\nitself becomes Stored)
+Stored --> Distributed : SpecimenDistributed
+Stored --> Destroyed : SpecimenDestroyed
+Distributed --> [*]
+Destroyed --> [*]
+
+note right of Stored
+  Consent is an orthogonal concern, not a
+  state of the specimen itself -- a
+  ConsentWithdrawn event can arrive while a
+  specimen sits in any of these states and
+  does not by itself move this state machine
+  (the erasure-vs-broad-consent tension this
+  raises is named in ../README.md's Special
+  concerns, deliberately not resolved here).
+end note
+@enduml

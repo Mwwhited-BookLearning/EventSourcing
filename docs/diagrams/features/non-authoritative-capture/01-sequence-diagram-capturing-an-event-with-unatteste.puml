@@ -1,0 +1,33 @@
+@startuml
+autonumber
+actor "Field Actor\n(offline-capable client)" as publisher
+participant "Inbox Endpoint" as endpoint
+participant "EventAppender" as appender
+database "Event & Schema Store" as db
+participant "Router\n(async, ADR-023)" as router
+
+publisher -> endpoint: POST /publish/SensorReading\n{ payload, attestedActorId, attestedClaims }
+endpoint -> appender: append(StoredEvent{ ..., AttestedActorId, AttestedClaims,\n  AuthorityStatus: "unattested" })
+appender -> db: INSERT StoredEvent (Status: received)
+appender --> publisher: 202 { correlationId, status: "received",\n  authorityStatus: "unattested", schemaStatus: null, ... }
+note right of publisher
+  Persisted immediately, exactly like any other
+  publish (ADR-023). A submitter whose authority
+  can't be checked synchronously never blocks,
+  delays, or gets treated differently at capture
+  time -- the whole point of this ADR.
+end note
+... asynchronously ...
+router -> db: pick up "received" event
+router -> db: validate schema, resolve EntityId
+router -> db: fold into LiveEntityStoreRow (ungated -- ADR-042)
+router -> db: UPDATE StoredEvent SET Status = "applied"
+note right of router
+  AuthorityStatus stays "unattested" here -- the
+  router's job is schema/entity resolution
+  (ADR-023), never authority review. The
+  AUTHORITATIVE Entity Store is NOT updated yet
+  (ADR-042) -- only the Live View is, explicitly
+  labeled isAuthoritative: false when read.
+end note
+@enduml

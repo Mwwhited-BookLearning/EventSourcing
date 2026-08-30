@@ -1,0 +1,16 @@
+@startuml
+autonumber
+participant "Client\n(generated stub)" as client
+participant "gRPC service" as service
+database "Data store" as db
+
+client -> service: GetResource(id, fieldMask=["name","status"])
+service -> db: fetch only requested fields (or full row, filtered on return)
+db --> service: row
+service --> client: Resource{name, status} (other fields unset)
+
+client -> service: Subscribe(filter) (bidirectional streaming RPC)
+loop while stream open
+  service -> client: push matching updates as they occur
+end
+@enduml

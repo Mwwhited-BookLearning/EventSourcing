@@ -1,0 +1,14 @@
+@startsalt
+{
+  { "Evidence  ev-1  --  Case 24-CR-118  (lab:Evidence:ev-1)" }
+  ..
+  | SequenceNumber | Event              | Actor        | Signed?             |
+  | 1042           | EvidenceAcquired   | examiner-1   | --                   |
+  | 1043           | CustodyTransferred | examiner-1   | "custody transfer" ✓ |
+  | 1058           | ArtifactExtracted  | analyst-2    | --                   |
+  ..
+  [ Export for litigation ] | [ Bitemporal playback ]
+  ..
+  { "Last export: 2026-06-02 -- Fully independently verified" }
+}
+@endsalt

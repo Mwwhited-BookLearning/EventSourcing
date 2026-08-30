@@ -1,0 +1,18 @@
+@startuml
+autonumber
+participant "Hospital EMR\n(FHIR client)" as emr
+participant "InterchangeEndpoints\n(generic POST /interchange/{adapterKey}/{appId},\nADR-072/082 -- ONE route, not one per adapter/resource type)" as interchange
+participant "FhirAdapter\n(IInterchangeFormatAdapter,\nkeyed DI, key 'Fhir')" as adapter
+participant "PublishService" as publish
+database "Event & Schema Store" as db
+
+emr -> interchange: POST /interchange/Fhir/clinic1\n(ordinary HTTPS -- FHIR is RESTful/HTTP-native,\nno MLLP-style bridge needed, ADR-072)
+interchange -> interchange: resolve IInterchangeFormatAdapter keyed\n"Fhir" (GetRequiredKeyedService("Fhir"));\na miskeyed adapterKey returns 404 here, never\nfalling back to any other registered adapter
+interchange -> adapter: ParseInboundAsync(appId, rawBody)
+adapter -> adapter: map the FHIR Observation resource to this\nAppId's registered "VitalSignRecorded" JsonSchema shape
+adapter --> interchange: InterchangeInboundResult { EventType: "VitalSignRecorded",\n  Payload: <transformed> }
+interchange -> publish: PublishAsync("VitalSignRecorded", ...)\n-- an IN-PROCESS call, not a second HTTP hop --\nauthenticated as this request's own caller (events:publish)
+publish -> db: INSERT StoredEvent -- identical persist-everything\npath as any other publish (ADR-023)
+publish --> interchange: PublishResult.Accepted { CorrelationId, SequenceNumber }
+interchange --> emr: 202 Accepted { correlationId, sequenceNumber }
+@enduml

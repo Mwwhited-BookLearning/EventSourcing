@@ -1,0 +1,41 @@
+@startuml
+autonumber
+actor "Consuming System" as client
+participant "GraphQL Gateway\n(Lineage query fields, ADR-037)" as endpoint
+participant "Auth\n(JWT Bearer + scope + RequiredClaims)" as auth
+participant "LineageService\n(GetParentsAsync/GetChildrenAsync,\nLINQ join -- no separate reader class exists)" as directReader
+participant "IEventLineageQueryProvider\n(impl per provider)" as recursiveReader
+participant "CycleGuard" as guard
+database "Event & Schema Store" as db
+
+client -> endpoint: QUERY /graphql\nquery { event(eventId: "...") {\n  ancestors(first: 50) {...} descendants(first: 50) {...}\n  parents {...} children {...} } }
+endpoint -> auth: validate events:lineage:read scope
+alt missing/invalid token or scope
+  auth --> client: 401 / 403
+else authorized
+  endpoint -> db: does the root eventId exist at all?
+  alt root eventId unknown
+    endpoint --> client: 404 (deliberately distinct from 403 below --\nleaks existence, per ADR-008)
+  else root known
+    endpoint -> auth: does caller hold a Read-direction RequiredClaims entry\nfor the root's event type, if one is configured? (ADR-008/050)
+    alt root restricted
+      auth --> client: 403 (the ROOT is special-cased -- rejects the whole\nrequest, unlike every node discovered below)
+    else root visible
+      group parents / children (direct)
+        endpoint -> directReader: join EventParents to Events
+        directReader -> db: SELECT ... FROM EventParents JOIN Events
+        directReader --> endpoint: immediate nodes (resolved: true/false)
+      end
+      group ancestors / descendants (transitive, first/after cursor-paginated)
+        endpoint -> recursiveReader: getAncestors(id, first, after)
+        recursiveReader -> guard: wrap traversal (depth cap, visited-path check)
+        recursiveReader -> db: WITH RECURSIVE ... (native per provider)
+        db --> recursiveReader: full transitive closure, paged
+        recursiveReader --> endpoint: nodes, each resolved:true/false
+      end
+      endpoint -> auth: check Read-direction RequiredClaims per discovered node,\nindependently (ADR-008) -- never fails the rest of the response
+      endpoint --> client: 200 { data: { event: { ancestors: [...], descendants: [...],\nparents: [...], children: [...] } } }, each node\neventId/eventType/sequenceNumber/occurredAt/resolved/restricted
+    end
+  end
+end
+@enduml

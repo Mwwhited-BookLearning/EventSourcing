@@ -1,0 +1,77 @@
+@startuml
+hide circle
+skinparam linetype ortho
+
+entity "ViewDefinition" as viewdef {
+  * EntityType : string <<PK>>
+  * Version : int <<PK>>
+  --
+  ViewKind : string
+  ' list | detail | edit | custom
+  CompatibleSchemaVersions : string
+  TemplateContent : text
+  ' HTML+JS, content-addressed
+  ' rendered text references translation
+  ' keys, never a hardcoded literal, ADR-087
+  Hash : string
+  EffectiveFrom : datetimeoffset
+  DeprecatedAt : datetimeoffset <<nullable>>
+}
+
+entity "ClientOutboxEntry" as outbox {
+  * CommandId : uuid <<PK>>
+  --
+  InstanceId : string
+  ' namespaces entries per client instance/subscription target
+  EntityId : string
+  ExpectedVersion : long <<nullable>>
+  Patch : text
+  ' Optional<T>-wrapped, ADR-022
+  Status : string
+  ' Pending | Delivered | Failed
+  EnqueuedAt : datetimeoffset
+  Attempts : int
+}
+
+entity "ClientEntityCacheEntry" as cache {
+  * EntityId : string <<PK>>
+  * InstanceId : string <<PK>>
+  --
+  Data : text
+  Extensions : text
+  Version : long
+  ConflictFlag : bool
+  LateArrivalFlag : bool
+  AuthorityStatus : string
+  CachedAt : datetimeoffset
+}
+
+outbox }o..|| cache : "same InstanceId namespace;\nno shared outbox state across instances"
+viewdef .. cache : "EntityType/CompatibleSchemaVersions selects\nwhich ViewDefinition renders a cached entity\n(no DB FK -- content-addressed lookup, not a join)"
+
+note right of outbox
+  CommandId doubles as the EventId
+  the server-side Idempotent Receiver
+  (ADR-011) dedups on -- same
+  mechanism, not a second one.
+end note
+
+note bottom of cache
+  InstanceId is the whole reason two
+  concurrently-running client instances
+  (different EntityType/subscription
+  targets) never share outbox or cache
+  state, per ADR-039.
+end note
+
+note right of viewdef
+  TemplateContent's rendered text is
+  required to reference a translation
+  key, never a hardcoded literal --
+  ADR-087. The string a key resolves to
+  for a given locale is domain-owned
+  content, not part of this framework
+  schema (no TMS/resource format is
+  adopted here).
+end note
+@enduml

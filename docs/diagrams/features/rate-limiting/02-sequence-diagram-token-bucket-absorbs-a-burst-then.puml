@@ -1,0 +1,36 @@
+@startuml
+autonumber
+actor "Publishing System (AppId: app-a)" as pub
+participant "EventStore.Gateway" as gateway
+participant "Token Bucket\n(AppId: app-a, 'publish' partition,\ncapacity 100, refill 100/min)" as bucket
+
+note over bucket
+  Bucket starts full (100 tokens) after
+  an idle period -- ADR-058's whole point:
+  a real publisher catching up after a
+  brief outage should not be throttled
+  just because it's sending many requests
+  at once.
+end note
+
+loop 100 publish requests, sent back-to-back (a legitimate burst)
+  pub -> gateway: POST /publish/OrderPlaced
+  gateway -> bucket: acquire 1 token
+  bucket --> gateway: granted (bucket has capacity)
+  gateway --> pub: 202
+end
+note right of bucket: bucket now at 0 tokens
+
+pub -> gateway: POST /publish/OrderPlaced (request #101, same burst)
+gateway -> bucket: acquire 1 token
+bucket --> gateway: denied -- 0 tokens, refill not yet due
+gateway --> pub: 429 Too Many Requests\nRetry-After: <seconds until next refill>
+
+... refill period elapses ...
+note right of bucket: bucket refills toward capacity\nover time, independent of app-a's\nrequest rate
+
+pub -> gateway: POST /publish/OrderPlaced (retried after Retry-After)
+gateway -> bucket: acquire 1 token
+bucket --> gateway: granted (refilled token available)
+gateway --> pub: 202
+@enduml

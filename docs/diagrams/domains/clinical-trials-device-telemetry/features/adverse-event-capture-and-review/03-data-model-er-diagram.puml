@@ -1,0 +1,62 @@
+@startuml
+hide circle
+skinparam linetype ortho
+
+entity "StoredEvent" as event {
+  * SequenceNumber : bigint <<PK>>
+  --
+  EventId : uuid <<unique>>
+  EntityId : string
+  ' trial1:AdverseEvent:ae-1042
+  EventType : string
+  ' AdverseEventReported | authorityDecision | accessGrant | accessGrantRevoked
+  Payload : text
+  AttestedClaims : text?
+  AuthorityStatus : string {unattested|pending_review|accepted|rejected}
+  AuthorityDecisionRef : uuid?
+  TelemetryPointer : string?
+  ' {ChannelId, FromTimestamp, ToTimestamp?} -- device-linked AEs only
+  Signature : text?
+  ' {SignerId, SignedAt, Meaning, Acr} -- set only on a signed authorityDecision
+}
+
+entity "EntityStoreRow" as entityStore {
+  * EntityId : string <<PK>>
+  --
+  EntityType : string
+  Version : bigint
+  Data : text
+  ' AeId, SubjectId, Severity, SeriousAdverseEvent, CausalityAssessment
+  AuthorityStatus : string
+}
+
+entity "LiveEntityStoreRow" as liveView {
+  * EntityId : string <<PK>>
+  --
+  Data : text
+  AuthorityStatus : string
+  ' most recent contributing event's status -- never rolled up/hidden
+}
+
+entity "AccessGrant\n(folded from accessGrant events)" as grant {
+  * GrantId : string <<PK>>
+  --
+  GranterActorId : string
+  GranteeDid : string
+  DelegatedClaim : string
+  EntityScope : string <<FK, logical only>>
+  ExpiresAt : datetimeoffset
+  RevokedAt : datetimeoffset?
+}
+
+event "*" --> "1" liveView : "folds into immediately,\nno AuthorityStatus gate (ADR-042)"
+event "*" --> "0..1" entityStore : "folds into ONLY once\nAuthorityStatus = accepted (ADR-042)"
+grant ..> event : "EntityScope names the SAME\nEntityId as the AdverseEvent's\nrow above -- ADR-043's entity-\nscope claim restriction"
+event ..o| event : "AuthorityDecisionRef -- authorityDecision\nevent back-pointing to the AdverseEventReported\nevent it decided (ADR-035)"
+
+note right of entityStore
+  Never updated by a "rejected" decision --
+  a rejected AdverseEventReported was, by
+  construction, never folded here (ADR-042).
+end note
+@enduml

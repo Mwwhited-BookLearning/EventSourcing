@@ -1,0 +1,20 @@
+@startuml
+autonumber
+actor "Publishing System (as AppId: app-c)" as pub
+participant "Publish API" as endpoint
+participant "SchemaRegistryService" as registry
+database "Event & Schema Store" as db
+
+pub -> endpoint: POST /publish/OrderPlaced (as app-c)\n{ payload }
+endpoint -> registry: lookup(appId: "app-c", name: "OrderPlaced")
+registry -> db: SELECT ... WHERE AppId = "app-c" AND Name = "OrderPlaced" AND IsActive
+alt a row exists for (app-c, OrderPlaced)
+  db --> registry: app-c's own EventTypeDefinition
+  registry --> endpoint: schema/claims for app-c's OrderPlaced
+  endpoint --> pub: 202 { status: "received"/"applied", schemaStatus: "conformant" }
+else no row for (app-c, OrderPlaced)\n(even though app-b registered "OrderPlaced" -- a different AppId)
+  db --> registry: not found for app-c\n(app-b's row is never inspected, let alone matched)
+  registry --> endpoint: unknown event type for this caller's AppId
+  endpoint --> pub: 202 { status: "received", schemaStatus: "unknown" } (ADR-023 -- never a 400,\nand never silently resolves to another AppId's definition)
+end
+@enduml

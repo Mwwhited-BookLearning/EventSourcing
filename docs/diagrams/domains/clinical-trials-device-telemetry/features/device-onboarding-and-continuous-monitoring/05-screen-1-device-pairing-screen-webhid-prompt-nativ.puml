@@ -1,0 +1,15 @@
+@startsalt
+{
+  { "Site 04-221 -- Pair a Device (Site Coordinator: coord-3)" }
+  ..
+  [ Pair via browser (WebHID) ] | [ Pair via Native Bridge ]
+  ..
+  { "Chromium: navigator.hid.requestDevice() --" }
+  { "  Select a device:" }
+  { () "VitalSync VS-200 (dev-0091)" }
+  { () "VitalSync VS-200 (dev-0044)" }
+  [ Select ]
+  ..
+  "Firefox/Safari fallback: Native Bridge companion app --\n status: connected (ws://localhost:9091)"
+}
+@endsalt

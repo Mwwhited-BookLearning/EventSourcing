@@ -1,0 +1,57 @@
+@startuml
+hide circle
+skinparam linetype ortho
+
+entity "StoredEvent (CaseReported)" as reported {
+  * SequenceNumber : bigint <<PK>>
+  --
+  EventId : uuid <<unique>>
+  EntityId : string  ' state-example:Case:case-9001
+  EventType : string  ' "CaseReported"
+  ActorId : string  ' verified reporting clinician/lab (ADR-064)
+  Payload : text  ' ConditionCode, PatientIdentifier, ReportingFacility, JurisdictionRegion
+  AuthorityStatus : string {pending_review|accepted|rejected}
+  AuthorityDecisionRef : uuid?
+}
+
+entity "CaseEntityStoreRow" as caseRow {
+  * EntityId : string <<PK>>
+  --
+  EntityType : string  ' "Case"
+  ConditionCode : string  ' e.g. ICD-10 "A36.9"
+  ClassificationStatus : string {Confirmed|Probable|Suspect}
+  JurisdictionRegion : string  ' denormalized, matches AppId's AllowedRegions (ADR-061)
+  ReportingFacility : string
+  AuthorityStatus : string  ' always "accepted" here -- gated, ADR-042
+  Version : bigint
+}
+
+entity "CaseLiveEntityStoreRow" as liveRow {
+  * EntityId : string <<PK>>
+  --
+  ConditionCode : string
+  ClassificationStatus : string {Confirmed|Probable|Suspect|NotACase}
+  AuthorityStatus : string {pending_review|accepted|rejected}
+  ReportingFacility : string
+}
+
+entity "ContactTracingLink (EventParent)" as contactLink {
+  * ChildEventId : uuid <<PK, FK>>  ' the contact's own CaseReported/ContactIdentified event
+  * ParentEventId : uuid <<PK>>     ' the index case's CaseReported event
+}
+
+reported ..> caseRow : "folds into, once accepted\n(ADR-042 catch-up)"
+reported ..> liveRow : "folds into immediately,\nungated (ADR-042)"
+contactLink ..> reported : "ParentEventId -- the index case\n(ADR-005, secondary fit here)"
+
+note right of caseRow
+  ClassificationStatus never holds "NotACase" here --
+  a not-a-case decision is AuthorityStatus "rejected"
+  and never reaches this row at all (ADR-042).
+end note
+
+note right of liveRow
+  The only place "NotACase" is ever visible -- relabeled,
+  never deleted, per README.md's governing principle.
+end note
+@enduml

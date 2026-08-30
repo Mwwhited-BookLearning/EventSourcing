@@ -1,0 +1,14 @@
+@startsalt
+{
+  { "Shipment  shp-4471  (freightco)" }
+  ..
+  | Leg | Handoff                                  | Status |
+  | 1   | Acme Warehouse -> Swift Freight (Rotterdam) | () OK |
+  | 2   | Swift Freight -> EU Customs (Hamburg)       | (X) ! Exception: "crate crushed on intake" |
+  | 3   | EU Customs -> Destination DC (Hamburg)      | () Pending |
+  ..
+  { [ ! ExceptionCount: 1 ] | [ Cross-site report: "customs seal missing" -- awaiting sync ] }
+  ..
+  [ View lineage for Leg 2 ] | [ View change history ]
+}
+@endsalt

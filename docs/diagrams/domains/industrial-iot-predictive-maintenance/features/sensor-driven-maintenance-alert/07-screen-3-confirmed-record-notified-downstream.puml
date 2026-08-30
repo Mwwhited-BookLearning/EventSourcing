@@ -1,0 +1,12 @@
+@startsalt
+{
+  { "pump-42 -- Maintenance Alert Record  (Entity Store, isAuthoritative: true)" }
+  ..
+  { "AlertSeverity"   | "Medium"                                             }
+  { "AuthorityStatus" | "accepted"                                           }
+  { "Verified by"     | "tech-17 -- confirmed bearing wear on inspection"    }
+  { "CMMS notified"   | "webhook-id/webhook-signature delivered (ADR-060)"  }
+  ..
+  [ Create work order ]
+}
+@endsalt

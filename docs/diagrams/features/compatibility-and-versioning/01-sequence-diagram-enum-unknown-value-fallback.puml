@@ -1,0 +1,25 @@
+@startuml
+autonumber
+participant "Old Client\n(deployed before OrderStatus\ngained a new value)" as client
+participant "GraphQL Gateway" as gateway
+database "Entity Store" as entityStore
+
+note over gateway
+  A newer deployment registered OrderStatus
+  value "PartiallyRefunded" -- this client's
+  build predates that change (ADR-038's
+  N-1/N+1 window: the client is running
+  code from a still-supported prior version).
+end note
+
+client -> gateway: QUERY /graphql\nquery { order(id: "demo:Order:o-1") { status statusKnown } }
+gateway -> entityStore: resolve Order.status for "demo:Order:o-1"
+entityStore --> gateway: raw stored value = "PartiallyRefunded"
+alt raw value is a recognized OrderStatus member for this client's schema version
+  gateway --> client: { status: "Shipped", statusKnown: true }
+else raw value is not a recognized member (this scenario)
+  gateway --> client: { status: "PartiallyRefunded", statusKnown: false }
+  note right: ADR-038's declared contract -- the raw string travels\nalongside a "known" flag, never a thrown error and\nnever a silently substituted wrong value
+end
+client -> client: exhaustive switch on OrderStatus has no case for\nan unrecognized string -- branches on statusKnown == false\ninstead of throwing (ADR-038's required client-side discipline)
+@enduml

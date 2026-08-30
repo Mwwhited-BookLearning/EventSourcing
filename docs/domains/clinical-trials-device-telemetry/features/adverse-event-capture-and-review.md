@@ -68,6 +68,8 @@ uncertainty (an explicit review-pending marker) vs. a site coordinator's
 own request for clinical judgment before this counts as a real trial
 finding.
 
+![Sequence diagram — non-authoritative capture, device-linked and site-entered](../../../diagrams/domains/clinical-trials-device-telemetry/features/adverse-event-capture-and-review/01-sequence-diagram-non-authoritative-capture-device-.svg)
+
 ```plantuml
 @startuml AeCapture_Sequence
 autonumber
@@ -119,6 +121,8 @@ Shows `ADR-043`'s delegated, entity-scoped grant; a caller lacking that
 grant failing the entity-scope check; and the PI's own review decision —
 gated behind `ADR-066`'s RFC 9470 step-up challenge, with `alt` branches
 for insufficient vs. satisfied step-up, then `accepted` vs. `rejected`.
+
+![Sequence diagram — secondary opinion, then signed-off review decision](../../../diagrams/domains/clinical-trials-device-telemetry/features/adverse-event-capture-and-review/02-sequence-diagram-secondary-opinion-then-signed-off.svg)
 
 ```plantuml
 @startuml AeReview_Sequence
@@ -189,6 +193,8 @@ end
 ```
 
 ## Data model (ER diagram)
+
+![Data model (ER diagram)](../../../diagrams/domains/clinical-trials-device-telemetry/features/adverse-event-capture-and-review/03-data-model-er-diagram.svg)
 
 ```plantuml
 @startuml AeCaptureReview_ER
@@ -314,6 +320,8 @@ public class AdverseEventRecord
 
 ## State machine — `AdverseEventRecord` lifecycle
 
+![State machine — `AdverseEventRecord` lifecycle diagram](../../../diagrams/domains/clinical-trials-device-telemetry/features/adverse-event-capture-and-review/04-state-machine-adverseeventrecord-lifecycle.svg)
+
 ```plantuml
 @startuml AeCaptureReview_State
 [*] --> Captured
@@ -352,6 +360,8 @@ PI's token satisfies the configured `RequiredSignature`.
 
 ### Screen 1: Non-authoritative Live View — adverse event review queue
 
+![Screen 1: Non-authoritative Live View — adverse event review queue diagram](../../../diagrams/domains/clinical-trials-device-telemetry/features/adverse-event-capture-and-review/05-screen-1-non-authoritative-live-view-adverse-event.svg)
+
 ```plantuml
 @startsalt
 {
@@ -374,6 +384,8 @@ Clicking the `ae-1042` row opens Screen 2, the detail/decision view for
 that one event.
 
 ### Screen 2: Clinical reviewer's review and decision screen
+
+![Screen 2: Clinical reviewer's review and decision screen diagram](../../../diagrams/domains/clinical-trials-device-telemetry/features/adverse-event-capture-and-review/06-screen-2-clinical-reviewer-s-review-and-decision-s.svg)
 
 ```plantuml
 @startsalt
@@ -399,6 +411,8 @@ required `acr`/`max_age` triggers a redirect through the IdP before the
 click actually completes — only then does the flow move to Screen 3.
 
 ### Screen 3: Confirmed record, after the authoritative catch-up fold
+
+![Screen 3: Confirmed record, after the authoritative catch-up fold diagram](../../../diagrams/domains/clinical-trials-device-telemetry/features/adverse-event-capture-and-review/07-screen-3-confirmed-record-after-the-authoritative-.svg)
 
 ```plantuml
 @startsalt

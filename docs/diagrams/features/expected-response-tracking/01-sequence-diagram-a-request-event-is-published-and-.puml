@@ -1,0 +1,24 @@
+@startuml
+autonumber
+actor "Bedside Monitor / Detector" as device
+participant "PublishEndpoint\n(Inbox, ADR-023)" as inbox
+database "Event Log" as eventLog
+participant "ExpectedResponseWatcher\n(leader-elected, ADR-078)" as watcher
+database "ExpectedResponseTracker" as tracker
+
+device -> inbox: POST /publish/IonmAlertRaised\n{ payload: { AlertId: "alert-77", SubjectId: "S-0091",\n  Finding: "SSEP amplitude drop >50%" } }
+inbox -> eventLog: INSERT StoredEvent\n(EventId: "req-1", EventType: "IonmAlertRaised")
+inbox --> device: 202 { status: "received" }
+note right of eventLog
+  "IonmAlertRaised" is registered with
+  ExpectedResponse { ResponseEventType:
+  "IonmAlertAcknowledged", Within: 5m }
+  (ADR-094) -- this alone is what makes
+  the row below get created; an event
+  type with no ExpectedResponse configured
+  produces no tracker row at all.
+end note
+... asynchronously, ExpectedResponseWatcher tails every event type\nwith ExpectedResponse configured (ADR-010's Follow, ADR-015's shape) ...
+watcher -> eventLog: observe "req-1" (IonmAlertRaised)
+watcher -> tracker: INSERT ExpectedResponseTracker\n{ RequestEventId: "req-1", RequestEventType: "IonmAlertRaised",\n  ExpectedResponseEventType: "IonmAlertAcknowledged",\n  DeadlineAt: now + 5m, SatisfiedByEventId: null,\n  SatisfiedAt: null, EscalatedAt: null }
+@enduml

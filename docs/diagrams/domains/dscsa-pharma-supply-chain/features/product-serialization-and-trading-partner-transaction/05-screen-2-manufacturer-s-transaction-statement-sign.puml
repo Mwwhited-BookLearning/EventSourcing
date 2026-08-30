@@ -1,0 +1,11 @@
+@startsalt
+{
+  { "Transaction t-88  --  mfr -> Wholesale Distributor whl-7" }
+  ..
+  { "EpcList" | "200 units from shipment s-1" }
+  { "Transaction Statement" | "attested -- authorized, received from authorized source" }
+  ..
+  [ Sign & Send ]
+  "Sign-off requires step-up authentication (RFC 9470) -- ADR-066"
+}
+@endsalt

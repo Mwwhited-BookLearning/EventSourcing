@@ -1,0 +1,11 @@
+@startsalt
+{
+  { "Public Records Request Portal" }
+  ..
+  { "Requester name" | "^J. Alvarez^" }
+  { "Case file reference" | "^gov:CaseFile:c-1^" }
+  { "Requested scope" | "^full case file^" }
+  ..
+  [ Submit Request ] | [ Cancel ]
+}
+@endsalt

@@ -1,0 +1,31 @@
+@startuml
+[*] --> Filed : ClaimFiled\n(parented off TripScored, ADR-005)
+
+Filed --> UnderReview : adjuster begins review
+
+UnderReview --> SecondaryOpinionRequested : AccessGrant published\n(Adjuster A grants Adjuster B, ADR-043)
+SecondaryOpinionRequested --> SecondaryOpinionGranted : grantee exchanges UCAN\nfor bearer JWT, reads record
+SecondaryOpinionRequested --> UnderReview : grant expires/revoked\nbefore exchange (AccessGrantRevoked)
+SecondaryOpinionGranted --> UnderReview : opinion recorded,\nreview continues
+
+UnderReview --> Approved : adjuster decision
+UnderReview --> Denied : adjuster decision
+
+Approved --> Disputed : ClaimDisputed\n(policyholder/legal disputes)
+Denied --> Disputed : ClaimDisputed
+
+Disputed --> ExportedForReview : lineage export +\nsystem-time playback (ADR-068)
+ExportedForReview --> Resolved : dispute resolved
+
+Approved --> [*]
+Denied --> [*]
+Resolved --> [*]
+
+note right of ExportedForReview
+  Export/playback never mutate ClaimStatus by
+  themselves -- both are read-only reconstructions
+  (ADR-068). The transition into this state records
+  that an export/playback was performed for this
+  dispute, not that the claim's own decision changed.
+end note
+@enduml

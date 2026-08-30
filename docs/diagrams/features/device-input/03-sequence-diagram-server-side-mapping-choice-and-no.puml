@@ -1,0 +1,27 @@
+@startuml
+autonumber
+participant "ClientOutbox flush\n(ADR-039/069, unchanged)" as outbox
+participant "Server ingestion" as server
+database "Streaming Channel\n(TelemetrySample)" as streaming
+database "Event Log\n(StoredEvent)" as eventlog
+
+outbox -> server: deliver queued device reading(s)
+alt this integration's schema choice: continuous, high-frequency output\n(e.g. a vitals waveform)
+  server -> streaming: append TelemetrySample\n{ ChannelId, Timestamp, MonotonicElapsedMicros?, Value }\n(ADR-031; ADR-083 for the optional monotonic field)
+  note right of streaming
+    Non-authoritative by default (ADR-035) --
+    a raw device reading captured client-side,
+    possibly after a long offline stretch, is
+    not automatically trusted. See
+    non-authoritative-capture.md for the full
+    AuthorityStatus mechanic; not re-derived here.
+  end note
+else this integration's schema choice: discrete, one-shot reading\n(e.g. an instrument result)
+  server -> eventlog: publish ordinary StoredEvent\n(ordinary publish path, ADR-023)
+  alt device carries a self-attested DID/UCAN identity (ADR-036)
+    eventlog -> eventlog: AuthorityStatus reflects the device's own\nattestation, same as any other self-attested submission
+  else no device attestation presented
+    eventlog -> eventlog: AuthorityStatus defaults to non-authoritative (ADR-035)
+  end
+end
+@enduml

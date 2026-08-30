@@ -75,6 +75,8 @@ This doc deliberately does **not** re-derive:
 
 ## Sequence diagram — uploading and linking identity documents
 
+![Sequence diagram — uploading and linking identity documents](../../../diagrams/domains/digital-identity-kyc/features/document-and-biometric-capture/01-sequence-diagram-uploading-and-linking-identity-do.svg)
+
 ```plantuml
 @startuml DocCapture_DocumentUpload_Sequence
 autonumber
@@ -110,6 +112,8 @@ end note
 ```
 
 ## Sequence diagram — biometric capture with an automated liveness detector
+
+![Sequence diagram — biometric capture with an automated liveness detector](../../../diagrams/domains/digital-identity-kyc/features/document-and-biometric-capture/02-sequence-diagram-biometric-capture-with-an-automat.svg)
 
 ```plantuml
 @startuml DocCapture_Biometric_Sequence
@@ -166,6 +170,8 @@ self-attested-credential trigger (the downstream doc's DID exchange), the
 using the identical `AuthorityStatus`/gated-fold machinery, no new field.
 
 ## Data model (ER diagram)
+
+![Data model (ER diagram)](../../../diagrams/domains/digital-identity-kyc/features/document-and-biometric-capture/03-data-model-er-diagram.svg)
 
 ```plantuml
 @startuml DocCapture_ER
@@ -301,6 +307,8 @@ notes it's the natural place a document-reuse match would route to.
 
 ## State machine — an applicant's document/biometric intake, upstream of `AuthorityStatus`
 
+![State machine — an applicant's document/biometric intake, upstream of `AuthorityStatus` diagram](../../../diagrams/domains/digital-identity-kyc/features/document-and-biometric-capture/04-state-machine-an-applicant-s-document-biometric-in.svg)
+
 ```plantuml
 @startuml DocCapture_Intake_State
 [*] --> AwaitingDocuments : applicant begins onboarding\n(ordinary app-session JWT, no DID yet)
@@ -342,6 +350,8 @@ diagram's two `POST /attachments` + `POST /publish/IdentityDocumentUploaded`
 calls). Transition: clicking "Continue" once both documents show
 "Uploaded" moves to Screen 2.
 
+![Salt (UI mockup) — applicant capture flow, screen by screen diagram](../../../diagrams/domains/digital-identity-kyc/features/document-and-biometric-capture/05-salt-ui-mockup-applicant-capture-flow-screen-by-sc.svg)
+
 ```plantuml
 @startsalt
 {
@@ -359,6 +369,8 @@ calls). Transition: clicking "Continue" once both documents show
 diagram's selfie/liveness-video upload). Transition: clicking "Start
 liveness check" uploads the capture and moves to Screen 3 once the
 detector returns a result.
+
+![Salt (UI mockup) — applicant capture flow, screen by screen diagram](../../../diagrams/domains/digital-identity-kyc/features/document-and-biometric-capture/06-salt-ui-mockup-applicant-capture-flow-screen-by-sc.svg)
 
 ```plantuml
 @startsalt
@@ -379,6 +391,8 @@ the applicant is taken straight to Screen 4; on "inconclusive," they see
 a review-pending notice instead and Screen 4 is reached only later, once
 an analyst's `authorityDecision` resolves it.
 
+![Salt (UI mockup) — applicant capture flow, screen by screen diagram](../../../diagrams/domains/digital-identity-kyc/features/document-and-biometric-capture/07-salt-ui-mockup-applicant-capture-flow-screen-by-sc.svg)
+
 ```plantuml
 @startsalt
 {
@@ -397,6 +411,8 @@ an analyst's `authorityDecision` resolves it.
 [`customer-onboarding-and-identity-verification.md`](customer-onboarding-and-identity-verification.md)'s
 own first sequence diagram — not re-drawn here). Transition: clicking
 "Continue" begins that doc's DID/UCAN self-attestation flow.
+
+![Salt (UI mockup) — applicant capture flow, screen by screen diagram](../../../diagrams/domains/digital-identity-kyc/features/document-and-biometric-capture/08-salt-ui-mockup-applicant-capture-flow-screen-by-sc.svg)
 
 ```plantuml
 @startsalt

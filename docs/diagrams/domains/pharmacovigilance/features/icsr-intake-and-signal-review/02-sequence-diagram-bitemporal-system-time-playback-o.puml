@@ -1,0 +1,33 @@
+@startuml
+autonumber
+actor "Regulator / Safety Reviewer" as auditor
+participant "GraphQL Handler" as handler
+participant "System-Time Playback Resolver\n(ADR-068)" as playback
+database "Event Log" as eventLog
+
+auditor -> handler: QUERY { icsrSystemTimeAsOf(\n  entityId: "pv:IcsrCase:icsr-2031", asOfSequenceNumber: 4102) {\n  sequenceNumber occurredAt lateArrivalFlag data } }
+handler -> playback: reconstruct(entityId, cutoff = 4102)
+playback -> eventLog: SELECT * FROM StoredEvent\nWHERE EntityId = "pv:IcsrCase:icsr-2031"\nAND SequenceNumber <= 4102\nORDER BY SequenceNumber
+eventLog --> playback: [ IcsrReported(seq=4088, OccurredAt=Jan 3,\n    Seriousness="non-serious"),\n  IcsrFollowUp(seq=4102, OccurredAt=Jan 2,\n    LateArrivalFlag=true, Seriousness="serious") ]
+loop for each event, strictly in SequenceNumber (arrival) order
+  playback -> playback: apply verbatim -- no OccurredAt\nre-ordering, unlike ADR-029's fold
+  alt event carries LateArrivalFlag = true
+    note right of playback
+      The correction (Seriousness -> "serious")
+      lands IN PLACE, right here at seq=4102 --
+      even though its OccurredAt (Jan 2) is
+      earlier than the seq=4088 event's. This is
+      what the reviewer actually saw at the time,
+      not the hindsight-clean picture.
+    end note
+  end
+end
+note right of playback
+  Same masking/RequiredClaims enforcement
+  (ADR-008/ADR-009/ADR-050) and AccessLogEntry write
+  (ADR-045) as any other read -- no bypass for
+  a playback query (ADR-068).
+end note
+playback --> handler: stepwise reconstruction,\none position per SequenceNumber\n(VCR play/rewind/fast-forward, ADR-068)
+handler --> auditor: [ { sequenceNumber: 4088, occurredAt: "Jan 3",\n    lateArrivalFlag: false, data: { Seriousness: "non-serious" } },\n  { sequenceNumber: 4102, occurredAt: "Jan 2",\n    lateArrivalFlag: true, data: { Seriousness: "serious" } } ]
+@enduml

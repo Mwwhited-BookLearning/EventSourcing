@@ -1,0 +1,11 @@
+@startsalt
+{
+  { "Site 04-221 -- Subject S-0091" }
+  ..
+  { "EnrollmentStatus" | "Enrolled" }
+  { "Consent" | "v3, approved" }
+  { "Countersigned by" | "pi-7, 2026-07-22 (step-up verified)" }
+  ..
+  "This record is now authoritative -- folded into the Entity Store\n (catch-up fold, ADR-042)."
+}
+@endsalt

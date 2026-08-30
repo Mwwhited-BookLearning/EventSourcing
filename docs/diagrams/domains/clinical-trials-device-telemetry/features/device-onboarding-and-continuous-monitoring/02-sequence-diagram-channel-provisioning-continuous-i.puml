@@ -1,0 +1,46 @@
+@startuml
+autonumber
+actor "Site Coordinator's client" as coordinator
+participant "ChannelRegistry" as registry
+actor "Bedside Monitor\n(device, dev-0091)" as device
+participant "Telemetry Ingest API" as ingest
+database "Telemetry Store" as telemetryDb
+participant "Detector Worker\n(app-specific, out of framework scope)" as detector
+participant "Telemetry Read API" as read
+participant "PublishEndpoint\n(Inbox)" as inbox
+database "Event Log" as eventLog
+
+coordinator -> registry: POST /registry/channels\n{ ChannelId: "vitals-s0091", AppId: "trial1",\n  EntityId: "trial1:Patient:S-0091", ContentKind: "RawScalar",\n  SampleType: "Float64", SampleIntervalMicros: 1000000,\n  Origin: "Origin", RequiredReadClaim: "telemetry:read:vitals" }
+registry --> coordinator: 201 { channelId: "vitals-s0091" }
+note right of registry
+  EntityId links the channel to the PATIENT, not the
+  device -- a device can be swapped mid-trial without
+  re-provisioning the channel history (ADR-031).
+end note
+
+loop every few seconds, while dev-0091 remains paired
+  device -> ingest: POST /telemetry/vitals-s0091/samples\n{ startTimestamp, sampleIntervalMicros,\n  values: [SpO2 readings...] }
+  ingest -> telemetryDb: INSERT TelemetrySample rows\n(no JsonSchema check, no ChainHash, no Entity Store fold --\n full ingestion mechanics in streaming-channels.md)
+  ingest --> device: 202 { channelId, samplesWritten, lateArrivalCount }
+end
+
+detector -> read: GET /telemetry/vitals-s0091/samples?mode=tail
+read -> telemetryDb: SELECT ... WHERE Timestamp > lastSeen
+telemetryDb --> read: TelemetrySample rows (SpO2 values)
+read --> detector: streamed samples
+detector -> detector: apply desaturation-threshold rule\n(domain-specific, ADR-031 takes no position)
+alt SpO2 breaches threshold -- something worth recording
+  detector -> inbox: POST /publish/AdverseEventReported\n{ payload: { AeId: "ae-1042", SubjectId: "S-0091",\n  Severity: "Severe", SeriousAdverseEvent: true },\n  telemetryPointer: [{ ChannelId: "vitals-s0091",\n  FromTimestamp: "2026-07-29T14:02:10Z" }],\n  attestedClaims: { reviewPending: true,\n  reason: "auto-detected desaturation event" } }
+  inbox -> eventLog: INSERT StoredEvent\n(AuthorityStatus: "pending_review")
+  inbox --> detector: 202 { status: "received", authorityStatus: "pending_review" }
+  note right of inbox
+    This is the EXACT publish
+    adverse-event-capture-and-review.md's own
+    "non-authoritative capture" sequence diagram
+    opens with, device-linked branch -- continues
+    there, not re-shown here.
+  end note
+else nothing found this poll
+  detector -> detector: continue tailing
+end
+@enduml

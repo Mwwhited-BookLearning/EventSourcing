@@ -1,0 +1,15 @@
+@startsalt
+{
+  { "dr-2026-07-30-1 -- Review  (Live View, isAuthoritative: false)" }
+  ..
+  { "Meter"             | "m-482"                                       }
+  { "ThresholdKw"       | "950"                                         }
+  { "ObservedKw"        | "987.4"                                       }
+  { "TelemetryPointer"  | "meter-482-kwh-interval @ 2026-07-30T14:15:00Z" }
+  ..
+  [ View interval data ]
+  ..
+  { "Reason:" | "[                                        ]" }
+  [ Accept ] | [ Reject ]
+}
+@endsalt

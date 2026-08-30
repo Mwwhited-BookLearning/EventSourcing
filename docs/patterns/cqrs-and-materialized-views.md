@@ -25,6 +25,8 @@ query, by construction — CQRS is the architectural split that says "that's
 fine, don't try to query it directly," and Materialized View is the
 concrete mechanism for what you query instead.
 
+![The pattern diagram](../diagrams/patterns/cqrs-and-materialized-views/01-the-pattern.svg)
+
 ```plantuml
 @startuml CQRS_Component
 skinparam shadowing false

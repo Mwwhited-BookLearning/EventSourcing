@@ -1,0 +1,18 @@
+@startuml
+autonumber
+actor "Ops / App Admin" as admin
+participant "Webhook Subscription Endpoint" as endpoint
+participant "Auth\n(webhooks:admin scope, illustrative)" as auth
+database "Event & Schema Store" as db
+
+admin -> endpoint: POST /webhooks/subscriptions\nBearer <JWT>\n{ appId, targetUrl, eventTypes: [...], signingSecret? }
+endpoint -> auth: validate webhooks:admin scope
+alt missing scope
+  auth --> admin: 403
+else scope present
+  endpoint -> endpoint: generate SigningSecret if omitted;\ncompute FixedClaimsSnapshot from the registering\ncaller's own current claims, ONCE, now (ADR-060 --\nsame "fixed for the connection's lifetime" rule\nADR-009 already states for a Follow connection)
+  endpoint -> db: INSERT WebhookSubscription\n{ SubscriptionId, AppId, TargetUrl, SigningSecret,\n  PreviousSigningSecret: null, EventTypes,\n  FixedClaimsSnapshot, Active: true, RegisteredAt }
+  endpoint -> db: INSERT WebhookDeliveryCursor\n{ SubscriptionId, LastDeliveredSequenceNumber: 0 }
+  endpoint --> admin: 201 { subscriptionId, signingSecret }\n(secret shown once at creation, same as most\nreal webhook providers -- not re-displayed later)
+end
+@enduml

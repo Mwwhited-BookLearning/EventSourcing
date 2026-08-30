@@ -1,0 +1,28 @@
+@startuml
+hide circle
+skinparam linetype ortho
+
+entity "StoredEvent" as event {
+  * SequenceNumber : bigint <<PK>>
+  --
+  EventId : uuid <<unique>>
+  EventType : string
+  SchemaVersion : int
+  Payload : text
+  OccurredAt : datetimeoffset
+}
+
+entity "EventParent" as parent {
+  * ChildEventId : uuid <<PK, FK>>
+  * ParentEventId : uuid <<PK>>
+}
+
+event ||--o{ parent : "ChildEventId -- real FK,\nthe child always exists at insert time"
+event ..o{ parent : "ParentEventId -- NO DB FK;\nmust tolerate dangling refs under\nPermissive mode (see ADR-005)"
+
+note right of parent
+  Composite PK (ChildEventId, ParentEventId).
+  Index on ParentEventId supports descendant
+  traversal (find children of X).
+end note
+@enduml

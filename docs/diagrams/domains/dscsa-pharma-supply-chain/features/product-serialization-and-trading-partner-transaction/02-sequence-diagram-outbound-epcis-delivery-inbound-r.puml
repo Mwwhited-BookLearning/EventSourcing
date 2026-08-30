@@ -1,0 +1,23 @@
+@startuml
+autonumber
+participant "Gs1EpcisAdapter (outbound)\n(IInterchangeFormatAdapter, ADR-072)" as adapterOut
+participant "WebhookOutbox\n(ADR-060)" as webhookOutbox
+participant "Gs1EpcisAdapter (inbound)\n(whl-7's tenant, ADR-072)" as adapterIn
+participant "Batch Publish Endpoint\n(whl-7's tenant)" as whBatch
+database "Wholesaler's Event Log\n(AppId: whl-7)" as whEventLog
+database "Manufacturer's Access Log\n(AppId: mfr)" as accessLog
+
+[-> adapterOut: TradingPartnerTransaction "t-88" published (previous diagram)
+adapterOut -> adapterOut: transform to a GS1 EPCIS ObjectEvent\n(epcList, action: "OBSERVE", bizStep: "shipping",\ndisposition: "in_transit", readPoint, bizLocation,\neventTime) -- ADR-072
+adapterOut -> webhookOutbox: enqueue delivery to whl-7's registered\nTargetUrl (WebhookSubscription, ADR-060)
+webhookOutbox -> adapterIn: HTTP POST (EPCIS ObjectEvent JSON,\nHMAC-signed per Standard Webhooks, ADR-060)
+adapterIn -> adapterIn: transform the EPCIS ObjectEvent back into\nthis framework's registered "UnitReceived" schema (ADR-072)
+adapterIn -> whBatch: POST /publish/batch\n(one UnitReceived submission per epc in epcList, ADR-072)
+whBatch -> whEventLog: INSERT StoredEvent "UnitReceived" per unit\n(EntityId "whl-7:SerializedUnit:{ndc}-{serial}",\nAuthorityStatus: "pending_review" -- ADR-035,\npending reconciliation against mfr's own serialization record)
+== a suspect-product investigation later needs manufacturer verification (VRS-shaped) ==
+alt wholesaler queries the manufacturer's original transaction for verification
+  adapterIn -> accessLog: INSERT AccessLogEntry\n(ReaderActorId: whl-7's service identity, ReaderTrustBasis: "Authoritative",\nAction: "query", ResourceRef: "mfr:Transaction:t-88") (ADR-045)
+  accessLog --> adapterIn: entry recorded -- T3 transaction history\nis now itself an auditable read
+else no cross-tenant read needed\n(T3 data already travelled inside the EPCIS payload itself)
+end
+@enduml

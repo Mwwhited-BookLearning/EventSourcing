@@ -1,0 +1,35 @@
+@startuml
+object "ApplicantIdentity\nkyc:applicantidentity:applicant-1001" as applicant
+
+object "IdentityDocumentUploaded\nExtractedDocumentNumber (masked)" as doc
+object "BiometricCaptureRecorded\nLivenessCheckResult" as biometric
+object "IdentityClaimSubmitted\nClaimedLegalName, DateOfBirth (masked)\nWorkflow A" as claim
+object "SanctionsScreeningPerformed\nMatchFound, MatchedName (masked)\nWorkflow C" as screening
+object "SarFilingRecorded\nNarrative (masked)\nstep-up authenticated\nWorkflow C" as sar
+
+doc --> applicant : folds onto (Partial)
+biometric --> applicant : folds onto (Partial)
+claim --> applicant : folds onto (Partial)
+screening --> applicant : folds onto (Partial)
+sar --> applicant : folds onto (Partial)
+
+screening ..> sar : TargetScreeningEventId\n(a confirmed match escalates)
+
+object "Relying Party" as rp
+rp ..> claim : Workflow B reveals THIS event's\nown ClaimedLegalName, via a\ndelegation scoped to this one entity
+
+note right of applicant
+  ADR-039's one-event-type-per-instance
+  model means no single client-web
+  instance ever sees every field above
+  at once -- each playbook's own
+  Detail view only shows whichever
+  ONE event type that instance
+  subscribes to, even though all five
+  fold onto this same authoritative
+  entity server-side (see each
+  playbook's own "Sequence Diagram"
+  section for exactly which fields
+  render where).
+end note
+@enduml

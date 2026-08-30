@@ -1,0 +1,12 @@
+@startsalt
+{
+  { "alert-77 -- Neurology Review (Live View, isAuthoritative: false)" }
+  ..
+  { "Subject" | "S-0091" } | { "Finding" | "SSEP amplitude drop >50%, LLE" } | { "Severity" | "Urgent" }
+  { "Acknowledged by" | "tech-4, 09:15:10 (within window)" }
+  { "^[waveform: ionm-s0091-full, full fidelity]^" }
+  ..
+  { [ Sign off: Approve ] | [ Sign off: Reject ] }
+  "Sign-off requires step-up authentication (RFC 9470) -- ADR-066,\nreusing the exact same authorityDecision mechanism as adverse-event review."
+}
+@endsalt

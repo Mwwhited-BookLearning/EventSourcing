@@ -1,0 +1,21 @@
+@startuml
+autonumber
+actor "Litigation reviewer\n(no access to the live system at all)" as reviewer
+participant "offline-player.html\n(vite-plugin-singlefile build\nof mvvm-client.md's Vue playback\ncomponent, ADR-068)" as player
+
+reviewer -> player: double-click offline-player.html\n(no server, no install, no network)
+player -> player: on load: recompute ChainHash sequence\nfrom the embedded bundle's event data alone,\nand recompute the manifest hash the same way (ADR-019 formula)
+alt every exported event's fields are unmasked in the bundle\n(exporting actor held every relevant claim)
+  player --> reviewer: "Fully independently verified" --\nexact re-derivation, no reliance on the\nexporting party's own testimony
+else at least one field was masked because the EXPORTING\nactor themselves lacked its requiredClaim
+  player -> player: PayloadHash/ChainHash for that event were computed\nONCE, at original publish time, over the real stored bytes --\na {"masked": ...} wrapper is not those bytes, so re-hashing\nthe bundle's redacted content cannot reproduce them (ADR-068)
+  player -> player: still verify STRUCTURAL chain linkage --\neach event's own ChainHash/PayloadHash (envelope metadata,\nunaffected by masking) correctly derives from the prior\nevent's, per ADR-019's formula
+  player --> reviewer: "Verified except N masked fields --\nchain linkage intact" -- NOT an undifferentiated pass/fail
+end
+note right of player
+  No masking/claims logic runs in the player itself
+  (ADR-068) -- enforcement already happened once, at
+  export time; the player renders exactly what's in
+  the bundle, masked/erased branches included verbatim.
+end note
+@enduml

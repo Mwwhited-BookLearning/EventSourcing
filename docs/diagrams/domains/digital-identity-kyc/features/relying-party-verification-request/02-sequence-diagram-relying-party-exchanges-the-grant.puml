@@ -1,0 +1,35 @@
+@startuml
+autonumber
+participant "Relying party\n(acme-bank)" as bank
+participant "EventStore.DevIdp\n(OAuth Token Exchange, ADR-036)" as idp
+participant "GraphQL Gateway\n(ADR-037)" as graphql
+participant "IPayloadMasker\n(ADR-009)" as masker
+participant "AccessLog writer\n(ADR-045)" as accessLog
+database "Entity Store\n(authoritative)" as entityStore
+database "AccessLog" as accessLogDb
+
+bank -> idp: POST /oauth/token\ngrant_type=urn:ietf:params:oauth:grant-type:token-exchange\nsubject_token=<UCAN delegation invocation>\nsubject_token_type=urn:your-org:token-type:ucan\nrequested_token_type=urn:ietf:params:oauth:token-type:jwt
+idp -> idp: validate UCAN delegation chain, rooted in customer's own DID\n(self-verifying -- capped at what the customer holds, ADR-043)
+alt delegation chain valid, not expired, not revoked
+  idp --> bank: 200 { access_token (JWT) }\nclaims: "identity:verification-status:read",\nentityScope: "kyc:ApplicantIdentity:applicant-1001"
+  bank -> graphql: QUERY { entity(id: "kyc:ApplicantIdentity:applicant-1001") {\n  verificationStatus, did, claimedLegalName, dateOfBirth } }\nBearer <JWT>
+  graphql -> graphql: check RequiredClaims (Read direction) + entityScope match\n(caller's claim applies to exactly this EntityId -- ADR-043/ADR-008/ADR-050)
+  graphql -> entityStore: SELECT EntityStoreRow WHERE EntityId = "kyc:ApplicantIdentity:applicant-1001"
+  entityStore --> graphql: Data { VerificationStatus: "accepted", Did, ClaimedLegalName, DateOfBirth }
+  graphql -> masker: Mask(schema, data, hasClaim)
+  masker -> masker: caller holds "identity:verification-status:read"\n(unlocks VerificationStatus, Did) but NOT "identity:pii-read"\n(ClaimedLegalName/DateOfBirth stay masked, ADR-009)
+  masker --> graphql: { verificationStatus: {value: "accepted"}, did: {value: "did:key:z6Mkf7..."},\n  claimedLegalName: {masked: "***"}, dateOfBirth: {masked: "***"} }
+  graphql --> bank: 200 { entity: { ...above } }
+  graphql -> accessLog: log this read (fire-and-forget, ADR-045)
+  accessLog -> accessLogDb: INSERT AccessLogEntry\n(ReaderActorId: "acme-bank", ReaderTrustBasis: "Attested",\n GrantRef: "grant-7001", ViewAccessed: "Authoritative",\n ResourceRef: "kyc:ApplicantIdentity:applicant-1001", Action: "query")
+else delegation expired or revoked
+  idp --> bank: 400 invalid_grant
+  note right of idp
+    No GraphQL query is ever reached, so no AccessLogEntry
+    is written for this attempt -- ADR-045 logs READS, not
+    failed exchange attempts (ADR-043's own revocation-check
+    requirement: still-unexpired-but-revoked must still fail
+    here, the same operational duty ADR-040's tickets have).
+  end note
+end
+@enduml

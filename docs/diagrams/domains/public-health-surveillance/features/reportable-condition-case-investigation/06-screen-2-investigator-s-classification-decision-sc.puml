@@ -1,0 +1,14 @@
+@startsalt
+{
+  { "case-9001 -- Case Classification (Live View, isAuthoritative: false)" }
+  ..
+  { "Condition Code" | "A36.9 (Diphtheria)" }
+  { "Case Definition" | "Confirmed: culture-positive C. diphtheriae from a clinical specimen" }
+  { "Patient Identifier" | "***"  ( masked -- no phi:view claim ) }
+  { "Jurisdiction" | [ us-east ] }
+  ..
+  "Classification:" | { ^Confirmed^ | Probable | Suspect | Not a Case }
+  ..
+  [ Submit classification ] | [ View change history ] | [ View contact tracing links ]
+}
+@endsalt

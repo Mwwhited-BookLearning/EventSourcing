@@ -1,0 +1,59 @@
+@startuml
+autonumber
+actor "Policyholder / Legal" as legal
+actor "Claims Compliance Officer" as officer
+participant "GraphQL Gateway\n(lineage export + playback resolvers, ADR-068)" as gateway
+participant "IEventLineageQueryProvider\n(ADR-005)" as lineage
+database "Event Log" as eventLog
+participant "Manifest Builder\n(SHA-256 over ordered ChainHash, ADR-019 reused)" as manifest
+
+legal -> officer: disputes claim "claim-9911"'s decision
+officer -> gateway: mutation disputeClaim(entityId: "acme-ubi:Claim:claim-9911")
+gateway -> eventLog: INSERT StoredEvent (ClaimDisputed, parented off the decision event)
+== compliance officer requests a lineage export for the dispute file ==
+officer -> gateway: lineageExport(entityId: "acme-ubi:Claim:claim-9911")
+gateway -> lineage: walk ancestors of "acme-ubi:Claim:claim-9911"\n(ClaimFiled -> TripScored -> TelemetryPointer window on veh-773-obd2)
+lineage -> eventLog: recursive CTE, cycle-safe (event-chains.md)
+lineage --> gateway: full causally-connected event set
+gateway -> gateway: apply RequiredClaims (Read direction) + masking (ADR-008/009/050/057) --\nsame read-path enforcement as any other query, no bypass (ADR-068)
+alt every field in the export set is unmasked for this officer's claims
+  gateway -> manifest: build NDJSON + manifest\n(SHA-256 over ordered original ChainHash values +\nexported-by ActorId, exported-at)
+  manifest --> officer: portable bundle
+  note right of manifest
+    Offline player can independently recompute the
+    ChainHash sequence AND the manifest hash from the
+    embedded bytes alone -- full self-verification,
+    no live testimony about this system's internals
+    required (ADR-068, FRE 902(13)/(14)).
+  end note
+else the officer lacks a claim for one exported field\n(e.g. the driver's precise GPS trace, classified PII)
+  gateway -> gateway: substitute {"masked": ...} wrapper for that field\nbefore bundling (ADR-009, applied identically to any other read)
+  gateway -> manifest: build NDJSON + manifest (masked field included as masked)
+  manifest --> officer: portable bundle, one event's field masked
+  note right of manifest
+    The player can still verify the chain's STRUCTURAL
+    linkage (each event's own ChainHash/PayloadHash
+    correctly derives from the prior event's -- envelope
+    metadata, unaffected by masking) but cannot
+    independently re-derive that one event's original
+    hash from the masked field's content -- a genuine,
+    named limitation (ADR-068), not glossed over.
+  end note
+end
+== reconstructing "what did the carrier know, and when" ==
+officer -> gateway: playbackAsOf(entityId: "acme-ubi:Claim:claim-9911", asOfSequenceNumber: T)
+gateway -> eventLog: fold events WHERE SequenceNumber <= T,\nIN ARRIVAL ORDER (SequenceNumber order) -- no logical-time correction
+note right of gateway
+  The literal opposite of ADR-029's valid-time-corrected
+  fold that the authoritative EntityStoreRow uses --
+  the point here is showing what an observer actually
+  saw at each step, corrections included, not the
+  hindsight-smoothed picture (ADR-068).
+end note
+loop VCR-style step through consecutive SequenceNumbers
+  alt this step is a LateArrivalFlag'd TripScored correction\n(e.g. a delayed telemetry batch revises RiskScore)
+    gateway -> gateway: reconstruction visibly updates RiskScoreAtFiling\nright here -- "recovered in place," not smoothed away
+  end
+  gateway --> officer: reconstructed state as of this SequenceNumber
+end
+@enduml

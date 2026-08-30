@@ -45,6 +45,8 @@ entity's own result) is exactly what this ADR specified.
 
 ## Sequence diagram — uploading and linking an attachment
 
+![Sequence diagram — uploading and linking an attachment](../diagrams/features/binary-attachments/01-sequence-diagram-uploading-and-linking-an-attachme.svg)
+
 ```plantuml
 @startuml BinaryAttachments_Upload_Sequence
 autonumber
@@ -89,6 +91,8 @@ combinations may be set in the same publish call, each producing one
 
 ## Sequence diagram — browsing via GraphQL (built) and retrieving via a Range GET (built)
 
+![Sequence diagram — browsing via GraphQL (built) and retrieving via a Range GET (built)](../diagrams/features/binary-attachments/02-sequence-diagram-browsing-via-graphql-built-and-re.svg)
+
 ```plantuml
 @startuml BinaryAttachments_Browse_Sequence
 autonumber
@@ -126,6 +130,8 @@ querying the entity they're linked to, exactly the access shape
 mechanism, not a second implementation, and is fully built today.
 
 ## Data model (ER diagram)
+
+![Data model (ER diagram)](../diagrams/features/binary-attachments/03-data-model-er-diagram.svg)
 
 ```plantuml
 @startuml BinaryAttachments_ER

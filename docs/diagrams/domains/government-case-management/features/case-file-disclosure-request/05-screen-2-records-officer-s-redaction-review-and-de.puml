@@ -1,0 +1,18 @@
+@startsalt
+{
+  { "Public Records Request  r-1  --  Case gov:CaseFile:c-1" }
+  ..
+  Requester: "J. Alvarez"          | Requested scope: "Full case file"
+  ..
+  | Field         | Value (reviewer view)          | Exempt? | Exemption code              |
+  | ApplicantName | "Maria Alvarez"                 | [ ]     | .                            |
+  | SSN           | "123-45-6789"                    | [X]     | "(b)(6) personal privacy"    |
+  | ProgramNotes  | "Approved for SNAP tier 2"         | [ ]     | .                            |
+  ..
+  Meaning: "reviewed"     Acr satisfied: [X]
+  ..
+  ( ) Approve  ( ) Partially Approve  (X) Deny
+  ..
+  [ Submit determination ]
+}
+@endsalt

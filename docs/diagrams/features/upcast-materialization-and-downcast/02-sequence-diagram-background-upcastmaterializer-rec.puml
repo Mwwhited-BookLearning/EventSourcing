@@ -1,0 +1,25 @@
+@startuml
+autonumber
+actor "Platform Operator" as operator
+participant "Registry\n(schema-registry.md)" as registry
+participant "RouterWorker\n(Router, ADR-023 -- ReconcileBacklogAsync\nruns every tick, not just on registration)" as router
+participant "UpcastChain\n(ADR-018)" as upcastChain
+participant "IUpcastExpressionEvaluator\n(CEL by default, ADR-053)" as evaluator
+participant "EventAppender\n(shared append primitive, not PublishEndpoint)" as appender
+database "Event Log" as eventLog
+
+operator -> registry: PUT /registry/OrderPlaced\n{ ..., upcastFromPrevious: "Amount, 'Unknown' as Status" }
+note right: registration itself is schema-registry.md's own sequence --\nshown here only as the trigger this item eventually catches up to
+...next Router tick, asynchronously...
+router -> eventLog: SELECT EventTypeDefinitions WHERE IsActive AND Version > 1
+router -> eventLog: SELECT Events WHERE EventKind = Original,\nSchemaStatus = conformant, SchemaVersion < active Version,\nnot yet materialized
+loop for each matching event\n(EventKind: Original, SchemaVersion: 1, not yet materialized)
+  eventLog --> router: StoredEvent { EventId, SchemaVersion: 1,\nPayload: { OrderId: "o-2", Amount: 17.50 } }
+  router -> upcastChain: upcast(payload, fromVersion: 1, toVersion: 2)
+  upcastChain -> evaluator: evaluate "Amount, 'Unknown' as Status"
+  evaluator --> upcastChain: { OrderId: "o-2", Amount: 17.50, Status: "Unknown" }
+  upcastChain --> router: upcasted result, valid against v2 schema
+  router -> appender: append materialization\n(EventKind: UpcastMaterialization, SchemaVersion: 2,\nMaterializationOfEventId: <o-2's original EventId>)
+  appender -> eventLog: INSERT StoredEvent -- same hash-chain-aware\nappend primitive PublishEndpoint itself uses,\nbut called directly, bypassing RequiredClaims re-checks
+end
+@enduml

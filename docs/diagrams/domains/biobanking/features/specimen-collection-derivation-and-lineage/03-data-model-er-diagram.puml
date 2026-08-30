@@ -1,0 +1,67 @@
+@startuml
+hide circle
+skinparam linetype ortho
+
+entity "StoredEvent (SpecimenCollected)" as collected {
+  * SequenceNumber : bigint <<PK>>
+  --
+  EventId : uuid <<unique>>
+  EntityId : string  ' biobank:Specimen:spec-001
+  EventType : string  ' "SpecimenCollected"
+  ActorId : string  ' verified collection staff (ADR-064)
+  Payload : text  ' SpecimenType, DonorReference, CollectionDate
+}
+
+entity "StoredEvent (SpecimenDerived)" as derived {
+  * SequenceNumber : bigint <<PK>>
+  --
+  EventId : uuid <<unique>>
+  EntityId : string  ' biobank:Specimen:spec-001-dna
+  EventType : string  ' "SpecimenDerived"
+  ActorId : string
+  Payload : text  ' SpecimenType, DerivedFrom, CollectionDate
+}
+
+entity "EventParent" as parent {
+  * ChildEventId : uuid <<PK, FK>>
+  * ParentEventId : uuid <<PK>>
+}
+
+entity "SpecimenEntityStoreRow" as row {
+  * EntityId : string <<PK>>
+  --
+  EntityType : string  ' "Specimen"
+  SpecimenType : string  ' "Blood" | "Tissue" | "DNA Extract" | ...
+  DonorReference : masked<string>  ' value/masked wrapper, ADR-009
+  CollectionDate : datetimeoffset
+  DerivedFrom : string?  ' denormalized parent EntityId, convenience only --
+                          ' the EventParent DAG above is the source of truth
+  Version : bigint
+}
+
+entity "AccessGrant (accessGrant event, folded)" as grant {
+  * EntityId : string <<PK>>  ' biobank:AccessGrant:grant-1
+  --
+  GranterActorId : string
+  GranteeDid : string  ' did:key:...
+  DelegatedClaim : string  ' e.g. "clearance:specimen-data"
+  EntityScope : string  ' the one Specimen EntityId this grant applies to
+  ExpiresAt : datetimeoffset
+  RevokedAt : datetimeoffset?
+}
+
+derived --> parent : "ChildEventId"
+collected --> parent : "ParentEventId\n(SpecimenDerived's parent, ADR-005)"
+collected ..> row : "folds into (ADR-021)"
+derived ..> row : "folds into a second row,\nDerivedFrom points back at the source"
+grant ..> row : "EntityScope restricts a delegated\nclaim to exactly this EntityId (ADR-043)"
+
+note right of row
+  DonorReference is x-masking classified
+  (ADR-009) -- an ordinary claim-holder
+  (biobank staff) sees the real value,
+  a scoped external researcher sees
+  {"masked": "***"}, as shown in the
+  delegated-access sequence diagram above.
+end note
+@enduml

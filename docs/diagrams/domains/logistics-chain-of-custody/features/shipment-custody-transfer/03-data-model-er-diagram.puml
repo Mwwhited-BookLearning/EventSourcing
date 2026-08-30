@@ -1,0 +1,63 @@
+@startuml
+hide circle
+skinparam linetype ortho
+
+entity "StoredEvent" as event {
+  * SequenceNumber : bigint <<PK>>
+  --
+  EventId : uuid <<unique>>
+  EntityId : string <<FK>>
+  EventType : string
+  Payload : text
+  PayloadHash : string
+  ChainHash : string
+  ActorId : string
+}
+
+entity "EventParent" as parent {
+  * ChildEventId : uuid <<PK, FK>>
+  * ParentEventId : uuid <<PK>>
+}
+
+entity "ShipmentEntityStoreRow" as shipment {
+  * EntityId : string <<PK>>
+  --
+  Version : bigint
+  Data : text
+  LastAppliedOriginId : string
+}
+
+entity "PeerSyncCursor" as cursor {
+  * PeerId : string <<PK>>
+  --
+  LastReceivedSequenceNumber : bigint
+  LastAckedSequenceNumber : bigint
+  LastSyncAttemptAt : datetimeoffset
+  LastSyncSuccessAt : datetimeoffset
+}
+
+event ||--o{ parent : "ChildEventId -- real FK,\nthe child always exists at insert time"
+event ..o{ parent : "ParentEventId -- NO db FK;\nmust tolerate dangling refs under\nPermissive mode (ADR-005)"
+event "*" --> "1" shipment : "folds into, in OccurredAt order\n(ADR-021)"
+cursor ..> event : "tracks per-peer replication progress\nover this same Event Log (ADR-033) --\nno FK, a resumption bookmark only"
+
+note right of shipment
+  One row per EntityId, per site.
+  Data holds CURRENT state only
+  (CurrentCustodian, CurrentLocation,
+  HandoffCount, ExceptionCount) --
+  the full handoff/exception history is
+  read from the Event Log directly
+  (entityHistory) or the Lineage API
+  (parents/children/ancestors/descendants),
+  never duplicated into Data.
+end note
+
+note bottom of cursor
+  One row per remote peer this site
+  gossip-syncs with (ADR-033) --
+  durable, not an in-memory queue,
+  so an unclean restart resumes
+  exactly where sync left off.
+end note
+@enduml

@@ -57,6 +57,8 @@ Out of scope, deliberately not re-derived here:
 
 ## Sequence diagram — institution issues a diploma with an attached PDF
 
+![Sequence diagram — institution issues a diploma with an attached PDF](../../../diagrams/domains/education-credentials/features/credential-issuance-and-verification/01-sequence-diagram-institution-issues-a-diploma-with.svg)
+
 ```plantuml
 @startuml Credential_Issuance_Sequence
 autonumber
@@ -104,6 +106,8 @@ record for its own issuance, regardless of who the credential is about.
 
 ## Sequence diagram — a relying party verifies a credential, two branches
 
+![Sequence diagram — a relying party verifies a credential, two branches](../../../diagrams/domains/education-credentials/features/credential-issuance-and-verification/02-sequence-diagram-a-relying-party-verifies-a-creden.svg)
+
 ```plantuml
 @startuml Credential_Verification_Sequence
 autonumber
@@ -147,6 +151,8 @@ carries whatever the issuer chose to disclose into it at issuance time,
 not a live re-query of the record.
 
 ## Data model (ER diagram)
+
+![Data model (ER diagram)](../../../diagrams/domains/education-credentials/features/credential-issuance-and-verification/03-data-model-er-diagram.svg)
 
 ```plantuml
 @startuml CredentialIssuance_ER
@@ -281,6 +287,8 @@ public class AccessGrantPayload
 
 ## State diagram — credential lifecycle
 
+![State diagram — credential lifecycle](../../../diagrams/domains/education-credentials/features/credential-issuance-and-verification/04-state-diagram-credential-lifecycle.svg)
+
 ```plantuml
 @startuml Credential_Lifecycle_State
 [*] --> Issued
@@ -310,6 +318,8 @@ themselves (`ADR-057`, `ADR-019`).
 
 ### Screen 1: Registrar's diploma issuance form
 
+![Screen 1: Registrar's diploma issuance form diagram](../../../diagrams/domains/education-credentials/features/credential-issuance-and-verification/05-screen-1-registrar-s-diploma-issuance-form.svg)
+
 ```plantuml
 @startsalt
 {
@@ -337,6 +347,8 @@ belongs to the registrar; the employer's own verification screens
 entirely.
 
 ### Screen 2: Employer/relying-party's initial verification view
+
+![Screen 2: Employer/relying-party's initial verification view diagram](../../../diagrams/domains/education-credentials/features/credential-issuance-and-verification/06-screen-2-employer-relying-party-s-initial-verifica.svg)
 
 ```plantuml
 @startsalt
@@ -369,6 +381,8 @@ leads to Screen 3 once the registrar issues the grant and the employer
 exchanges it for a bearer JWT.
 
 ### Screen 3: Employer's delegated-access result screen
+
+![Screen 3: Employer's delegated-access result screen diagram](../../../diagrams/domains/education-credentials/features/credential-issuance-and-verification/07-screen-3-employer-s-delegated-access-result-screen.svg)
 
 ```plantuml
 @startsalt

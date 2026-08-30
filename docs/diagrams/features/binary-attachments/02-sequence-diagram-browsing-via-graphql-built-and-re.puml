@@ -1,0 +1,26 @@
+@startuml
+autonumber
+actor "Consuming System" as follower
+participant "GraphQL Gateway" as graphql
+participant "Attachment API" as attachApi
+database "Attachment & Entity Store" as db
+
+follower -> graphql: QUERY { entity_myapp_patient(id: "patient-1") {\n  attachments { contentHash, filename, mimeType, sizeBytes } } }
+graphql -> db: SELECT AttachmentRef JOIN Attachment\nWHERE EntityId = "myapp:patient:patient-1"
+db --> graphql: rows (ContentHash, FileName, MimeType, SizeBytes, RequiredReadClaim)
+graphql -> graphql: filter out any row whose RequiredReadClaim\nthe caller doesn't hold (silent exclusion, not Forbidden)
+graphql --> follower: 200 { entity_myapp_patient: { attachments: [ {contentHash, filename, ...}, ... ] } }
+note right of graphql
+  EntityQueryTypeModule (src/EventStore.GraphQL/EntityQueryTypeModule.cs)
+  -- a per-(AppId, EntityType) dynamically-named field, the same
+  per-type dynamic-schema convention FollowSubscriptionTypeModule
+  already established, not one single literal "entity(id)" root
+  field as originally envisioned. The attachments field itself is
+  the exact nested-list access shape ADR-032's Decision names.
+end note
+
+follower -> attachApi: GET /attachments/{contentHash}\nRange: bytes=0-999
+attachApi -> db: SELECT Bytes FROM Attachment WHERE ContentHash = :ContentHash
+db --> attachApi: full byte[]
+attachApi --> follower: 206 Partial Content\nContent-Range: bytes 0-999/SizeBytes
+@enduml

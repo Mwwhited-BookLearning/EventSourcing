@@ -1,0 +1,22 @@
+@startuml
+autonumber
+participant "Site A (eu-west)\nPeer Sync Outbox" as aOutbox
+participant "Site A\nPeer Sync Service" as aSync
+participant "Site B (eu-west)" as bSite
+participant "Site C (us-east)" as cSite
+
+note over aOutbox
+  AppId "eu-tenant" has AllowedRegions: ["eu-west"] (ADR-061).
+  Site A, Site B, and Site C are all configured gossip peers,
+  tagged eu-west/eu-west/us-east respectively.
+end note
+aSync -> aOutbox: read events queued for sync, for AppId "eu-tenant"
+aOutbox -> aOutbox: filter candidate peers to those tagged\nwith an AllowedRegions region ("eu-west")
+aSync -> bSite: push batch (Site B is tagged "eu-west" -- allowed)
+note over aSync, cSite
+  Site C is tagged "us-east", not in AllowedRegions --
+  "eu-tenant"'s events are never included in any batch
+  bound for Site C. This is a filtering rule at the
+  existing outbox, not a rejected/failed sync attempt.
+end note
+@enduml

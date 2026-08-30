@@ -1,0 +1,31 @@
+@startuml
+autonumber
+actor "Applicant client\n(ordinary app-session JWT,\nADR-006 -- no DID yet)" as applicant
+participant "Attachment API" as attachApi
+participant "PublishEndpoint\n(Inbox)" as inbox
+participant "SchemaValidationService" as validator
+participant "EventAppender" as appender
+database "Attachment & Event Store" as db
+
+applicant -> attachApi: POST /attachments\n(raw bytes of passport scan, MimeType: "image/jpeg")
+attachApi -> attachApi: ContentHash = SHA-256(bytes)
+attachApi -> db: INSERT Attachment (ContentHash, Bytes, MimeType, SizeBytes, UploadedAt)\n(ADR-032 -- deduplicated if already seen)
+attachApi --> applicant: 201 { contentHash: "h-passport-1001" }
+
+applicant -> inbox: POST /publish/IdentityDocumentUploaded\n{ payload: { ApplicantId: "applicant-1001", DocumentType: "passport",\n  ExtractedDocumentNumber: "P-889231" },\n  entityId: "kyc:ApplicantIdentity:applicant-1001",\n  attachmentRefs: [{ contentHash: "h-passport-1001",\n    entityId: "kyc:ApplicantIdentity:applicant-1001", linkToThisEvent: true }] }
+inbox -> validator: validate(payload, schema)
+validator --> inbox: valid; ExtractedDocumentNumber flagged x-masking (ADR-009)
+inbox -> db: SELECT ContentHash FROM Attachment WHERE ContentHash = "h-passport-1001"
+inbox -> appender: append(StoredEvent, AttachmentRef row)
+appender -> db: INSERT StoredEvent (AuthorityStatus: "accepted" -- ordinary\nauthenticated publish, ADR-042 default);\nINSERT AttachmentRef (ContentHash, EntityId, EventId)
+appender --> applicant: 202 { status: "received", authorityStatus: "accepted" }
+
+note over applicant, db
+  Repeated identically for the proof-of-address letter
+  (DocumentType: "proof_of_address", its own ContentHash) --
+  not re-drawn. Both attachments end up linked BOTH generally
+  to applicant-1001 (entityId set) AND to the specific event
+  that uploaded them (linkToThisEvent, ADR-032's "both,
+  independently" rule) -- discoverable either way later.
+end note
+@enduml

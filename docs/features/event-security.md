@@ -21,6 +21,8 @@ any of the claim-checking logic this doc is about.
 
 ## Sequence diagram — publish gated by RequiredClaims (Publish direction)
 
+![Sequence diagram — publish gated by RequiredClaims (Publish direction)](../diagrams/features/event-security/01-sequence-diagram-publish-gated-by-requiredclaims-p.svg)
+
 ```plantuml
 @startuml EventSecurity_Publish_Sequence
 autonumber
@@ -50,6 +52,8 @@ end
 
 ## Sequence diagram — follow gated by RequiredClaims (Read direction)
 
+![Sequence diagram — follow gated by RequiredClaims (Read direction)](../diagrams/features/event-security/02-sequence-diagram-follow-gated-by-requiredclaims-re.svg)
+
 ```plantuml
 @startuml EventSecurity_Follow_Sequence
 autonumber
@@ -76,6 +80,8 @@ end
 ```
 
 ## Sequence diagram — lineage: per-node visibility ("you can only see what you can see")
+
+![Sequence diagram — lineage: per-node visibility ("you can only see what you can see")](../diagrams/features/event-security/03-sequence-diagram-lineage-per-node-visibility-you-c.svg)
 
 ```plantuml
 @startuml EventSecurity_Lineage_Sequence
@@ -111,6 +117,8 @@ lacking access to one ancestor never hides a sibling ancestor, a
 descendant, or anything else the caller has rights to.
 
 ## Data model (ER diagram)
+
+![Data model (ER diagram)](../diagrams/features/event-security/04-data-model-er-diagram.svg)
 
 ```plantuml
 @startuml EventSecurity_ER

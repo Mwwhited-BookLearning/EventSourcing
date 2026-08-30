@@ -1,0 +1,9 @@
+@startsalt
+{
+  { "ae-1042 -- Adverse Event Record (Entity Store, isAuthoritative: true)" }
+  ..
+  { "Subject" | "S-0091" } | { "Severity" | "Severe" } | { "SAE" | "true" }
+  { "AuthorityStatus" | "accepted" }
+  { "Signed off by" | "pi-7, 2026-07-29 (step-up verified, Meaning: approved)" }
+}
+@endsalt

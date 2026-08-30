@@ -1,0 +1,14 @@
+@startuml
+autonumber
+actor User
+participant "View\n(structure + style, no logic)" as view
+participant "ViewModel\n(bindable state + commands)" as vm
+participant "Model\n(domain state, no UI knowledge)" as model
+
+User -> view: interacts (click, input)
+view -> vm: dispatch command
+vm -> model: read/mutate
+model --> vm: state change
+vm --> view: bindable property changes (reactive)
+view -> view: re-render bound elements only
+@enduml

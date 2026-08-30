@@ -1,0 +1,46 @@
+@startuml
+hide circle
+skinparam linetype ortho
+
+entity "StoredEvent" as event {
+  * SequenceNumber : bigint <<PK>>
+  --
+  EventId : uuid <<unique>>
+  EntityId : string
+  EventType : string
+  SchemaVersion : int
+  EventKind : enum {Original, UpcastMaterialization}
+  MaterializationOfEventId : uuid?
+  Payload : text
+  OccurredAt : datetimeoffset
+}
+
+entity "EventTypeDefinition" as etd {
+  * AppId : string <<PK>>
+  * Name : string <<PK>>
+  * Version : int <<PK>>
+  --
+  IsActive : bool
+  UpcastFromPrevious : string?
+  DowncastToPrevious : string?
+}
+
+event "0..1" --> "1" event : "MaterializationOfEventId -> EventId\n(soft reference, set only when EventKind =\nUpcastMaterialization; ADR-027)"
+event "*" ..> "1" etd : "SchemaVersion resolves (AppId, EventType, Version)\n-- soft, not a DB FK (same posture as\nStoredEvent's other registry references)"
+
+note right of event
+  Fold (ADR-021, entity-concept.md) reads only rows
+  where EventKind = Original. UpcastMaterialization
+  rows are never in the fold step's input set at all.
+end note
+
+note bottom of etd
+  UpcastFromPrevious drives UpcastChain (ADR-018),
+  materialized on success (ADR-027). DowncastToPrevious
+  drives DowncastChain (ADR-028), read-time only, never
+  materialized. Full column list (ChangeKind,
+  EntityIdField, RequiredClaims, ...) is in
+  ../data/schema-registry.md -- this diagram shows only
+  what this doc's own scenarios touch.
+end note
+@enduml

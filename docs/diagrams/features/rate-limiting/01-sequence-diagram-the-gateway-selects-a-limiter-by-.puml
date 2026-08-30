@@ -1,0 +1,41 @@
+@startuml
+autonumber
+actor "Caller (as AppId)" as caller
+participant "EventStore.Gateway\n(YARP, ADR-049)" as gateway
+participant "RateLimiter middleware\n(Microsoft.AspNetCore.RateLimiting)" as limiter
+participant "Backend service\n(behind the Gateway)" as backend
+
+caller -> gateway: request (as AppId, via whichever transport carries it -- auth.md)
+gateway -> limiter: evaluate partition key = AppId, policy = request kind
+alt POST /publish/{eventType} (Inbox)
+  limiter -> limiter: Token Bucket for this AppId's "publish" partition
+  alt tokens available (burst within bucket capacity)
+    limiter --> gateway: permit acquired
+    gateway -> backend: forward request
+    backend --> caller: 202 (ADR-023)
+  else bucket exhausted (sustained volume over the configured rate)
+    limiter --> gateway: permit denied
+    gateway --> caller: 429 Too Many Requests\nRetry-After: <seconds until next token>
+  end
+else GraphQL Subscription connect (Follow-style, ADR-037)
+  limiter -> limiter: Concurrency Limiter for this AppId's "subscriptions" partition
+  alt a connection slot is free
+    limiter --> gateway: permit acquired, held for connection lifetime
+    gateway -> backend: forward, open SSE stream (follow-subscribe.md)
+    backend --> caller: 200, stream open
+  else all concurrent slots for this AppId already in use
+    limiter --> gateway: permit denied
+    gateway --> caller: 429 Too Many Requests\nRetry-After: <hint -- close another\nconnection first, no bucket to replenish>
+  end
+else ordinary GraphQL query, or OpenAPI publish burst
+  limiter -> limiter: Sliding Window for this AppId's "query"/"publish-burst" partition
+  alt within the window's permit limit
+    limiter --> gateway: permit acquired
+    gateway -> backend: forward request
+    backend --> caller: 200/202
+  else window's permit limit exceeded
+    limiter --> gateway: permit denied
+    gateway --> caller: 429 Too Many Requests\nRetry-After: <seconds until window slides>
+  end
+end
+@enduml

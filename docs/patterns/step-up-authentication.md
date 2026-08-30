@@ -29,6 +29,8 @@ separation of concerns [OAuth 2.0](https://www.rfc-editor.org/rfc/rfc6749)
 already draws between "who you are" (the IdP's job) and "what you're
 allowed to do" (the resource server's job).
 
+![The pattern diagram](../diagrams/patterns/step-up-authentication/01-the-pattern.svg)
+
 ```plantuml
 @startuml StepUp_Sequence
 autonumber

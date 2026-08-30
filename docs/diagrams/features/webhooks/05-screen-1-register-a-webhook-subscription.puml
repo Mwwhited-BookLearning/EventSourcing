@@ -1,0 +1,13 @@
+@startsalt
+{
+  { "Register Webhook Subscription -- App 'demo'" }
+  ..
+  { "Target URL" | "^https://ops.example.com/hooks/order-events^" }
+  { "Event types" | [X] OrderPlaced [X] OrderShipped [ ] PatientAdmitted }
+  { "Signing secret" | ( ) Auto-generate ( ) Provide my own }
+  ..
+  "Claims snapshot (frozen at save, ADR-060): events:follow, clearance:none"
+  ..
+  { [ Cancel ] | [ Register Subscription ] }
+}
+@endsalt

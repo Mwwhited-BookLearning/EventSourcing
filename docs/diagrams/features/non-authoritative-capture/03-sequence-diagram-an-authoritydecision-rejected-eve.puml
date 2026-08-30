@@ -1,0 +1,47 @@
+@startuml
+autonumber
+actor "Reviewing Authority" as reviewer
+participant "Inbox Endpoint" as endpoint
+participant "Router" as router
+participant "AuthorityDecisionResolver" as resolver
+participant "SchemaRegistryClient" as registry
+participant "EventAppender" as appender
+database "Event & Schema Store" as db
+participant "Entity Store fold" as fold
+
+reviewer -> endpoint: POST /publish/authorityDecision\n{ payload: { targetEventId, decision: "rejected",\n  decidingActorId, reason } }
+endpoint -> appender: append(StoredEvent)
+appender -> db: INSERT StoredEvent (authorityDecision)
+appender --> reviewer: 202 { correlationId, status: "received", ... }
+... asynchronously ...
+router -> resolver: process authorityDecision event
+resolver -> db: SELECT StoredEvent WHERE EventId = targetEventId
+resolver -> registry: get EventTypeDefinition(target.EventType).RejectionBehavior
+alt RejectionBehavior = Annotate (default)
+  resolver -> db: UPDATE target StoredEvent\nSET AuthorityStatus = "rejected",\n    AuthorityDecisionRef = <this event's EventId>
+  resolver -> fold: rebuild this ONE entity from scratch,\nreplaying only its still-"accepted" events
+  fold -> db: UPDATE EntityStoreRow.Data (recomputed), Version, Hash
+  note right of resolver
+    Payload untouched -- only the DERIVED Entity Store
+    cache is recomputed (comparisons/authority-
+    rejection-behavior.md's targeted-rebuild refinement,
+    adopted as the real default 2026-08-12). The Event
+    Log itself is never touched; ConflictFlag/
+    LateArrivalFlag on each replayed event are never
+    reassigned -- they stay a permanent record of what
+    happened at that event's own original processing time.
+  end note
+else RejectionBehavior = Compensate
+  resolver -> db: UPDATE target StoredEvent\nSET AuthorityStatus = "rejected",\n    AuthorityDecisionRef = <this event's EventId>
+  resolver -> appender: append(compensating patch StoredEvent,\nsame EntityId/EventType, reverting affected properties)
+  appender -> db: INSERT StoredEvent (new SequenceNumber,\nExpectedVersion = current Entity Store Version)
+  appender -> fold: fold compensating patch normally
+  fold -> db: UPDATE EntityStoreRow.Data (reverted), Version++
+  note right of resolver
+    The compensating patch is a NEW event, never a
+    mutation of the rejected one -- the same
+    "corrections are additive" principle as
+    everywhere else in this design (ADR-009, ADR-024).
+  end note
+end
+@enduml

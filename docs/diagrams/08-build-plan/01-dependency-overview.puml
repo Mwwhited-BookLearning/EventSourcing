@@ -1,0 +1,202 @@
+@startuml
+state "External Services" as tierExternal {
+  state "Auth + Orchestration" as p5 #palegreen
+  state "SPIFFE/SPIRE Identity & API Gateway" as p23 #palegreen
+  state "Outbound Webhooks" as a10 #palegreen
+  state "Tenant Federation Mapping" as a12 #palegreen
+  state "Bulk Ingestion +\nInterchange Adapters" as a13 #palegreen
+  state "Sanctions Screening Seam" as a14 #palegreen
+  state "Signing Secret Rotation" as a16 #palegreen
+  state "RFC 3161 Timestamping" as a18 #palegreen
+}
+state "Persistence" as tierPersistence {
+  state "Scaffolding & Persistence" as p0 #palegreen
+  state "Data Residency\n(Region Pinning)" as a11 #palegreen
+  state "Event Log/AccessLog\nArchival" as a24 #palegreen
+  state "Data Lifecycle &\nBackup Classification" as a25 #palegreen
+}
+state "Local Services" as tierLocal {
+  state "Schema Registry" as p1 #palegreen
+  state "Publish API" as p2 #palegreen
+  state "Lineage API" as p3 #palegreen
+  state "Follow API + Filter Pushdown" as p4 #palegreen
+  state "Event-Type Security" as p6 #palegreen
+  state "Derived Event Types (deferred)" as p7 #palegreen
+  state "Property-Level Masking" as p8 #palegreen
+  state "CQRS Projections" as p9 #palegreen
+  state "Hardening & Evolution" as p10 #palegreen
+  state "Entity-Centric Core Rebuild" as p11 #palegreen
+  state "Multi-Tenancy" as p12 #palegreen
+  state "Upcast Materialization + Downcast" as p13 #palegreen
+  state "Streaming Channels" as p14 #palegreen
+  state "Binary Attachments" as p15 #palegreen
+  state "Sharding & Replication" as p16 #palegreen
+  state "Non-Authoritative Capture" as p17 #palegreen
+  state "GraphQL-Only Query Layer" as p18 #palegreen
+  state "Compatibility & Deployment Discipline" as p19 #palegreen
+  state "Ticket Exchange" as p21 #palegreen
+  state "Delegated Grants, RBAC & Read Audit Logging" as p22 #palegreen
+  state "GDPR/CCPA Erasure" as a2 #palegreen
+  state "PCI-DSS SAD Boundary" as a3 #palegreen
+  state "Digital Sign-Off\n(Step-Up Auth)" as a5 #palegreen {
+    state "ActorId on Every Event\n(already satisfied by Auth + Orchestration)" as a1 #palegreen
+  }
+  state "Control-Plane Reserved Events" as a6 #palegreen
+  state "Dynamic Feature Flags" as a7 #palegreen
+  state "Leader Election" as a8 #palegreen
+  state "Per-Tenant Rate Limiting" as a9 #palegreen
+  state "Release Engineering,\nPackaging & Supply Chain" as a15 #palegreen
+  state "Lineage Export +\nBitemporal Playback" as a17 #palegreen
+  state "Mechanism-Level\nOTel Instrumentation" as a23 #palegreen
+  state "Expected-Response\nTracking" as a26 #palegreen
+  state "Searchable Blind-Index &\nBucketed-Range Indexes" as a31 #palegreen
+  state "Order-Revealing\nEncryption Range Index" as a32 #palegoldenrod
+  state "In-Database Native\nPredicate Evaluator Seam" as a33 #palegoldenrod
+}
+state "UI" as tierUi {
+  state "MVVM Client" as p20 #palegreen
+  state "Local/Edge Cache Scoping\n+ Erasure Invalidation" as a4 #palegreen
+  state "Pluggable Outbox\nFlush Triggers" as a19 #palegreen
+  state "Device Input Integration" as a20 #palegreen
+  state "Accessibility Standard" as a21 #palegreen
+  state "i18n/l10n Scope" as a22 #palegreen
+  state "Proving-Ground\nApplication UX" as a27 #palegreen
+  state "Domain Decision Queues" as a28 #palegreen
+  state "Generic Entity/\nLive-View Query" as a29 #palegreen
+  state "Push-Notification\nWake-Up Layer" as a30 #palegreen
+}
+
+' Hidden edges between the 4 tier containers themselves -- not a real
+' dependency, just a layout hint so Graphviz stacks the tiers top-to-bottom
+' instead of spreading them side-by-side (Local Services alone holds 30+
+' states and was pulling the whole diagram wide without this).
+tierExternal -[hidden]-> tierPersistence
+tierPersistence -[hidden]-> tierLocal
+tierLocal -[hidden]-> tierUi
+
+p0 --> p1
+p1 --> p2
+p2 --> p3
+p2 --> p4
+p3 --> p5
+p4 --> p5
+p5 --> p6
+p6 --> p7
+p6 --> p8
+p4 --> p9
+p5 --> p9
+p5 --> p10
+p2 --> p10
+p4 --> p10
+p9 --> p10
+p6 --> p11
+p1 --> p12
+p11 --> p12
+p10 --> p13
+p11 --> p13
+p5 --> p14
+p11 --> p14
+p8 --> p14
+p5 --> p15
+p11 --> p15
+p11 --> p16
+p11 --> p17
+p5 --> p17
+p15 --> p17
+p11 --> p18
+p12 --> p18
+p10 --> p18
+p18 --> p19
+p12 --> p20
+p16 --> p20
+p14 --> p21
+p15 --> p21
+p17 --> p21
+p17 --> p22
+p6 --> p22
+p12 --> p22
+p10 --> p22
+p5 --> p23
+p16 --> p23
+p14 --> p23
+p15 --> p23
+p18 --> p23
+p21 --> p23
+p8 --> a2
+p11 --> a2
+p1 --> a3
+p8 --> a3
+a2 --> a4
+p20 --> a4
+p5 --> a5
+p1 --> a6
+p11 --> a6
+a6 --> a7
+p0 --> a7
+p11 --> a8
+p16 --> a8
+p5 --> a9
+p23 --> a9
+a8 --> a10
+p2 --> a10
+p5 --> a10
+p8 --> a10
+p16 --> a11
+p12 --> a11
+a13 --> a12
+p12 --> a12
+p5 --> a12
+a10 --> a13
+p2 --> a13
+p17 --> a13
+p0 --> a14
+p17 --> a14
+p0 --> a15
+p19 --> a15
+a10 --> a16
+p5 --> a16
+p3 --> a17
+p11 --> a17
+p20 --> a17
+p18 --> a17
+p8 --> a17
+a2 --> a17
+p22 --> a17
+a5 --> a18
+a17 --> a18
+a17 --> a19
+p20 --> a19
+a19 --> a20
+p20 --> a20
+p17 --> a20
+p20 --> a21
+p20 --> a22
+a10 --> a23
+p10 --> a23
+p16 --> a23
+p11 --> a23
+a17 --> a24
+p15 --> a24
+p22 --> a24
+p10 --> a24
+p0 --> a25
+p9 --> a26
+p14 --> a26
+a10 --> a26
+a8 --> a26
+p20 --> a27
+a27 --> a28
+a5 --> a28
+p17 --> a28
+p18 --> a29
+p17 --> a29
+p8 --> a29
+p22 --> a29
+p2 --> a30
+p11 --> a30
+a2 --> a31
+p8 --> a31
+p4 --> a31
+a31 --> a32
+a31 --> a33
+@enduml

@@ -1,0 +1,9 @@
+@startsalt
+{
+  { "Pending Sign-off -- App 'demo'" }
+  ..
+  | Entity                  | Type            | Required Acr           | Status         |
+  | demo:PolicyApproval:pa-1 | PolicyApproval  | urn:demo:step-up        | awaiting sign-off |
+  | demo:PolicyApproval:pa-2 | PolicyApproval  | urn:demo:step-up        | awaiting sign-off |
+}
+@endsalt

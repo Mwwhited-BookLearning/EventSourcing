@@ -1,0 +1,40 @@
+@startuml
+autonumber
+actor "Plant Technician" as tech
+participant "Inbox / PublishEndpoint" as inbox
+participant "AuthorityDecisionResolver" as resolver
+database "Event Log" as eventLog
+participant "EventStore.Fold\n(authoritative catch-up, ADR-042)" as fold
+database "Entity Store" as entityStore
+participant "Webhook Dispatcher\n(ADR-060)" as webhook
+participant "TelemetrySampleWriter\n(ADR-031)" as writer
+database "Telemetry Channel Store" as tstore
+
+tech -> inbox: POST /publish/authorityDecision\n{ payload: { targetEventId: "<low-confidence alert eventId>",\n  decision: "accepted", decidingActorId: "tech-17",\n  reason: "confirmed bearing wear on inspection" } }
+inbox -> eventLog: INSERT StoredEvent (authorityDecision)
+inbox --> tech: 202 { correlationId, status: "received" }
+resolver -> eventLog: UPDATE target StoredEvent\nSET AuthorityStatus = "accepted", AuthorityDecisionRef = <this eventId>
+resolver -> fold: apply target event to the authoritative Entity Store now\n(same "apply once, on the triggering condition" shape, ADR-027/ADR-042)
+fold -> entityStore: UPDATE authoritative EntityStoreRow, Version++
+fold -> webhook: enqueue WebhookOutbox entry now that AuthorityStatus = "accepted"
+webhook -> webhook: CMMS notified (same path as the confident branch above)
+
+note over tech, webhook
+  A technician's field-verification is itself a real accept/reject
+  decision on the detector's original claim -- the same authorityDecision
+  mechanism ADR-035/ADR-042 already define, no new decision type.
+end note
+
+== separately: channel lag ==
+writer -> writer: compare receive-time gap for "pump-42-vibration"\nto its ExpectedInterArrivalInterval (ADR-031)
+alt gap exceeds configured lag threshold
+  writer -> inbox: publish reserved "ChannelLagDetected" event\n(system-owned, TelemetryPointer at last sample received)
+  inbox -> eventLog: INSERT StoredEvent (ChannelLagDetected)
+  note right of eventLog
+    Producer health becomes an ordinary, queryable, Follow-able
+    fact (ADR-031) -- distinct from a MaintenanceAlertRaised event,
+    since a lagging gateway is an ingestion-health signal, not an
+    asset-condition signal.
+  end note
+end
+@enduml

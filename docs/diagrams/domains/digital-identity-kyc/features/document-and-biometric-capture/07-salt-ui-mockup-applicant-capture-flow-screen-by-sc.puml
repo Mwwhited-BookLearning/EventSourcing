@@ -1,0 +1,11 @@
+@startsalt
+{
+  { "Identity Verification -- Step 2 of 3: Result" }
+  ..
+  { "Liveness check: inconclusive (confidence 0.41)" }
+  { "[ isAuthoritative: false ]  pending_review" }
+  "Your capture has been submitted for manual review.\nYou'll be notified once it's confirmed -- this can\ntake up to one business day."
+  ..
+  [ Continue to identity verification anyway ]
+}
+@endsalt

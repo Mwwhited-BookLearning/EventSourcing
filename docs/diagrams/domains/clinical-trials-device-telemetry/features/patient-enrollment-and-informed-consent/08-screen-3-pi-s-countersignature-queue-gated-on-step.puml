@@ -1,0 +1,13 @@
+@startsalt
+{
+  { "PI's Consent Approval Queue -- Site 04-221 (pi-7)" }
+  ..
+  | Subject | EnrollmentStatus  | Consent obtained |
+  | S-0091  | ConsentPending    | 2026-07-22        |
+  | S-0044  | Enrolled          | 2026-06-30        |
+  ..
+  { "Selected: S-0091 -- consent v3, attachment sha256:9f1c..." }
+  { [ Approve ] | [ Reject ] }
+  "Approval requires step-up authentication (RFC 9470) -- ADR-066"
+}
+@endsalt

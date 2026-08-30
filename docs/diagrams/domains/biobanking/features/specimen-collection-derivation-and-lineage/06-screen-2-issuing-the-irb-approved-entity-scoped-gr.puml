@@ -1,0 +1,14 @@
+@startsalt
+{
+  { "Grant External Access -- spec-001-dna" }
+  ..
+  { "Grantee DID" | "^did:key:z6Mk...researcher^" }
+  { "Delegated claim" | "clearance:specimen-data" }
+  { "Entity scope" | "biobank:Specimen:spec-001-dna  (this specimen only)" }
+  { "Expires" | "2026-08-06T00:00:00Z" }
+  ..
+  "IRB approval reference: IRB-2026-0091"
+  ..
+  [ Issue Grant ] | [ Cancel ]
+}
+@endsalt

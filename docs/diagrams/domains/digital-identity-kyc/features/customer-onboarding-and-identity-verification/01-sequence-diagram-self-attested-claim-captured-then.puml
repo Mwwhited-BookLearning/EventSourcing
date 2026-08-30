@@ -1,0 +1,39 @@
+@startuml
+autonumber
+actor "Applicant client\n(holds a DID it controls,\nself-attests via UCAN)" as applicant
+participant "PublishEndpoint\n(Inbox)" as inbox
+participant "Router\n(async, ADR-023)" as router
+participant "EventStore.DevIdp\n(OAuth Token Exchange bridge, ADR-036)" as idp
+participant "EventStore.Fold\n(Live View only, ungated -- ADR-042)" as fold
+database "Event Log" as eventLog
+database "Live View\n(LiveEntityStoreRow)" as liveView
+
+applicant -> inbox: POST /publish/IdentityClaimSubmitted\n{ payload: { ApplicantId: "applicant-1001", Did: "did:key:z6Mk...",\n  ClaimedLegalName, DateOfBirth, DocumentType: "passport" },\n  attestedClaims: { type: "ucan", invocation: <raw UCAN> } }
+inbox -> eventLog: INSERT StoredEvent\n(AttestedClaims = raw UCAN, AuthorityStatus = "unattested",\n EntityId resolved later via EntityIdField "$.ApplicantId")
+inbox --> applicant: 202 { status: "received", authorityStatus: "unattested" }
+note over inbox, eventLog
+  Persisted immediately, never blocked on the identity
+  provider's reachability (ADR-023). The DID proves the
+  applicant controls "did:key:z6Mk..." -- NOT that the
+  claimed legal name/DOB are real (ADR-036's own distinction).
+end note
+
+== asynchronously, once the Router can reach the identity provider ==
+router -> eventLog: pick up event with AttestedClaims\npending token exchange
+router -> idp: POST /oauth/token\ngrant_type=urn:ietf:params:oauth:grant-type:token-exchange\nsubject_token=<UCAN invocation>\nsubject_token_type=urn:your-org:token-type:ucan\nrequested_token_type=urn:ietf:params:oauth:token-type:jwt
+idp -> idp: validate UCAN delegation chain\n(self-verifying, no third-party callback)
+alt UCAN delegation chain valid
+  idp --> router: 200 { access_token (JWT) }\nclaims: provenance, authority_status, delegation_chain_ref
+  router -> eventLog: UPDATE StoredEvent\nAttestedClaims := JWT claims,\nAuthorityStatus := "pending_review"\n(NOT "accepted" -- ADR-036)
+  router -> fold: fold into Live View only (ADR-042)
+  fold -> liveView: UPSERT LiveEntityStoreRow\n(Data: claimed fields, AuthorityStatus: "pending_review")
+  note right of liveView
+    Every read of this row is wrapped isAuthoritative: false
+    (ADR-042). The authoritative Entity Store does not exist
+    for "applicant-1001" at all yet.
+  end note
+else UCAN delegation chain invalid (malformed, expired, broken link)
+  idp --> router: 400 invalid_grant
+  router -> eventLog: leave StoredEvent unchanged\n(AuthorityStatus stays "unattested")
+end
+@enduml

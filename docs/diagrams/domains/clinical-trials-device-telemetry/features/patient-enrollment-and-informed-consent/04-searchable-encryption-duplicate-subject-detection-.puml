@@ -1,0 +1,21 @@
+@startuml
+autonumber
+actor "Site Coordinator's client\n(coord-3)" as coordinator
+participant "GraphQL Gateway" as gateway
+database "EncryptedFieldIndexEntry\n(ADR-096)" as index
+database "Entity Store" as entityStore
+
+coordinator -> gateway: subscription { on_trial1_PatientScreened(\n  where: [{ field: "LegalName", eq: "Jordan Reyes" },\n          { field: "DateOfBirth", eq: "1988-04-02" }]) {\n  subjectId siteId } }
+gateway -> index: resolve matching SequenceNumbers for BOTH\nclauses (AND-combined, ADR-096) -- never decrypts\nPayload to compare
+index --> gateway: matching SequenceNumber(s), if any
+gateway -> entityStore: fetch matched StoredEvent(s) for display
+gateway --> coordinator: 0 or more matches -- a match means this\nperson is already screened at another site
+note right of coordinator
+  Zero matches doesn't guarantee no duplicate exists --
+  it means no OTHER already-enrolled patient shares this
+  exact (LegalName, DateOfBirth) pair under the Shared-
+  scope key. A coordinator still exercises judgment (name
+  variants, transcription differences) -- this narrows
+  the search, it doesn't replace it.
+end note
+@enduml

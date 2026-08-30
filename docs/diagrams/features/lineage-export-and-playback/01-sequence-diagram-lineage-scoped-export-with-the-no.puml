@@ -1,0 +1,44 @@
+@startuml
+autonumber
+actor "Dev/support engineer, or\nlitigation reviewer" as exporter
+participant "GraphQL Gateway" as gateway
+participant "LineageExportResolver\n(ADR-068)" as resolver
+participant "IEventLineageQueryProvider\n(ADR-005, see event-chains.md)" as lineageProvider
+participant "IPayloadMasker\n(ADR-009/057, see masking.md)" as masker
+participant "ITimestampAuthorityClient\n(ADR-086)" as tsa
+database "Event & Schema Store" as db
+database "AccessLog\n(ADR-045)" as accessLog
+
+exporter -> gateway: QUERY exportLineage(entityId: "lab1:Evidence:ev-1")\nBearer <JWT>
+note right of exporter
+  entityId names a STARTING point, per ADR-068's own text
+  ("given a starting EntityId ... gathers every causally-
+  connected event, ancestors/descendants"); both directions
+  are gathered by default. Matches 03-api-contracts.md's own
+  "Lineage export and bitemporal playback" section, corrected
+  there to entityId (an earlier version of that section used
+  rootEventId/direction, conflating this with the unrelated
+  per-event Lineage API's own convention, event-chains.md).
+end note
+gateway -> gateway: the starting entity's own root event(s)\nvisible to caller? (ADR-008 -- the root is special-cased,\nrejects the whole request if not, exactly as the ordinary\nLineage API does)
+alt root not visible or unknown
+  gateway --> exporter: 403 (exists, restricted) / 404 (unknown)\n-- same distinction event-chains.md already documents
+else root visible
+  gateway -> resolver: exportLineage("lab1:Evidence:ev-1")
+  resolver -> lineageProvider: cycle-safe transitive closure,\nboth ancestors and descendants\n(same CycleGuard/traversal machinery, ADR-005)
+  lineageProvider -> db: WITH RECURSIVE ... (native per provider)
+  lineageProvider --> resolver: StoredEvent rows, SequenceNumber order,\neach independently resolved/restricted per-node (ADR-008)
+  resolver -> resolver: drop any node the caller can't see\n(identical per-node check the ordinary Lineage API applies --\nnot a privileged escape hatch)
+  loop for each remaining event's Payload
+    resolver -> masker: Mask(schema, payload, exporter's own hasClaim closure)
+    masker --> resolver: rendered payload -- {value}/{masked}/{erased}\nper field, exactly as any other read would render it
+  end
+  resolver -> accessLog: INSERT AccessLogEntry\n(Action: "export", ResourceRef: "lab1:Evidence:ev-1",\nReaderActorId: exporter's ActorId, ADR-045)
+  resolver -> resolver: build NDJSON bundle (SequenceNumber order)\n+ manifest { referenced EventTypeDefinitions/SchemaVersions,\n  ManifestHash = SHA-256(ordered ChainHash values\n  || ExportedByActorId || ExportedAt), FrameworkVersion (ADR-062) }
+  resolver -> tsa: request TimeStampToken over ManifestHash (ADR-086)
+  tsa --> resolver: RFC3161Timestamp (TimeStampToken)
+  resolver -> resolver: manifest.RFC3161Timestamp = <token>\n-- proves the export existed at or before this time,\nindependent of trusting the exporting party's own clock (ADR-086)
+  resolver --> gateway: bundleUrl (produced artifact,\nnever stored server-side beyond its retrieval window)
+  gateway --> exporter: 200 { bundleUrl }
+end
+@enduml

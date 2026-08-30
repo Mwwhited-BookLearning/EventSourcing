@@ -1,0 +1,51 @@
+@startuml
+hide circle
+skinparam linetype ortho
+
+entity "EventTypeDefinition" as etd {
+  * Name : string <<PK>>
+  * Version : int <<PK>>
+  --
+  IsActive : bool
+}
+
+entity "FilterableField" as ff {
+  * Id : int <<PK>>
+  --
+  EventTypeName : string <<FK>>
+  EventTypeVersion : int <<FK>>
+  JsonPath : string
+  DataType : enum {String, Number, Boolean, DateTimeOffset}
+  IsIndexed : bool
+}
+
+entity "StoredEvent" as event {
+  * SequenceNumber : bigint <<PK>>
+  --
+  EventId : uuid <<unique>>
+  EventType : string
+  SchemaVersion : int
+  Payload : text
+  OccurredAt : datetimeoffset
+}
+
+etd ||--o{ ff : "(Name, Version) = (EventTypeName, EventTypeVersion)"
+etd ..> event : "logical only -- EventType/SchemaVersion,\nNOT a DB foreign key"
+
+note right of ff
+  A where argument's field name is checked against
+  JsonPaths declared here, but at RESOLVER RUNTIME by
+  GraphQlFilterPredicateBuilder, not by the GraphQL
+  schema itself -- EventFilterInput is a static, flat
+  { field, eq, neq, gt, gte, lt, lte, contains } type
+  that can syntactically name anything (see
+  filter-pushdown.md's own note on why: no bound CLR
+  type for [UseFiltering] to reflect over here). An
+  honest, narrower guarantee than ADR-037's literal
+  schema-shape claim for FILTERING specifically --
+  still literally true for the subscription field
+  NAME and its payload fields, which this dynamic
+  schema module genuinely composes per registered
+  event type.
+end note
+@enduml

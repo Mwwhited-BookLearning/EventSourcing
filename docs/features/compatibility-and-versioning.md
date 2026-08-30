@@ -61,6 +61,8 @@ states, and is flagged as such rather than cited as if verified.
 
 ## Sequence diagram — enum unknown-value fallback
 
+![Sequence diagram — enum unknown-value fallback](../diagrams/features/compatibility-and-versioning/01-sequence-diagram-enum-unknown-value-fallback.svg)
+
 ```plantuml
 @startuml Enum_Unknown_Value_Fallback_Sequence
 autonumber
@@ -100,6 +102,8 @@ property either one delivers.
 
 ## Sequence diagram — version-discovery capability negotiation
 
+![Sequence diagram — version-discovery capability negotiation](../diagrams/features/compatibility-and-versioning/02-sequence-diagram-version-discovery-capability-nego.svg)
+
 ```plantuml
 @startuml Capability_Negotiation_Sequence
 autonumber
@@ -129,6 +133,8 @@ only case where a hard rejection is warranted, everything inside the
 window as an accepted connection.
 
 ## Sequence diagram — Expand/Contract migration and the N-1/N+1 rollback window
+
+![Sequence diagram — Expand/Contract migration and the N-1/N+1 rollback window](../diagrams/features/compatibility-and-versioning/03-sequence-diagram-expand-contract-migration-and-the.svg)
 
 ```plantuml
 @startuml Expand_Contract_Rollback_Sequence
@@ -168,6 +174,8 @@ already established elsewhere; this diagram shows only the two that this
 doc's own scenarios touch, full column lists remain in
 [`../data/schema-registry.md`](../data/schema-registry.md) and
 [`../data/event-log.md`](../data/event-log.md).
+
+![Data model (ER diagram)](../diagrams/features/compatibility-and-versioning/04-data-model-er-diagram.svg)
 
 ```plantuml
 @startuml CompatibilityVersioning_ER

@@ -1,0 +1,42 @@
+@startuml
+autonumber
+participant "GraphQL Gateway\n(HotChocolate)" as gateway
+participant "GraphQlFilterPredicateBuilder" as filtering
+participant "IJsonPathTranslator\n(impl per provider)" as jsonPath
+participant "EF Core" as ef
+database "SQLite / PostgreSQL / SQL Server" as db
+
+note over gateway
+  Filtering is NOT built on HotChocolate's own [UseFiltering] middleware --
+  a fully dynamic, per-AppId ObjectType (ADR-037's own per-event-type
+  Subscription payload shape) has no bound CLR type for [UseFiltering]'s
+  reflection-based inference to work against. Instead the where argument
+  is a static, hand-written `[EventFilterInput!]` list type
+  (EventFilterInput.cs), and an undeclared Field name is caught here, at
+  RESOLVER RUNTIME, by GraphQlFilterPredicateBuilder throwing a
+  GraphQLException -- not rejected earlier as a schema-validation error
+  before the resolver runs. This is an honest, named narrowing from
+  ADR-037's literal "cannot even construct a query referencing an
+  undeclared field" schema-shape guarantee for FILTERING specifically
+  (that guarantee still holds in full for the subscription field NAME and
+  its PAYLOAD fields, which genuinely differ per registered event type --
+  see follow-subscribe.md); functionally equivalent safety (ADR-003's
+  original rule), just enforced one step later. Flagged in
+  08-build-plan.md, not silently narrowed.
+end note
+
+gateway -> filtering: Build(fields, where: [{ field: "Amount", gt: "100" }])\n(a flat list of EventFilterInput clauses, AND-combined across list\nentries -- no and/or combinator nesting, see EventFilterInput's own note)
+filtering -> filtering: look up "Amount" against this event type's declared\nFilterableFields -- GraphQLException if not found
+filtering -> filtering: build Expression<Func<StoredEvent,bool>>\n(reuses FilterPredicateBuilder's own property-access/constant-\nexpression building blocks)
+filtering -> jsonPath: JsonFunctions.JsonValueAsNumber(Payload, "$.Amount")\n(one marker method per FilterableFieldType --String/Number/Boolean/\nDateTimeOffset -- dispatched via JsonFunctions.MethodNameFor,\nnot a single generic JsonValue method)
+note right of jsonPath
+  SQLite:     json_extract(Payload, '$.Amount')
+  PostgreSQL: (Payload::jsonb ->> 'Amount')
+  SQL Server: JSON_VALUE(Payload, '$.Amount')
+end note
+filtering -> filtering: CAST extracted text to FilterableField.DataType
+filtering -> ef: Expression<Func<StoredEvent,bool>>
+ef -> db: SELECT ... WHERE <native JSON extraction> > 100
+db --> ef: matching StoredEvent rows, full row shape\n(index used if IsIndexed = true)
+ef --> gateway: matching StoredEvent(s) -- payload field selection happens\nlater, in the dynamically-built resolvers (see follow-subscribe.md),\nnot via a database-level SELECT-list narrowing
+@enduml

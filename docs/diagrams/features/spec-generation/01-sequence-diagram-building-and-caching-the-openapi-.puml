@@ -1,0 +1,34 @@
+@startuml
+autonumber
+actor "Publishing System" as caller
+participant "EventStore.Host.Core\n(GET /openapi.json, shared by all 3 providers)" as endpoint
+participant "OpenApiDocumentBuilder" as docBuilder
+participant "IMemoryCache" as cache
+participant "EventSchemaConverter" as converter
+participant "ISchemaRegistryReader" as registry
+
+caller -> endpoint: GET /openapi.json (no Authorization header needed)
+endpoint -> docBuilder: GetOrBuildJsonAsync()
+docBuilder -> cache: TryGetValue("openapi-document")
+alt cache hit
+  cache --> docBuilder: cached JSON
+else cache miss
+  docBuilder -> registry: GetActiveEventTypesAsync()
+  loop for each active event type
+    docBuilder -> converter: Parse(JsonSchema text) -> OpenApiSchema
+    note right of converter
+      Publish-side schema stays unwrapped --
+      masking's oneOf wrapper is never applied
+      here (ADR-009). MaskingSchemaTransformer
+      still exists, but it now shapes the
+      GraphQL schema instead (EventStore.GraphQL,
+      see the note below) -- this builder never
+      calls it.
+    end note
+  end
+  docBuilder -> docBuilder: assemble OpenApiDocument\n(native Microsoft.OpenApi writer, SerializeAsV31 -- no hand-rolled JSON)
+  docBuilder -> cache: Set("openapi-document", json, 60s absolute)
+end
+docBuilder --> endpoint: JSON
+endpoint --> caller: 200 application/json
+@enduml

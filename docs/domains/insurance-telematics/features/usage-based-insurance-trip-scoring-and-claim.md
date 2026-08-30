@@ -59,6 +59,8 @@ usage-based-insurance application) throughout.
 
 ## Sequence diagram — trip telemetry to a scored trip to a filed claim, with a delegated secondary-opinion grant
 
+![Sequence diagram — trip telemetry to a scored trip to a filed claim, with a delegated secondary-opinion grant](../../../diagrams/domains/insurance-telematics/features/usage-based-insurance-trip-scoring-and-claim/01-sequence-diagram-trip-telemetry-to-a-scored-trip-t.svg)
+
 ```plantuml
 @startuml UBI_TripScoring_Claim_Sequence
 autonumber
@@ -132,6 +134,8 @@ end
 
 ## Sequence diagram — claims dispute: lineage export and bitemporal system-time playback
 
+![Sequence diagram — claims dispute: lineage export and bitemporal system-time playback](../../../diagrams/domains/insurance-telematics/features/usage-based-insurance-trip-scoring-and-claim/02-sequence-diagram-claims-dispute-lineage-export-and.svg)
+
 ```plantuml
 @startuml UBI_Dispute_Export_Playback_Sequence
 autonumber
@@ -195,6 +199,8 @@ end
 ```
 
 ## Data model (ER diagram)
+
+![Data model (ER diagram)](../../../diagrams/domains/insurance-telematics/features/usage-based-insurance-trip-scoring-and-claim/03-data-model-er-diagram.svg)
 
 ```plantuml
 @startuml UBI_TripScoring_Claim_ER
@@ -340,6 +346,8 @@ public class AccessGrantRevokedPayload
 
 ## State machine — claim lifecycle
 
+![State machine — claim lifecycle diagram](../../../diagrams/domains/insurance-telematics/features/usage-based-insurance-trip-scoring-and-claim/04-state-machine-claim-lifecycle.svg)
+
 ```plantuml
 @startuml UBI_Claim_State_Machine
 [*] --> Filed : ClaimFiled\n(parented off TripScored, ADR-005)
@@ -378,6 +386,8 @@ end note
 
 ### Screen 1: Adjuster A's claim queue
 
+![Screen 1: Adjuster A's claim queue diagram](../../../diagrams/domains/insurance-telematics/features/usage-based-insurance-trip-scoring-and-claim/05-screen-1-adjuster-a-s-claim-queue.svg)
+
 ```plantuml
 @startsalt
 {
@@ -398,6 +408,8 @@ this screen. Clicking the `claim-9911` row opens Screen 2, the same
 claim Adjuster A is reviewing in the first sequence diagram above.
 
 ### Screen 2: Adjuster A's claim review and decision screen
+
+![Screen 2: Adjuster A's claim review and decision screen diagram](../../../diagrams/domains/insurance-telematics/features/usage-based-insurance-trip-scoring-and-claim/06-screen-2-adjuster-a-s-claim-review-and-decision-sc.svg)
 
 ```plantuml
 @startsalt
@@ -436,6 +448,8 @@ export" is the entry point into Screen 4.
 
 ### Screen 3: Adjuster B's delegated, entity-scoped secondary-opinion read
 
+![Screen 3: Adjuster B's delegated, entity-scoped secondary-opinion read diagram](../../../diagrams/domains/insurance-telematics/features/usage-based-insurance-trip-scoring-and-claim/07-screen-3-adjuster-b-s-delegated-entity-scoped-seco.svg)
+
 ```plantuml
 @startsalt
 {
@@ -464,6 +478,8 @@ to Adjuster A — this doc doesn't define a separate "record opinion"
 event — and review continues back on Screen 2.
 
 ### Screen 4: Compliance officer's dispute export and system-time playback
+
+![Screen 4: Compliance officer's dispute export and system-time playback diagram](../../../diagrams/domains/insurance-telematics/features/usage-based-insurance-trip-scoring-and-claim/08-screen-4-compliance-officer-s-dispute-export-and-s.svg)
 
 ```plantuml
 @startsalt

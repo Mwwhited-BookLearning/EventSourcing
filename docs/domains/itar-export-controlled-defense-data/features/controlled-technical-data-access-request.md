@@ -58,6 +58,8 @@ tenant) is ITAR-scoped via an `AppDataResidencyPolicy` row restricting
 it to `["us-east", "us-west"]`; `AppId "acme"` has no such row and
 stays unconstrained, shown as the contrasting `else` branch.
 
+![Sequence diagram — publishing a controlled technical-data asset and its region-pinned replication](../../../diagrams/domains/itar-export-controlled-defense-data/features/controlled-technical-data-access-request/01-sequence-diagram-publishing-a-controlled-technical.svg)
+
 ```plantuml
 @startuml Controlled_Technical_Data_Publish_And_Region_Pinned_Replication
 autonumber
@@ -108,6 +110,8 @@ delegated-grant claim-plus-entity-scope check for a TAA-authorized
 foreign partner (`ADR-043`), and the same delegated grant failing when
 the requested asset falls outside its `entityScope`.
 
+![Sequence diagram — access request (RBAC read, TAA-delegated read, and a denied out-of-scope read)](../../../diagrams/domains/itar-export-controlled-defense-data/features/controlled-technical-data-access-request/02-sequence-diagram-access-request-rbac-read-taa-dele.svg)
+
 ```plantuml
 @startuml Controlled_Technical_Data_Access_Request
 autonumber
@@ -157,6 +161,8 @@ end
 ```
 
 ## Data model (ER diagram)
+
+![Data model (ER diagram)](../../../diagrams/domains/itar-export-controlled-defense-data/features/controlled-technical-data-access-request/03-data-model-er-diagram.svg)
 
 ```plantuml
 @startuml ControlledTechnicalData_ER
@@ -238,6 +244,8 @@ own entity lifecycle, which is the ordinary Entity Store fold already
 covered by
 [`../../../features/entity-concept.md`](../../../features/entity-concept.md).
 
+![State machine — access request lifecycle diagram](../../../diagrams/domains/itar-export-controlled-defense-data/features/controlled-technical-data-access-request/04-state-machine-access-request-lifecycle.svg)
+
 ```plantuml
 @startuml AccessRequest_Lifecycle
 state Requested
@@ -268,6 +276,8 @@ Revoked --> [*]
 
 ### Screen 1: Access Request Queue — AppId defco
 
+![Screen 1: Access Request Queue — AppId defco diagram](../../../diagrams/domains/itar-export-controlled-defense-data/features/controlled-technical-data-access-request/05-screen-1-access-request-queue-appid-defco.svg)
+
 ```plantuml
 @startsalt
 {
@@ -288,6 +298,8 @@ read of `TechnicalDataAssetEntityStoreRow` itself. Clicking `ar-2201`
 opens Screen 2, the pending TAA-delegated request's own approval detail.
 
 ### Screen 2: Approver's review and sign-off screen
+
+![Screen 2: Approver's review and sign-off screen diagram](../../../diagrams/domains/itar-export-controlled-defense-data/features/controlled-technical-data-access-request/06-screen-2-approver-s-review-and-sign-off-screen.svg)
 
 ```plantuml
 @startsalt
@@ -325,6 +337,8 @@ to `Denied` with no sign-off required, since a denial grants no new
 access, and never reaches Screen 3.
 
 ### Screen 3: Foreign partner's delegated read, within granted scope
+
+![Screen 3: Foreign partner's delegated read, within granted scope diagram](../../../diagrams/domains/itar-export-controlled-defense-data/features/controlled-technical-data-access-request/07-screen-3-foreign-partner-s-delegated-read-within-g.svg)
 
 ```plantuml
 @startsalt

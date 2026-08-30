@@ -1,0 +1,22 @@
+@startuml
+autonumber
+actor "Requester" as requester
+participant "GraphQL Gateway\n(ADR-037)" as gateway
+participant "IPayloadMasker\n(ADR-009)" as masker
+database "Entity Store" as entityStore
+database "Access Log" as accessLog
+
+requester -> gateway: QUERY { entity(id: "gov:CaseFile:c-1") {\n  data { ApplicantName SSN ProgramNotes } } }
+gateway -> entityStore: read EntityStoreRow "gov:CaseFile:c-1"
+entityStore --> gateway: Data { ApplicantName, SSN, ProgramNotes }
+gateway -> masker: mask(Data, CaseFileUpdated's JsonSchema x-masking, hasClaim)
+loop for each x-masking-annotated field in the response
+  alt caller holds the field's requiredClaim ("case:pii-view")\n(e.g. officer-1, granted above)
+    masker --> gateway: { "value": <real value> }
+  else caller lacks requiredClaim (the public requester, always)
+    masker --> gateway: { "masked": "XXX-XX-6789" }\n(PartialReveal, showLast 4, ADR-009)
+  end
+end
+gateway -> accessLog: INSERT AccessLogEntry\n(ReaderActorId, ReaderTrustBasis: "Authoritative",\nViewAccessed: "Authoritative", ResourceRef: "gov:CaseFile:c-1",\nAction: "query", ChainHash chained independently, ADR-045)
+gateway --> requester: { ApplicantName: { value: "Maria Alvarez" },\n  SSN: { masked: "XXX-XX-6789" },\n  ProgramNotes: { masked: "***" } }
+@enduml

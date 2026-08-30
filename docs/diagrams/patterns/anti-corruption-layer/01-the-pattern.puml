@@ -1,0 +1,19 @@
+@startuml
+autonumber
+participant "Foreign system\n(different model/semantics)" as foreign
+participant "Anti-Corruption Layer\n(translation only)" as acl
+participant "Your own domain model" as domain
+
+foreign -> acl: message in the foreign system's\nown shape/vocabulary
+acl -> acl: translate into your domain's\nregistered shape -- foreign\nquirks stop here, never propagate further
+acl -> domain: publish/apply in your own,\nclean, unmodified shape
+
+domain -> acl: an outbound event, in your\nown shape
+acl -> acl: translate into whatever shape\nthe foreign system requires
+acl -> foreign: deliver in the foreign system's\nexpected format
+note over acl
+  Neither side needs to know
+  the other's model exists --
+  only this layer does.
+end note
+@enduml

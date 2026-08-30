@@ -1,0 +1,17 @@
+@startsalt
+{
+  { "Meter m-482 -- gridops   [ mode: tail ▼ ]" }
+  ..
+  | Time                | kWh   |
+  | 2026-07-30 14:00     | 4.10  |
+  | 2026-07-30 14:15     | 4.35  |
+  | 2026-07-30 14:30     | 4.02  |
+  | 2026-07-30 14:45     | 4.21  |
+  ..
+  { "Demand-response events" }
+  | Event           | Meter  | Status            | isAuthoritative |
+  | dr-2026-07-30-1 | m-482  | PendingValidation | false           |
+  | dr-2026-07-29-9 | m-317  | Dispatched        | true            |
+  | dr-2026-07-28-4 | m-091  | Rejected          | true            |
+}
+@endsalt

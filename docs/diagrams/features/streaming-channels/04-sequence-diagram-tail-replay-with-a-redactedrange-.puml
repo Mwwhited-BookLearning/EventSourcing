@@ -1,0 +1,23 @@
+@startuml
+autonumber
+actor "Follower" as follower
+participant "Telemetry Read API" as read
+participant "Auth\n(JWT Bearer + claim check)" as auth
+database "Telemetry Store" as tdb
+participant "IStreamRedactionStrategy\n(ADR-052)" as strategy
+
+follower -> read: GET /telemetry/eeg-ch1/samples?mode=replay&fromTimestamp=<t>
+read -> tdb: SELECT TelemetrySample WHERE ChannelId = 'eeg-ch1' AND Timestamp >= <t>
+read -> tdb: SELECT RedactedRange WHERE ChannelId = 'eeg-ch1'\nAND [FromTimestamp, ToTimestamp] overlaps requested window
+tdb --> read: overlapping RedactedRange { FromTimestamp, ToTimestamp, RequiredClaim, Strategy }
+read -> auth: does Follower hold RedactedRange.RequiredClaim?
+alt Follower holds the claim
+  auth --> read: authorized for this range
+  read --> follower: real sample values for the full window,\nincluding the RedactedRange span
+else Follower lacks the claim
+  auth --> read: not authorized for this range
+  read -> strategy: resolve the configured IStreamRedactionStrategy\n(Strategy == "Default" -> ZeroFillStrategy/ToneStrategy/BlankFrameStrategy\nper ContentKind; Strategy == "PartialReveal" -> reuses\nPartialRevealMaskingStrategy's reveal computation, ADR-009/ADR-052)
+  strategy --> read: substituted bytes for the RedactedRange span only\n(samples outside the span are returned unmodified)
+  read --> follower: samples for the window, with the RedactedRange span\nreplaced by the substitution AND a sideband existence flag set\n(same shape as TelemetrySample.LateArrivalFlag) --\nnever a response indistinguishable from "no redaction happened here"
+end
+@enduml

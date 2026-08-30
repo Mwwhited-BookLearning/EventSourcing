@@ -1,0 +1,36 @@
+@startuml
+autonumber
+actor User
+participant "MVVM Client\n(open app window, ADR-039)" as client
+participant "WebSerialInputSource\n(IDeviceInputSource adapter)" as adapter
+participant "Browser platform\n(Web Serial API)" as browser
+participant "Physical device\n(e.g. a serial vitals monitor)" as device
+participant "ClientOutbox\n(IndexedDB, unchanged -- ADR-039)" as outbox
+
+User -> client: clicks "Connect device"
+client -> adapter: requestDevice()
+adapter -> browser: navigator.serial.requestPort()
+note right of browser
+  Requires a secure context and this
+  user gesture -- the browser's own
+  consent mechanism, not layered on by
+  this framework (ADR-070).
+end note
+browser -> User: native device-picker dialog
+User -> browser: selects the device
+browser --> adapter: port granted
+adapter -> device: open port, begin reading
+loop while connected
+  device -> adapter: raw reading (bytes)
+  adapter -> adapter: parse into { Timestamp, Value,\nMonotonicElapsedMicros? } (ADR-029/083)
+  adapter -> outbox: enqueue reading\n(same durable outbox as any other\nclient-originated write, ADR-039)
+end
+note right of outbox
+  This adapter only reads from the device
+  and writes into the existing outbox --
+  see mvvm-client.md for everything that
+  happens to the queued item after this
+  point (flush triggers, delivery,
+  durability across a crash/restart).
+end note
+@enduml

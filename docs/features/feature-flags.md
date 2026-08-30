@@ -48,6 +48,8 @@ as one possible config source for them, without forcing it; see
 
 ## Sequence diagram — toggling a flag propagates within the poll interval, no restart
 
+![Sequence diagram — toggling a flag propagates within the poll interval, no restart](../diagrams/features/feature-flags/01-sequence-diagram-toggling-a-flag-propagates-within.svg)
+
 ```plantuml
 @startuml FeatureFlags_Toggle_Sequence
 autonumber
@@ -90,6 +92,8 @@ makes and this mechanism satisfies.
 
 ## Sequence diagram — two `AppId`s hold independent state for the same flag key
 
+![Sequence diagram — two `AppId`s hold independent state for the same flag key](../diagrams/features/feature-flags/02-sequence-diagram-two-appids-hold-independent-state.svg)
+
 ```plantuml
 @startuml FeatureFlags_Isolation_Sequence
 autonumber
@@ -127,6 +131,8 @@ isolation visible side by side; it is not claiming a shared database
 between tenants.
 
 ## Data model (ER diagram)
+
+![Data model (ER diagram)](../diagrams/features/feature-flags/03-data-model-er-diagram.svg)
 
 ```plantuml
 @startuml FeatureFlags_ER

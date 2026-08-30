@@ -1,0 +1,9 @@
+@startsalt
+{
+  { "Patient S-0091 -- Continuous Monitoring" }
+  ..
+  { "Vitals waveform:" | "[==== live waveform rendering ====]" }
+  ..
+  "video src = 'https://.../stream/vitals-s0091?ticket=...&sig=...'\n-- set once the ticket+sig above were computed; the\nbrowser's own <video> element issues the actual header-\nless GET, resolved per the second sequence diagram."
+}
+@endsalt

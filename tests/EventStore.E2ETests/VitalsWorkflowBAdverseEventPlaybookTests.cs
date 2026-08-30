@@ -112,7 +112,7 @@ public class VitalsWorkflowBAdverseEventPlaybookTests
             @startuml VitalsAdverseEvent_Playbook_Sequence
             autonumber
             actor "Site coordinator" as coordinator
-            actor "Colleague\n(delegated \"secondary opinion\")" as colleague
+            actor "Colleague\n(delegated 'secondary opinion')" as colleague
             actor "Principal Investigator" as pi
             participant "PublishEndpoint\n(Inbox)" as inbox
             database "Entity Store\n(trial1:AdverseEvent:ae-1042)" as entityStore

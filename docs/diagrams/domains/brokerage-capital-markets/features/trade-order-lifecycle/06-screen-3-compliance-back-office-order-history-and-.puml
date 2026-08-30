@@ -1,0 +1,20 @@
+@startsalt
+{
+  { "Order  ord-1  (Trade Order Lifecycle)" }
+  ..
+  | Step | Event | Actor | SequenceNumber |
+  | 1 | OrderSubmitted | oms-system | 119 |
+  | 2 | OrderRiskChecked (Approved) | reviewer-1 | 120 |
+  | 3 | OrderExecuted | oms-system | 121 |
+  | 4 | OrderSettled | clearing-system | 122 |
+  ..
+  { "Chain integrity verified through SequenceNumber 122" | [X] } | [ Re-verify now ]
+  ..
+  { "Control-plane audit (ADR-067)" }
+  | Event | Actor | SequenceNumber |
+  | RoleGranted (compliance-officer -> reviewer-1) | admin-1 | 118 |
+  | SchemaRegistered (CardDepositAuthorized v1) | schema-author-1 | 205 |
+  ..
+  [ View full lineage graph ] | [ Export for litigation review ]
+}
+@endsalt

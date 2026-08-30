@@ -1,0 +1,11 @@
+@startsalt
+{
+  { "pa-1 -- Sign-off" }
+  ..
+  { "Meaning" | ^approved^ }
+  "Meaning is required -- rejected if absent (ADR-066)"
+  ..
+  { [ Sign off: Approve ] | [ Sign off: Reject ] }
+  "Requires step-up authentication (RFC 9470) if your\ncurrent session doesn't already satisfy urn:demo:step-up"
+}
+@endsalt

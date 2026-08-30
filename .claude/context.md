@@ -67,17 +67,26 @@ compatibility conflict before it could regress an existing test; and
 extended `ADR-007`'s derivation mechanism with calculated fields
 (`SelectField.Expression`, evaluated via the already-adopted
 `IUpcastExpressionEvaluator`/`ADR-053` seam — reused, not a third
-expression mechanism). With calculated fields done, `TODO.md`'s "Extend
-the entity schema metadata" item (all 3 sub-items) is now fully done.
-**`TODO.md`'s only remaining item is Low Priority** (migrate embedded
-PlantUML diagrams to `.puml` files + a Docker rendering pipeline) — that
-item's own text flags a real tradeoff (reintroduces the class of
-external-render dependency `references.md` documents deliberately
-avoiding) that needs an explicit user confirmation before scoping the
-build, not autonomous continuation. `docs/10-open-questions.md` has one
-row: the DSL-for-user-flows/validations/approvals fork, genuinely
-undecided, not "decided work with only the doing left" — out of scope
-for "keep going."
+expression mechanism); and, after explicitly confirming the flagged
+tradeoff with the user first, built the PlantUML `.puml`-extraction +
+Docker-`.svg`-rendering pipeline (`scripts/extract-diagrams.mjs`,
+`scripts/render-diagrams.mjs`) — every diagram's fenced block stays
+inline, untouched, with a rendered `docs/diagrams/**/*.svg` image
+reference inserted above it, so the doc stays plain-text readable *and*
+actually renders on GitHub. Found and fixed 6 genuine, previously-
+undiscovered PlantUML syntax bugs only a real render caught (escaped
+quotes, a 3-participant `note over` this PlantUML build rejects, an
+`actor` mixed into an object diagram, literal braces nested inside a
+Salt cell's own quoted string, one doc missing `@startuml`/`@enduml`
+outright) — see `docs/changes/2026-08-29.md` for the exact list and
+fixes. **`TODO.md` is now fully done — every item, including the DSL
+fork's own tracker row in `docs/10-open-questions.md`, is either closed
+or (that one row) explicitly still an open, undecided fork, not
+forgotten work.** The diagram pipeline isn't wired into CI (not asked
+for); re-running both scripts after editing any diagram is a real,
+currently-manual step to keep the checked-in `.svg` in sync, flagged as
+such in `TODO.md` rather than assumed automatic. A fresh session should
+ask the user what's next rather than assume more `TODO.md` work exists.
 
 This session (full narrative split across three passes in
 `docs/changes/2026-08-27.md`): designed searchable equality/range

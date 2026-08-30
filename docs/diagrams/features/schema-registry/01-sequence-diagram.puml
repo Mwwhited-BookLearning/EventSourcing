@@ -1,0 +1,50 @@
+@startuml
+autonumber
+actor "Platform Operator" as operator
+participant "Registry\n(RegistrationEndpoint)" as endpoint
+participant "Auth\n(JWT Bearer + scope policy)" as auth
+participant "SchemaRegistryService" as registry
+participant "IJsonPathTranslator\n(impl per provider)" as jsonPath
+participant "IUpcastExpressionEvaluator\n(CEL by default, ADR-053)" as evaluator
+database "Event & Schema Store" as db
+
+operator -> endpoint: PUT /registry/{event-type}\nAuthorization: Bearer <JWT>\n{ appId, jsonSchema, filterableFields, changeKind,\n  entityIdField, entityType?, parentValidationMode?,\n  upcastFromPrevious?, downcastToPrevious? }
+endpoint -> auth: validate token + hold SOME registry:admin-shaped scope\n(coarse ASP.NET Core policy, ahead of the handler)
+alt missing/invalid token
+  auth --> operator: 401
+else valid token, no registry:admin-shaped scope at all
+  auth --> operator: 403
+else coarse scope present
+  auth --> endpoint: ok (caller's own scope claim; AppId itself is never\nderived from it -- the caller must still assert it in the body)
+  endpoint -> endpoint: AppIdScopeEvaluator.CanAdminister(user, request.AppId) --\nscopes.Contains("registry:admin") OR\nscopes.Contains($"registry:admin:{request.AppId}") (ADR-030's\nfine-grained half, checked against the body's OWN appId)
+  alt caller's scope doesn't cover this request's AppId
+    endpoint --> operator: 403
+  else authorized for this AppId
+    endpoint -> registry: register(request.AppId, eventType, jsonSchema, filterableFields,\nchangeKind, entityIdField, parentValidationMode,\nupcastFromPrevious, downcastToPrevious)
+    registry -> registry: validate jsonSchema is well-formed JSON Schema
+    registry -> registry: validate each filterableFields[].jsonPath resolves in jsonSchema
+    registry -> registry: validate changeKind is present and is Full or Partial (ADR-016 -- no default, 400 if missing/invalid)
+    registry -> registry: validate entityIdField is present (ADR-021 -- no default, 400 if missing)
+    registry -> registry: validate parentValidationMode in {Strict, Permissive}
+    alt upcastFromPrevious or downcastToPrevious supplied (version >= 2 only)
+      registry -> evaluator: parse expression list, validate every alias\nnames a real property of this version's schema
+      evaluator --> registry: ok, or parse/alias error
+    end
+    alt any validation fails
+      registry --> operator: 400
+    else all valid
+      registry -> registry: determine version = active version for (AppId, Name) + 1 (or 1 if new)
+      registry -> db: BEGIN TRANSACTION
+      registry -> db: INSERT EventTypeDefinition (AppId, Name, Version, ...), FilterableField rows
+      loop for each filterableFields[i] where IsIndexed = true
+        registry -> jsonPath: apply provider-specific index/computed-column migration
+        jsonPath -> db: CREATE INDEX / ALTER TABLE ... ADD computed column + index
+      end
+      registry -> db: mark new (AppId, Name) version IsActive = true, prior version IsActive = false
+      registry -> db: COMMIT
+      registry -> registry: invalidate OpenAPI cache and this AppId's GraphQL SDL cache (ADR-002, ADR-037)
+      registry --> operator: 201
+    end
+  end
+end
+@enduml

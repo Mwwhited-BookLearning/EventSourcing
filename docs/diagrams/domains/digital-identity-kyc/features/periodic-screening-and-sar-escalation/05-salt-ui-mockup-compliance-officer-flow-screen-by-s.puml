@@ -1,0 +1,11 @@
+@startsalt
+{
+  { "Compliance Officer -- Sanctions Screening Queue   (role: ComplianceOfficer, claim: identity:aml-review)" }
+  ..
+  | Applicant       | Match confidence | Screened     | Status                                    |
+  | applicant-1001  | 0.87             | 2026-07-30   | [ isAuthoritative: false ]  pending_review |
+  | applicant-2044  | 0.52             | 2026-07-29   | [ isAuthoritative: false ]  pending_review |
+  ..
+  [ Review ]
+}
+@endsalt

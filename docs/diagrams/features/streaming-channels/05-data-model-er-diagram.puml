@@ -1,0 +1,84 @@
+@startuml
+hide circle
+skinparam linetype ortho
+
+entity "TelemetryChannel" as channel {
+  * ChannelId : string <<PK>>
+  --
+  AppId : string
+  EntityId : string
+  ContentKind : enum {RawScalar, RawBinary, Media}
+  SampleType : enum {Float64, Int32}?
+  MimeType : string?
+  SampleIntervalMicros : bigint?
+  Origin : enum {Origin, Derived}
+  ThreadId : string?
+  SourceChannelIds : string[]?
+  TransformKind : enum {Resample, Filter, Aggregate, Transcode}?
+  RequiredClaims : {Direction, Claim}[]?
+}
+
+entity "TelemetrySample" as sample {
+  * ChannelId : string <<PK, FK>>
+  * Timestamp : datetimeoffset <<PK>>
+  --
+  Value : bytes
+  LateArrivalFlag : bool
+}
+
+entity "RedactedRange" as redaction {
+  * ChannelId : string <<PK, FK>>
+  * FromTimestamp : datetimeoffset <<PK>>
+  --
+  ToTimestamp : datetimeoffset
+  RequiredClaim : string
+  Strategy : string = "Default"
+  ShowFirst : int?
+  ShowLast : int?
+  MaskChar : char?
+  PreserveSeparators : bool
+}
+
+entity "StoredEvent" as event {
+  * SequenceNumber : bigint <<PK>>
+  --
+  EventId : uuid <<unique>>
+  TelemetryPointer : string?
+}
+
+channel ||--o{ sample : "ChannelId -- real FK,\nevery sample belongs to a declared channel"
+channel ..o{ redaction : "ChannelId -- field shape (ADR-031),\nread-time substitution mechanism\nand Strategy field resolved in ADR-052"
+channel ..> channel : "SourceChannelIds -- a Derived channel references\none or more source channels; a string list,\nnot a normal FK"
+channel ..> channel : "ThreadId -- multiple channels registered together\nshare one ThreadId value; a denormalized grouping\nkey (ADR-081), not a normal FK"
+event ..> channel : "TelemetryPointer.ChannelId -- logical only,\nNOT a DB FK; TelemetryPointer itself is a\ncolumn on StoredEvent, defined in event-log.md.\nJSON-serialized List<TelemetryPointerEntry>\n{ChannelId, ThreadId?, FromTimestamp, ToTimestamp?}\nper entry (ADR-081) -- one entry for an ordinary\nsingle-channel detection, multiple for a correlated\nmulti-channel one; ThreadId is denormalized onto\neach entry too, not just onto TelemetryChannel"
+
+note right of sample
+  Composite PK (ChannelId, Timestamp).
+  No ChainHash, no JsonSchema check, no
+  Entity Store fold -- exactly the per-item
+  cost this data plane exists to avoid.
+end note
+
+note bottom of redaction
+  Field shape named in ADR-031.
+  The read-time transform that substitutes
+  zero-fill/tone/blank-frame content (Strategy
+  "Default", per ContentKind) or a format-preserving
+  partial reveal (Strategy "PartialReveal", reusing
+  PartialRevealMaskingStrategy -- ADR-009) over this
+  span is resolved in ADR-052 --
+  see comparisons/streaming-redaction-mechanism.md.
+  Every application also sets a sideband existence
+  flag at the read boundary (ADR-052) -- not shown
+  as its own column, structurally the same as
+  TelemetrySample.LateArrivalFlag.
+end note
+
+note bottom of channel
+  ThreadId groups multiple simultaneous channels
+  registered together as one logical session/
+  recording (e.g. a 32-electrode EEG montage) --
+  ADR-081. No meaning of its own beyond grouping;
+  not an EntityId, a channel, or a stream.
+end note
+@enduml

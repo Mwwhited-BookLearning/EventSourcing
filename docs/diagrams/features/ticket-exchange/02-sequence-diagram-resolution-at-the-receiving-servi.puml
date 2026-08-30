@@ -1,0 +1,22 @@
+@startuml
+autonumber
+actor "<video src> / <img src>" as element
+participant "Streaming Channel Service\n(ADR-031) OR Attachment Service\n(ADR-032)" as service
+participant "EventStore.DevIdp" as idp
+
+element -> service: GET /stream/vitals-s0091?ticket=<ticket>&sig=<sig>\n(no Authorization header -- can't set one)
+service -> idp: POST /oauth/introspect (RFC 7662-shaped)\ntoken=<ticket>\ntoken_type_hint=urn:eventstore:token-type:ticket\nsig=<sig>  -- extension beyond bare RFC 7662
+idp -> idp: look up ticket by value
+alt ticket unknown, expired, or already consumed
+  idp --> service: { active: false }
+  service --> element: 401
+else sig doesn't match HMAC-SHA256(ticket, the associated secret)
+  idp --> service: { active: false }
+  service --> element: 401
+else valid, unused, sig matches
+  idp -> idp: mark ticket consumed -- a second presentation,\neven before expiresAt, now fails (single-use)
+  idp --> service: { active: true, ...originalTokenClaims }\n(scope, client_id, AuthorityStatus/provenance\nif an ADR-036 UCAN chain produced the original token)
+  service -> service: proceed exactly as an ordinarily-authenticated\nrequest would -- RequiredClaims (ADR-008/050),\nmasking (ADR-009), read-access audit log (ADR-045),\nall unchanged; the service never held or checked\nthe secret itself
+  service --> element: 200 (content)
+end
+@enduml

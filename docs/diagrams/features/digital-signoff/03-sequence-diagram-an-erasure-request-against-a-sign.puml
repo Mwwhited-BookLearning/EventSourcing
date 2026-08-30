@@ -1,0 +1,23 @@
+@startuml
+autonumber
+actor "Data Subject / Erasure Requester" as requester
+participant "Erasure Endpoint\n(ADR-057)" as erasureEndpoint
+database "Event & Schema Store" as db
+
+requester -> erasureEndpoint: erasure request for EntityId "demo:PolicyApproval:pa-1"
+erasureEndpoint -> db: identify classified (x-masking) fields on\nmatching StoredEvent rows for this EntityId
+loop for each classified Payload field
+  erasureEndpoint -> db: destroy that field's crypto-shredding key (ADR-057)
+end
+erasureEndpoint -> erasureEndpoint: SignerId / Signature are envelope\nmetadata, categorically exempt --\nnever enumerated as erasable in the first place
+erasureEndpoint --> requester: 200 -- erasure applied to classified\nPayload fields; SignerId/Signature retained,\nper GDPR Art. 17(3)(b)/(e)
+note right of erasureEndpoint
+  Not an accident of scope -- ADR-057's crypto-
+  shredding structurally can't reach envelope fields
+  regardless, but ADR-066 states the RIGHT reason:
+  17(3)(b) legal-obligation retention (21 CFR Part 11
+  record-retention duties) and 17(3)(e) legal-claims
+  defence -- a signature has evidentiary value ONLY
+  because it's tied to a specific, un-erasable identity.
+end note
+@enduml

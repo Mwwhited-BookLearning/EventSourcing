@@ -1,0 +1,29 @@
+@startuml
+skinparam componentStyle rectangle
+
+object "Patient\ntrial1:patient:S-0091\n(Workflow A)" as patient
+object "Device\ntrial1:device:dev-0091\n(Workflow B upstream)" as device
+object "AdverseEvent\ntrial1:adverseevent:ae-1042\n(Workflow B downstream)" as adverseEvent
+object "IonmAlert\ntrial1:ionmalert:alert-0091\n(Workflow D)" as ionmAlert
+
+patient <-- device : PairedToSubjectId
+patient <.. adverseEvent : SubjectId (business reference,\nnot a chain-hash parent link)
+patient <.. ionmAlert : SubjectId (business reference)
+device ..> ionmAlert : device's own continuous telemetry\nstream feeds IONM alert detection\n(no client-web UI for the stream itself)
+
+note right of adverseEvent
+  Reviewed via Vitals' Principal Investigator
+  Queue (ADR-066 digital sign-off) -- the
+  same "authorityDecision" reactor Workflow
+  D's own alert acknowledgment uses.
+end note
+
+note bottom of patient
+  Workflow C (Export and Playback Lineage)
+  operates on ANY of these EntityIds --
+  drawn here against the patient specifically,
+  since that's what the playbook itself uses,
+  but the mechanism is generic, not
+  patient-specific.
+end note
+@enduml

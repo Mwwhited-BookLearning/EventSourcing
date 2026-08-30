@@ -36,6 +36,8 @@ presume a settled SDL.
 
 ## Sequence diagram — capturing an event with unattested authority
 
+![Sequence diagram — capturing an event with unattested authority](../diagrams/features/non-authoritative-capture/01-sequence-diagram-capturing-an-event-with-unatteste.svg)
+
 ```plantuml
 @startuml AuthorityCapture_Publish_Sequence
 autonumber
@@ -74,6 +76,8 @@ end note
 
 ## Sequence diagram — authoritative catch-up once accepted
 
+![Sequence diagram — authoritative catch-up once accepted](../diagrams/features/non-authoritative-capture/02-sequence-diagram-authoritative-catch-up-once-accep.svg)
+
 ```plantuml
 @startuml AuthorityAccept_Fold_Sequence
 autonumber
@@ -99,6 +103,8 @@ end note
 ```
 
 ## Sequence diagram — an `authorityDecision:rejected` event and its effect
+
+![Sequence diagram — an `authorityDecision:rejected` event and its effect](../diagrams/features/non-authoritative-capture/03-sequence-diagram-an-authoritydecision-rejected-eve.svg)
 
 ```plantuml
 @startuml AuthorityDecision_Sequence
@@ -151,6 +157,8 @@ end
 ```
 
 ## Data model (ER diagram)
+
+![Data model (ER diagram)](../diagrams/features/non-authoritative-capture/04-data-model-er-diagram.svg)
 
 ```plantuml
 @startuml NonAuthoritativeCapture_ER

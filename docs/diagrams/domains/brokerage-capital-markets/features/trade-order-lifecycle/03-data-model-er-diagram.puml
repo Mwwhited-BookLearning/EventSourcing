@@ -1,0 +1,60 @@
+@startuml
+hide circle
+skinparam linetype ortho
+
+entity "StoredEvent" as event {
+  * SequenceNumber : bigint <<PK>>
+  --
+  EventId : uuid <<unique>>
+  EntityId : string <<FK>>
+  EventType : string
+  Payload : text
+  PayloadHash : string
+  ChainHash : string
+  ActorId : string
+  OccurredAt : datetimeoffset
+}
+
+entity "EventParent" as parent {
+  * ChildEventId : uuid <<PK, FK>>
+  * ParentEventId : uuid <<PK>>
+}
+
+entity "EntityStoreRow" as entityStore {
+  * EntityId : string <<PK>>
+  --
+  Version : bigint
+  Data : text
+  LastAppliedSequenceNumber : bigint
+}
+
+entity "EventTypeDefinition" as etd {
+  * Name : string <<PK>>
+  * Version : int <<PK>>
+  --
+  JsonSchema : text
+  EntityIdField : string
+}
+
+event ||--o{ parent : "ChildEventId -- real FK,\nADR-005"
+event ..o{ parent : "ParentEventId -- no DB FK,\nmust tolerate Permissive dangling refs"
+event "*" --> "1" entityStore : "folds into, in OccurredAt\norder (ADR-021)"
+etd ..> event : "EntityIdField resolves EntityId;\nx-masking.regulatoryClassification\nchecked at registration only (ADR-071)"
+
+note right of event
+  ChainHash chains off the immediately preceding
+  SequenceNumber's ChainHash -- a single store-wide
+  sequence, not per-EntityId (ADR-019). A control-plane
+  SchemaRegistered/RoleGranted event (ADR-067) is a
+  StoredEvent like any other and extends the exact same
+  chain the OrderSubmitted..OrderSettled events do.
+end note
+
+note right of etd
+  A "Cvv2" property here declaring
+  x-masking.regulatoryClassification: "PCI-SAD"
+  is what makes registration itself reject the
+  whole event type (400), before any StoredEvent
+  for it could ever exist (ADR-071).
+end note
+@enduml

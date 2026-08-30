@@ -1,0 +1,12 @@
+@startsalt
+{
+  { "Subject Rights -- Data Protection Officer (dpo-1)" }
+  ..
+  | Subject | Status        | Withdrawn on | Erasure requested   |
+  | S-0077  | Withdrawn     | 2026-07-28   | [ Request Erasure ] |
+  | S-0091  | Enrolled      | --           | (not eligible)      |
+  ..
+  "! Requesting erasure is irreversible -- destroys the subject's\n  encryption key permanently. Structural trial records are retained."
+  [ Confirm Erasure Request ]
+}
+@endsalt

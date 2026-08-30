@@ -9,6 +9,8 @@ individually shows *what* each does; this page is about how they actually
 compose into one request's journey, since none of them alone tells the
 whole story.
 
+![Interaction: The Publish Pipeline (Idempotent Receiver + Inbox + Tolerant Reader + Dead Letter) diagram](../../diagrams/patterns/interactions/publish-pipeline/01-interaction-the-publish-pipeline-idempotent-receiv.svg)
+
 ```plantuml
 @startuml Publish_Pipeline_Sequence
 autonumber

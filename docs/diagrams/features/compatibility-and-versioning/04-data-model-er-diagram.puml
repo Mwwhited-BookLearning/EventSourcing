@@ -1,0 +1,32 @@
+@startuml
+hide circle
+skinparam linetype ortho
+
+entity "EventTypeDefinition" as etd {
+  * AppId : string <<PK>>
+  * Name : string <<PK>>
+  * Version : int <<PK>>
+  --
+  DeprecatedAt : datetimeoffset?
+  UpcastFromPrevious : string?
+  DowncastToPrevious : string?
+}
+
+entity "StoredEvent" as event {
+  * SequenceNumber : bigint <<PK>>
+  --
+  SchemaVersion : int
+  Status : string
+}
+
+etd ..> event : "SchemaVersion identifies which\nEventTypeDefinition version\nan event was published against\n-- logical only, not a DB FK"
+
+note right of etd
+  DeprecatedAt is set, never removed, when a
+  version/field enters its deprecation window
+  (ADR-038). UpcastFromPrevious/DowncastToPrevious
+  are what makes the N-1/N+1 window actually work
+  at read time -- never deleted the moment a new
+  version ships.
+end note
+@enduml

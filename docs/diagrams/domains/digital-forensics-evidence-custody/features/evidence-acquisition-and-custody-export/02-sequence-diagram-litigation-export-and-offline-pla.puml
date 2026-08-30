@@ -1,0 +1,26 @@
+@startuml
+autonumber
+actor "Case Attorney / Paralegal" as attorney
+participant "Lineage Export Resolver\n(ADR-068)" as exportResolver
+participant "IEventLineageQueryProvider\n(ADR-005)" as lineageProvider
+database "Event Log" as eventLog
+database "Access Log" as accessLog
+participant "Offline Player\n(vite-plugin-singlefile build, ADR-068)" as player
+
+attorney -> exportResolver: exportLineage(entityId: "lab:Evidence:ev-1")
+exportResolver -> lineageProvider: ancestors/descendants("lab:Evidence:ev-1")\n(cycle-safe traversal, ADR-005)
+lineageProvider -> eventLog: SELECT StoredEvent ... via EventParents
+lineageProvider --> exportResolver: [EvidenceAcquired, CustodyTransferred x2, ArtifactExtracted]
+exportResolver -> accessLog: INSERT AccessLogEntry\n(Action: "export", ResourceRef: "lab:Evidence:ev-1",\nReaderActorId: attorney's ActorId, ADR-045)
+note right: masking/claims enforcement applies identically to any\nother read -- no bypass for export (ADR-068's no-bypass rule)
+exportResolver -> exportResolver: build NDJSON bundle + manifest\n(referenced EventTypeDefinitions, exported-by/exported-at,\nSHA-256 manifest hash over ordered ChainHash values, ADR-019/068)
+exportResolver --> attorney: bundle.ndjson + manifest.json
+attorney -> player: open offline-player.html\n(double-click, no server, no install)
+player -> player: recompute ChainHash sequence and manifest hash\nfrom the embedded bundle data alone
+alt every exported event's fields are unmasked in the bundle\n(exporting actor held every relevant claim)
+  player --> attorney: "Fully independently verified" (pass)
+else at least one field was masked because the EXPORTING\nactor themselves lacked its requiredClaim
+  player --> attorney: "Verified except N masked fields --\nchain linkage intact" (partial, ADR-068's honest distinction)
+  note right: PayloadHash/ChainHash were computed once, over the real\nstored bytes -- re-hashing a redacted field can't reproduce them;\nenvelope-level chain linkage between events is still fully checked
+end
+@enduml

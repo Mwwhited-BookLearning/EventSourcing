@@ -27,6 +27,8 @@ patterns this doc applies concretely.
 
 ## Sequence diagram — peer-sync gossip exchange, then Merkle-tree catch-up after a disconnection
 
+![Sequence diagram — peer-sync gossip exchange, then Merkle-tree catch-up after a disconnection](../diagrams/features/replication-and-sharding/01-sequence-diagram-peer-sync-gossip-exchange-then-me.svg)
+
 ```plantuml
 @startuml ReplicationAndSharding_PeerSync_Sequence
 autonumber
@@ -75,6 +77,8 @@ efficiency here, not tamper evidence there).
 
 ## Sequence diagram — a query spanning entity types on different shards
 
+![Sequence diagram — a query spanning entity types on different shards](../diagrams/features/replication-and-sharding/02-sequence-diagram-a-query-spanning-entity-types-on-.svg)
+
 ```plantuml
 @startuml ReplicationAndSharding_ShardFanout_Sequence
 autonumber
@@ -122,6 +126,8 @@ disallowed-region peer simply never receives that event in a sync batch.
 region constrains *where a shard's replicas may live*, not a new
 sharding dimension layered onto the key itself.
 
+![Data residency — region pinning (ADR-061) diagram](../diagrams/features/replication-and-sharding/03-data-residency-region-pinning-adr-061.svg)
+
 ```plantuml
 @startuml ReplicationAndSharding_RegionPinning_Sequence
 autonumber
@@ -156,6 +162,8 @@ the deployment is responsible for ensuring ≥2 sites exist in any region a
 tenant restricts to, or knowingly accepting single-site risk.
 
 ## Data model (ER diagram)
+
+![Data model (ER diagram)](../diagrams/features/replication-and-sharding/04-data-model-er-diagram.svg)
 
 ```plantuml
 @startuml ReplicationAndSharding_ER

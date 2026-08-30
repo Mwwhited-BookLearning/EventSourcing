@@ -1,0 +1,9 @@
+@startsalt
+{
+  { "m-482 -- Demand Response Record  (Entity Store, isAuthoritative: true)" }
+  ..
+  { "ActiveDemandResponseStatus" | "Dispatched"                                        }
+  { "Decided by"                 | "reviewer-88, 2026-07-30 (confirmed against feeder load)" }
+  { "Notified"                   | "downstream via webhook, if a subscription is registered (ADR-060)" }
+}
+@endsalt

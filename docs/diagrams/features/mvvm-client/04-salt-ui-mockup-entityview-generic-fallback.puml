@@ -1,0 +1,16 @@
+@startsalt
+{
+  { "Order  o-1  (no registered ViewDefinition -- generic fallback)" }
+  ..
+  | Property   | Value                        |
+  | EntityType | "Order"                      |
+  | EntityId   | "o-1"                        |
+  | Amount     | 150.00                       |
+  | Carrier    | "UPS"                        |
+  | PromoCode  | "SPRING24"  ( Extensions )    |
+  ..
+  { [ ! ConflictFlag ] | [ LateArrivalFlag ] | [ AuthorityStatus: pending_review ] }
+  ..
+  [ Retry sync ] | [ View change history ]
+}
+@endsalt

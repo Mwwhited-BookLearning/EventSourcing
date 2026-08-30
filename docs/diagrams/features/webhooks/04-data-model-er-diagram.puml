@@ -1,0 +1,56 @@
+@startuml
+hide circle
+skinparam linetype ortho
+
+entity "WebhookSubscription" as sub {
+  * SubscriptionId : guid <<PK>>
+  --
+  AppId : string
+  TargetUrl : string
+  SigningSecret : string
+  PreviousSigningSecret : string?
+  ' set only during a rotation overlap window (ADR-093)
+  EventTypes : list<string>
+  FixedClaimsSnapshot : text
+  ' JSON -- computed ONCE at registration (ADR-060)
+  Active : bool
+  RegisteredAt : datetimeoffset
+}
+
+entity "WebhookOutbox" as outbox {
+  * SequenceNumber : bigint <<PK>>
+  --
+  SubscriptionId : guid <<FK>>
+  EventPayloadSnapshot : text
+  ' masked against FixedClaimsSnapshot at enqueue time
+  EnqueuedAt : datetimeoffset
+}
+
+entity "WebhookDeliveryCursor" as cursor {
+  * SubscriptionId : guid <<PK, FK>>
+  --
+  LastDeliveredSequenceNumber : bigint
+  LastAttemptAt : datetimeoffset
+  LastSuccessAt : datetimeoffset?
+}
+
+entity "StoredEvent\n(WebhookDeliveryFailed, reserved type)" as failed {
+  * SequenceNumber : bigint <<PK>>
+  --
+  EventType : string
+  ' always "WebhookDeliveryFailed" for this row shape
+  Payload : text
+  ' { SubscriptionId, TargetSequenceNumber, Attempts, LastError }
+}
+
+sub ||--o{ outbox : "EventTypes match enqueues here"
+sub ||--|| cursor : "one resumption point per subscription"
+outbox ..> failed : "exhausted-retry rows are what a\nWebhookDeliveryFailed event reports on\n(logical only, not a DB foreign key)"
+
+note right of cursor
+  Structurally identical to PeerSyncCursor
+  (../data/schema-registry.md) -- confirms this
+  really does inherit ADR-033's durable-checkpoint
+  primitive, not merely resemble it (ADR-060).
+end note
+@enduml

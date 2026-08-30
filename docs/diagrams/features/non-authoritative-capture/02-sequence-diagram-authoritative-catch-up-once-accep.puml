@@ -1,0 +1,21 @@
+@startuml
+autonumber
+actor "Reviewing Authority" as reviewer
+participant "Router" as router
+participant "AuthorityDecisionResolver" as resolver
+database "Event & Schema Store" as db
+participant "Entity Store fold\n(authoritative, ADR-042)" as fold
+
+reviewer -> router: POST /publish/authorityDecision { decision: "accepted", targetEventId }
+router -> resolver: process authorityDecision event
+resolver -> db: UPDATE target StoredEvent SET AuthorityStatus = "accepted"
+resolver -> fold: apply target event to the authoritative Entity Store now
+fold -> db: UPDATE EntityStoreRow.Data, Version++
+note right of fold
+  Same "apply once, on the triggering condition"
+  shape ADR-027's materialization catch-up already
+  uses -- not a new mechanism. LiveEntityStoreRow
+  already reflected this data; the authoritative
+  Entity Store only now catches up to it.
+end note
+@enduml

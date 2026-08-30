@@ -1,0 +1,27 @@
+@startuml
+autonumber
+actor "Operator (as AppId: app-a)" as opA
+actor "Operator (as AppId: app-b)" as opB
+participant "Control-plane endpoint" as endpoint
+database "FeatureFlagState" as state
+participant "Provider instance\n(app-a's deployment)" as providerA
+participant "Provider instance\n(app-b's deployment)" as providerB
+
+opA -> endpoint: toggle "NewRoutingEnabled" to true (as app-a)
+endpoint -> state: fold -> (AppId="app-a", Key="NewRoutingEnabled", Value="true")
+
+opB -> endpoint: never toggles "NewRoutingEnabled" (as app-b)
+note right of state
+  No row changes for app-b at all --
+  app-b's own row (if any) keeps
+  whatever value it already had.
+end note
+
+providerA -> state: SELECT ... WHERE AppId = "app-a"
+state --> providerA: "NewRoutingEnabled" = "true"
+providerA -> providerA: reload token fires for app-a's own instance(s)
+
+providerB -> state: SELECT ... WHERE AppId = "app-b"
+state --> providerB: "NewRoutingEnabled" = "false" (default/unchanged)
+providerB -> providerB: no reload token -- nothing changed for app-b
+@enduml

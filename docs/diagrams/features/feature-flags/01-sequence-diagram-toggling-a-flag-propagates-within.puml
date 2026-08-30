@@ -1,0 +1,32 @@
+@startuml
+autonumber
+actor "Operator (as AppId: app-a)" as op
+participant "Control-plane endpoint" as endpoint
+participant "Event Log\n(reserved FeatureFlagSet event, ADR-067)" as log
+database "FeatureFlagState\n(folded current-state table)" as state
+participant "EventLogFeatureFlagConfigurationProvider\n(running app instance, app-a)" as provider
+participant "IConfigurationRoot" as configRoot
+participant "Consumer\n(e.g. IOptionsMonitor<RoutingOptions>)" as consumer
+
+op -> endpoint: toggle flag "NewRoutingEnabled" to true (as app-a)
+endpoint -> log: publish reserved FeatureFlagSet\n{ AppId: "app-a", Key: "NewRoutingEnabled", Value: "true", ActorId }
+log -> log: hash-chained (ADR-019), same StoredEvent shape as any other event
+log -> state: fold into FeatureFlagState\n(AppId="app-a", Key="NewRoutingEnabled", Value="true", LastAppliedSequenceNumber=N)
+endpoint --> op: 202 (control-plane mutation accepted)
+
+== independently, on a fixed short interval, at every running instance ==
+loop every poll interval (a few seconds, configurable)
+  provider -> state: SELECT ... WHERE AppId = "app-a"
+  alt no change since last poll
+    state --> provider: unchanged rows
+    provider -> provider: no reload token fired
+  else a row's Value differs from this provider's cached copy
+    state --> provider: "NewRoutingEnabled" = "true" (was "false")
+    provider -> provider: update cached copy
+    provider -> configRoot: fire GetReloadToken()
+    configRoot -> configRoot: recompose merged configuration\n(this provider chained alongside static ones, ADR-041)
+    configRoot -> consumer: IOptionsMonitor<T> change notification
+    consumer -> consumer: next read of the flag value sees "true"\n-- no restart, no redeploy
+  end
+end
+@enduml

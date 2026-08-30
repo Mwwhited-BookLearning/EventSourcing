@@ -1,0 +1,35 @@
+@startuml
+skinparam shadowing false
+skinparam defaultTextAlignment center
+skinparam wrapWidth 200
+skinparam rectangle<<Component>> {
+  BackgroundColor #85BBF0
+  FontColor black
+}
+skinparam rectangle<<Boundary>> {
+  BackgroundColor transparent
+  BorderColor #666666
+  BorderStyle dashed
+}
+skinparam ArrowColor #666666
+
+rectangle "**Program.cs**\n<<Component>>\n--\nThe Composition Root --\nthe ONLY place that calls\nservices.AddScoped<IFoo, Foo>()\nfor every service in the app" <<Component>> as root
+
+rectangle "Everywhere else in the codebase" <<Boundary>> as app {
+  rectangle "**OrderHandler**\n<<Component>>\n--\nconstructor(IFoo foo, IBar bar)\n-- never resolves IFoo/IBar itself" <<Component>> as handler
+  rectangle "**PayloadMasker**\n<<Component>>\n--\nThe ONE named exception --\nresolves IMaskingStrategy by a\nruntime-carried key, not a\nconstructor parameter" <<Component>> as masker
+}
+
+root --> handler : constructs, wiring every\ndependency explicitly
+root --> masker : constructs
+masker ..> masker : IServiceProvider.GetRequiredKeyedService<T>(key)\n-- Service Locator, but named\nand scoped to one class deliberately
+
+note bottom of handler
+  If this class ever calls
+  IServiceProvider.GetService<T>()
+  itself, that's Service Locator --
+  the anti-pattern Pure DI exists
+  to avoid everywhere except the
+  one named exception above.
+end note
+@enduml

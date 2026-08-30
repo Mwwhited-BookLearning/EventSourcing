@@ -1,0 +1,34 @@
+@startuml
+autonumber
+participant "PeriodicScreeningWorker\n(domain-specific scheduled job,\nnot a framework mechanism)" as worker
+participant "PublishEndpoint\n(Inbox)" as inbox
+database "Event Log" as eventLog
+participant "EventStore.Fold\n(Live View, ungated -- ADR-042)" as fold
+database "Live View" as liveView
+database "Entity Store\n(authoritative)" as entityStore
+
+worker -> worker: pull latest OFAC SDN list; re-screen every\nactive "ApplicantIdentity" entity on schedule
+
+alt no match found (routine clear screening)
+  worker -> inbox: POST /publish/SanctionsScreeningPerformed\n{ payload: { ApplicantId: "applicant-1001", ScreeningDate,\n  ListsChecked: ["OFAC-SDN"], MatchFound: false } }
+  inbox -> eventLog: INSERT StoredEvent (AuthorityStatus: "accepted" --\nordinary default, ADR-042, nothing to review)
+  eventLog -> entityStore: folds immediately -- routine, no gate to clear
+  note right of entityStore
+    A clean screening result folds straight through, same as
+    any other ordinary authenticated publish (ADR-042's default).
+  end note
+else match found (candidate hit, unconfirmed)
+  worker -> inbox: POST /publish/SanctionsScreeningPerformed\n{ payload: { ApplicantId: "applicant-1001", ScreeningDate,\n  ListsChecked: ["OFAC-SDN"], MatchFound: true,\n  MatchConfidence: 0.87, MatchedName, MatchedListEntryId },\n  reviewPending: true }
+  inbox -> eventLog: INSERT StoredEvent (AuthorityStatus: "pending_review" --\nexplicit review-pending marker, ADR-042's automated-detector trigger)
+  inbox -> fold: fold into Live View only (ADR-042)
+  fold -> liveView: UPSERT LiveEntityStoreRow (merged Data including\nMatchFound: true, MatchConfidence: 0.87, AuthorityStatus: "pending_review")
+  note right of liveView
+    Visible to a compliance officer immediately, wrapped
+    isAuthoritative: false. A hit is NEVER auto-confirmed --
+    it always starts pending_review, unlike an ordinary
+    publish's ADR-042 default, because the publish itself
+    declares the review-pending marker whenever MatchFound
+    is true, regardless of confidence.
+  end note
+end
+@enduml

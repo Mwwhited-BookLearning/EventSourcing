@@ -1,0 +1,28 @@
+@startuml
+interface IMaskingStrategy {
+  + Mask(realValue, config): JsonNode
+}
+class FixedValueMaskingStrategy
+class PartialRevealMaskingStrategy
+class HashMaskingStrategy
+class "a future 4th strategy" as Future #line.dashed
+
+IMaskingStrategy <|.. FixedValueMaskingStrategy
+IMaskingStrategy <|.. PartialRevealMaskingStrategy
+IMaskingStrategy <|.. HashMaskingStrategy
+IMaskingStrategy <|.. Future
+
+class PayloadMasker {
+  - strategies : keyed by name
+  + MaskAsync(schema, payload, entityId, hasClaim, ct): Task<JsonNode?>
+}
+PayloadMasker --> IMaskingStrategy : resolves by\nleaf's "strategy" name,\nnever branches itself
+
+note right of Future
+  Registering a new keyed
+  IMaskingStrategy implementation
+  is the entire cost of adding
+  a strategy -- PayloadMasker's
+  own code never changes.
+end note
+@enduml

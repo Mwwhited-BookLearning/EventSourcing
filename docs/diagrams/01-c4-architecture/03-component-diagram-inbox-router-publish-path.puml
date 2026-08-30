@@ -1,0 +1,51 @@
+@startuml
+skinparam shadowing false
+skinparam defaultTextAlignment center
+skinparam wrapWidth 220
+skinparam rectangle<<Component>> {
+  BackgroundColor #85BBF0
+  FontColor black
+}
+skinparam database<<Container>> {
+  BackgroundColor #438DD5
+  FontColor white
+}
+skinparam rectangle<<Boundary>> {
+  BackgroundColor transparent
+  BorderColor #666666
+  BorderStyle dashed
+}
+skinparam ArrowColor #666666
+
+rectangle "Inbox / Publish Endpoint" <<Boundary>> as inbox {
+    rectangle "**PublishEndpoint**\n<<Component>>\n//Minimal API//\n--\nRoutes POST /publish/{event-type}; the ONLY thing that can still return a real error (unparseable envelope) -- ADR-023" <<Component>> as endpoint
+    rectangle "**events:publish scope check**\n<<Component>>\n//ScopeRequirement//\n--\nADR-006 -- static, blocking" <<Component>> as scopeCheck
+    rectangle "**Idempotent Receiver**\n<<Component>>\n//eventId + PayloadHash lookup//\n--\nADR-011 -- short-circuits before append if eventId supplied" <<Component>> as idempotency
+    rectangle "**EventAppender**\n<<Component>>\n//EF Core repository//\n--\nWrites StoredEvent, assigns SequenceNumber, computes ChainHash (ADR-019) -- always succeeds if parseable" <<Component>> as appender
+}
+
+rectangle "Router (background, advisory-only)" <<Boundary>> as router {
+    rectangle "**Entity Resolver**\n<<Component>>\n//EF Core//\n--\nResolves/creates EntityId via EntityIdField (ADR-021)" <<Component>> as entityResolver
+    rectangle "**RequiredClaims (Publish direction) / AuthorityStatus check**\n<<Component>>\n//HasRequiredClaim(...), OR-matched//\n--\nADR-008/050 (blocking, own-scope) + ADR-035 (advisory, never blocks)" <<Component>> as claimCheck
+    rectangle "**SchemaValidationService**\n<<Component>>\n//JsonSchema.Net wrapper//\n--\nValidates against declared schemaVersion (ADR-020) -- result is advisory (SchemaStatus), never blocking (ADR-023)" <<Component>> as validator
+    rectangle "**ParentLinkService**\n<<Component>>\n//EF Core repository//\n--\nValidates parentEventIds per ParentValidationMode (ADR-005)" <<Component>> as parentLink
+    rectangle "**UpcastChain (live validation)**\n<<Component>>\n//OData compute() executor//\n--\nADR-020 -- lagging schemaVersion? validate + materialize (ADR-027) or dead-letter (EventUpcastFailed)" <<Component>> as upcastValidate
+}
+
+database "Event Log" <<Container>> as eventLog
+database "Schema Registry" <<Container>> as registry
+
+endpoint --> scopeCheck : 1. validate scope (blocking)
+endpoint --> idempotency : 2. if eventId supplied
+endpoint --> appender : 3. append "received" regardless of shape (ADR-023)
+appender --> eventLog : INSERT StoredEvent
+endpoint --> router : 4. notify (async, non-blocking)
+router --> entityResolver : resolve EntityId
+router --> registry : fetch schema + claims + maps
+router --> claimCheck : advisory claim/authority checks
+router --> validator : advisory schema check -> SchemaStatus
+router --> parentLink : validate parentEventIds
+router --> upcastValidate : if schemaVersion behind active
+router --> eventLog : append routed event, materialization, or EventUpcastFailed
+
+@enduml

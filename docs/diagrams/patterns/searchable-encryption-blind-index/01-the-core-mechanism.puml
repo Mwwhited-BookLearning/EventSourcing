@@ -1,0 +1,17 @@
+@startuml
+participant "Writer" as writer
+participant "Encrypt + Index" as enc
+database "Ciphertext column" as cipher
+database "Blind index column" as index
+
+writer -> enc: plaintext value, key
+enc -> cipher: store ciphertext (semantically secure,\nrandom/convergent nonce)
+enc -> index: store HMAC(key, plaintext)\n(deterministic -- same input, same token, always)
+
+participant "Reader" as reader
+reader -> enc: search value, same key
+enc -> enc: token = HMAC(key, search value)
+enc -> index: WHERE token = ?
+index --> enc: matching row references
+enc -> cipher: fetch + decrypt only matched rows
+@enduml

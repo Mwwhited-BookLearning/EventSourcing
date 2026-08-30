@@ -1,0 +1,12 @@
+@startsalt
+{
+  { OrderTable }
+  ..
+  | ID  | Customer   | Status  |
+  | o-1 | A. Smith   | Paid    |
+  | o-2 | B. Jones   | Shipped |
+  | o-3 | C. Diaz    | Pending |
+  ..
+  [ Add Order ]
+}
+@endsalt

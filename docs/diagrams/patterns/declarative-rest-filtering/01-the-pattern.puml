@@ -1,0 +1,12 @@
+@startuml
+autonumber
+actor Client
+participant "PostgREST/Hasura-style layer" as api
+database "Relational table" as db
+
+Client -> api: GET /people?age=gt.18&age=lt.65
+api -> api: parse operator vocabulary directly\n(no general expression grammar/AST)
+api -> db: SELECT * FROM people WHERE age > 18 AND age < 65
+db --> api: rows
+api --> Client: 200 [...]
+@enduml

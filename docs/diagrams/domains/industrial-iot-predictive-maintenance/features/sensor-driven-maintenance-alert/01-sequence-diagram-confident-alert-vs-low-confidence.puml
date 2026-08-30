@@ -1,0 +1,50 @@
+@startuml
+autonumber
+participant "Vibration/Temperature Sensor\nGateway" as sensor
+participant "Telemetry Ingest API" as ingest
+database "Telemetry Channel Store\n(TelemetryChannel/TelemetrySample, ADR-031)" as tstore
+participant "Detector Worker\n(app-specific, ADR-031: out of framework scope)" as detector
+participant "Inbox / PublishEndpoint" as inbox
+participant "Router" as router
+participant "EventStore.Fold" as fold
+database "Event Log" as eventLog
+database "Entity Store\n(authoritative + Live View, ADR-042)" as entityStore
+participant "Webhook Dispatcher\n(ADR-060)" as webhook
+participant "CMMS / ERP\n(downstream)" as cmms
+
+sensor -> ingest: POST /telemetry/pump-42-vibration/samples\n{ startTimestamp, sampleIntervalMicros, values: [...] }
+ingest -> tstore: INSERT TelemetrySample rows\n(no schema check, no ChainHash, no fold -- ADR-031)
+ingest --> sensor: 202 { channelId, samplesWritten, lateArrivalCount }
+
+detector -> tstore: GET /telemetry/pump-42-vibration/samples?mode=tail
+tstore --> detector: streamed TelemetrySample rows
+detector -> detector: apply domain-specific anomaly model\n(bearing-wear frequency signature -- ADR-031 takes no position)
+
+alt high-confidence anomaly detected
+  detector -> inbox: POST /publish/MaintenanceAlertRaised\n{ payload: { AssetId: "pump-42", AlertSeverity: "High",\n  DetectorConfidence: 0.94, SuggestedAction: "Inspect bearing" },\n  telemetryPointer: [{ channelId: "pump-42-vibration",\n    fromTimestamp: t1, toTimestamp: t2 }] }
+  inbox -> eventLog: INSERT StoredEvent\n(AuthorityStatus: "accepted" -- default, ADR-042 --\nno review-pending marker set)
+  inbox --> detector: 202 { correlationId, status: "received",\n  authorityStatus: "accepted" }
+  router -> fold: fold(StoredEvent)
+  fold -> entityStore: UPDATE authoritative EntityStoreRow\n"iiot:MaintenanceAlert:pump-42-<eventId>" (Version++)
+  fold -> webhook: enqueue WebhookOutbox entry\n(matching WebhookSubscription for MaintenanceAlertRaised)
+  webhook -> cmms: POST <subscriber URL>\nwebhook-id/webhook-timestamp/webhook-signature (ADR-060)
+  cmms --> webhook: 200 OK
+else low-confidence anomaly detected
+  detector -> inbox: POST /publish/MaintenanceAlertRaised\n{ payload: { AssetId: "pump-42", AlertSeverity: "Medium",\n  DetectorConfidence: 0.41, SuggestedAction: "Recommend inspection" },\n  telemetryPointer: [{ channelId: "pump-42-vibration",\n    fromTimestamp: t3, toTimestamp: t4 }],\n  attestedClaims: { type: "detector-confidence", reviewPending: true,\n    confidence: 0.41, rule: "bearing-wear-v2" } }
+  note right of inbox
+    An explicit review-pending marker, per ADR-042: "an automated
+    detector that thinks it has found a pattern but whose result
+    hasn't been validated yet" -- one of the two named triggers
+    for starting below AuthorityStatus "accepted".
+  end note
+  inbox -> eventLog: INSERT StoredEvent\n(AuthorityStatus: "pending_review")
+  inbox --> detector: 202 { correlationId, status: "received",\n  authorityStatus: "pending_review" }
+  router -> fold: fold(StoredEvent) -- Live View only (ADR-042)
+  fold -> entityStore: UPDATE LiveEntityStoreRow\n(isAuthoritative: false), authoritative row NOT yet updated
+  note right of fold
+    The authoritative Entity Store, and the webhook match below,
+    both wait for AuthorityStatus to actually reach "accepted" --
+    see the technician field-verification sequence below.
+  end note
+end
+@enduml

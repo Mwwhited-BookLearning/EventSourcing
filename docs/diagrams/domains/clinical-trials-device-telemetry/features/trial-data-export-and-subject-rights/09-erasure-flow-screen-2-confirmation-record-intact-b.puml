@@ -1,0 +1,10 @@
+@startsalt
+{
+  { "trial1:Patient:S-0077 -- Record (post-erasure read)" }
+  ..
+  { "SubjectId" | "S-0077" } | { "SiteId" | "04-221" }
+  { "EnrollmentStatus" | "Withdrawn" }
+  { "LegalName" | "[erased: true]" }
+  { "DateOfBirth" | "[erased: true]" }
+}
+@endsalt

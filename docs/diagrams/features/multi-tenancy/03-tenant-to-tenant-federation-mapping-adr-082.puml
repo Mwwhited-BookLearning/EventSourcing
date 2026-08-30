@@ -1,0 +1,21 @@
+@startuml
+autonumber
+participant "Tenant A's deployment\n(publishing system)" as tenantA
+participant "Tenant B's DevIdp\n(client_credentials, ADR-006)" as bIdp
+participant "Tenant B's InterchangeEndpoints\n(generic POST /interchange/{adapterKey}/{appId},\nADR-072/082 -- the SAME route FHIR uses,\nnever a federation-specific endpoint)" as bInterchange
+participant "Tenant B's custom\nIInterchangeFormatAdapter\n(bespoke, per-pair, ADR-082,\nregistered under its own adapterKey)" as adapter
+participant "PublishService" as publish
+database "Tenant B's Event Log" as bLog
+
+tenantA -> bIdp: POST /connect/token\ngrant_type=client_credentials\nclient_id, client_secret\n(a credential Tenant B issued to Tenant A specifically)
+bIdp --> tenantA: 200 { access_token }
+tenantA -> bInterchange: POST /interchange/{adapterKey}/{appId}\nAuthorization: Bearer <access_token>\n{ Tenant A's own native event shape }
+bInterchange -> bInterchange: resolve IInterchangeFormatAdapter keyed\nadapterKey (GetRequiredKeyedService) --\nnot found -> 404, never a silent fallback
+bInterchange -> adapter: ParseInboundAsync(appId, rawBody)
+adapter -> adapter: map(Tenant A's shape) -> Tenant B's registered event shape
+adapter --> bInterchange: InterchangeInboundResult { EventType, Payload }
+bInterchange -> publish: PublishAsync(EventType, ...)\n-- an IN-PROCESS call, not a second HTTP hop
+publish -> bLog: publish mapped event into Tenant B's own Event Log\n(ordinary publish path, ADR-023, unchanged)
+publish --> bInterchange: PublishResult.Accepted { CorrelationId, SequenceNumber }
+bInterchange --> tenantA: 202 Accepted { correlationId, sequenceNumber }
+@enduml

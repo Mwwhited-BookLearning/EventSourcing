@@ -1,0 +1,43 @@
+@startuml
+hide circle
+skinparam linetype ortho
+
+entity "EventTypeDefinition" as etd {
+  * AppId : string <<PK>>
+  * Name : string <<PK>>
+  * Version : int <<PK>>
+  --
+  JsonSchema : text
+  RegisteredAt : datetimeoffset
+  IsActive : bool
+  ParentValidationMode : enum {Strict, Permissive}
+  ChangeKind : enum {Full, Partial}
+  EntityIdField : string
+  UpcastFromPrevious : string?
+  DowncastToPrevious : string?
+}
+
+entity "FilterableField" as ff {
+  * Id : int <<PK>>
+  --
+  EventTypeAppId : string <<FK>>
+  EventTypeName : string <<FK>>
+  EventTypeVersion : int <<FK>>
+  JsonPath : string
+  DataType : enum {String, Number, Boolean, DateTimeOffset}
+  IsIndexed : bool
+}
+
+etd ||--o{ ff : "(AppId, Name, Version) = (EventTypeAppId, EventTypeName, EventTypeVersion)"
+
+note right of etd
+  Registering a new version inserts a new
+  (AppId, Name, Version) row (ADR-030) and flips
+  IsActive on the prior version for that same
+  (AppId, Name) -- old versions are never mutated
+  or deleted (see 05-schema-registry-and-spec-
+  generation.md, "Versioning policy"). Two
+  different AppIds can register "OrderPlaced"
+  independently with zero collision.
+end note
+@enduml

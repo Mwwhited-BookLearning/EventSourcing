@@ -1,0 +1,12 @@
+@startsalt
+{
+  { "case-9001 -- Confirmed Case Record (Entity Store, isAuthoritative: true)" }
+  ..
+  { "Condition Code" | "A36.9 (Diphtheria)" }
+  { "Classification" | "Confirmed" }
+  { "Jurisdiction" | "us-east" }
+  ..
+  { "Region-pinned replication" | "synced to site-east (us-east) -- never queued to site-west (us-west), ADR-061" }
+  { "Upstream regulatory report" | "delivered to State PHIN via HL7v2/MLLP, ADR-072/ADR-060" }
+}
+@endsalt

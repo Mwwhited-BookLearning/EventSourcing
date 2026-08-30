@@ -39,6 +39,8 @@ Workflow D's IONM stream actually comes from; Workflow C can export or
 play back any of it, since lineage export operates on whatever
 `EntityId` you give it, not a workflow-specific mechanism.
 
+![How the workflows interact diagram](../../diagrams/playbooks/vitals/README/01-how-the-workflows-interact.svg)
+
 ```plantuml
 @startuml Vitals_Workflow_Interaction
 skinparam componentStyle rectangle

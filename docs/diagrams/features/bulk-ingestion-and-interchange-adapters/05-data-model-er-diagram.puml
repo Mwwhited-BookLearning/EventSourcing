@@ -1,0 +1,43 @@
+@startuml
+hide circle
+skinparam linetype ortho
+
+entity "StoredEvent" as event {
+  * SequenceNumber : bigint <<PK>>
+  --
+  EventId : uuid <<unique>>
+  EntityId : string?
+  EventType : string
+  Payload : text
+  Status : enum {received, processing, applied, rejected}
+  SchemaStatus : enum {unknown, invalid, conformant}?
+  AuthorityStatus : string
+  ' defaults below "accepted" for adapter-sourced events per ADR-035
+  AttestedActorId : string?
+  ' names the adapter/listener's own service identity, not the\n' upstream EMR/trading-partner system itself
+}
+
+note right of event
+  A batch submission leaves NO trace of having
+  arrived together -- there is no BatchId column
+  anywhere on StoredEvent, deliberately (ADR-072):
+  batching is a transport optimization, never a
+  persisted grouping concept.
+end note
+
+class "External message\n(HL7v2 / FHIR / ICH E2B(R3) / GS1 EPCIS)" as external {
+  raw external-format bytes
+}
+
+note bottom of external
+  Never persisted in its original external shape --
+  IInterchangeFormatAdapter transforms it to this
+  framework's registered JsonSchema BEFORE it ever
+  reaches StoredEvent.Payload (inbound), or transforms
+  a StoredEvent's already-persisted Payload INTO this
+  shape only at delivery time, never storing the
+  transformed copy either (outbound).
+end note
+
+external ..> event : "Transform() -- application code against\nIInterchangeFormatAdapter, no schema-registry\nchange needed (ADR-072)"
+@enduml

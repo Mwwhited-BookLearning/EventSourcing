@@ -1,0 +1,33 @@
+@startuml
+autonumber
+actor "Litigation reviewer" as reviewer
+participant "GraphQL Gateway" as gateway
+participant "PlaybackAsOfResolver\n(ADR-068)" as playback
+database "Event & Schema Store" as db
+
+reviewer -> gateway: QUERY playbackAsOf(entityId: "lab1:Evidence:ev-1",\n  asOfSequenceNumber: 48810)\nBearer <JWT>
+note right of reviewer
+  VCR-style [<] [Play] [>] controls step through
+  CONSECUTIVE SequenceNumber positions -- ADR-068's own
+  decided mechanism. asOfSequenceNumber (not a wall-clock
+  timestamp) is the argument, matching that mechanism
+  directly -- see 03-api-contracts.md's "Lineage export and
+  bitemporal playback" section, corrected there to match.
+end note
+gateway -> playback: reconstruct("lab1:Evidence:ev-1", asOfSequenceNumber: 48810)
+playback -> db: SELECT StoredEvent WHERE EntityId = "lab1:Evidence:ev-1"\n  AND SequenceNumber <= 48810\n  ORDER BY SequenceNumber ASC -- ARRIVAL order,\n  NOT OccurredAt order (the literal opposite of\n  EntityStoreRow's valid-time-corrected fold, ADR-021/029)
+db --> playback: events, arrival order
+loop fold each event, in that order
+  playback -> playback: apply event to the in-memory reconstruction\n(masking/claims enforcement identical to any other read, ADR-068)
+  alt this event carries LateArrivalFlag = true
+    playback -> playback: the reconstruction visibly changes RIGHT HERE --\n"recovered in place, in real time," never smoothed away
+  end
+end
+playback --> gateway: reconstructed state as of SequenceNumber 48810,\nwith the late correction shown landing exactly when it arrived
+gateway --> reviewer: 200 { data, extensions, asOfSequenceNumber: 48810 }
+... reviewer clicks [<] (rewind) ...
+reviewer -> gateway: QUERY playbackAsOf(entityId: "lab1:Evidence:ev-1",\n  asOfSequenceNumber: 48809)
+gateway -> playback: reconstruct("lab1:Evidence:ev-1", asOfSequenceNumber: 48809)
+playback --> gateway: reconstruction WITHOUT the late correction --\nit hadn't arrived yet as of 48809
+gateway --> reviewer: 200 { data, extensions, asOfSequenceNumber: 48809 }
+@enduml

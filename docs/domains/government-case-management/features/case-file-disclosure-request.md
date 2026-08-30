@@ -55,6 +55,8 @@ workflow. It deliberately does **not** re-derive:
 
 ## Sequence diagram — request intake through disclosure determination
 
+![Sequence diagram — request intake through disclosure determination](../../../diagrams/domains/government-case-management/features/case-file-disclosure-request/01-sequence-diagram-request-intake-through-disclosure.svg)
+
 ```plantuml
 @startuml CaseFileDisclosure_Determination_Sequence
 autonumber
@@ -97,6 +99,8 @@ Gherkin below for it.
 
 ## Sequence diagram — the public disclosure read
 
+![Sequence diagram — the public disclosure read](../../../diagrams/domains/government-case-management/features/case-file-disclosure-request/02-sequence-diagram-the-public-disclosure-read.svg)
+
 ```plantuml
 @startuml CaseFileDisclosure_Read_Sequence
 autonumber
@@ -129,6 +133,8 @@ regardless of `DisclosureDetermination.Outcome`, per the out-of-scope
 note above.
 
 ## Data model (ER diagram)
+
+![Data model (ER diagram)](../../../diagrams/domains/government-case-management/features/case-file-disclosure-request/03-data-model-er-diagram.svg)
 
 ```plantuml
 @startuml CaseFileDisclosure_ER
@@ -245,6 +251,8 @@ public class DisclosureDeterminationPayload
 
 ### Screen 1: Public portal — submitting the records request
 
+![Screen 1: Public portal — submitting the records request diagram](../../../diagrams/domains/government-case-management/features/case-file-disclosure-request/04-screen-1-public-portal-submitting-the-records-requ.svg)
+
 ```plantuml
 @startsalt
 {
@@ -266,6 +274,8 @@ identity (`ADR-064`). The request then waits for a records officer to
 pick it up, moving the flow to Screen 2.
 
 ### Screen 2: Records officer's redaction review and determination
+
+![Screen 2: Records officer's redaction review and determination diagram](../../../diagrams/domains/government-case-management/features/case-file-disclosure-request/05-screen-2-records-officer-s-redaction-review-and-de.svg)
 
 ```plantuml
 @startsalt
@@ -300,6 +310,8 @@ requester's own disclosed view — reachable at all; `Denied` ends the
 flow here, with no read link ever issued.
 
 ### Screen 3: The requester's disclosed record, masked per outcome
+
+![Screen 3: The requester's disclosed record, masked per outcome diagram](../../../diagrams/domains/government-case-management/features/case-file-disclosure-request/06-screen-3-the-requester-s-disclosed-record-masked-p.svg)
 
 ```plantuml
 @startsalt

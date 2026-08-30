@@ -1,0 +1,12 @@
+@startsalt
+{
+  { "Trial Data Export -- Sponsor Auditor (auditor-3)" }
+  ..
+  { "Entity ID" | "^trial1:AdverseEvent:ae-1042^" }
+  [ Export Lineage Bundle ]
+  ..
+  { "System-Time Playback" }
+  { "Entity ID" | "^trial1:Patient:S-0091^" }
+  { "As of SequenceNumber" | "^48812^" | [<] [Play] [>] }
+}
+@endsalt

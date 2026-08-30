@@ -1,0 +1,20 @@
+@startsalt
+{
+  { "Verification Analyst -- Review Queue   (role: IdentityVerificationAnalyst, claim: identity:review)" }
+  ..
+  | Applicant       | DID                  | Submitted   | Status                                       |
+  | applicant-1001  | did:key:z6Mkf7...    | 2026-07-28  | [ isAuthoritative: false ]  pending_review    |
+  | applicant-1002  | did:key:z6MkA2...    | 2026-07-29  | [ isAuthoritative: false ]  pending_review    |
+  | applicant-0997  | did:key:z6MkQ9...    | 2026-07-27  | [ isAuthoritative: false ]  unattested         |
+  ..
+  { "Selected: applicant-1001" }
+  | Field             | Claimed value                     |
+  | ClaimedLegalName  | "J*** S****"  ( masked, ADR-009 ) |
+  | DateOfBirth       | "****-**-01"  ( masked )          |
+  | DocumentType      | "passport"                        |
+  | Delegation chain  | [ View UCAN chain ]                |
+  ..
+  [ Accept ] | [ Reject ] | "Reason (required for reject):"
+  { "____________________________________" }
+}
+@endsalt

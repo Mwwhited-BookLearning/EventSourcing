@@ -1,0 +1,10 @@
+@startsalt
+{
+  { "Identity Verification -- Step 2 of 3: Biometric Capture" }
+  ..
+  { "  [ live camera preview ]  " }
+  ..
+  "Look directly at the camera and follow the on-screen prompts."
+  [ Start liveness check ]
+}
+@endsalt

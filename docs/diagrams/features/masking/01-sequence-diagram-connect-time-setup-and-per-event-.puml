@@ -1,0 +1,28 @@
+@startuml
+autonumber
+actor "Consuming System" as follower
+participant "GraphQL Gateway\n(Follow Subscription, ADR-037)" as endpoint
+participant "IPayloadMasker\n(pure: schema + data + hasClaim)" as masker
+database "Event & Schema Store" as db
+
+follower -> endpoint: QUERY /graphql\nsubscription { onOrderPlaced { amount customerTaxId { value masked } } }\nBearer <JWT>
+endpoint -> endpoint: events:follow scope + Read-direction RequiredClaims\ncheck passes (ADR-050; see event-security.md)
+endpoint -> db: load active EventTypeDefinition.JsonSchema
+endpoint -> endpoint: once, at connect time: build hasClaim closure over\nthis connection's JWT claims (nothing schema-specific yet)
+endpoint --> follower: SSE connection open (200, graphql-sse\n"distinct connections" mode)
+
+loop for each matching event, while connection open
+  endpoint -> db: poll for new matching events (see follow-subscribe.md)
+  endpoint -> masker: Mask(activeSchema, rawPayload, hasClaim)
+  masker -> masker: walk schema recursively; wherever x-masking is found\n(a scalar property, a scalar array's items, or a property nested\ninside a complex-object items schema), wrap that node's value
+  alt caller holds requiredClaim and the field's DEK is still live\n(IErasureKeyStore, ADR-057)
+    masker -> masker: decrypt ciphertext -- {value: <real value>}
+  else caller holds requiredClaim but the field's DEK was destroyed
+    masker -> masker: {erased: true} -- unconditional, even for a claim holder
+  else caller lacks requiredClaim
+    masker -> masker: resolve the configured IMaskingStrategy\n(FixedValue | PartialReveal | Hash) -- {masked: ...}
+  end
+  masker --> endpoint: payload with masked nodes wrapped as\n{value:...} / {masked:...} / {erased:true}, everything else untouched
+  endpoint -> follower: SSE "next" event: data{ selected fields, masked\nnodes resolved to whichever wrapper branch the query selected }
+end
+@enduml

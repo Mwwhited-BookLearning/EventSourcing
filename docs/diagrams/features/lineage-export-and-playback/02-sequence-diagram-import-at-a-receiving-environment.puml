@@ -1,0 +1,18 @@
+@startuml
+autonumber
+actor "Dev/support engineer" as importer
+participant "ImportEndpoint\n(ADR-068)" as importEndpoint
+database "Receiving environment's\nEvent & Schema Store" as db
+
+importer -> importEndpoint: import bundle.ndjson + manifest.json\n(downloaded from a prior export)
+importEndpoint -> importEndpoint: verify manifest hash against the bundle's own\nordered ChainHash values, BEFORE writing anything
+alt manifest hash mismatch
+  importEndpoint --> importer: reject -- bundle is not a complete,\nunaltered copy of the exported chain segment
+else manifest hash verified
+  loop for each event in the bundle, in original SequenceNumber order
+    importEndpoint -> db: INSERT StoredEvent\n(fresh SequenceNumber, fresh ChainHash --\nchained onto THIS environment's own prior event,\nADR-019 -- it IS a new append here)
+    importEndpoint -> db: SET OriginalSequenceNumber = <the original>,\n  OriginalChainHash = <the original>,\n  ImportedFrom = <the exporting environment's identity>\n-- new envelope metadata, ADR-068
+  end
+  importEndpoint --> importer: import complete -- N events appended,\nnone presented as if organically published here
+end
+@enduml

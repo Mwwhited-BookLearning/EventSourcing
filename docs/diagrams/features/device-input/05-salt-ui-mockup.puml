@@ -1,0 +1,14 @@
+@startsalt
+{
+  { "Connect a Device" }
+  ..
+  Available connection types:
+  [ USB (WebUSB) ]
+  [ Serial (Web Serial) ]
+  [ HID (WebHID) ]
+  [ Bluetooth (Web Bluetooth) ]
+  [ Native Bridge (companion app -- Firefox/Safari) ]
+  ..
+  "Connected devices: 0"
+}
+@endsalt

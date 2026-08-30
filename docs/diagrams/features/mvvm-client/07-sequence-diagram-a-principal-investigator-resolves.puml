@@ -1,0 +1,26 @@
+@startuml
+autonumber
+actor "Principal\nInvestigator" as PI
+participant "Queue tab\n(ViewModel)" as vm
+participant "GraphQL Subscription\n(IonmAlertRaised, authorityDecision)" as sub
+participant "Entity Store API\n(server)" as server
+
+PI -> vm: open Queue tab
+vm -> sub: subscribe(authorityDecision, mode: REPLAY)
+vm -> sub: subscribe(IonmAlertRaised, mode: REPLAY)
+sub --> vm: IonmAlertRaised { eventId, ..., authorityStatus: "pending_review" }
+vm -> vm: isPending(payload) == true -> add to queue
+vm --> PI: rendered queue item
+PI -> vm: fill Reason + Meaning, click Accept
+vm -> vm: fetch vitals-pi-client token\n(events:publish only)
+vm -> server: POST /publish/authorityDecision\n{ targetEventId, decision: "accepted", decidingActorId, reason }
+alt RequiredSignature not yet satisfied
+  server --> vm: 401 insufficient_user_authentication\n(acr_values, RFC 9470)
+  vm -> vm: fetch a stepped-up token (acr)
+  vm -> server: retry POST /publish/authorityDecision
+end
+server --> vm: 202 { status, entityId }
+sub --> vm: authorityDecision { targetEventId }
+vm -> vm: remove matching item from the queue
+vm --> PI: queue updated -- item resolved
+@enduml

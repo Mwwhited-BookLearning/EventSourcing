@@ -51,6 +51,8 @@ Lineage query at the end is the same GraphQL-transported traversal
 `QUERY /events/...` REST shape onto GraphQL) — shown here against real
 specimen data rather than re-derived.
 
+![Sequence diagram — collecting a specimen, deriving a sample, and querying lineage](../../../diagrams/domains/biobanking/features/specimen-collection-derivation-and-lineage/01-sequence-diagram-collecting-a-specimen-deriving-a-.svg)
+
 ```plantuml
 @startuml Specimen_Collection_Derivation_Lineage_Sequence
 autonumber
@@ -104,6 +106,8 @@ revocation are ordinary registered event types (`accessGrant`/
 `accessGrantRevoked`, per `ADR-043`), folded and audited like any other
 event.
 
+![Sequence diagram — IRB-authorized delegated access for a collaborating researcher](../../../diagrams/domains/biobanking/features/specimen-collection-derivation-and-lineage/02-sequence-diagram-irb-authorized-delegated-access-f.svg)
+
 ```plantuml
 @startuml Specimen_Delegated_Access_Sequence
 autonumber
@@ -147,6 +151,8 @@ end
 ```
 
 ## Data model (ER diagram)
+
+![Data model (ER diagram)](../../../diagrams/domains/biobanking/features/specimen-collection-derivation-and-lineage/03-data-model-er-diagram.svg)
 
 ```plantuml
 @startuml Specimen_Lineage_ER
@@ -275,6 +281,8 @@ public class AccessGrant
 
 ## State machine — one specimen's lifecycle
 
+![State machine — one specimen's lifecycle diagram](../../../diagrams/domains/biobanking/features/specimen-collection-derivation-and-lineage/04-state-machine-one-specimen-s-lifecycle.svg)
+
 ```plantuml
 @startuml Specimen_Lifecycle_State
 skinparam StateFontSize 12
@@ -304,6 +312,8 @@ end note
 ## Salt (UI mockup) — internal lineage review, grant issuance, and the researcher's scoped read
 
 ### Screen 1: Biobank staff's internal lineage viewer, unmasked
+
+![Screen 1: Biobank staff's internal lineage viewer, unmasked diagram](../../../diagrams/domains/biobanking/features/specimen-collection-derivation-and-lineage/05-screen-1-biobank-staff-s-internal-lineage-viewer-u.svg)
 
 ```plantuml
 @startsalt
@@ -335,6 +345,8 @@ from the second sequence diagram.
 
 ### Screen 2: Issuing the IRB-approved, entity-scoped grant
 
+![Screen 2: Issuing the IRB-approved, entity-scoped grant diagram](../../../diagrams/domains/biobanking/features/specimen-collection-derivation-and-lineage/06-screen-2-issuing-the-irb-approved-entity-scoped-gr.svg)
+
 ```plantuml
 @startsalt
 {
@@ -361,6 +373,8 @@ bearer JWT (`did-ucan-attestation.md`, not re-shown here), the flow
 continues on Screen 3 — the researcher's own view, not staff-12's.
 
 ### Screen 3: The external researcher's scoped read, in and out of grant
+
+![Screen 3: The external researcher's scoped read, in and out of grant diagram](../../../diagrams/domains/biobanking/features/specimen-collection-derivation-and-lineage/07-screen-3-the-external-researcher-s-scoped-read-in-.svg)
 
 ```plantuml
 @startsalt

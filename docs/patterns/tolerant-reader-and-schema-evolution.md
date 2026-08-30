@@ -24,6 +24,8 @@ records can't be silently rewritten without falsifying history. The
 general answer is a **version-to-version transform** applied on read
 (sometimes called upcasting), keeping the stored record untouched.
 
+![The pattern diagram](../diagrams/patterns/tolerant-reader-and-schema-evolution/01-the-pattern.svg)
+
 ```plantuml
 @startuml Upcasting_Sequence
 autonumber

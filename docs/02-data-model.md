@@ -16,6 +16,8 @@ and `access-log.md` are real, independent groups too (see the table
 below), each deliberately living outside this diagram's fold-centric
 relationships since neither one folds into the Entity Store at all.
 
+![The core entity groups, and how they relate diagram](diagrams/02-data-model/01-the-core-entity-groups-and-how-they-relate.svg)
+
 ```plantuml
 @startuml DataModel_Classification
 package "Schema Registry\n(data/schema-registry.md)" {

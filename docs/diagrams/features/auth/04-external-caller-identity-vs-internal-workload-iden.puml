@@ -1,0 +1,23 @@
+@startuml
+autonumber
+participant "SPIRE Server + Agent\n(per node)" as spire
+participant "EventStore.Router" as router
+participant "EventStore.Fold" as fold
+
+router -> spire: attest (no bootstrap secret to distribute\nor rotate, unlike ADR-006's client_secret model)
+spire --> router: short-lived X.509-SVID\n(spiffe://<trust-domain>/eventstore/router)
+fold -> spire: attest
+spire --> fold: short-lived X.509-SVID\n(spiffe://<trust-domain>/eventstore/fold)
+router -> fold: internal call, mTLS handshake\n(each side presents its own SVID)
+fold -> fold: verify router's SVID against the shared trust\nbundle -- no shared central IdP or root CA required
+alt SVID missing, expired, or from an untrusted trust domain
+  fold --> router: mTLS handshake rejected
+else SVID valid
+  fold --> router: 200 (internal call proceeds)
+end
+note over router, fold
+  Cross-trust-domain federation between two independent peer
+  servers (ADR-033) uses this same SVID/trust-bundle mechanism --
+  the diagram above is the same shape, just within one deployment.
+end note
+@enduml

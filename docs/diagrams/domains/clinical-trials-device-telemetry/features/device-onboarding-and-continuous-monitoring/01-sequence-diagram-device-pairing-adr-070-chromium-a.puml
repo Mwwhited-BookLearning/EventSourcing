@@ -1,0 +1,39 @@
+@startuml
+autonumber
+actor "Site Coordinator's client\n(coord-3)" as coordinator
+participant "Browser: navigator.hid\n(WebHidInputSource, Chromium only)" as webhid
+participant "Native Bridge companion app\n(NativeBridgeInputSource,\nlocalhost WebSocket)" as bridge
+participant "PublishEndpoint\n(Inbox)" as inbox
+database "Event Log" as eventLog
+database "Entity Store\n(authoritative)" as entityStore
+
+alt Chromium desktop browser
+  coordinator -> webhid: user gesture -> navigator.hid.requestDevice()
+  webhid -> coordinator: native device-picker dialog\n(secure context required, ADR-070)
+  coordinator -> webhid: user selects the bedside monitor
+  webhid --> coordinator: DeviceInfo { vendorId, productId }
+else Firefox / Safari (WebHID unsupported)
+  coordinator -> bridge: connect ws://localhost:9091\n(companion app already running,\nreal OS-level HID access, ADR-070)
+  bridge --> coordinator: DeviceInfo { vendorId, productId }
+  note right of bridge
+    Same shape real BLE-health-device bridges
+    already use to close this exact platform gap
+    (ADR-070's Context) -- WebHID/Serial/Bluetooth
+    are Chromium-only; the bridge is what makes
+    Firefox/Safari pairing possible at all.
+  end note
+end
+coordinator -> inbox: POST /publish/DeviceOnboarded\n{ payload: { DeviceId: "dev-0091", DeviceModel: "VitalSync VS-200",\n  InterfaceKind: "WebHid" (or "NativeBridge"),\n  PairedToSubjectId: "S-0091", SiteId: "04-221" } }
+inbox -> eventLog: INSERT StoredEvent\n(Status: received, AuthorityStatus: "accepted")
+note right of inbox
+  Ordinary authenticated capture by the coordinator
+  (ADR-006) -- AuthorityStatus defaults to "accepted"
+  (ADR-042); the DEVICE itself hasn't submitted
+  anything yet, so ADR-035's non-authoritative
+  default doesn't apply to pairing itself, only to
+  the readings the device produces afterward.
+end note
+inbox --> coordinator: 202 { status: "received" }
+... asynchronously ...
+inbox -> entityStore: UPSERT EntityStoreRow "trial1:Device:dev-0091"\n(Data: { DeviceModel, InterfaceKind, PairedToSubjectId: "S-0091" })
+@enduml

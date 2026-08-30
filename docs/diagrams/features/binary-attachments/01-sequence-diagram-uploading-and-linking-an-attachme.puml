@@ -1,0 +1,32 @@
+@startuml
+autonumber
+actor "Publishing System" as publisher
+participant "Attachment API" as attachApi
+participant "Publish API" as publishApi
+participant "SchemaValidationService" as validator
+participant "EventAppender" as appender
+database "Attachment & Event Store" as db
+
+publisher -> attachApi: POST /attachments\n(raw bytes, MimeType: "application/pdf")
+attachApi -> attachApi: ContentHash = SHA-256(bytes)
+attachApi -> db: SELECT Attachment WHERE ContentHash = :ContentHash
+alt hash already stored
+  db --> attachApi: existing row
+  attachApi --> publisher: 201 { contentHash }\n(deduplicated -- no new bytes written)
+else hash not seen before
+  attachApi -> db: INSERT Attachment (ContentHash, Bytes, MimeType, SizeBytes, UploadedAt)
+  attachApi --> publisher: 201 { contentHash }\n(new object stored)
+end
+
+publisher -> publishApi: POST /publish/VisitRecorded\n{ payload, entityId,\n  attachmentRefs: [{ contentHash, entityId?, linkToThisEvent? }] }
+publishApi -> validator: validate(payload, schema)
+validator --> publishApi: valid
+publishApi -> db: SELECT ContentHash FROM Attachment WHERE ContentHash IN (attachmentRefs[*].contentHash)
+alt any contentHash unknown
+  publishApi --> publisher: 400 (attachment not found -- must be uploaded first)
+else all known
+  publishApi -> appender: append(StoredEvent, AttachmentRef rows)
+  appender -> db: INSERT StoredEvent; INSERT AttachmentRef (ContentHash, EntityId?, EventId?) x N
+  appender --> publisher: 201 { eventId }
+end
+@enduml

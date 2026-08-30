@@ -1,0 +1,11 @@
+@startsalt
+{
+  { "Acme Bank -- Identity Verification Request" }
+  ..
+  { "Customer reference"  | "applicant-1001" }
+  { "Requested claim"     | "identity:verification-status:read" }
+  { "Access window"       | "24 hours" }
+  ..
+  [ Send request ]
+}
+@endsalt

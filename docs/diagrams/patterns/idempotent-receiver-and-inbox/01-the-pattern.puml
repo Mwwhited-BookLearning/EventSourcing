@@ -1,0 +1,25 @@
+@startuml
+autonumber
+actor Sender
+participant "Inbox\n(persist first)" as Inbox
+participant "Router\n(understands later)" as Router
+database "Durable Store" as Store
+
+Sender -> Inbox: submit(messageId=42, payload)
+Inbox -> Store: append "received" (messageId=42)
+Inbox --> Sender: 202 Accepted {status: "received"}
+note over Sender: Connection drops before Sender\nsees the response -- Sender retries.
+
+Sender -> Inbox: submit(messageId=42, payload)  [retry, identical]
+Inbox -> Store: lookup messageId=42
+Store --> Inbox: already exists, same content
+Inbox --> Sender: 202 Accepted {status: "received"}\n(replayed -- no second write)
+
+Inbox -> Router: notify new item
+Router -> Router: attempt to understand/route
+alt understood
+  Router -> Store: append "applied"
+else cannot process as intended
+  Router -> Store: append to Dead Letter\n(original payload + failure reason, never dropped)
+end
+@enduml

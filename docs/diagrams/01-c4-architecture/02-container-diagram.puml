@@ -1,0 +1,95 @@
+@startuml
+skinparam shadowing false
+skinparam defaultTextAlignment center
+skinparam wrapWidth 220
+skinparam rectangle<<Person>> {
+  BackgroundColor #08427B
+  FontColor white
+}
+skinparam rectangle<<System_Ext>> {
+  BackgroundColor #999999
+  FontColor white
+}
+skinparam rectangle<<Container>> {
+  BackgroundColor #438DD5
+  FontColor white
+}
+skinparam database<<Container>> {
+  BackgroundColor #438DD5
+  FontColor white
+}
+skinparam rectangle<<Boundary>> {
+  BackgroundColor transparent
+  BorderColor #666666
+  BorderStyle dashed
+}
+skinparam ArrowColor #666666
+
+rectangle "**Publishing System**\n<<Person>>" <<Person>> as publisher
+rectangle "**Consuming System**\n<<Person>>" <<Person>> as follower
+rectangle "**Platform Operator**\n<<Person>>" <<Person>> as operator
+rectangle "**EventStore.DevIdp**\n<<System_Ext>>\n--\nOIDC + Token Exchange -- ADR-006/036" <<System_Ext>> as idp
+rectangle "**Peer Site(s)**\n<<System_Ext>>\n--\nADR-033" <<System_Ext>> as peerSite
+
+rectangle "**API Gateway**\n<<Container>>\n//EventStore.Gateway, YARP//\n--\nThe single external entry point (ADR-049); external TLS termination + ADR-006/017/040 auth happen here; per-AppId rate limiting (ADR-058); hands off to every container below via ADR-048 SPIFFE/SPIRE workload identity, not a second copy of external auth" <<Container>> as apiGateway
+
+rectangle "Open Event-Sourced Entity Platform (one site)" <<Boundary>> as system {
+    rectangle "**Inbox / Publish Endpoint**\n<<Container>>\n//.NET (ASP.NET Core)//\n--\nPOST /publish; persists first, always 202 unless the envelope itself is unparseable (ADR-023); Idempotent Receiver (ADR-011)" <<Container>> as inbox
+    rectangle "**Router**\n<<Container>>\n//Background service//\n--\nSchema validation, entity resolution (ADR-021), live upcast validation + materialization (ADR-020/027), non-authoritative claim capture (ADR-035) -- all advisory, none block Inbox's 202" <<Container>> as router
+    database "**Event Log**\n<<Container>>\n//EF Core over SQLite/Postgres/SqlServer (ADR-001)//\n--\nStoredEvent, EventParent -- insert-only, hash-chained (ADR-019)" <<Container>> as eventLog
+    rectangle "**Fold / Projector**\n<<Container>>\n//Background service//\n--\nLogical-order fold (OccurredAt, not arrival order -- ADR-029); optimistic-concurrency conflict flagging (ADR-024); always-on, not opt-in" <<Container>> as fold
+    database "**Entity Store**\n<<Container>>\n//Mutable, versioned, hashed, sharded by EntityType (ADR-021/034)//\n--\nCurrent materialized state -- the only thing GraphQL reads read from" <<Container>> as entityStore
+    rectangle "**Schema Registry Service**\n<<Container>>\n//.NET//\n--\nCRUD for named/versioned JSON Schemas, AppId-scoped (ADR-030); FilterableFields, ChangeKind, EntityIdField, upcast/downcast maps (ADR-018/028)" <<Container>> as registry
+    rectangle "**GraphQL Gateway**\n<<Container>>\n//.NET (Hot Chocolate-class), QUERY method//\n--\nQuery (entity + change history), Subscription (live changes, replaces OData $filter/Follow) -- per-AppId schema (ADR-030/037); depth/cost limiting" <<Container>> as graphql
+    rectangle "**Spec Generator**\n<<Container>>\n//.NET//\n--\nBuilds OpenAPI (publish) + GraphQL SDL from registry state; MaskingSchemaTransformer (ADR-002/009)" <<Container>> as specGen
+    rectangle "**Streaming Channel Service**\n<<Container>>\n//.NET//\n--\nBatch ingest + tail/replay for telemetry & media channels (ADR-031) -- bypasses schema validation/hash-chain/fold entirely" <<Container>> as streaming
+    database "**Streaming Channel Store**\n<<Container>>\n//Plain append-only table, v1 engine choice (ADR-031)//\n--\nTelemetryChannel, TelemetrySample" <<Container>> as streamStore
+    rectangle "**Attachment Service**\n<<Container>>\n//.NET//\n--\nContent-addressed binary uploads; browse via GraphQL, fetch via GET with Range support (ADR-032)" <<Container>> as attachments
+    database "**Attachment Store**\n<<Container>>\n//Content-addressed//\n--\nAttachment, AttachmentRef" <<Container>> as attachmentStore
+    rectangle "**Peer Sync Outbox/Inbox**\n<<Container>>\n//Durable store + background service, gossip topology//\n--\nFault/abend/restart-tolerant (ADR-033); reuses the same durable transport as Inbox above" <<Container>> as peerSync
+}
+
+rectangle "CQRS Read Side (example) -- separate deployable and database, ADR-015" <<Boundary>> as readSide {
+    rectangle "**Projection Host**\n<<Container>>\n//.NET (background service)//\n--\nOpt-in custom projections, on top of the always-on Entity Store above (ADR-015/016)" <<Container>> as projectionHost
+    database "**Read Model Store**\n<<Container>>\n//EF Core, its own database//\n--\nProjectionCheckpoint, ProjectionSnapshot, OrderSummary (example)" <<Container>> as readDb
+}
+
+publisher --> apiGateway : Publishes patches/actions\n//HTTPS/JSON, Bearer + DPoP//
+follower --> apiGateway : Query / Subscription\n//HTTPS (QUERY method), Bearer + DPoP//
+operator --> apiGateway : Registers schemas\n//HTTPS/JSON, Bearer//
+publisher --> apiGateway : Batch-ingests channel samples / uploads binary content\n//HTTPS, Bearer//
+
+apiGateway --> inbox : Forwards (mTLS, ADR-048 SPIFFE identity)
+apiGateway --> graphql : Forwards (mTLS, ADR-048 SPIFFE identity)
+apiGateway --> registry : Forwards (mTLS, ADR-048 SPIFFE identity)
+apiGateway --> streaming : Forwards (mTLS, ADR-048 SPIFFE identity)
+apiGateway --> attachments : Forwards (mTLS, ADR-048 SPIFFE identity)
+apiGateway --> specGen : Forwards anonymous spec requests (mTLS, ADR-048 SPIFFE identity)
+
+inbox --> eventLog : Append "received" (Idempotent Receiver + Inbox pattern)
+inbox --> router : Notify new item
+router --> registry : Schema + claims + upcast/downcast maps lookup (advisory)
+router --> eventLog : Append routed event; append UpcastMaterialization (ADR-027) or EventUpcastFailed (ADR-020) as needed
+fold --> eventLog : Replay in OccurredAt order
+fold --> entityStore : Write materialized version; ConflictFlag/LateArrivalFlag
+graphql --> entityStore : Read current state (sharded, ADR-034)
+graphql --> eventLog : Read change history (ADR-024 §8.4)
+registry --> eventLog : n/a -- registry has its own table, shown for scope only
+specGen --> registry : Read schema/event-type metadata
+' GET /openapi.json (publisher) and GraphQL SDL introspection (follower) are both
+' anonymous, but per ADR-049 travel through apiGateway like every other external
+' request now -- no direct publisher/follower arrow to specGen anymore.
+streaming --> streamStore : Batch append; tail/replay (ADR-010's shape, reused)
+attachments --> attachmentStore : Content-addressed put/get; GraphQL browse, GET with Range
+eventLog --> peerSync : Feeds outbound peer sync
+peerSync --> eventLog : Delivers events from peers -- same path as Inbox, no special-casing
+peerSync --> peerSite : Gossip exchange\n//HTTPS/JSON//
+
+inbox --> idp : Validates Bearer + DPoP; may trigger Token Exchange (ADR-036)
+graphql --> idp : Validates Bearer + DPoP
+registry --> idp : Validates Bearer + DPoP
+
+projectionHost --> graphql : Subscribes (its own client identity)\n//HTTPS, Bearer//
+projectionHost --> readDb : Upsert snapshot + read-model rows\n//EF Core//
+
+@enduml

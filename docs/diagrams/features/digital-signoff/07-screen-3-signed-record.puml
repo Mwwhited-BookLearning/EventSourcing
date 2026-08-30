@@ -1,0 +1,11 @@
+@startsalt
+{
+  { "pa-1 -- Signed Record" }
+  ..
+  { "Signed by" | "actor-7" }
+  { "Signed at" | "2026-08-03 10:12 UTC" }
+  { "Meaning" | "approved" }
+  { "Acr" | "urn:demo:step-up" }
+  { "RFC 3161 timestamp" | "present -- independently verifiable (ADR-086)" }
+}
+@endsalt

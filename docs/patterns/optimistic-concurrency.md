@@ -21,6 +21,8 @@ a reader or another writer while an edit is in progress — the right
 trade whenever conflicts are rare relative to the read/write volume,
 which is the common case for most business data.
 
+![The pattern diagram](../diagrams/patterns/optimistic-concurrency/01-the-pattern.svg)
+
 ```plantuml
 @startuml Optimistic_Concurrency_Sequence
 autonumber

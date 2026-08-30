@@ -1,0 +1,31 @@
+@startuml
+autonumber
+actor "Requester\n(public, no prior claims)" as requester
+participant "Public Records Intake\n(Inbox, ADR-023)" as inbox
+actor "Records Officer" as officer
+participant "RBAC Grant Endpoint\n(ADR-046)" as rbac
+database "Event Log" as eventLog
+
+requester -> inbox: POST /publish/PublicRecordsRequestReceived\n{ payload: { RequestId: "r-1", CaseFileEntityId: "gov:CaseFile:c-1",\n  RequesterName: "J. Alvarez", RequestedScope: "full case file" } }
+inbox -> eventLog: INSERT StoredEvent\n(EntityId "gov:PublicRecordsRequest:r-1",\nActorId = requester's verified portal identity, ADR-064)
+inbox --> requester: 202 { status: "received", entityId: "gov:PublicRecordsRequest:r-1" }
+...officer picks up the request for review...
+officer -> rbac: grant "case:pii-view", ScopedEntityId "gov:CaseFile:c-1",\nGranteeActorId "officer-1" (entity-scoped claim, ADR-043's generalization)
+rbac -> eventLog: INSERT StoredEvent "PermissionGranted"\n(reserved control-plane event, ADR-067/ADR-046)\nparentEventIds: [PublicRecordsRequestReceived.EventId] (ADR-005)
+note right of eventLog
+  RBAC's Role/UserPermission read model
+  now folds this grant the same way an
+  EntityStoreRow folds a business event
+  (ADR-067) -- officer-1's next token
+  carries case:pii-view scoped to c-1.
+end note
+officer -> inbox: POST /publish/DisclosureDetermination\n{ payload: { RequestId: "r-1", Outcome: "PartiallyApproved",\n  ExemptFieldPaths: ["$.SSN"], FoiaExemptionCodes: ["(b)(6) personal privacy"] },\n  parentEventIds: [PublicRecordsRequestReceived.EventId, PermissionGranted.EventId] }\n(Signature: { Meaning: "reviewed", Acr: "urn:gov:acr:step-up" } -- RequiredSignature, ADR-066)
+alt caller's token satisfies DisclosureDetermination's RequiredSignature
+  inbox -> eventLog: INSERT StoredEvent "DisclosureDetermination"\n(Signature set, ADR-019 chain unaffected)
+  inbox --> officer: 202 { status: "received" }
+  note right: Outcome "Approved" or "PartiallyApproved" --\na public disclosure read link is now issued (next diagram)
+else caller's token does not satisfy RequiredSignature (acr/max_age)
+  inbox --> officer: 401 WWW-Authenticate: step-up required\n(acr_values, max_age -- RFC 9470, ADR-066)
+  note right: rejected BEFORE storage, same as any\nRequiredSignature miss (ADR-066) -- officer must\nstep up and retry, no partial event is ever written
+end
+@enduml

@@ -1,0 +1,69 @@
+@startuml
+hide circle
+skinparam linetype ortho
+
+entity "StoredEvent" as event {
+  * SequenceNumber : bigint <<PK>>
+  --
+  EventId : uuid <<unique>>
+  EntityId : string
+  ' trial1:Patient:S-0091 (PatientScreened, InformedConsentCaptured);
+  ' consent-1-evt (ConsentApproval, keyed by targetEventId per ADR-035's shape)
+  EventType : string
+  ' PatientScreened | InformedConsentCaptured | ConsentApproval
+  Payload : text
+  AttestedClaims : text?
+  AuthorityStatus : string {unattested|pending_review|accepted|rejected}
+  AuthorityDecisionRef : uuid?
+  AttachmentRef : text?
+  ' {ContentHash, MimeType} -- InformedConsentCaptured only
+  Signature : text?
+  ' {SignerId, SignedAt, Meaning, Acr} -- set only on a signed ConsentApproval
+}
+
+entity "EntityStoreRow" as entityStore {
+  * EntityId : string <<PK>>
+  --
+  EntityType : string
+  Version : bigint
+  Data : text
+  ' SubjectId, SiteId, EnrollmentStatus, ScreeningDate, ConsentObtainedAt --
+  ' LegalName/DateOfBirth x-masking-classified PHI, not shown here (ADR-009)
+  AuthorityStatus : string
+}
+
+entity "LiveEntityStoreRow" as liveView {
+  * EntityId : string <<PK>>
+  --
+  Data : text
+  AuthorityStatus : string
+}
+
+entity "Attachment\n(ADR-032, full shape in binary-attachments.md)" as attachment {
+  * ContentHash : string <<PK>>
+  --
+  MimeType : string
+  SizeBytes : bigint
+}
+
+entity "Role\n(ADR-046, IdP state, not core-engine data)" as role {
+  * AppId : string <<PK>>
+  * RoleName : string <<PK>>
+  --
+  Permissions : string[]
+  ' SiteCoordinator: [patient:enroll, consent:capture]
+  ' PrincipalInvestigator: [review:ae, consent:approve]
+}
+
+event "*" --> "1" liveView : "folds into immediately,\nno AuthorityStatus gate (ADR-042)"
+event "*" --> "0..1" entityStore : "folds into ONLY once\nAuthorityStatus = accepted (ADR-042)"
+event "0..1" ..> "1" attachment : "AttachmentRef.ContentHash --\nInformedConsentCaptured only"
+event ..o| event : "AuthorityDecisionRef -- ConsentApproval\nback-pointing to the InformedConsentCaptured\nevent it decided (ADR-035's shape, reused)"
+
+note right of role
+  Role assignment/flattening happens at the IdP,
+  at token issuance -- the core engine only ever
+  sees the resulting flattened claim set
+  (patient:enroll, consent:capture, consent:approve, ...).
+end note
+@enduml

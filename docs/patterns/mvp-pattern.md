@@ -21,6 +21,8 @@ built as a generalization of Smalltalk's MVC; adopted into .NET's own UI
 guidance from 2006 onward, specifically for UI technologies (WinForms-era
 .NET, early Android) that lacked a binding framework comparable to WPF's.
 
+![The pattern diagram](../diagrams/patterns/mvp-pattern/01-the-pattern.svg)
+
 ```plantuml
 @startuml MVP_Sequence
 autonumber

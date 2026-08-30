@@ -24,6 +24,8 @@ explains `ADR-042`'s full shape:
   actually uses to resolve Quarantine's blocking default without giving
   up WAP's gate on the authoritative side.
 
+![Gated authoritative publish: Write-Audit-Publish + Quarantine + dual materialized views diagram](../../diagrams/patterns/interactions/gated-authoritative-publish/01-gated-authoritative-publish-write-audit-publish-qu.svg)
+
 ```plantuml
 @startuml Gated_Publish_Composition
 autonumber

@@ -1,0 +1,23 @@
+@startuml
+autonumber
+actor "Legacy Consumer\n(still integrated against schema v1)" as consumer
+participant "GraphQL Gateway\n(Follow Subscription, ADR-037)" as gateway
+participant "DowncastChain\n(ADR-028)" as downcastChain
+participant "IUpcastExpressionEvaluator\n(CEL by default, ADR-053)" as evaluator
+database "Event & Schema Store" as db
+
+consumer -> gateway: QUERY /graphql\nsubscription { onOrderPlaced(mode: TAIL, asOfSchemaVersion: 1) { amount } }
+note right: omitting asOfSchemaVersion means "current version" (v2) --\ncompletely unchanged existing behavior (ADR-028)
+gateway -> db: resolve entity's actual current shape\n(v2: { OrderId: "o-1", Amount: 42.00, Status: "Unknown" })
+gateway -> gateway: requested version (1) < current version (2) -- a downcast is needed
+alt every hop from current down to the requested version has a registered downcastToPrevious
+  gateway -> downcastChain: downcast(data, fromVersion: 2, toVersion: 1)
+  downcastChain -> evaluator: evaluate v2's downcastToPrevious "Amount"\nagainst { OrderId: "o-1", Amount: 42.00, Status: "Unknown" }
+  evaluator --> downcastChain: { OrderId: "o-1", Amount: 42.00 }
+  note right: Status is dropped -- v1 never had it, and v1's schema\nwould reject an unexpected field it doesn't declare
+  downcastChain --> gateway: { OrderId: "o-1", Amount: 42.00 } -- v1 shape
+  gateway --> consumer: event { amount: 42.00 }
+else a hop between the current version and the requested one\nhas no downcastToPrevious registered
+  gateway --> consumer: request fails (400) -- the chain stops here rather\nthan guessing (ADR-028; exact Problem Details shape not\ndesigned further there)
+end
+@enduml

@@ -1,0 +1,84 @@
+@startuml
+hide circle
+skinparam linetype ortho
+
+entity "StoredEvent\n(SanctionsScreeningPerformed)" as screenEvent {
+  * SequenceNumber : bigint <<PK>>
+  --
+  EventId : uuid <<unique>>
+  EntityId : string
+  ' "kyc:ApplicantIdentity:applicant-1001"
+  Payload : text
+  ' ApplicantId, ScreeningDate, ListsChecked, MatchFound,
+  ' MatchConfidence, MatchedName (masked), MatchedListEntryId (masked)
+  AuthorityStatus : string {accepted|pending_review|rejected}
+  AuthorityDecisionRef : uuid?
+}
+
+entity "StoredEvent\n(authorityDecision)" as decisionEvent {
+  * SequenceNumber : bigint <<PK>>
+  --
+  EventId : uuid <<unique>>
+  Payload : text
+  ' targetEventId, decision, decidingActorId, reason
+  ActorId : string
+  ' the compliance officer -- always populated (ADR-064)
+}
+
+entity "StoredEvent\n(SarFilingRecorded)" as sarEvent {
+  * SequenceNumber : bigint <<PK>>
+  --
+  EventId : uuid <<unique>>
+  EntityId : string
+  Payload : text
+  ' ApplicantId, TargetScreeningEventId, FilingReferenceId, Narrative (masked)
+  Signature : Signature?
+  ' SignerId, SignedAt, Meaning: "approved filing", Acr (ADR-066) -- required
+}
+
+entity "EventTypeDefinition\n(authorityDecision)" as etdDecision {
+  * AppId : string <<PK>>
+  * Name : string <<PK>>
+  * Version : int <<PK>>
+  --
+  RequiredClaims : list
+  ' [{Publish, "identity:review"}, {Publish, "identity:aml-review"}] -- OR (ADR-050)
+}
+
+entity "EventTypeDefinition\n(SarFilingRecorded)" as etdSar {
+  * AppId : string <<PK>>
+  * Name : string <<PK>>
+  * Version : int <<PK>>
+  --
+  RequiredClaims : list
+  ' [{Publish, "identity:aml-review"}]
+  RequiredSignature : object
+  ' { AcrValues: ["urn:kyc:acr:step-up"], MaxAge: 300 } (ADR-066)
+}
+
+entity "Role\n(ComplianceOfficer)" as role {
+  * AppId : string <<PK>>
+  * RoleName : string <<PK>>
+  --
+  Permissions : string[]
+  ' ["identity:aml-review"] (ADR-046)
+}
+
+decisionEvent ..o| screenEvent : "targetEventId -- denormalized\nback-pointer, sets AuthorityDecisionRef"
+sarEvent ..o| decisionEvent : "TargetScreeningEventId chain --\nlogical only, via the accepted\nscreening event, never a DB FK"
+role ..> decisionEvent : "identity:aml-review reaches the\nofficer's JWT via this role,\nsatisfying etdDecision's OR (ADR-046/ADR-050)"
+etdDecision ..> decisionEvent : "governs which claim(s) can publish"
+etdSar ..> sarEvent : "governs claim + required step-up"
+
+note right of etdDecision
+  A caller holding EITHER identity:review OR identity:aml-review
+  may decide ANY authorityDecision -- including ones targeting
+  an ordinary identity-claim review. This is a deliberate,
+  named simplification, not a gap: RequiredClaims is evaluated
+  per EVENT TYPE, not per target-event-type-being-decided
+  (ADR-050), and ADR-046 already declines separation-of-duty
+  constraints by design. A finer split would need a second,
+  narrower decision event type and a second resolver -- real
+  framework mechanism this doc deliberately does not add.
+end note
+@enduml

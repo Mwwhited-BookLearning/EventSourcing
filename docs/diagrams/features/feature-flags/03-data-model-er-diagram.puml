@@ -1,0 +1,44 @@
+@startuml
+hide circle
+skinparam linetype ortho
+
+entity "FeatureFlagState" as state {
+  * AppId : string <<PK>>
+  * Key : string <<PK>>
+  --
+  Value : string
+  ' JSON-encoded -- a flag value isn't always boolean
+  LastAppliedSequenceNumber : bigint
+}
+
+entity "StoredEvent (FeatureFlagSet, reserved)" as event {
+  * SequenceNumber : bigint <<PK>>
+  --
+  EventType : string
+  ' always "FeatureFlagSet" for this fold
+  AppId : string
+  ActorId : string
+  Payload : text
+  ' { Key, Value }
+  ChainHash : string
+}
+
+event ..> state : "folds into (watermarked by\nLastAppliedSequenceNumber) --\nADR-067's write/read split,\nnot a DB foreign key"
+
+note right of state
+  Never written directly -- only ever
+  produced by folding the reserved
+  FeatureFlagSet event stream (ADR-067),
+  the same write/read split ADR-067
+  already established for
+  EventTypeDefinition/Role/AppTrustRoot.
+end note
+
+note right of event
+  Reserved the same way ADR-020's
+  EventUpcastFailed already is -- an
+  operator never registers this type via
+  PUT /registry/{event-type}; it's built
+  into the platform.
+end note
+@enduml

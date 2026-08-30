@@ -1,0 +1,22 @@
+@startuml
+autonumber
+participant "Header-capable caller\n(SPA/backend service)" as caller
+participant "Identity Provider\n(ticket issuance + introspection)" as idp
+participant "Header-incapable component\n(<video src>, <img src>)" as component
+participant "Receiving service\n(streams the actual content)" as service
+
+caller -> idp: POST /connect/token (RFC 8693 token exchange)\nAuthorization: Bearer <JWT>, requested_token_type=ticket
+idp --> caller: { ticket, expiresIn }
+caller -> caller: sig = HMAC-SHA256(ticket, sharedSecret)
+caller -> component: set src = ".../resource?ticket=...&sig=..."
+component -> service: GET ".../resource?ticket=...&sig=..." (no header)
+service -> idp: POST /oauth/introspect (RFC 7662-shaped)\ntoken=<ticket>, sig=<sig>
+alt sig mismatch, expired, or already consumed
+  idp --> service: { active: false }
+  service --> component: 401
+else valid, unused, sig matches
+  idp -> idp: mark ticket consumed
+  idp --> service: { active: true, ...original claims }
+  service --> component: 200 (content)
+end
+@enduml

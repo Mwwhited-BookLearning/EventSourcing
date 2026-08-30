@@ -1,0 +1,45 @@
+@startuml
+skinparam shadowing false
+skinparam defaultTextAlignment center
+skinparam wrapWidth 220
+skinparam rectangle<<Component>> {
+  BackgroundColor #85BBF0
+  FontColor black
+}
+skinparam rectangle<<Container>> {
+  BackgroundColor #438DD5
+  FontColor white
+}
+skinparam database<<Container>> {
+  BackgroundColor #438DD5
+  FontColor white
+}
+skinparam rectangle<<Boundary>> {
+  BackgroundColor transparent
+  BorderColor #666666
+  BorderStyle dashed
+}
+skinparam ArrowColor #666666
+
+rectangle "Projection Host" <<Boundary>> as projectionHost {
+    rectangle "**ProjectionRunner**\n<<Component>>\n//Background service, one loop per registered IProjection<T>//\n--\nReads checkpoint; Subscription/replay via the GraphQL Gateway (ADR-037), reusing ADR-010's tail/replay shape -- never mode=tail equivalent" <<Component>> as runner
+    rectangle "**SnapshotMerger**\n<<Component>>\n//Optional<T>-aware fold//\n--\nFull: replace. Partial: merge-patch, absent -> untouched, explicit null -> clears (ADR-022, refines ADR-016)" <<Component>> as merger
+    rectangle "**CheckpointStore**\n<<Component>>\n//EF Core repository//\n--\nProjectionCheckpoint: LastSequenceNumber per projection" <<Component>> as checkpointStore
+    rectangle "**SnapshotStore**\n<<Component>>\n//EF Core repository//\n--\nProjectionSnapshot: current merged JSON per (ProjectionName, Key)" <<Component>> as snapshotStore
+    rectangle "**OrderSummaryProjection**\n<<Component>>\n//IProjection<OrderSummary> (worked example)//\n--\nGetKey(OrderId); Project(mergedSnapshot) -> OrderSummary row" <<Component>> as orderProjection
+}
+
+rectangle "**GraphQL Gateway**\n<<Container>>\n--\nwrite-side read path" <<Container>> as graphql
+database "Read Model Store" <<Container>> as readDb
+
+runner --> checkpointStore : read/advance checkpoint
+runner --> graphql : Subscribe / replay from checkpoint\n//HTTPS, Bearer//
+runner --> snapshotStore : load existing snapshot for key
+runner --> merger : apply(ChangeKind, existing, incoming)
+merger --> snapshotStore : upsert merged snapshot
+runner --> orderProjection : Project(key, mergedSnapshot)
+orderProjection --> readDb : upsert OrderSummary row (via runner)
+checkpointStore --> readDb : persist checkpoint
+snapshotStore --> readDb : persist snapshot
+
+@enduml

@@ -1,0 +1,56 @@
+@startuml
+hide circle
+skinparam linetype ortho
+
+entity "StoredEvent" as event {
+  * SequenceNumber : bigint <<PK>>
+  --
+  EventId : uuid <<unique>>
+  EntityId : string
+  EventType : string {IcsrReported|IcsrFollowUp|authorityDecision}
+  Payload : text
+  AuthorityStatus : string {unattested|pending_review|accepted|rejected}
+  AuthorityDecisionRef : uuid?
+  Signature : Signature?
+  OccurredAt : datetimeoffset
+  LateArrivalFlag : bool
+}
+
+entity "EventParent" as parent {
+  * ChildEventId : uuid <<PK>>
+  * ParentEventId : uuid <<PK>>
+}
+
+entity "LiveEntityStoreRow" as live {
+  * EntityId : string <<PK>>
+  --
+  Data : text
+  AuthorityStatus : string
+  UpdatedAt : datetimeoffset
+}
+
+entity "EntityStoreRow" as auth {
+  * EntityId : string <<PK>>
+  --
+  Version : bigint
+  Data : text
+  LastAppliedSequenceNumber : bigint
+}
+
+event "1" --> "0..1" parent : "an IcsrFollowUp's\nParentEventId = the original\nIcsrReported's EventId (ADR-005) --\na causal DAG, never a copy"
+event "*" --> "1" live : "folds into immediately,\ngate-free (ADR-042)"
+event "*" --> "0..1" auth : "folds into ONLY once\nAuthorityStatus reaches\n'accepted' (ADR-042)"
+
+note right of live
+  "pv:IcsrCase:icsr-2031" appears here the
+  moment IcsrReported is received --
+  AuthorityStatus "pending_review", wrapped
+  isAuthoritative:false at the query surface.
+end note
+note right of auth
+  The SAME EntityId only appears here once
+  an authorityDecision{accepted} event
+  brings AuthorityStatus to "accepted" --
+  a rejected case never appears here at all.
+end note
+@enduml

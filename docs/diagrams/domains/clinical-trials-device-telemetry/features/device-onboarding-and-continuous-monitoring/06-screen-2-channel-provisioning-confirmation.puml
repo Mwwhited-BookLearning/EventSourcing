@@ -1,0 +1,12 @@
+@startsalt
+{
+  { "Site 04-221 -- Provision Telemetry Channel (Subject: S-0091)" }
+  ..
+  { "Device" | "dev-0091 (paired)" }
+  { "Channel ID" | "^vitals-s0091^" }
+  { "Content kind" | "^RawScalar^" } | { "Sample type" | "^Float64^" }
+  { "Sample interval (us)" | "^1000000^" }
+  [ Provision Channel ]
+  "Provisioned: channelId vitals-s0091 (201) -- scoped to the\n PATIENT entity, not the device (ADR-031)"
+}
+@endsalt

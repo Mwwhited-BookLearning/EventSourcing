@@ -1,0 +1,34 @@
+@startuml
+autonumber
+participant "Site A\nPeer Sync Outbox" as aOutbox
+participant "Site A\nPeer Sync Service" as aSync
+participant "Site B\nPeer Sync Service" as bSync
+participant "Site B\nPeer Sync Inbox" as bInbox
+database "Site B\nEvent Log + Entity Store" as bStore
+
+== Normal gossip exchange (both sites reachable) ==
+aSync -> aOutbox: read events since PeerSyncCursor["Site B"].LastAckedSequenceNumber
+aOutbox --> aSync: batch [ { EventId, OriginId="Site A", LogicalClock, Payload }, ... ]
+aSync -> bSync: push batch
+bSync -> bInbox: append batch (durable table, not memory -- ADR-033)
+bInbox -> bStore: append each event to the local Event Log,\nexactly as if it arrived via Site B's own client Inbox\n(no special-casing, ADR-033)
+bStore -> bStore: fold as usual (ADR-024/ADR-029) --\nmay set ConflictFlag/LateArrivalFlag
+bSync --> aSync: ack up to SequenceNumber N
+aSync -> aOutbox: advance PeerSyncCursor["Site B"].LastAckedSequenceNumber = N
+
+== Disconnection ==
+aSync -x bSync: push fails -- Site B unreachable
+note over aSync, bSync
+  Site A keeps appending to its own durable Peer Sync
+  Outbox for Site B; nothing queued is lost, sync just
+  falls behind (fault/abend/restart-tolerant, ADR-033).
+end note
+
+== Reconnection: Merkle-tree catch-up, not a full resync ==
+aSync -> bSync: reconnect; exchange Merkle-tree summary\n(hash per event range, per peer)
+bSync --> aSync: its own Merkle-tree summary
+aSync -> aSync: diff the two trees -- identify only the\nranges whose hashes disagree
+aSync -> bSync: push only the differing ranges\n(not the whole backlog since disconnection)
+bSync -> bInbox: append + fold as above
+bSync --> aSync: ack up to SequenceNumber N'
+@enduml

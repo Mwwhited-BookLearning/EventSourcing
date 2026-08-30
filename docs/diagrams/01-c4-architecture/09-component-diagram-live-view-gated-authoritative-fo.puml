@@ -1,0 +1,39 @@
+@startuml
+skinparam shadowing false
+skinparam defaultTextAlignment center
+skinparam wrapWidth 220
+skinparam rectangle<<Component>> {
+  BackgroundColor #85BBF0
+  FontColor black
+}
+skinparam database<<Container>> {
+  BackgroundColor #438DD5
+  FontColor white
+}
+skinparam rectangle<<Boundary>> {
+  BackgroundColor transparent
+  BorderColor #666666
+  BorderStyle dashed
+}
+skinparam ArrowColor #666666
+
+rectangle "Router — fold step" <<Boundary>> as foldStep {
+    rectangle "**LiveViewFolder**\n<<Component>>\n//Unconditional fold//\n--\nEvery routed event, regardless of AuthorityStatus -- wraps isAuthoritative: false (ADR-042)" <<Component>> as liveFolder
+    rectangle "**AuthorityStatus Gate**\n<<Component>>\n//accepted? proceed : hold//\n--\nADR-035/042 -- unattested/pending_review events stop here, never reach the authoritative fold" <<Component>> as gate
+    rectangle "**AuthoritativeFolder**\n<<Component>>\n//Gated fold//\n--\nOnly runs once AuthorityStatus reaches accepted, via publish-time default or a later authorityDecision (ADR-035/042)" <<Component>> as authFolder
+}
+
+database "Live View (LiveEntityStoreRow)" <<Container>> as liveDb
+database "Entity Store (EntityStoreRow, authoritative)" <<Container>> as authDb
+
+liveFolder --> liveDb : upsert, every event, no gate
+gate --> authFolder : accepted
+authFolder --> authDb : upsert, ExpectedVersion-checked (ADR-024)
+note right of liveDb
+  Same event, two independent folds --
+  a second CQRS materialized view
+  (docs/patterns/cqrs-and-materialized-views.md),
+  not a cache of authDb.
+end note
+
+@enduml

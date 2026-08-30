@@ -1,0 +1,13 @@
+@startsalt
+{
+  { "Custody Handoff -- Rotterdam Site" }
+  ..
+  { "Shipment ID" | "^shp-4471^" }
+  { "Handoff type" | "^OriginWarehouseToCarrier^" }
+  { "From party" | "^Acme Warehouse^" }
+  { "To party" | "^Swift Freight^" }
+  { "Location" | "^Rotterdam^" }
+  ..
+  [ Scan and Publish CustodyHandoff ] | [ Cancel ]
+}
+@endsalt

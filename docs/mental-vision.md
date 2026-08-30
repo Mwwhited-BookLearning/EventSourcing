@@ -2,7 +2,10 @@
 
 ## Overview
 
+![diagram](diagrams/mental-vision/01-diagram.svg)
+
 ```plantuml
+@startuml
 title cold standby
 
 package siteA {
@@ -73,4 +76,5 @@ handlerA2 --> entityStoreA2
 eventStoreA1 ==* eventStoreA2
 entityStoreA1 ==* entityStoreA2
 
+@enduml
 ```

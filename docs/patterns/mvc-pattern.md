@@ -15,6 +15,8 @@ rendered once per request rather than kept alive and updated repeatedly.
 Smalltalk-80's UI framework — the common ancestor MVP (1996) and MVVM
 (2005) both explicitly generalize from.
 
+![The pattern diagram](../diagrams/patterns/mvc-pattern/01-the-pattern.svg)
+
 ```plantuml
 @startuml MVC_Sequence
 autonumber

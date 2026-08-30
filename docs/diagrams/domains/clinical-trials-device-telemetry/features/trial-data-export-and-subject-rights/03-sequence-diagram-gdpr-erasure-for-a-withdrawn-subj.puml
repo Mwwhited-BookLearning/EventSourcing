@@ -1,0 +1,47 @@
+@startuml
+autonumber
+actor "Site Coordinator" as coordinator
+actor "Data Protection Officer\n(dpo-1)" as dpo
+participant "PublishEndpoint\n(Inbox)" as inbox
+database "Event Log" as eventLog
+participant "IErasureKeyStore\n(ADR-057)" as keyStore
+actor "Any subsequent reader" as reader
+participant "GraphQL Gateway" as gateway
+
+coordinator -> inbox: POST /publish/ConsentWithdrawn\n{ payload: { SubjectId: "S-0077", WithdrawnAt: "2026-07-28T00:00:00Z",\n  Reason: "subject withdrew consent" } }
+inbox -> eventLog: INSERT StoredEvent (ConsentWithdrawn)
+note right of inbox
+  Retained FOREVER, per ICH-GCP -- the withdrawal
+  itself is a real trial event, structurally
+  identical to any other, and is never itself
+  a target of the erasure below.
+end note
+inbox --> coordinator: 202
+
+dpo -> gateway: subscription { on_trial1_PatientScreened(\n  where: [{ field: "LegalName", eq: "<name subject gave>" },\n          { field: "DateOfBirth", eq: "<DOB subject gave>" }]) {\n  subjectId } }
+gateway --> dpo: "S-0077" (ADR-096 -- see patient-enrollment-and-\ninformed-consent.md's own compound-match section;\na real subject-rights intake call names a person by\nname/DOB, never the internal EntityId directly)
+dpo -> inbox: POST /publish/EntityErasureRequested\n{ payload: { EntityId: "trial1:Patient:S-0077",\n  RequestedAt: "2026-07-29T00:00:00Z",\n  Reason: "subject withdrew consent, GDPR Art. 17 request" } }
+inbox -> eventLog: INSERT StoredEvent (EntityErasureRequested)\nActorId: "dpo-1" -- hash-chained like any other event (ADR-057)
+inbox -> keyStore: DestroyKey(AppId: "trial1", EntityId: "trial1:Patient:S-0077")
+keyStore -> keyStore: irreversible key destruction\n(Key Vault purge / KMS scheduled deletion / Vault key deletion)
+inbox --> dpo: 202
+note right of keyStore
+  Destroys the DEK, never touches StoredEvent.Payload
+  or ADR-019's hash chain -- ADR-057's own governing
+  rule. The FACT that erasure happened is itself
+  preserved forever (README.md's "never lose data").
+end note
+
+... subsequently ...
+reader -> gateway: QUERY patient(entityId: "trial1:Patient:S-0077")
+gateway -> gateway: attempt decrypt of LegalName/DateOfBirth\nvia IErasureKeyStore -- DEK no longer exists
+gateway --> reader: 200 { SubjectId: "S-0077", SiteId: "04-221",\n  EnrollmentStatus: "Withdrawn",\n  LegalName: { "erased": true },\n  DateOfBirth: { "erased": true } }
+note right of reader
+  EnrollmentStatus/SiteId/ScreeningDate are NOT
+  x-masking-classified PHI -- they remain fully
+  readable regardless of claims. Only fields whose
+  erasureScope resolves to this EntityId's destroyed
+  DEK become "erased": true (ADR-057) -- distinct from
+  "masked": a claim can never restore this.
+end note
+@enduml

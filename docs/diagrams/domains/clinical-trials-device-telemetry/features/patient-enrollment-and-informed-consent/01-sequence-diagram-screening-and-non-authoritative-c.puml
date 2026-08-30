@@ -1,0 +1,39 @@
+@startuml
+autonumber
+actor "Site Coordinator's client\n(coord-3)" as coordinator
+participant "PublishEndpoint\n(Inbox)" as inbox
+participant "Router" as router
+participant "EventStore.Fold" as fold
+participant "Attachment Store\n(ADR-032)" as attachments
+database "Event Log" as eventLog
+database "Live View\n(LiveEntityStoreRow, ADR-042)" as liveView
+database "Entity Store\n(authoritative, ADR-042)" as entityStore
+
+coordinator -> inbox: POST /publish/PatientScreened\n{ payload: { SubjectId: "S-0091", SiteId: "04-221",\n  ProtocolId: "trial1-proto-A", ScreeningDate: "2026-07-20",\n  EligibilityStatus: "Eligible" } }
+note right of coordinator
+  Ordinary authenticated capture (ADR-006) --
+  AuthorityStatus defaults to "accepted" (ADR-042),
+  same default AdverseEventReported's coordinator
+  branch documents.
+end note
+inbox -> eventLog: INSERT StoredEvent\n(Status: received, AuthorityStatus: "accepted")
+inbox --> coordinator: 202 { status: "received", authorityStatus: "accepted" }
+... asynchronously ...
+router -> fold: fold(StoredEvent)
+fold -> entityStore: UPSERT EntityStoreRow "trial1:Patient:S-0091"\n(Data: { EnrollmentStatus: "Screened", ... })
+
+coordinator -> attachments: POST /attachments (scanned, signed consent PDF)
+attachments --> coordinator: 201 { contentHash: "sha256:9f1c..." }
+coordinator -> inbox: POST /publish/InformedConsentCaptured\n{ payload: { SubjectId: "S-0091", ConsentVersion: "v3",\n  ConsentObtainedAt: "2026-07-22T09:10:00Z",\n  WitnessActorId: "coord-3" },\n  attachmentRef: { ContentHash: "sha256:9f1c...", MimeType: "application/pdf" },\n  attestedClaims: { reviewPending: true,\n    reason: "awaiting-investigator-countersignature" } }
+note right of coordinator
+  Same explicit review-pending marker shape ADR-042
+  names for a site-entered adverse event -- here it's
+  the coordinator declaring "this isn't final until
+  the PI countersigns," not an identity/permission gap.
+end note
+inbox -> eventLog: INSERT StoredEvent\n(AuthorityStatus: "pending_review")
+inbox --> coordinator: 202 { status: "received", authorityStatus: "pending_review" }
+... asynchronously ...
+fold -> liveView: UPSERT LiveEntityStoreRow "trial1:Patient:S-0091"\n(Data: { EnrollmentStatus: "ConsentPending", ... },\n AuthorityStatus: "pending_review")
+fold -> entityStore: (not updated -- AuthorityStatus hasn't\nreached "accepted" yet, ADR-042)
+@enduml

@@ -1,0 +1,47 @@
+@startuml
+autonumber
+actor "Warehouse QA Inspector\n(same site as the handoff)" as sameSiteActor
+actor "Customs Officer\n(Hamburg -- different site)" as crossSiteActor
+participant "Inbox" as inbox
+participant "ParentLinkService\n(ADR-005)" as parentLink
+participant "EventAppender" as appender
+database "Event Log" as log
+participant "Router" as router
+database "Entity Store" as entityStore
+
+alt CustodyException (ParentValidationMode: Strict) -- parent handoff already exists at this site
+  sameSiteActor -> inbox: POST /publish/CustodyException\n{ payload: { ShipmentId: "shp-4471", Description: "crate crushed on intake" },\n  parentEventIds: ["evt-handoff-118"] }
+  inbox -> parentLink: validate(["evt-handoff-118"], Strict)
+  parentLink -> log: SELECT EventId FROM Events WHERE EventId = "evt-handoff-118"
+  log --> parentLink: found (locally present, lower SequenceNumber)
+  parentLink --> inbox: ok
+  inbox -> appender: append(StoredEvent); INSERT EventParents\n(ChildEventId, ParentEventId = "evt-handoff-118")
+  appender -> log: INSERT StoredEvent + EventParents row (real FK on ChildEventId,\nParentEventId resolves immediately -- ADR-005)
+  inbox --> sameSiteActor: 202 { correlationId, status: "received" }
+  ...async...
+  router -> entityStore: resolve "freightco:Shipment:shp-4471", fold exception\n(ExceptionCount + 1) -- folds the same as any other event (ADR-021)
+else CrossSiteCustodyException (ParentValidationMode: Permissive) -- parent handoff not yet synced to this site
+  crossSiteActor -> inbox: POST /publish/CrossSiteCustodyException\n{ payload: { ShipmentId: "shp-4471", Description: "customs seal missing" },\n  parentEventIds: ["evt-handoff-118"] }
+  inbox -> parentLink: validate(["evt-handoff-118"], Permissive)
+  parentLink -> log: SELECT EventId FROM Events WHERE EventId = "evt-handoff-118"
+  log --> parentLink: not found -- the Rotterdam handoff hasn't replicated\nto Hamburg yet (ADR-033 sync lag)
+  note right: Permissive tolerates the dangling reference (ADR-005) --\nnever rejected, never held back waiting for the handoff to sync
+  parentLink --> inbox: ok (dangling reference allowed as-is)
+  inbox -> appender: append(StoredEvent); INSERT EventParents\n(ChildEventId, ParentEventId = "evt-handoff-118")
+  appender -> log: INSERT StoredEvent + EventParents row\n(ParentEventId has NO db FK -- must tolerate not resolving yet, ADR-005)
+  inbox --> crossSiteActor: 202 { correlationId, status: "received" }
+  ...async...
+  router -> entityStore: resolve "freightco:Shipment:shp-4471", fold exception\n(ExceptionCount + 1) -- EntityId fold is independent of whether\nthe parent has resolved (EntityId and lineage are separate axes)
+  ...later, once the Rotterdam handoff itself arrives via Peer Sync Inbox (see the\nprevious sequence diagram) and is appended locally at Hamburg...
+  note over log: EventParents.ParentEventId was never rewritten -- it always said\n"evt-handoff-118". Only whether a JOIN against Events finds a match\nchanges, from that point on (ADR-005).
+end
+
+group Lineage read, either branch (ADR-005, transport per ADR-012/ADR-037)
+  crossSiteActor -> log: QUERY /events/{exceptionEventId}/parents
+  alt handoff not yet synced to this site
+    log --> crossSiteActor: [ { eventId: "evt-handoff-118", resolved: false } ]
+  else handoff present (locally, or after sync completes)
+    log --> crossSiteActor: [ { eventId: "evt-handoff-118", resolved: true,\n  eventType: "CustodyHandoff", occurredAt: ... } ]
+  end
+end
+@enduml

@@ -1,0 +1,23 @@
+@startuml
+state Requested
+state UnderReview
+state Denied
+state Approved
+state "Active -- RBAC role granted\n(no entityScope, no expiry, ADR-046)" as ActiveRbac
+state "Active -- TAA-delegated grant\n(entityScope + ExpiresAt, ADR-043)" as ActiveTaa
+state Expired
+state Revoked
+
+[*] --> Requested
+Requested --> UnderReview
+UnderReview --> Denied : reviewer declines
+UnderReview --> Approved : reviewer approves\n(digital sign-off, ADR-066,\nMeaning "export_control_release_approval",\nvia RFC 9470 step-up challenge)
+Approved --> ActiveRbac : grant type = RBAC role (ADR-046)\n-- PermissionGranted/RoleGranted event (ADR-067)
+Approved --> ActiveTaa : grant type = TAA-scoped delegated (ADR-043)\n-- accessGrant event, UCAN issued (ADR-036)
+ActiveTaa --> Expired : ExpiresAt reached --\nan exchange attempted after this fails (ADR-043)
+ActiveTaa --> Revoked : accessGrantRevoked event published\nbefore natural expiration (ADR-043)
+ActiveRbac --> Revoked : role/permission removed --\nadditive-only model, no deny entry (ADR-046)
+Denied --> [*]
+Expired --> [*]
+Revoked --> [*]
+@enduml

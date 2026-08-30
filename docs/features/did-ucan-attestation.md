@@ -27,6 +27,8 @@ second authorization mechanism running in parallel.
 
 ## Sequence diagram — disconnected capture, then later token exchange
 
+![Sequence diagram — disconnected capture, then later token exchange](../diagrams/features/did-ucan-attestation/01-sequence-diagram-disconnected-capture-then-later-t.svg)
+
 ```plantuml
 @startuml DidUcan_CaptureThenExchange_Sequence
 autonumber
@@ -68,6 +70,8 @@ end note
 ```
 
 ## Sequence diagram — a disconnected peer validates the same UCAN chain locally
+
+![Sequence diagram — a disconnected peer validates the same UCAN chain locally](../diagrams/features/did-ucan-attestation/02-sequence-diagram-a-disconnected-peer-validates-the.svg)
 
 ```plantuml
 @startuml DidUcan_PeerLocalValidation_Sequence

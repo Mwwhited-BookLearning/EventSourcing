@@ -40,6 +40,8 @@ than `ProjectionHost`.
 
 ## Sequence diagram
 
+![Sequence diagram](../diagrams/features/follow-subscribe/01-sequence-diagram.svg)
+
 ```plantuml
 @startuml Follow_Sequence
 autonumber
@@ -93,6 +95,8 @@ end
 `06-solution-structure.md`, "Follow: tail vs replay cursor".
 
 ## Data model (ER diagram)
+
+![Data model (ER diagram)](../diagrams/features/follow-subscribe/02-data-model-er-diagram.svg)
 
 ```plantuml
 @startuml FollowSubscribe_ER

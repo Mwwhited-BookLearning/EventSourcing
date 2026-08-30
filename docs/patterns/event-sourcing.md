@@ -37,6 +37,8 @@ needed later that no one can fully anticipate at write time.
 - Temporal queries ("what did this look like on Tuesday") fall out for
   free — replay up to that point.
 
+![When you'd reach for it diagram](../diagrams/patterns/event-sourcing/01-when-you-d-reach-for-it.svg)
+
 ```plantuml
 @startuml EventSourcing_Sequence
 autonumber

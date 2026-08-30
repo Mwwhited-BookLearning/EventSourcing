@@ -16,6 +16,8 @@ the whole request. **Source:**
 [GraphQL Specification](https://spec.graphql.org/) (originally developed
 at Facebook, now governed by the GraphQL Foundation/Linux Foundation).
 
+![The pattern diagram](../diagrams/patterns/graphql-query-language/01-the-pattern.svg)
+
 ```plantuml
 @startuml GraphQL_Sequence
 autonumber

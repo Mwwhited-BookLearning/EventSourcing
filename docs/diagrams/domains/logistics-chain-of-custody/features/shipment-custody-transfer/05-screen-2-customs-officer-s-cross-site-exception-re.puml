@@ -1,0 +1,12 @@
+@startsalt
+{
+  { "Report Custody Exception -- Hamburg Site" }
+  ..
+  { "Shipment ID" | "^shp-4471^" }
+  { "Concerning handoff" | "^evt-handoff-118  (Acme Warehouse -> Swift Freight)^" }
+  { "Local sync status" | "not yet received at this site" }
+  { "Description" | "^customs seal missing^" }
+  ..
+  [ File CrossSiteCustodyException ] | [ Cancel ]
+}
+@endsalt

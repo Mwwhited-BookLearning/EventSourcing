@@ -50,6 +50,8 @@ schema-invalid payload — are shown as alternatives of the same fold step,
 since they differ only in what the fold step decides, not in the request
 shape.
 
+![Sequence diagram — publish through to the Entity Store fold](../diagrams/features/entity-concept/01-sequence-diagram-publish-through-to-the-entity-sto.svg)
+
 ```plantuml
 @startuml Entity_Publish_Fold_Sequence
 autonumber
@@ -111,6 +113,8 @@ the GraphQL Gateway (`ADR-037`) like every other read; `follow-
 subscribe.md`/`event-chains.md` cover the Gateway's shared scope/claim
 checks in depth and aren't repeated here.
 
+![Sequence diagram — querying an entity's change history](../diagrams/features/entity-concept/02-sequence-diagram-querying-an-entity-s-change-histo.svg)
+
 ```plantuml
 @startuml Entity_History_Query_Sequence
 autonumber
@@ -133,6 +137,8 @@ end
 ```
 
 ## Data model (ER diagram)
+
+![Data model (ER diagram)](../diagrams/features/entity-concept/03-data-model-er-diagram.svg)
 
 ```plantuml
 @startuml EntityConcept_ER

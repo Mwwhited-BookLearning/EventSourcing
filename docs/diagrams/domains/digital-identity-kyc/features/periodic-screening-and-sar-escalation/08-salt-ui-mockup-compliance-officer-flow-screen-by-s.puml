@@ -1,0 +1,17 @@
+@startsalt
+{
+  { "Suspicious Activity Report -- Filing Recorded" }
+  ..
+  { "Applicant"        | "applicant-1001" }
+  { "Filing reference"  | "SAR-2026-00417" }
+  { "Filed by"          | "compliance-officer-1" }
+  { "Filed at"          | "2026-07-30T14:22:00Z" }
+  { "Meaning"           | "approved filing" }
+  { "Acr"               | "urn:kyc:acr:step-up" }
+  ..
+  "FinCEN BSA E-Filing submission is handled by a separate"
+  "outbound interchange step (ADR-072), not shown here."
+  ..
+  [ Done ]
+}
+@endsalt

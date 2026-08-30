@@ -466,26 +466,86 @@ below each item, refined into what's actually still open.
     view for display elements" item above (that item's own scope was
     broadened to cover this directly), which is done — not a separate
     task.
-- [ ] **Migrate embedded PlantUML diagrams to their own `.puml` files +
+- [x] **Migrate embedded PlantUML diagrams to their own `.puml` files +
   a Docker rendering pipeline to `.svg`** (Low Priority, user's own
-  priority marking kept). Reviewed: confirmed no such pipeline exists
-  today (no `.puml` file anywhere in the repo, nothing in `client-web/
-  package.json`, no CI workflow, no `scripts/` entry — 97 markdown files
-  currently embed PlantUML inline via fenced code blocks). **Real
-  tension worth deciding explicitly before building, not silently
-  overriding**: `docs/references.md`'s own PlantUML/C4-PlantUML entries
-  document exactly why every diagram in this repo is hand-styled,
-  `!include`-free, and embedded as plain text — avoiding a required
-  external-rendering dependency that failed silently and repeatedly
-  before (`CLAUDE.md`'s own standing convention bullet on this). A
-  Docker-based render-to-`.svg` pipeline doesn't reintroduce `!include`
-  itself, but it does reintroduce the class of "diagrams need working
-  external infrastructure to render at all" dependency that convention
-  was specifically adopted to avoid — weighed against the real,
-  legitimate upside (GitHub itself never renders raw PlantUML text
-  inline the way it does Mermaid, so pre-rendered `.svg` would make
-  every diagram actually visible there). Confirm this tradeoff is
-  accepted before scoping the actual build.
+  priority marking kept). The tradeoff this item's own text flagged
+  (reintroducing the class of external-render dependency `docs/
+  references.md`'s PlantUML/C4-PlantUML entries document deliberately
+  avoiding) was put to the user explicitly and accepted before any of
+  this was built.
+
+  `scripts/extract-diagrams.mjs` walks every `docs/**/*.md` file and, for
+  each ` ```plantuml`/` ```puml` fenced block, writes its content to its
+  own `.puml` file under `docs/diagrams/` (mirroring the source doc's own
+  relative path — e.g. `docs/features/auth.md`'s diagrams live under
+  `docs/diagrams/features/auth/`), then inserts a `![...](....svg)`
+  image reference immediately above the original fence. **The original
+  fenced block is left completely untouched** — deliberately, not an
+  oversight: this repo's docs are meant to stay readable as plain text
+  with no external tool (the same reasoning behind the `!include` ban),
+  so the inline PlantUML stays the visible, git-diffable source of
+  truth; the `.puml` copy is only the render pipeline's input.
+  Idempotent/re-runnable (a guard skips re-inserting the image line for
+  an already-migrated fence — this had a real bug on the first pass,
+  caught before committing: the guard checked the wrong line, since a
+  blank line separates the image reference from the fence, and doubled
+  every image line on a second run until fixed to skip blank lines when
+  looking back).
+
+  `scripts/render-diagrams.mjs` renders every `docs/diagrams/**/*.puml`
+  to a sibling `.svg` via the official `plantuml/plantuml` Docker image
+  (`docker run ... plantuml/plantuml -tsvg "/workdir/docs/diagrams/**/*.puml"`
+  — the directory-only form silently renders nothing, since PlantUML
+  only recurses through a `**` glob, not a bare directory path). Each
+  extracted `.puml`'s `@startuml`/`@startsalt` line has its optional
+  `Name` argument stripped (only in the `.puml` copy, never in the
+  inline fence) specifically so PlantUML falls back to naming its output
+  after the input file's own basename — otherwise it names the `.svg`
+  after the diagram's internal title, which is unpredictable and would
+  silently break the image reference above.
+
+  **Six genuine, previously-undiscovered PlantUML syntax bugs found only
+  by actually running every diagram through a real renderer** — this
+  project's own recurring finding, that a real run surfaces bugs no
+  amount of reading the source catches — fixed at their source doc (or,
+  for one E2E-test-generated playbook doc, at the owning test's own step
+  caption, per that file's own "don't hand-edit, the next run overwrites
+  it" instruction):
+  - Three participant/actor labels used a backslash-escaped quote inside
+    an already-double-quoted label (`"...key \"Fhir\"..."`) — PlantUML
+    has no such escape; fixed by switching the inner quotes to single
+    quotes (`'Fhir'`). `docs/features/bulk-ingestion-and-interchange-
+    adapters.md` (two), `tests/EventStore.E2ETests/
+    VitalsWorkflowBAdverseEventPlaybookTests.cs` (the source of the
+    generated playbook doc showing the same pattern).
+  - `docs/features/auth.md`'s RBAC sequence diagram used `note over A, B,
+    C` (three participants) — this specific PlantUML build
+    (`1.2026.7`) errors on a 3+-name `note over` list; fixed to the
+    idiomatic two-endpoint form (`note over A, C`), which already spans
+    every lifeline between them visually.
+  - `docs/playbooks/meridian/README.md`'s object diagram declared an
+    `actor` (a sequence-diagram element) alongside plain `object`
+    declarations — fixed to `object`, matching the rest of the diagram.
+  - `docs/domains/clinical-trials-device-telemetry/features/trial-data-
+    export-and-subject-rights.md`'s Salt mockup nested literal `{ }`
+    inside an already-`{ }`-delimited Salt cell's own quoted string
+    (`"{ erased: true }"`) — Salt's brace-based grammar doesn't respect
+    quoting for its own structural braces, crashing the renderer with a
+    raw Java `StringIndexOutOfBoundsException`, not a normal "line N"
+    diagram error; fixed by dropping the nested braces (`"[erased:
+    true]"`).
+  - `docs/mental-vision.md` (an orphaned, unreferenced early scratch doc
+    predating this repo's current doc taxonomy — not part of `CLAUDE.md`'s
+    documented layout) was missing `@startuml`/`@enduml` entirely; added,
+    since it was otherwise the one broken link in an else-complete
+    migration.
+
+  All 333 diagrams across 96 files (240 `@startuml`, 92 `@startsalt`) now
+  render cleanly, verified via a full `node scripts/render-diagrams.mjs`
+  run exiting 0 with zero `Error line` output. Not wired into CI (not
+  asked for this pass) — re-run both scripts after editing any diagram to
+  keep the checked-in `.svg` files in sync; this is a real, honest manual
+  step, not automated yet.
 
 (The "DSL for user flows/validations/approvals" ask was moved to
 [`docs/10-open-questions.md`](docs/10-open-questions.md) row 1, not kept

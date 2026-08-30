@@ -1,0 +1,23 @@
+@startuml
+autonumber
+actor "Applicant" as applicant
+participant "PublishEndpoint\n(Inbox)" as inbox
+participant "Duplex Client\n(client-web-meridian)" as client
+database "Entity Store\n(kyc:ApplicantIdentity:applicant-1001)" as entityStore
+
+applicant -> inbox: POST /publish/IdentityClaimSubmitted\n{ ApplicantId, Did (self-attested DID key),\n  ClaimedLegalName (masked), DateOfBirth (masked) }
+
+alt ordinary publish (this continuity applicant's own seed data)
+  inbox -> entityStore: fold immediately, AuthorityStatus: "accepted"
+else self-attested, credential-agnostic capture (ADR-035/036)
+  inbox -> inbox: AuthorityStatus starts "unattested"\n(AttestedActorId/AttestedClaims present)
+  note right: not exercised by this playbook's own seed data --\nreal and proven via NonAuthoritativeCaptureScenarioAssertions
+  actor "KYC Analyst" as analyst
+  analyst -> inbox: POST /publish/authorityDecision\n{ targetEventId, decision: "accepted", decidingActorId }\nRequiredClaims: "identity:review"
+  inbox -> entityStore: fold now (catch-up)
+end
+
+== Later: staff browse the result via client-web ==
+client -> entityStore: (via GraphQL Subscription, REPLAY)
+client -> applicant: Detail view -- ClaimedLegalName/DateOfBirth\nrender masked (PartialReveal, requiredClaim "identity:pii-read")
+@enduml

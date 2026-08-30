@@ -1,0 +1,18 @@
+@startuml
+autonumber
+actor "Operator / Compliance reviewer" as caller
+participant "EventStore.Host.Core\n(verification endpoint)" as api
+database "Event Log" as eventLog
+
+caller -> api: GET /events/verify?throughSequenceNumber=122
+api -> eventLog: SELECT SequenceNumber, PayloadHash, ChainHash\nFROM StoredEvent WHERE SequenceNumber <= 122 ORDER BY SequenceNumber
+eventLog --> api: rows 1..122
+api -> api: recompute the chain from the fixed SequenceNumber=1 seed:\nfor n in 1..122, ChainHash'[n] = SHA-256(ChainHash'[n-1] || PayloadHash[n] || SequenceNumber[n])
+alt every recomputed ChainHash'[n] equals the stored ChainHash[n]
+  api --> caller: 200 { verified: true, throughSequenceNumber: 122 }
+  note right: "Chain integrity verified through SequenceNumber 122" --\nthe exact display trade-order-lifecycle.md's badge sources from this response
+else recomputed ChainHash'[n] diverges from stored ChainHash[n]\nat some n <= 122 (a past Payload/PayloadHash/ChainHash was altered)
+  api --> caller: 200 { verified: false, divergesAtSequenceNumber: n }
+  note right: tamper-evidence, not tamper-prevention (ADR-019) --\nthis reports WHERE the chain first breaks, it can't undo the edit\nor prove who made it
+end
+@enduml

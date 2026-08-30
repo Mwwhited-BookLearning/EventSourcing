@@ -1,0 +1,22 @@
+@startuml
+autonumber
+actor "Operator (as AppId: app-a)" as opA
+actor "Operator (as AppId: app-b)" as opB
+participant "Registry\n(RegistrationEndpoint)" as endpoint
+participant "SchemaRegistryService" as registry
+database "Event & Schema Store" as db
+
+opA -> endpoint: PUT /registry/OrderPlaced (as app-a)\n{ jsonSchema: schemaA, ... }
+endpoint -> registry: register(appId: "app-a", name: "OrderPlaced", ...)
+registry -> db: SELECT ... WHERE AppId = "app-a" AND Name = "OrderPlaced"
+db --> registry: no active version for app-a
+registry -> db: INSERT EventTypeDefinition\n(AppId="app-a", Name="OrderPlaced", Version=1, JsonSchema=schemaA)
+registry --> opA: 201 (app-a's own OrderPlaced v1)
+
+opB -> endpoint: PUT /registry/OrderPlaced (as app-b)\n{ jsonSchema: schemaB -- different shape/claims, ... }
+endpoint -> registry: register(appId: "app-b", name: "OrderPlaced", ...)
+registry -> db: SELECT ... WHERE AppId = "app-b" AND Name = "OrderPlaced"
+db --> registry: no active version for app-b\n(app-a's row is a different AppId -- never considered)
+registry -> db: INSERT EventTypeDefinition\n(AppId="app-b", Name="OrderPlaced", Version=1, JsonSchema=schemaB)
+registry --> opB: 201 (app-b's own OrderPlaced v1 -- unrelated to app-a's)
+@enduml

@@ -19,6 +19,8 @@ identifier that indicates which request message this reply is for.");
 the paired Request-Reply pattern is documented alongside it in the same
 catalog.
 
+![The pattern diagram](../diagrams/patterns/request-reply-correlation/01-the-pattern.svg)
+
 ```plantuml
 @startuml RequestReply_Correlation
 skinparam shadowing false

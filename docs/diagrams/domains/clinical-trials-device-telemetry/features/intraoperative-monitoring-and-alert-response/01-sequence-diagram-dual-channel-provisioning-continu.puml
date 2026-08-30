@@ -1,0 +1,35 @@
+@startuml
+autonumber
+participant "IONM Rig\n(device, ADR-070/031)" as device
+participant "Detector\n(tails the fast channel, ADR-031)" as detector
+participant "PublishEndpoint\n(Inbox)" as inbox
+participant "ExpectedResponseWatcher\n(ADR-094)" as watcher
+database "Event Log" as eventLog
+database "Live View" as liveView
+database "ExpectedResponseTracker" as tracker
+
+note over device
+  Two Origin TelemetryChannels already provisioned for this
+  session (device-onboarding-and-continuous-monitoring.md,
+  ADR-031's dual-channel special concern): "ionm-s0091-fast"
+  (reduced-fidelity, low-latency) and "ionm-s0091-full"
+  (full-fidelity archival). Both ingest continuously; only the
+  fast channel is shown here since it's what the detector reads.
+end note
+device -> device: continuous SSEP/MEP batch ingestion\ninto both channels (streaming-channels.md)
+detector -> device: tail "ionm-s0091-fast" (mode=TAIL, ADR-010's shape)
+detector -> detector: notices SSEP amplitude drop > 50%\nat "2026-08-04T09:14:02Z"
+detector -> inbox: POST /publish/IonmAlertRaised\n{ payload: { AlertId: "alert-77", SubjectId: "S-0091",\n  Finding: "SSEP amplitude drop >50%, left lower extremity",\n  Severity: "Urgent" },\n  telemetryPointer: [{ ChannelId: "ionm-s0091-fast",\n  FromTimestamp: "2026-08-04T09:14:02Z" }],\n  attestedClaims: { reviewPending: true,\n  reason: "auto-detected-signal-change" } }
+inbox -> eventLog: INSERT StoredEvent\n(EventId: "alert-evt-1", AuthorityStatus: "pending_review")
+inbox --> detector: 202 { status: "received",\n  authorityStatus: "pending_review" }
+... asynchronously (ADR-023) ...
+eventLog -> liveView: UPSERT LiveEntityStoreRow\n(Data: {...}, AuthorityStatus: "pending_review")
+note right of eventLog
+  "IonmAlertRaised" is registered with ExpectedResponse
+  { ResponseEventType: "IonmAlertAcknowledged", Within: "PT2M" }
+  (ADR-094) -- a 2-minute, same-session clinical window,
+  this domain's own configuration choice, not a framework default.
+end note
+watcher -> eventLog: observe "alert-evt-1" (ExpectedResponse configured)
+watcher -> tracker: INSERT ExpectedResponseTracker\n{ RequestEventId: "alert-evt-1",\n  RequestEventType: "IonmAlertRaised",\n  ExpectedResponseEventType: "IonmAlertAcknowledged",\n  DeadlineAt: "2026-08-04T09:16:02Z" }
+@enduml

@@ -1,0 +1,18 @@
+@startuml
+autonumber
+participant "Hospital EMR\n(HL7v2 sender)" as emr
+participant "Hl7V2MllpListener\n(BackgroundService, TCP,\nno inherent security -- ADR-072)" as mllp
+participant "Hl7V2Adapter\n(IInterchangeFormatAdapter,\nkeyed DI, key 'Hl7V2')" as adapter
+participant "PublishService" as publish
+database "Event & Schema Store" as db
+
+emr -> mllp: HL7v2 ADT^A01 message, over TLS-terminated\nMLLP/TCP (transport security is the DEPLOYMENT's\nresponsibility -- MLLP itself has none, ADR-072)
+mllp -> mllp: parse MLLP framing (start/end block characters),\nextract the raw HL7v2 message
+mllp -> adapter: ParseInboundAsync(appId, rawHl7v2Message)\n-- resolved via GetRequiredKeyedService, not hardcoded\nto the concrete Hl7V2Adapter type
+adapter -> adapter: map HL7v2 segments/fields (e.g. PID, PV1)\nto this AppId's registered "PatientAdmitted" JsonSchema shape
+adapter --> mllp: InterchangeInboundResult { EventType: "PatientAdmitted",\n  Payload: <transformed>, ReviewPending: true }
+mllp -> publish: PublishAsync("PatientAdmitted", ...)\n-- an IN-PROCESS call, not a second HTTP hop --\nauthenticated as an empty SystemPrincipal (MLLP has\nno bearer token of its own; TLS/network isolation is\nthe real gate here, ADR-035/042)
+publish -> db: INSERT StoredEvent (Status: received,\nAuthorityStatus: "pending_review" -- ADR-035's\nreasonable default for EMR-sourced, interface-engine data)
+publish --> mllp: PublishResult.Accepted { CorrelationId, SequenceNumber }
+mllp --> emr: MLLP ACK (application-level acknowledgment,\nHL7v2's own convention -- distinct from this\nframework's PublishResult, translated by the listener)
+@enduml

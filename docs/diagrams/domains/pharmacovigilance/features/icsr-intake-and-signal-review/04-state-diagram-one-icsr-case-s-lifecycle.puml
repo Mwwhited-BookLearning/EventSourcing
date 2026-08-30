@@ -1,0 +1,20 @@
+@startuml
+[*] --> Captured : IcsrReported published\n(AuthorityStatus: pending_review, ADR-042)
+Captured : Live View only\n(isAuthoritative: false)
+Captured --> UnderReview : reviewer opens the case\n(no stored-state change)
+UnderReview --> Accepted : authorityDecision{accepted}\n+ Signature (Meaning: "causality_assessment", ADR-066)
+UnderReview --> Rejected : authorityDecision{rejected}\n+ Signature
+Accepted : authoritative Entity Store\ncatches up (ADR-042);\noutbound E2B(R3)/webhook\neligible (ADR-072/060)
+Rejected : never reaches the\nauthoritative Entity Store --\nstays visible, relabeled\n"rejected" in the Live View
+Accepted --> Amended : IcsrFollowUp published\n(ParentEventId = original\nEventId, ADR-005;\nnew event starts\npending_review again)
+Amended --> UnderReview : follow-up re-reviewed
+Accepted --> Closed : no further follow-up\nexpected (reviewer/QPPV\nsign-off, ADR-066)
+Rejected --> [*]
+Closed --> [*]
+
+note right of Rejected
+  Never deleted (README.md's governing
+  "never lose or corrupt data" principle) --
+  rejected is a terminal LABEL, not an erasure.
+end note
+@enduml

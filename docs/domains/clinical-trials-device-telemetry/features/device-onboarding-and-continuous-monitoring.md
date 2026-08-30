@@ -52,6 +52,8 @@ already-enrolled `trial1:Patient:S-0091`.
 
 ## Sequence diagram — device pairing (ADR-070), Chromium and native-bridge fallback
 
+![Sequence diagram — device pairing (ADR-070), Chromium and native-bridge fallback](../../../diagrams/domains/clinical-trials-device-telemetry/features/device-onboarding-and-continuous-monitoring/01-sequence-diagram-device-pairing-adr-070-chromium-a.svg)
+
 ```plantuml
 @startuml DevicePairing_Sequence
 autonumber
@@ -95,6 +97,8 @@ inbox -> entityStore: UPSERT EntityStoreRow "trial1:Device:dev-0091"\n(Data: { D
 ```
 
 ## Sequence diagram — channel provisioning, continuous ingestion, and detector escalation
+
+![Sequence diagram — channel provisioning, continuous ingestion, and detector escalation](../../../diagrams/domains/clinical-trials-device-telemetry/features/device-onboarding-and-continuous-monitoring/02-sequence-diagram-channel-provisioning-continuous-i.svg)
 
 ```plantuml
 @startuml ChannelProvisioning_Sequence
@@ -146,6 +150,8 @@ end
 ```
 
 ## Data model (ER diagram)
+
+![Data model (ER diagram)](../../../diagrams/domains/clinical-trials-device-telemetry/features/device-onboarding-and-continuous-monitoring/03-data-model-er-diagram.svg)
 
 ```plantuml
 @startuml DeviceMonitoring_ER
@@ -257,6 +263,8 @@ public class DeviceRecord
 
 ## State machine — device and channel lifecycle
 
+![State machine — device and channel lifecycle diagram](../../../diagrams/domains/clinical-trials-device-telemetry/features/device-onboarding-and-continuous-monitoring/04-state-machine-device-and-channel-lifecycle.svg)
+
 ```plantuml
 @startuml DeviceMonitoring_State
 [*] --> Unpaired
@@ -286,6 +294,8 @@ downstream of, and concurrently with, this loop.
 
 ### Screen 1: Device pairing screen (WebHID prompt / Native Bridge status)
 
+![Screen 1: Device pairing screen (WebHID prompt / Native Bridge status) diagram](../../../diagrams/domains/clinical-trials-device-telemetry/features/device-onboarding-and-continuous-monitoring/05-screen-1-device-pairing-screen-webhid-prompt-nativ.svg)
+
 ```plantuml
 @startsalt
 {
@@ -313,6 +323,8 @@ to Screen 2.
 
 ### Screen 2: Channel provisioning confirmation
 
+![Screen 2: Channel provisioning confirmation diagram](../../../diagrams/domains/clinical-trials-device-telemetry/features/device-onboarding-and-continuous-monitoring/06-screen-2-channel-provisioning-confirmation.svg)
+
 ```plantuml
 @startsalt
 {
@@ -334,6 +346,8 @@ navigates to Screen 3 to watch the stream it just opened.
 
 ### Screen 3: Live vitals monitoring dashboard
 
+![Screen 3: Live vitals monitoring dashboard diagram](../../../diagrams/domains/clinical-trials-device-telemetry/features/device-onboarding-and-continuous-monitoring/07-screen-3-live-vitals-monitoring-dashboard.svg)
+
 ```plantuml
 @startsalt
 {
@@ -353,6 +367,8 @@ the Detector Worker's own polling loop escalates an anomaly, moving the
 flow to Screen 4.
 
 ### Screen 4: Detector's escalation, handing off to adverse-event review
+
+![Screen 4: Detector's escalation, handing off to adverse-event review diagram](../../../diagrams/domains/clinical-trials-device-telemetry/features/device-onboarding-and-continuous-monitoring/08-screen-4-detector-s-escalation-handing-off-to-adve.svg)
 
 ```plantuml
 @startsalt

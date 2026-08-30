@@ -1,0 +1,48 @@
+@startuml
+autonumber
+actor "Principal Investigator\n(pi-7)" as pi
+actor "Site Coordinator\n(coord-3)" as coordinator
+participant "PublishEndpoint\n(Inbox)" as inbox
+participant "ConsentApprovalResolver" as resolver
+database "Event Log" as eventLog
+database "Live View" as liveView
+database "Entity Store\n(authoritative)" as entityStore
+
+== Role separation: a coordinator cannot self-approve consent (ADR-046) ==
+coordinator -> inbox: POST /publish/ConsentApproval\n{ payload: { TargetEventId: "consent-1-evt",\n  Decision: "approved", DecidingActorId: "coord-3" } }\nBearer <JWT, claims: patient:enroll, consent:capture>
+inbox --> coordinator: 403 (missing claim "consent:approve")
+note right of inbox
+  "SiteCoordinator" Role (ADR-046) bundles
+  patient:enroll + consent:capture only --
+  consent:approve belongs to the
+  "PrincipalInvestigator" Role, a standing
+  role-based separation, not a time-boxed
+  ADR-043 delegation.
+end note
+
+== Investigator countersignature, gated on step-up (ADR-066) ==
+pi -> inbox: POST /publish/ConsentApproval\n{ payload: { TargetEventId: "consent-1-evt",\n  Decision: "approved", DecidingActorId: "pi-7" } }\nBearer <JWT, acr not recent enough>
+alt caller's token doesn't satisfy RequiredSignature.AcrValues/MaxAge
+  inbox --> pi: 401 WWW-Authenticate: step-up required\n(acr_values="urn:trial:step-up", max_age=300)
+  pi -> pi: re-authenticate (IdP's own mechanism, ADR-066)
+  pi -> inbox: retry POST /publish/ConsentApproval\n(same payload, stepped-up token)
+end
+inbox -> eventLog: INSERT StoredEvent (ConsentApproval)\nSignature: { SignerId: "pi-7", SignedAt: now,\n  Meaning: "consent-approved", Acr: "urn:trial:step-up" }
+inbox --> pi: 202 { status: "received" }
+... asynchronously ...
+resolver -> eventLog: SELECT target StoredEvent "consent-1-evt"
+alt Decision = "approved"
+  resolver -> eventLog: UPDATE target SET AuthorityStatus = "accepted",\n  AuthorityDecisionRef = <this event's EventId>
+  resolver -> entityStore: fold target event now (catch-up, ADR-042)
+  entityStore -> entityStore: UPDATE EntityStoreRow "trial1:Patient:S-0091"\n  SET Data.EnrollmentStatus = "Enrolled", Version++
+else Decision = "rejected"
+  resolver -> eventLog: UPDATE target SET AuthorityStatus = "rejected",\n  AuthorityDecisionRef = <this event's EventId>
+  note right of resolver
+    Never folded into the authoritative Entity Store --
+    EnrollmentStatus stays "ConsentPending" there; the
+    coordinator must recapture consent (new
+    InformedConsentCaptured event) before re-submitting
+    for approval.
+  end note
+end
+@enduml

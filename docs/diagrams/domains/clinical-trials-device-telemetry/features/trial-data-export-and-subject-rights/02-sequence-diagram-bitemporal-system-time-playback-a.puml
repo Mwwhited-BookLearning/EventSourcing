@@ -1,0 +1,20 @@
+@startuml
+autonumber
+actor "Sponsor Auditor\n(auditor-3)" as auditor
+participant "GraphQL Gateway" as gateway
+participant "SystemTimePlaybackResolver" as playback
+database "Event Log" as eventLog
+
+auditor -> gateway: QUERY playbackAsOf(entityId: "trial1:Patient:S-0091",\n  asOfSequenceNumber: 48812)\nBearer <JWT, claim "export:playback">
+gateway -> playback: reconstruct("trial1:Patient:S-0091", 48812)
+playback -> eventLog: SELECT StoredEvent\nWHERE (EntityId = "trial1:Patient:S-0091"\n  OR TelemetryPointer.ChannelId's linked patient EntityId matches)\n  AND SequenceNumber <= 48812\nORDER BY SequenceNumber ASC
+eventLog --> playback: events, in ARRIVAL order (not OccurredAt order --\nthe literal opposite of the authoritative fold's rule, ADR-068)
+loop fold each event in arrival order
+  playback -> playback: apply event to the in-memory reconstruction
+  alt this event carries LateArrivalFlag = true
+    playback -> playback: the reconstruction visibly changes\nRIGHT HERE -- "recovered in place, in real time,"\nnever smoothed away as EntityStoreRow already does
+  end
+end
+playback --> gateway: reconstructed PatientRecord as of SequenceNumber 48812,\nwith the late correction shown landing exactly when it arrived
+gateway --> auditor: 200 { reconstruction, asOfSequenceNumber: 48812 }
+@enduml

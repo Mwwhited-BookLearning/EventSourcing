@@ -1,0 +1,44 @@
+@startuml
+autonumber
+actor "Applicant client" as applicant
+participant "Attachment API" as attachApi
+participant "PublishEndpoint\n(Inbox)" as inbox
+participant "Liveness Detector\n(domain-specific automated check,\nnot a framework mechanism)" as detector
+participant "EventAppender" as appender
+database "Event & Attachment Store" as db
+participant "EventStore.Fold\n(Live View, ungated -- ADR-042)" as fold
+database "Live View" as liveView
+
+applicant -> attachApi: POST /attachments\n(raw bytes of selfie/liveness video, MimeType: "video/webm")
+attachApi --> applicant: 201 { contentHash: "h-selfie-1001" }
+applicant -> detector: run liveness check against uploaded capture
+detector --> applicant: { result: "pass"|"inconclusive", confidence: 0.0-1.0 }
+
+applicant -> inbox: POST /publish/BiometricCaptureRecorded\n{ payload: { ApplicantId: "applicant-1001", CaptureType: "liveness_video",\n  LivenessCheckResult, LivenessConfidence },\n  entityId: "kyc:ApplicantIdentity:applicant-1001",\n  attachmentRefs: [{ contentHash: "h-selfie-1001", linkToThisEvent: true }],\n  reviewPending: <true iff LivenessCheckResult = "inconclusive"> }
+
+alt LivenessCheckResult = "pass" (detector confident)
+  inbox -> appender: append(StoredEvent, AuthorityStatus: "accepted" -- default, ADR-042)
+  appender -> db: INSERT StoredEvent; INSERT AttachmentRef
+  appender --> applicant: 202 { status: "received", authorityStatus: "accepted" }
+  note right of appender
+    Nothing declared a reason not to trust this capture yet
+    (ADR-042's default) -- folds straight into the
+    authoritative Entity Store, merged onto applicant-1001's
+    existing Data via ChangeKind.Partial.
+  end note
+else LivenessCheckResult = "inconclusive" (detector unconfident)
+  inbox -> appender: append(StoredEvent, AuthorityStatus: "pending_review" --\n  explicit review-pending marker set, ADR-042's SECOND trigger:\n  "an automated detector... whose result hasn't been validated yet")
+  appender -> db: INSERT StoredEvent; INSERT AttachmentRef
+  appender --> applicant: 202 { status: "received", authorityStatus: "pending_review" }
+  appender -> fold: fold into Live View only (ADR-042)
+  fold -> liveView: UPSERT LiveEntityStoreRow\n(merged Data including LivenessCheckResult: "inconclusive",\n AuthorityStatus: "pending_review")
+  note right of liveView
+    Visible immediately, wrapped isAuthoritative: false.
+    The authoritative Entity Store does NOT yet reflect this
+    contribution -- it catches up only once a later
+    authorityDecision accepts it (reusing the exact same
+    AuthorityDecisionResolver mechanism the downstream doc's
+    analyst review already uses -- not a second resolver).
+  end note
+end
+@enduml

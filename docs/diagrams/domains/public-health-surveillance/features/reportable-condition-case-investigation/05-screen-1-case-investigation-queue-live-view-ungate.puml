@@ -1,0 +1,10 @@
+@startsalt
+{
+  { "Case Investigation Queue -- Jurisdiction: state-example (us-east)  (Live View, isAuthoritative: false)" }
+  ..
+  | Case ID   | Condition Code          | Reporting Facility  | AuthorityStatus  |
+  | case-9001 | "A36.9 (Diphtheria)"    | "Riverside General" | pending_review   |
+  | case-9002 | "A36.9 (Diphtheria)"    | "Lakeview Clinic"    | pending_review   |
+  | case-8994 | "A15.0 (TB, pulmonary)" | "Riverside General" | accepted         |
+}
+@endsalt

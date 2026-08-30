@@ -1,0 +1,10 @@
+@startsalt
+{
+  { "Identity Verification -- Step 1 of 3: Upload Documents" }
+  ..
+  { "Passport / national ID" | [ Choose file ] | "passport-1001.jpg -- Uploaded" }
+  { "Proof of address"       | [ Choose file ] | "poa-1001.pdf -- Uploaded" }
+  ..
+  [ Continue ]
+}
+@endsalt

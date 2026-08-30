@@ -92,6 +92,8 @@ This doc deliberately does **not** re-derive:
 
 ## Sequence diagram — periodic re-screening captures an unconfirmed sanctions-list match
 
+![Sequence diagram — periodic re-screening captures an unconfirmed sanctions-list match](../../../diagrams/domains/digital-identity-kyc/features/periodic-screening-and-sar-escalation/01-sequence-diagram-periodic-re-screening-captures-an.svg)
+
 ```plantuml
 @startuml Screening_PeriodicCapture_Sequence
 autonumber
@@ -130,6 +132,8 @@ end
 ```
 
 ## Sequence diagram — compliance review, confirmation, and a digitally signed SAR filing
+
+![Sequence diagram — compliance review, confirmation, and a digitally signed SAR filing](../../../diagrams/domains/digital-identity-kyc/features/periodic-screening-and-sar-escalation/02-sequence-diagram-compliance-review-confirmation-an.svg)
 
 ```plantuml
 @startuml Screening_ReviewAndFile_Sequence
@@ -175,6 +179,8 @@ end
 ```
 
 ## Data model (ER diagram)
+
+![Data model (ER diagram)](../../../diagrams/domains/digital-identity-kyc/features/periodic-screening-and-sar-escalation/03-data-model-er-diagram.svg)
 
 ```plantuml
 @startuml Screening_ER
@@ -328,6 +334,8 @@ matching ambiguity `MatchedName` would.
 
 ## State machine — one screening cycle's lifecycle
 
+![State machine — one screening cycle's lifecycle diagram](../../../diagrams/domains/digital-identity-kyc/features/periodic-screening-and-sar-escalation/04-state-machine-one-screening-cycle-s-lifecycle.svg)
+
 ```plantuml
 @startuml Screening_Lifecycle_State
 [*] --> ScreeningClear : SanctionsScreeningPerformed{MatchFound: false}\npublished by PeriodicScreeningWorker\n(AuthorityStatus accepted immediately, ADR-042 default)
@@ -367,6 +375,8 @@ above.
 sequence diagram's `pending_review` branch, read off the Live View).
 Transition: clicking "Review" on a queued match opens Screen 2.
 
+![Salt (UI mockup) — compliance officer flow, screen by screen diagram](../../../diagrams/domains/digital-identity-kyc/features/periodic-screening-and-sar-escalation/05-salt-ui-mockup-compliance-officer-flow-screen-by-s.svg)
+
 ```plantuml
 @startsalt
 {
@@ -386,6 +396,8 @@ sequence diagram's `POST /publish/authorityDecision` step). Transition:
 clicking "Confirm Hit" records an `accepted` decision and opens Screen 3
 directly; clicking "Clear as False Positive" records a `rejected`
 decision and ends this flow (no SAR filed) — not pictured further.
+
+![Salt (UI mockup) — compliance officer flow, screen by screen diagram](../../../diagrams/domains/digital-identity-kyc/features/periodic-screening-and-sar-escalation/06-salt-ui-mockup-compliance-officer-flow-screen-by-s.svg)
 
 ```plantuml
 @startsalt
@@ -410,6 +422,8 @@ only after confirming a hit and attempting to file). Transition: entering
 valid re-authentication and clicking "Verify" retries the filing
 automatically and opens Screen 4.
 
+![Salt (UI mockup) — compliance officer flow, screen by screen diagram](../../../diagrams/domains/digital-identity-kyc/features/periodic-screening-and-sar-escalation/07-salt-ui-mockup-compliance-officer-flow-screen-by-s.svg)
+
 ```plantuml
 @startsalt
 {
@@ -429,6 +443,8 @@ automatically and opens Screen 4.
 **Screen 4 — SAR filing confirmation** (corresponds to the second
 sequence diagram's final `SarFilingRecorded` publish, now carrying a
 captured `Signature`). Terminal screen for this flow.
+
+![Salt (UI mockup) — compliance officer flow, screen by screen diagram](../../../diagrams/domains/digital-identity-kyc/features/periodic-screening-and-sar-escalation/08-salt-ui-mockup-compliance-officer-flow-screen-by-s.svg)
 
 ```plantuml
 @startsalt

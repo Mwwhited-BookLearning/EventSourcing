@@ -1,0 +1,37 @@
+@startuml
+autonumber
+actor "Field Client\n(offline, holds a UCAN\ndelegated from a root DID)" as client
+participant "Inbox / Publish Endpoint" as inbox
+participant "Router\n(background, advisory-only)" as router
+participant "EventStore.DevIdp\n(OAuth Token Exchange bridge)" as idp
+database "Event & Entity Store" as db
+
+== While disconnected from the identity provider ==
+client -> inbox: POST /publish/FieldObservationRecorded\n{ payload, attestedClaims: { type: "ucan", invocation: <raw UCAN> } }\n(no bearer JWT -- none obtainable offline)
+inbox -> db: INSERT StoredEvent\n(AttestedClaims = raw UCAN, AuthorityStatus = "unattested")
+inbox --> client: 202 { status: "received", authorityStatus: "unattested" }
+note over inbox, db
+  Persisted immediately, same as any other publish (ADR-023's
+  Inbox pattern, ADR-011's Idempotent Receiver). Nothing above
+  this line ever blocks on identity-provider reachability.
+end note
+
+== Later, once connectivity to the identity provider returns ==
+router -> db: pick up events with AuthorityStatus = "unattested"\nand a raw AttestedClaims UCAN pending exchange
+router -> idp: POST /oauth/token\ngrant_type=urn:ietf:params:oauth:grant-type:token-exchange\nsubject_token=<UCAN invocation>\nsubject_token_type=urn:your-org:token-type:ucan\nrequested_token_type=urn:ietf:params:oauth:token-type:jwt
+idp -> idp: validate UCAN delegation chain\n(self-verifying -- no callback to any third party)
+alt UCAN chain cryptographically/syntactically valid
+  idp --> router: 200 { access_token (JWT) }\nJWT claims: provenance, authority_status, delegation_chain_ref
+  router -> db: UPDATE StoredEvent\nAttestedClaims := JWT claims,\nAuthorityStatus := "pending_review" (still NOT "accepted"),\nDelegationChainRef := attachment ref (ADR-032)
+else UCAN chain invalid (malformed, expired, broken delegation link)
+  idp --> router: 400 invalid_grant
+  router -> db: leave StoredEvent unchanged\n(AuthorityStatus stays "unattested" -- exchange attempt itself is not persisted as failure state)
+end
+note over router, db
+  Either branch: the event that was persisted in the first section
+  is never deleted, rejected, or blocked on this outcome (ADR-023).
+  A separate, later authorityDecision event (ADR-035) -- not shown
+  here, not triggered by this exchange -- is what can move
+  AuthorityStatus to "accepted" or "rejected".
+end note
+@enduml

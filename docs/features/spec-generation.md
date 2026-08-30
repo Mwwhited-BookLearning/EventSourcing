@@ -25,6 +25,8 @@ now.
 
 ## Sequence diagram — building and caching the OpenAPI document
 
+![Sequence diagram — building and caching the OpenAPI document](../diagrams/features/spec-generation/01-sequence-diagram-building-and-caching-the-openapi-.svg)
+
 ```plantuml
 @startuml SpecGeneration_Sequence
 autonumber
@@ -71,6 +73,8 @@ dependency as the diagram above, but no `EventStore.SpecGeneration`
 class in the sequence, and no second hand-built envelope to maintain.
 
 ## Sequence diagram — registration invalidates the OpenAPI cache (and the GraphQL schema is independently always current)
+
+![Sequence diagram — registration invalidates the OpenAPI cache (and the GraphQL schema is independently always current)](../diagrams/features/spec-generation/02-sequence-diagram-registration-invalidates-the-open.svg)
 
 ```plantuml
 @startuml SpecGeneration_Invalidation_Sequence
@@ -120,6 +124,8 @@ repository. The framework's only job, already fully covered by the two
 sequence diagrams above, is keeping `/openapi.json` and the GraphQL SDL
 anonymously fetchable and always current; generation itself happens
 entirely outside this system's process boundary.
+
+![Client SDK generation (ADR-054) diagram](../diagrams/features/spec-generation/03-client-sdk-generation-adr-054.svg)
 
 ```plantuml
 @startuml SpecGeneration_ClientCodegen_Sequence

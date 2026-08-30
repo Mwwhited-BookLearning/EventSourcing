@@ -17,6 +17,8 @@ component will actually fetch. The receiving service never verifies the
 signature itself; it forwards ticket+signature to a trusted backend,
 which resolves the ticket back into the original credential's claims.
 
+![The pattern diagram](../diagrams/patterns/ticket-exchange-headerless-clients/01-the-pattern.svg)
+
 ```plantuml
 @startuml Ticket_Exchange_Sequence
 autonumber

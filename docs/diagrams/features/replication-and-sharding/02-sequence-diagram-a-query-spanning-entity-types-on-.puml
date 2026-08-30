@@ -1,0 +1,22 @@
+@startuml
+autonumber
+actor "Consuming System" as client
+participant "GraphQL Gateway" as gateway
+participant "Shard Resolver\n(EntityType -> ShardKey, ADR-034)" as resolver
+database "Entity Store\nshard: orders" as ordersShard
+database "Entity Store\nshard: customers" as customersShard
+
+client -> gateway: QUERY { order(id: "order-1") { ... }\n  customer(id: "customer-1") { ... } }
+gateway -> resolver: plan(query) -- which shard serves each field?
+resolver -> resolver: ShardKey(Order) = "orders"\nShardKey(Customer) = "customers" (ADR-034)
+par query the orders shard
+  resolver -> ordersShard: query Order "order-1"
+  ordersShard --> resolver: Order entity
+else query the customers shard
+  resolver -> customersShard: query Customer "customer-1"
+  customersShard --> resolver: Customer entity
+end
+resolver -> resolver: merge both results into one response tree
+resolver --> gateway: merged result
+gateway --> client: 200 { order: {...}, customer: {...} }
+@enduml

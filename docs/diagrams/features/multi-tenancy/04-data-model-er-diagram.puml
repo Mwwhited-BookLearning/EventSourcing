@@ -1,0 +1,50 @@
+@startuml
+hide circle
+skinparam linetype ortho
+
+entity "EventTypeDefinition" as etd {
+  * AppId : string <<PK>>
+  * Name : string <<PK>>
+  * Version : int <<PK>>
+  --
+  JsonSchema : text
+  IsActive : bool
+  RequiredClaims : {Direction, Claim}[]?
+}
+
+entity "FilterableField" as ff {
+  * Id : int <<PK>>
+  --
+  AppId : string <<FK>>
+  EventTypeName : string <<FK>>
+  EventTypeVersion : int <<FK>>
+  JsonPath : string
+}
+
+entity "EntityStoreRow" as esr {
+  * EntityId : string <<PK>>
+  --
+  EntityType : string
+  Data : text
+  Version : bigint
+}
+
+etd ||--o{ ff : "(AppId, Name, Version) =\n(AppId, EventTypeName, EventTypeVersion)"
+etd ..o{ esr : "governs shape of entities whose EntityId's\n{appId} segment matches this row's AppId\n(soft -- no DB FK; ADR-021/030)"
+
+note right of etd
+  Composite key is (AppId, Name, Version), not
+  (Name, Version) -- ADR-030. Two AppIds can each
+  register "OrderPlaced" independently; these are
+  different rows with no shared identity, no shared
+  version sequence, and no cross-row validation.
+end note
+
+note right of esr
+  EntityId = {appId}:{entityType}:{uniqueId} (ADR-021).
+  AppId is baked directly into the PK string -- no
+  separate AppId column needed at this layer. Two
+  AppIds publishing under the same uniqueId still get
+  two entirely distinct EntityStoreRow PKs.
+end note
+@enduml

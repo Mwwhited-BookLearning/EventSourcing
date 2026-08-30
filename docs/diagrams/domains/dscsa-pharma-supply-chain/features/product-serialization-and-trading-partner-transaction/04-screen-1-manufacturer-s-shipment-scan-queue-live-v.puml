@@ -1,0 +1,13 @@
+@startsalt
+{
+  { "Shipment s-1 -- Scan Queue (mfr, Live View, isAuthoritative: false)" }
+  ..
+  | NDC          | Serial     | BizStep    | AuthorityStatus  |
+  | 12345-678-90 | SN00019283 | shipping   | pending_review   |
+  | 12345-678-90 | SN00019284 | shipping   | pending_review   |
+  | ...          | ...        | ...        | ...              |
+  ..
+  "200 units scanned (POST /publish/batch, ADR-072/070)"
+  [ Close out shipment as Transaction Statement ]
+}
+@endsalt

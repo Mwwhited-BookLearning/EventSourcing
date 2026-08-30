@@ -1,0 +1,27 @@
+@startuml
+[*] --> AwaitingDocuments : applicant begins onboarding\n(ordinary app-session JWT, no DID yet)
+AwaitingDocuments --> AwaitingBiometric : IdentityDocumentUploaded published\nfor BOTH "passport" and "proof_of_address"\n(AuthorityStatus accepted, ADR-042 default)
+AwaitingBiometric --> ReviewPendingLiveness : BiometricCaptureRecorded published\nwith LivenessCheckResult "inconclusive"\n(explicit review-pending marker, ADR-042's\nautomated-detector trigger)
+AwaitingBiometric --> CaptureComplete : BiometricCaptureRecorded published\nwith LivenessCheckResult "pass"\n(AuthorityStatus accepted, ADR-042 default)
+ReviewPendingLiveness --> CaptureComplete : authorityDecision{decision: "accepted"}\npublished by a caller holding "identity:review"\n(reuses the SAME AuthorityDecisionResolver\nthe downstream doc's analyst review uses)
+ReviewPendingLiveness --> CaptureRejected : authorityDecision{decision: "rejected"}\npublished by a caller holding "identity:review"
+CaptureComplete --> [*] : applicant proceeds to publish IdentityClaimSubmitted,\ncontinuing in customer-onboarding-and-identity-verification.md
+CaptureRejected --> [*] : applicant is asked to recapture\n(a new BiometricCaptureRecorded event, not shown --\nAnnotate is this event type's default RejectionBehavior)
+
+note right of ReviewPendingLiveness
+  Visible in the Live View immediately, labeled
+  isAuthoritative: false -- an analyst can see an
+  inconclusive liveness result waiting for review
+  well before the applicant even submits their
+  identity claim (ADR-042).
+end note
+
+note right of CaptureComplete
+  This state is domain-level "intake completeness" --
+  a DIFFERENT lifecycle from AuthorityStatus itself
+  (non-authoritative-capture.md owns that one). Reaching
+  CaptureComplete does not set any StoredEvent's
+  AuthorityStatus to anything new; it just means every
+  upstream capture step this doc covers has happened.
+end note
+@enduml

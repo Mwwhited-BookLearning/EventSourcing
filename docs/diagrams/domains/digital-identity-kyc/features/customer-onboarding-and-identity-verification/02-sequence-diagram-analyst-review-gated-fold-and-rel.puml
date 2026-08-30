@@ -1,0 +1,53 @@
+@startuml
+autonumber
+actor "Verification Analyst\n(role: IdentityVerificationAnalyst,\nclaim: identity:review, ADR-046)" as analyst
+participant "PublishEndpoint\n(Inbox)" as inbox
+participant "Router" as router
+participant "AuthorityDecisionResolver" as resolver
+participant "EventStore.Fold\n(authoritative, ADR-042)" as fold
+participant "WebhookDispatcher\n(ADR-060)" as webhook
+database "Event Log" as eventLog
+database "Entity Store\n(EntityStoreRow, authoritative)" as entityStore
+participant "Relying Party\nwebhook receiver" as relyingParty
+
+analyst -> inbox: POST /publish/authorityDecision\n{ payload: { targetEventId: <IdentityClaimSubmitted's EventId>,\n  decision: "accepted"|"rejected", decidingActorId: analyst,\n  reason } }
+alt caller's flattened claim set lacks "identity:review"
+  inbox --> analyst: 403 (RequiredClaims (Publish direction) not satisfied, ADR-008/ADR-046/ADR-050)
+  note right of inbox
+    identity:review reached the analyst's JWT via a Role
+    bundling that permission, flattened at token issuance
+    (ADR-046) -- the check itself is the ordinary
+    RequiredClaims mechanism, unaware it came from a role.
+  end note
+else caller holds "identity:review"
+  inbox -> eventLog: INSERT StoredEvent (authorityDecision)
+  inbox --> analyst: 202 { status: "received" }
+  ... asynchronously ...
+  router -> resolver: process authorityDecision event
+  resolver -> eventLog: SELECT target StoredEvent (IdentityClaimSubmitted)
+  alt decision = accepted
+    resolver -> eventLog: UPDATE target SET AuthorityStatus = "accepted",\n  AuthorityDecisionRef = <this event's EventId>
+    resolver -> fold: apply target event to the authoritative\nEntity Store now (catch-up, ADR-042)
+    fold -> entityStore: INSERT/UPDATE EntityStoreRow\n(EntityType: "ApplicantIdentity", Version: 1,\n Data: claim fields, AuthorityStatus: "accepted")
+    note right of entityStore
+      A real, claims-bearing identity record now exists --
+      no isAuthoritative marker on reads of this row at all.
+    end note
+    resolver -> webhook: enqueue WebhookOutbox entry\n(matches relying party's WebhookSubscription.EventTypes)
+    webhook -> webhook: mask payload against subscription's\nFixedClaimsSnapshot (ADR-009, ADR-060)
+    webhook -> relyingParty: POST { webhook-id, webhook-timestamp,\n  webhook-signature }, masked verification-status payload\n(Standard Webhooks, ADR-060)
+    relyingParty --> webhook: 200 OK
+  else decision = rejected
+    resolver -> eventLog: UPDATE target SET AuthorityStatus = "rejected",\n  AuthorityDecisionRef = <this event's EventId>
+    note right of resolver
+      Payload untouched (Annotate, ADR-035's default). The
+      target event never reaches the authoritative Entity
+      Store -- it never satisfied the gate (ADR-042) -- and
+      stays visible in the Event Log/Live View, re-labeled.
+    end note
+    resolver -> webhook: enqueue WebhookOutbox entry\n(status-change notification, rejected)
+    webhook -> relyingParty: POST masked rejection notification\n(Standard Webhooks, ADR-060)
+    relyingParty --> webhook: 200 OK
+  end
+end
+@enduml

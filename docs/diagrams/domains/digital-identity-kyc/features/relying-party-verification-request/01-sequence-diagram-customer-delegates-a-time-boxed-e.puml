@@ -1,0 +1,21 @@
+@startuml
+autonumber
+actor "Customer client\n(holds own DID + baseline claim\nidentity:self-view, entityScope=own EntityId)" as customer
+participant "PublishEndpoint\n(Inbox)" as inbox
+database "Event Log" as eventLog
+actor "Relying party\n(acme-bank, DID: did:key:z6MkBank1...)" as bank
+
+customer -> customer: mint a UCAN delegation naming:\n- grantee DID: did:key:z6MkBank1...\n- delegated claim: "identity:verification-status:read"\n  (a SUBSET of customer's own identity:self-view -- ADR-043's cap)\n- entityScope: "kyc:ApplicantIdentity:applicant-1001"\n- expiresAt: now + 24h\n(self-verifying, signed with customer's own DID key -- ADR-036/ADR-043,\nno server round-trip needed to CREATE the delegation itself)
+
+customer -> inbox: POST /publish/accessGrant\n{ payload: { GrantId: "grant-7001", GranterActorId: "applicant-1001",\n  GranteeDid: "did:key:z6MkBank1...",\n  DelegatedClaim: "identity:verification-status:read",\n  EntityScope: "kyc:ApplicantIdentity:applicant-1001", ExpiresAt } }
+inbox -> eventLog: INSERT StoredEvent (accessGrant, AuthorityStatus: "accepted" --\nordinary authenticated publish, ADR-042 default)
+inbox --> customer: 202 { status: "received" }
+note over customer, eventLog
+  Recorded as an ordinary event, per ADR-043's own Decision
+  ("grant issuance and revocation are ordinary events, not a
+  new persistence mechanism") -- auditable, queryable,
+  never deleted, same as everything else in this design.
+end note
+
+customer -> bank: deliver the raw UCAN delegation token out-of-band\n(e.g. a deep link/QR code shown in the customer's banking app --\nnot designed further here)
+@enduml

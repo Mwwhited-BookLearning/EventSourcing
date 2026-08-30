@@ -1,0 +1,39 @@
+@startuml
+skinparam shadowing false
+skinparam defaultTextAlignment center
+skinparam wrapWidth 220
+skinparam rectangle<<Component>> {
+  BackgroundColor #85BBF0
+  FontColor black
+}
+skinparam database<<Container>> {
+  BackgroundColor #438DD5
+  FontColor white
+}
+skinparam rectangle<<Boundary>> {
+  BackgroundColor transparent
+  BorderColor #666666
+  BorderStyle dashed
+}
+skinparam ArrowColor #666666
+
+rectangle "Streaming Channel Service" <<Boundary>> as streamingSvc {
+    rectangle "**Batch Ingest Endpoint**\n<<Component>>\n//Minimal API//\n--\nPOST /telemetry/{channelId}/samples -- no JSON Schema, no hash-chain, no fold (ADR-031)" <<Component>> as ingest
+    rectangle "**Late-Arrival / Lag Detector**\n<<Component>>\n//High-water-mark comparison//\n--\nADR-029's mechanism reused per-channel; publishes reserved ChannelLagDetected via the normal publish path" <<Component>> as lagDetector
+    rectangle "**Tail/Replay Reader**\n<<Component>>\n//mode=tail\\|replay//\n--\nADR-010's shape reused, applied to TelemetrySample instead of StoredEvent" <<Component>> as reader
+    rectangle "**ChannelDerivationWorker**\n<<Component>>\n//Background service, one per Derived channel//\n--\nTails source channel(s), applies Resample\\|Filter\\|Aggregate\\|Transcode, appends via the same ingest path (ADR-031)" <<Component>> as derivation
+    rectangle "**RedactedRange Enforcer**\n<<Component>>\n//Read-time substitution//\n--\nZero-fill\\|tone\\|blank-frame default (ADR-052); claims-gated, existence-flagged not hidden" <<Component>> as redaction
+}
+
+database "TelemetryChannel / TelemetrySample store" <<Container>> as telemetryDb
+rectangle "**Router**\n<<Container>>\n--\na detector reading via reader publishes ordinary events here (ADR-031)" <<Container>> as router
+
+ingest --> telemetryDb : append batch (durability: "as good as possible")
+ingest --> lagDetector : compare batch receive-gap vs ExpectedInterArrivalInterval
+lagDetector --> router : publish ChannelLagDetected (normal path, ADR-023)
+reader --> telemetryDb : tail (new) or replay (from fromTimestamp) then tail
+reader --> redaction : apply RedactedRange before returning, if caller lacks claim
+derivation --> reader : tail source channel(s)
+derivation --> ingest : append transformed samples to derived channel
+
+@enduml

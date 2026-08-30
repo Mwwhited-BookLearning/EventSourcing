@@ -1,0 +1,13 @@
+@startsalt
+{
+  { "Step-Up Verification Required" }
+  ..
+  "Filing a Suspicious Activity Report requires you to re-confirm"
+  "your identity before this action is recorded."
+  ..
+  { "Password" | "********" }
+  { "One-time code" | "______" }
+  ..
+  [ Verify ]
+}
+@endsalt

@@ -49,6 +49,8 @@ acquisition-through-litigation-export path. It deliberately does
 
 ## Sequence diagram — acquisition, custody transfer, and derived-artifact lineage
 
+![Sequence diagram — acquisition, custody transfer, and derived-artifact lineage](../../../diagrams/domains/digital-forensics-evidence-custody/features/evidence-acquisition-and-custody-export/01-sequence-diagram-acquisition-custody-transfer-and-.svg)
+
 ```plantuml
 @startuml Evidence_Acquisition_Custody_Sequence
 autonumber
@@ -82,6 +84,8 @@ inbox -> eventLog: INSERT StoredEvent "ArtifactExtracted"\n(EntityId "lab:Artifa
 
 ## Sequence diagram — litigation export and offline-player self-verification
 
+![Sequence diagram — litigation export and offline-player self-verification](../../../diagrams/domains/digital-forensics-evidence-custody/features/evidence-acquisition-and-custody-export/02-sequence-diagram-litigation-export-and-offline-pla.svg)
+
 ```plantuml
 @startuml Evidence_Litigation_Export_Sequence
 autonumber
@@ -112,6 +116,8 @@ end
 ```
 
 ## Data model (ER diagram)
+
+![Data model (ER diagram)](../../../diagrams/domains/digital-forensics-evidence-custody/features/evidence-acquisition-and-custody-export/03-data-model-er-diagram.svg)
 
 ```plantuml
 @startuml Evidence_Custody_ER
@@ -227,6 +233,8 @@ public class ArtifactExtractedPayload
 
 ### Screen 1: Examiner's acquisition intake form
 
+![Screen 1: Examiner's acquisition intake form diagram](../../../diagrams/domains/digital-forensics-evidence-custody/features/evidence-acquisition-and-custody-export/04-screen-1-examiner-s-acquisition-intake-form.svg)
+
 ```plantuml
 @startsalt
 {
@@ -252,6 +260,8 @@ for any later custody handoff. Once acquired, the item shows up on
 Screen 2, the chain-of-custody timeline.
 
 ### Screen 2: Chain-of-custody timeline for one evidence item
+
+![Screen 2: Chain-of-custody timeline for one evidence item diagram](../../../diagrams/domains/digital-forensics-evidence-custody/features/evidence-acquisition-and-custody-export/05-screen-2-chain-of-custody-timeline-for-one-evidenc.svg)
 
 ```plantuml
 @startsalt
@@ -279,6 +289,8 @@ diagram's lineage export end to end and hands the resulting bundle to
 Screen 3, the offline player.
 
 ### Screen 3: Offline player's verification result
+
+![Screen 3: Offline player's verification result diagram](../../../diagrams/domains/digital-forensics-evidence-custody/features/evidence-acquisition-and-custody-export/06-screen-3-offline-player-s-verification-result.svg)
 
 ```plantuml
 @startsalt

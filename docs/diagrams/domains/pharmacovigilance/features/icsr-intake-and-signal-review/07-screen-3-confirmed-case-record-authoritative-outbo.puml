@@ -1,0 +1,12 @@
+@startsalt
+{
+  { "icsr-2031 -- Confirmed Case Record (Entity Store, isAuthoritative: true)" }
+  ..
+  { "SuspectDrug" | "DrugX" } | { "ReactionTerm" | "Angioedema" } | { "Seriousness" | "serious" }
+  { "Causality Assessment" | "Probable (WHO-UMC)" }
+  { "Signed off by" | "reviewer-9, Meaning: causality_assessment, Acr: urn:pv:step-up" }
+  ..
+  { "Outbound reporting" | "eligible for IchE2bR3Adapter -> EudraVigilance/FAERS (ADR-072/ADR-060)" }
+  { [System-time playback] }
+}
+@endsalt

@@ -35,6 +35,8 @@ just happen to reference the same applicant Workflow A created — it
 reveals a field Workflow A's own event actually carries, and can only
 do so because Workflow A's data exists first.
 
+![How the workflows interact diagram](../../diagrams/playbooks/meridian/README/01-how-the-workflows-interact.svg)
+
 ```plantuml
 @startuml Meridian_Workflow_Interaction
 object "ApplicantIdentity\nkyc:applicantidentity:applicant-1001" as applicant
@@ -53,7 +55,7 @@ sar --> applicant : folds onto (Partial)
 
 screening ..> sar : TargetScreeningEventId\n(a confirmed match escalates)
 
-actor "Relying Party" as rp
+object "Relying Party" as rp
 rp ..> claim : Workflow B reveals THIS event's\nown ClaimedLegalName, via a\ndelegation scoped to this one entity
 
 note right of applicant

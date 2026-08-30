@@ -45,6 +45,8 @@ This doc deliberately does **not** re-derive:
 
 ## Sequence diagram — a request event is published and tracked
 
+![Sequence diagram — a request event is published and tracked](../diagrams/features/expected-response-tracking/01-sequence-diagram-a-request-event-is-published-and-.svg)
+
 ```plantuml
 @startuml ExpectedResponse_Tracking_Sequence
 autonumber
@@ -73,6 +75,8 @@ watcher -> tracker: INSERT ExpectedResponseTracker\n{ RequestEventId: "req-1", R
 ```
 
 ## Sequence diagram — on-time response, missed deadline (escalation), and a late response afterward
+
+![Sequence diagram — on-time response, missed deadline (escalation), and a late response afterward](../diagrams/features/expected-response-tracking/02-sequence-diagram-on-time-response-missed-deadline-.svg)
 
 ```plantuml
 @startuml ExpectedResponse_Resolution_Sequence
@@ -127,6 +131,8 @@ a different alarm — is entirely application-owned, the same boundary
 `ADR-031` already draws for telemetry detection (`ChannelLagDetected`).
 
 ## Data model (ER diagram)
+
+![Data model (ER diagram)](../diagrams/features/expected-response-tracking/03-data-model-er-diagram.svg)
 
 ```plantuml
 @startuml ExpectedResponseTracking_ER
@@ -205,6 +211,8 @@ explicitly meant to be inspectable, not just logged.
 
 ### Screen 1: Tracked requests dashboard
 
+![Screen 1: Tracked requests dashboard diagram](../diagrams/features/expected-response-tracking/04-screen-1-tracked-requests-dashboard.svg)
+
 ```plantuml
 @startsalt
 {
@@ -221,6 +229,8 @@ explicitly meant to be inspectable, not just logged.
 Clicking the escalated row (`req-3`) opens Screen 2.
 
 ### Screen 2: Escalation detail
+
+![Screen 2: Escalation detail diagram](../diagrams/features/expected-response-tracking/05-screen-2-escalation-detail.svg)
 
 ```plantuml
 @startsalt
