@@ -34,6 +34,13 @@ Run any of them with `dotnet run` from its own directory.
   vars just to reach an unauthenticated local broker, plus a high-level
   client API that silently never worked, worked around with a
   hand-rolled polling loop using the same SDK's lower-level primitives.
+- **`PlantBpmnSpike/`** — Option H (PlantUML compiled to real BPMN via
+  PlantBPMN, plus a real XSLT reverse-visualizer back to PlantUML). See
+  its own [`README.md`](PlantBpmnSpike/README.md) — the forward compile
+  step genuinely works for a flat branch, but a real, reproducible
+  PlantBPMN defect (a dead-end join gateway) shows up the moment the
+  scenario's actual *nested* if/else shape is tried; never reaches
+  Zeebe, since PlantBPMN only targets Flowable.
 
 ## PlantUML-native (`PlantUmlNativeSpike/`) — Option G1
 

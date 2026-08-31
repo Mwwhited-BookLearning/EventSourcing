@@ -547,10 +547,52 @@ readable, perfectly-diffing textual source, at the cost of neither
 building a custom interpreter (Option G) nor hand-editing BPMN XML/using
 Camunda Modeler directly (Option D as originally scoped).
 
+**Actually built and run end to end** (`spikes/user-flow-dsl/
+PlantBpmnSpike/`, its own README has the full account) — both halves,
+not just the forward compile. **The forward direction genuinely works**:
+a real PlantUML source, compiled by the real PlantBPMN Go tool (run via
+Docker, no local Go install) into a real BPMN 2.0 file, closing this
+section's own previously-flagged "not independently verified this pass"
+gap. **But it surfaced a real, reproducible defect the moment the
+scenario's actual nested `if (accepted) ... else ...` shape was tried**
+(exactly the branching this worked example needs, not a synthetic
+stress test): PlantBPMN's generated BPMN for a nested if/else leaves the
+inner join gateway with **zero outgoing sequence flows** — a genuine
+dead end, confirmed by grepping the real output file for any
+`sequenceFlow` sourced from that gateway's id and finding none,
+twice, on two separate runs. A flat, single-level `if/else` (mirroring
+only the outer `SeriousAdverseEvent?` branch) compiles to a correctly-
+connected graph and works fine — the defect is specific to nesting.
+This is exactly the "round-trips *this* worked example's branching
+shape correctly" question this section's Cons row previously left
+open, and the honest answer is: partially, with a real, named
+limitation, not a clean yes.
+
+The reverse direction — the literal original ask ("an XSLT over BPMN
+files to PlantUML diagrams") — was also built for real: a genuine
+recursive-graph-walking XSLT 1.0 stylesheet (`Xslt/BpmnToPlantUml.xslt`,
+run via .NET's built-in `XslCompiledTransform`, no third-party library)
+that renders a real BPMN file back into readable PlantUML text. It
+round-trips the flat scenario perfectly and, run against the broken
+nested one, visibly reproduces the exact hole the dead-end gateway
+leaves (an empty `yes` branch) rather than crashing or silently
+fabricating something plausible-looking — itself a useful diagnostic
+property of building the visualizer for real rather than assuming a
+converter always emits a clean graph.
+
+**Never actually paired with Option D's Zeebe broker**, unlike the
+comparison's own original framing above assumed it would be: real
+research before building confirmed PlantBPMN's `-target` flag currently
+only emits Flowable-flavored BPMN (`xmlns:flowable`, no `zeebe:`
+extension elements anywhere in the output), not Zeebe. Reaching Option
+D's broker from here would need a genuine Flowable-to-Zeebe extension-
+dialect bridge as its own real, separate piece of work — not built this
+pass, named here as an honest scope boundary rather than assumed away.
+
 | | |
 |---|---|
-| **Pros** | The only option combining a real, standards-based execution engine with a genuinely clean, diff-friendly, non-developer-readable textual source — PlantUML text stays the thing anyone actually reads or edits; BPMN XML becomes a build artifact, the same way a compiled binary is never what a developer reviews by hand |
-| **Cons** | `PlantBPMN` is small, single-maintainer, Go-based (introduces a Go toolchain dependency into a .NET-first repo purely for this conversion step) — real, but nowhere near as mature/maintained as `Antlr4.Runtime.Standard` or the engines in Options B/D themselves; not independently verified this pass against this project's own real scenario (whether it round-trips *this* worked example's branching/human-task shape correctly is unconfirmed, not assumed working). Still needs Option D's own full operational cost (a real Zeebe cluster) — this option only changes *how the `.bpmn` file is authored*, not whether one has to be run |
+| **Pros** | The only option combining a real, standards-based execution engine (in principle; not actually reached this pass, see below) with a genuinely clean, diff-friendly, non-developer-readable textual source — PlantUML text stays the thing anyone actually reads or edits; BPMN XML becomes a build artifact, the same way a compiled binary is never what a developer reviews by hand. The reverse-direction XSLT visualizer genuinely works, confirmed against both a correct and a broken real BPMN file, and is real, standard, no-third-party-library .NET code (`XslCompiledTransform`) |
+| **Cons** | `PlantBPMN` is small, single-maintainer, Go-based (introduces a Go toolchain dependency into a .NET-first repo purely for this conversion step) — real, but nowhere near as mature/maintained as `Antlr4.Runtime.Standard` or the engines in Options B/D themselves; **now independently verified, not just flagged as unconfirmed, to have a real nested-if/else generation defect** (a dead-end join gateway) that would need working around or reporting upstream before this option could be trusted for any flow with more than one level of branching, which this specific scenario genuinely needs. **Never actually reaches a real running engine in this pass** — PlantBPMN only targets Flowable, not the Zeebe broker this document's own Option D already stood up, so pairing the two as originally envisioned needs an unbuilt Flowable-to-Zeebe dialect bridge on top of everything else |
 
 ## Recommendation
 
@@ -613,18 +655,19 @@ genuinely different answers, each honest about its own cost:
    no-new-infrastructure fit (confirm its BPMN 2.0 claim directly
    against the installed version first, not the 3.x line's
    Flowchart-only designer).
-3. **Option H (PlantUML text compiled to real BPMN via `PlantBPMN`,
-   executed on Camunda 8/Zeebe)** sits deliberately between 1 and 2 —
-   real, external, standards-based execution (buying Option D's engine,
-   not building one), *and* a genuinely clean, diff-friendly,
-   non-developer-readable textual source (the same PlantUML text as
-   Options F/G1, not hand-edited BPMN XML). The honest cost: it depends
-   on a small, single-maintainer, Go-based converter this pass could
-   verify exists but not independently verify actually round-trips this
-   project's own real scenario correctly — real prior art, but the
-   least battle-tested piece in this whole comparison, worth a genuine
-   spike (does `PlantBPMN` actually handle this scenario's branching and
-   human-task shape) before leaning on it for real.
+3. **Option H (PlantUML text compiled to real BPMN via `PlantBPMN`)** —
+   the genuine spike this bullet used to call for is now done, and the
+   honest answer moved from "unverified" to "verified, with a real
+   defect": `PlantBPMN` correctly compiles a *flat* branching shape, but
+   a *nested* `if/else` — exactly this scenario's own real shape —
+   compiles to a BPMN graph with a dead-end join gateway. It was also
+   never actually paired with Camunda 8/Zeebe as this bullet originally
+   proposed — `PlantBPMN` only targets Flowable, not Zeebe, a mismatch
+   only found by trying it. Sits between 1 and 2 in principle (buying
+   Option D's engine plus PlantUML-as-source), but not demonstrated
+   working end to end, and not recommended over Option G1 or Option D
+   directly unless the nested-if defect gets fixed upstream or worked
+   around, and the Flowable/Zeebe dialect gap gets bridged.
 4. **Stop at Option F, keep Option A's mechanism exactly as-is.** A
    complete, defensible answer on its own — every primitive Option A
    composes is already a real standard in its own right (RFC 9470,

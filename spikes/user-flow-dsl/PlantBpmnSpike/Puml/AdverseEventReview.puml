@@ -1,0 +1,18 @@
+@startuml
+:start [event="AdverseEventReported"];
+:Coordinator publishes AdverseEventReported;
+if (SeriousAdverseEvent) then (yes)
+  :AuthorityStatus = pending_review;
+  :PI delegates scoped secondary opinion access;
+  :Colleague reviews via delegated read;
+  :PI publishes authorityDecision;
+  if (accepted) then (yes)
+    :Fold now catch-up;
+  else (no)
+    :Entity Store left untouched;
+  endif
+else (no)
+  :Fold immediately Full;
+endif
+stop
+@enduml
