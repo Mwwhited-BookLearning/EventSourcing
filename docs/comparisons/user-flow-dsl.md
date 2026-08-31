@@ -142,38 +142,63 @@ engine interpreting one flow definition.
 
 ### Option B — Elsa Workflows (.NET-native, embeddable)
 
-Elsa's real bookmark/resume shape (`docs/elsaworkflows.io`, quoted
-directly, not paraphrased):
+**Actually built and run end to end** (`spikes/user-flow-dsl/ElsaSpike/`,
+see its own README for the full account) — this section's own code
+below is corrected to match, not the originally-quoted docs page. That
+first quote came from `docs.elsaworkflows.io`'s "Blocking Activities &
+Triggers" page and turned out, once actually installed and run, to be
+**stale against the real, currently-installable package** (`Elsa`
+3.7.1, via `dotnet add package Elsa` — not confirmed as the "v4" version
+this doc's own Cons row below still separately flags): the real
+`CreateBookmarkArgs` has no `Payload` property (it's `Stimulus`), and
+`ActivityExecutionContext` has no `GetWorkflowInput<T>()`/`SetResult()`.
+Corrected here after verifying directly against the installed assembly,
+the same standard this project applies to every other citation:
 
 ```csharp
-// Pausing: a blocking activity creates a bookmark and returns control
-var bookmarkArgs = new CreateBookmarkArgs
+// Pausing: a blocking activity creates a bookmark and returns control.
+// Writes into a workflow-level Variable<bool>, not the activity's own
+// Output<bool> -- found only by actually resuming a real bookmark: an
+// Output-based reference between two activities throws
+// InputEvaluationException ("Could not find a descriptor for
+// expression type \"Output\"") after a real state round trip; a
+// Variable<T> (Elsa's own designed-for-persistence storage) doesn't.
+public sealed class WaitForAuthorityDecisionActivity(Variable<bool> acceptedVariable) : Activity
 {
-    BookmarkName = "WaitForApproval",
-    Payload = new Dictionary<string, object>
+    protected override void Execute(ActivityExecutionContext context)
     {
-        ["ApprovalMessage"] = message ?? string.Empty,
-        ["ActivityInstanceId"] = context.ActivityExecutionContext.Id
-    },
-    Callback = OnResumeAsync,
-    AutoBurn = true
-};
-var bookmark = context.CreateBookmark(bookmarkArgs);
+        context.CreateBookmark(new CreateBookmarkArgs
+        {
+            BookmarkName = "WaitForAuthorityDecision",
+            Callback = OnResumeAsync,
+        });
+    }
 
-// Resuming: external code (the PI's authorityDecision publish) supplies
-// the decision that was waited on
-private async ValueTask OnResumeAsync(ActivityExecutionContext context)
-{
-    var decision = context.WorkflowInput.TryGetValue("Decision", out var v) ? v?.ToString() : null;
-    var outcome = decision?.ToLowerInvariant() switch { "approved" => "Approved", "rejected" => "Rejected", _ => "Done" };
-    await context.CompleteActivityWithOutcomesAsync(outcome);
+    private async ValueTask OnResumeAsync(ActivityExecutionContext context)
+    {
+        var accepted = context.WorkflowInput.TryGetValue("accepted", out var value) && value is true;
+        context.Set(acceptedVariable, accepted);
+        await context.CompleteActivityAsync();
+    }
 }
+
+// Resuming: found only by actually running this, not assumed --
+// RunAsync(workflow, workflowState, options) alone does NOT resume from
+// the paused activity; it silently re-executes the ENTIRE workflow from
+// the start, with no error at all. options.BookmarkId must be set
+// explicitly, naming exactly which bookmark to continue from.
+var bookmarkId = firstRun.WorkflowState.Bookmarks.Single().Id;
+await runner.RunAsync(firstRun.Workflow, firstRun.WorkflowState, new RunWorkflowOptions
+{
+    BookmarkId = bookmarkId,
+    Input = new Dictionary<string, object> { ["accepted"] = accepted },
+});
 ```
 
 | | |
 |---|---|
 | **Pros** | **.NET-native, embeds directly in-process** — no separate server, matching `ADR-026`'s own "no unexamined extra infrastructure" posture exactly; the bookmark/resume shape maps cleanly onto this scenario's own "capture now, decide later" split; a real Blazor designer UI ships with it for authoring/inspecting flows |
-| **Cons** | **BPMN support is version-gated and easy to overclaim** — verified directly rather than assumed: Elsa 3's own designer supports only Flowchart activities (real BPMN 2.0 import/export was explicitly deferred to "a separate module, priority not yet determined"); genuine BPMN 2.0 import/export is a claimed **Elsa v4** feature specifically, the newer major version, not the 3.x line most existing docs/blog posts describe — anyone adopting this needs to confirm v4's BPMN story firsthand before relying on it, not take an older doc's word for it. **Its visual designer has the same class of diff problem as BPMN's** — verified, not assumed: Elsa's own JSON workflow-definition format stores designer position/size metadata inline alongside the actual logic, so a flow authored through the Blazor designer carries the identical "GUI-layout-noise-in-the-same-file" issue BPMN's XML has, just in JSON instead of XML. A code-first (fluent C#/`WorkflowBase`) definition sidesteps that — diffs like ordinary code — but then carries no visual diagram of its own at all, the same trade-off as Option C below. Its own idiom (throw-or-bookmark, `CreateBookmarkArgs`/callback) is also a different shape from this project's own discriminated-result convention, not a drop-in fit |
+| **Cons** | **BPMN support is version-gated and easy to overclaim** — verified directly rather than assumed: Elsa 3's own designer supports only Flowchart activities (real BPMN 2.0 import/export was explicitly deferred to "a separate module, priority not yet determined"); genuine BPMN 2.0 import/export is a claimed **Elsa v4** feature specifically, but the actual, currently-installable NuGet package (`dotnet add package Elsa`) resolves to **3.7.1** — v4's BPMN claim is not confirmed against anything actually installable this pass. **Its visual designer has the same class of diff problem as BPMN's** — verified, not assumed: Elsa's own JSON workflow-definition format stores designer position/size metadata inline alongside the actual logic. A code-first (fluent C#/`WorkflowBase`) definition sidesteps that — diffs like ordinary code — but then carries no visual diagram of its own at all, the same trade-off as Option C below. **Real, substantial integration friction found only by actually building and running this scenario end to end** (`spikes/user-flow-dsl/ElsaSpike/`, its own README has the full account) — worse than either this comparison's own research or Elsa's own official docs suggested: the docs page originally quoted here turned out stale against the installed 3.7.1 API; `Input<T>` lives in a different namespace than the core activity types with no obvious signal why; resuming without explicitly setting `RunWorkflowOptions.BookmarkId` doesn't error, it **silently re-executes the entire workflow from the start**; and passing a resumed decision through an activity's own `Output<T>` (rather than a workflow `Variable<T>`) fails only after a real bookmark/resume round trip, with an unhelpful `InputEvaluationException`. All fixable once known — but "once known" took real, hands-on debugging none of the research alone surfaced. Its own idiom (throw-or-bookmark, `CreateBookmarkArgs`/callback) is also a different shape from this project's own discriminated-result convention, not a drop-in fit |
 
 ### Option C — Temporal (durable execution platform)
 
@@ -371,6 +396,22 @@ G1's input is the identical `.puml` text already shown under Option F
 above, unchanged — the whole point being that nothing needs
 translating.
 
+**G1 actually built and run end to end** (`spikes/user-flow-dsl/
+PlantUmlNativeSpike/`, its own README has the full account) — a ~150-
+line parser/interpreter with zero NuGet dependencies, genuinely parsing
+the exact, unmodified `.puml` file above and executing all three real
+scenarios (accepted, rejected, non-serious) correctly on the second try.
+The one real bug found — a C# `"\n"` string literal is an actual newline
+character, not the `.puml` file's own literal two-character `\n`
+escape — is real, but categorically smaller than the friction Option B
+below turned out to need (a stale doc, a silent-wrong-behavior resume
+trap, an `Output`-vs-`Variable` persistence gotcha, none of it visible
+without actually building and running a real bookmark/resume round
+trip). This is a genuine, measured data point, not just an abstract
+"build is riskier than buy" assumption: for this specific scenario, the
+"buy" option (Elsa) needed substantially more real debugging than the
+"build" option (G1) did.
+
 | | |
 |---|---|
 | **Pros** | **The only option that fully satisfies every stated preference at once**: textual, diffs perfectly (identical file, identical reasoning as Option F), non-developer-readable at the *source* level (not just the rendered picture), and renders via PlantUML directly — because it *is* PlantUML, not a lookalike syntax needing its own separate renderer. One file is simultaneously the documentation, the diagram source, and the executable definition — nothing can drift between "what the diagram says" and "what actually runs," the exact failure mode Option F's own Cons section names as its one real risk |
@@ -403,6 +444,23 @@ Camunda Modeler directly (Option D as originally scoped).
 | **Cons** | `PlantBPMN` is small, single-maintainer, Go-based (introduces a Go toolchain dependency into a .NET-first repo purely for this conversion step) — real, but nowhere near as mature/maintained as `Antlr4.Runtime.Standard` or the engines in Options B/D themselves; not independently verified this pass against this project's own real scenario (whether it round-trips *this* worked example's branching/human-task shape correctly is unconfirmed, not assumed working). Still needs Option D's own full operational cost (a real Zeebe cluster) — this option only changes *how the `.bpmn` file is authored*, not whether one has to be run |
 
 ## Recommendation
+
+**Updated after actually building and running both Option G1 and
+Option B end to end as a head-to-head shootout** (direct request —
+`spikes/user-flow-dsl/`, both spikes' own README has the full account).
+The empirical result changes the weight of this recommendation, not
+just its theory: G1's one real bug (a C# vs. PlantUML escaping
+mismatch) was minor and immediately obvious; Option B needed real,
+substantial debugging across five separate issues — including a docs
+page that turned out stale against the actually-installed package, and
+a resume call that silently re-executes the whole workflow with no
+error at all unless one specific option is set correctly. That doesn't
+make Option B wrong (it works, correctly, once all five are known,
+and it still offers real capabilities — an actual visual designer,
+durable persistence — that G1 doesn't), but it does mean this
+comparison's own earlier abstract "build is inherently riskier than
+buy" framing didn't hold up against what actually happened for this
+scenario.
 
 **Do Option F now, unconditionally — it's a no-regrets move regardless
 of everything below.** It costs nothing (no dependency, no
