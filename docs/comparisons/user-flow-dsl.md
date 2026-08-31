@@ -412,10 +412,34 @@ trip). This is a genuine, measured data point, not just an abstract
 "buy" option (Elsa) needed substantially more real debugging than the
 "build" option (G1) did.
 
+**G2 also actually built and run end to end** (`spikes/user-flow-dsl/
+AntlrCustomDslSpike/`, its own README has the full account) — a real
+ANTLR4 `.g4` grammar (`flow`/`step`/`action`/`ifStep`), compiled by the
+real ANTLR4 Java tool via the `Antlr4BuildTasks` NuGet package (MIT,
+downloads its own JRE, no manual Java/Docker setup needed) into a
+Visitor-pattern parser (not Listener), executing the same three
+scenarios correctly. Grammar named for the DSL itself
+(`UserFlowDsl.g4`), not for the one scenario it's demonstrated with —
+the scenario lives in a separate `.flow` instance file, the same
+schema/instance split a JSON Schema has to a JSON document. Worked on
+the first real run once the grammar was correct, with **no runtime
+API-mismatch surprises of the kind Option B's spike hit** — a
+hand-written grammar has no upstream library whose documented API can
+drift from what's actually installed. The real, worth-naming cost sits
+upfront instead: unlike G1 (parses an already-designed notation) or
+Option B (adopts an already-built engine), every construct — `if`/
+`then`/`else`, string-quoted labels, the token set itself — had to be
+designed and implemented by hand. One concrete grammar-design gotcha
+worth recording: without labeling the `then`/`else` step lists
+separately (`thenSteps+=step+` / `elseSteps+=step+`), ANTLR merges both
+branches' steps into one flat, unmarked array in the generated parse
+tree — the labels are what make `FlowAstBuilderVisitor` able to tell
+the branches apart at all.
+
 | | |
 |---|---|
-| **Pros** | **The only option that fully satisfies every stated preference at once**: textual, diffs perfectly (identical file, identical reasoning as Option F), non-developer-readable at the *source* level (not just the rendered picture), and renders via PlantUML directly — because it *is* PlantUML, not a lookalike syntax needing its own separate renderer. One file is simultaneously the documentation, the diagram source, and the executable definition — nothing can drift between "what the diagram says" and "what actually runs," the exact failure mode Option F's own Cons section names as its one real risk |
-| **Cons** | **Real, new, custom-built software** — a parser and an interpreter this project writes and maintains forever, the one option here that's unambiguously build-not-buy, cutting directly against this project's own repeatedly-demonstrated buy-over-build instinct (this session's own Polly removal, `references.md`'s own standing convention). A constrained activity-diagram subset can't express everything a full engine can (timers, retries, parallel gateways, durable persistence across a process crash mid-flow — Option C's genuine strength) without the interpreter growing to cover each one; scope creep here is a real, foreseeable risk, not hypothetical. `if (condition?)`'s condition string and `:action;`'s label are free text to a human but must resolve to something exact for the interpreter — a typo'd label is a silent no-op or a runtime error depending on how strictly the registry is built, a real design detail to get right, not hand-waved |
+| **Pros** | **The only option that fully satisfies every stated preference at once**: textual, diffs perfectly (identical file, identical reasoning as Option F), non-developer-readable at the *source* level (not just the rendered picture), and renders via PlantUML directly — because it *is* PlantUML, not a lookalike syntax needing its own separate renderer. One file is simultaneously the documentation, the diagram source, and the executable definition — nothing can drift between "what the diagram says" and "what actually runs," the exact failure mode Option F's own Cons section names as its one real risk. (G2 shares the first three of these — textual, diffs perfectly, non-developer-readable — but not the fourth: its source isn't PlantUML itself, so rendering the diagram is a separate generation step, not an identity.) |
+| **Cons** | **Real, new, custom-built software** — a parser and an interpreter this project writes and maintains forever, the one option here that's unambiguously build-not-buy, cutting directly against this project's own repeatedly-demonstrated buy-over-build instinct (this session's own Polly removal, `references.md`'s own standing convention). A constrained activity-diagram subset (G1) or custom grammar (G2) can't express everything a full engine can (timers, retries, parallel gateways, durable persistence across a process crash mid-flow — Option C's genuine strength) without the interpreter growing to cover each one; scope creep here is a real, foreseeable risk, not hypothetical. `if (condition?)`'s condition string and `:action;`'s label (G1), or `ifStep`'s quoted condition and `action`'s quoted label (G2), are free text to a human but must resolve to something exact for the interpreter — a typo'd label is a silent no-op or a runtime error depending on how strictly the registry is built, a real design detail to get right, not hand-waved. G2 specifically still owes a code-generation step to emit real PlantUML from its AST (not built this pass) before it actually satisfies "render out the diagrams via PlantUML" the way G1 does by construction |
 
 ### Option H — Author clean PlantUML text, compile it to real BPMN XML, execute on a real engine
 

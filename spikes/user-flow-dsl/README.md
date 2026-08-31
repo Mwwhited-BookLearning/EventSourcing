@@ -1,14 +1,22 @@
-# User-flow DSL shootout: PlantUML-native (Option G1) vs. Elsa Workflows (Option B)
+# User-flow DSL spikes
 
-Both spikes implement the exact same scenario from
+All spikes in this folder implement the exact same scenario from
 [`docs/comparisons/user-flow-dsl.md`](../../docs/comparisons/user-flow-dsl.md)
 (Vitals' Adverse Event review) and are run for real, three ways: a
 serious adverse event accepted, one rejected, and an ordinary
-non-serious publish. Neither is wired into `EventStore.slnx` — this is
+non-serious publish. None is wired into `EventStore.slnx` — this is
 throwaway research code, not a production dependency (`docs/10-open-
 questions.md` row 1 is still not decided).
 
-Run either with `dotnet run` from its own directory.
+Run any of them with `dotnet run` from its own directory.
+
+- **`PlantUmlNativeSpike/`** — Option G1 (hand-authored PlantUML Activity
+  Diagram, parsed and executed directly). See below.
+- **`ElsaSpike/`** — Option B (Elsa Workflows). See below.
+- **`AntlrCustomDslSpike/`** — Option G2 (wholly custom textual DSL via a
+  real ANTLR4 `.g4` grammar). See its own
+  [`README.md`](AntlrCustomDslSpike/README.md) for the grammar/instance
+  file-schema relationship and findings.
 
 ## PlantUML-native (`PlantUmlNativeSpike/`) — Option G1
 
