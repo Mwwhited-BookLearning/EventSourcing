@@ -282,10 +282,45 @@ private static void HandleAuthorityDecision(IJobClient jobClient, IJob job)
 }
 ```
 
+**Actually built and run end to end** (`spikes/user-flow-dsl/
+ZeebeSpike/`, its own README has the full account), against a real,
+standalone `camunda/zeebe:8.8.0` broker in Docker (not the deprecated-
+successor `camunda/camunda` unified image) — a real `.bpmn` file with
+the full eight-step branching shape, a `bpmn:message`/
+`intermediateCatchEvent` pair for the "wait for the PI's real decision"
+step, and FEEL `conditionExpression`s on the exclusive gateways for both
+branch points. All three scenarios pass, including a genuine message-
+correlation pause/resume round trip. **This was, by a wide margin, the
+most operationally friction-heavy spike in this entire document** — not
+because of the BPMN authoring (that went cleanly once two ordinary BPMN
+validation rules were satisfied: `xsi:type` must be namespace-qualified
+as `bpmn:tFormalExpression`, and an exclusive gateway with only one
+conditioned outgoing flow needs the other marked `default=` explicitly)
+but because of the *broker* itself: 8.8's own unified security model
+now defaults to requiring authentication and fine-grained resource
+authorizations even for a bare local single-broker container with no
+Identity/Keycloak anywhere in the picture, requiring three separate,
+individually-discovered environment variables just to reach the
+"plaintext, anyone can call it" baseline every other engine in this
+document defaults to — `CAMUNDA_DATA_SECONDARY_STORAGE_TYPE=none`
+(else it retries against an Elasticsearch that was never started),
+`CAMUNDA_SECURITY_AUTHENTICATION_UNPROTECTEDAPI=true`, and
+`CAMUNDA_SECURITY_AUTHORIZATIONS_ENABLED=false`. Separately, and more
+surprisingly: `zb-client`'s own high-level `NewWorker()...Open()`
+builder **never activated a single job**, silently, with no exception
+anywhere, across a full container restart and multiple builder-option
+combinations tried; a manual `NewActivateJobsCommand`/
+`NewCompleteJobCommand` polling loop against the exact same broker
+worked immediately and reliably. The spike ships the working manual
+loop, not the high-level wrapper — a real, unresolved gap in this
+specific client/broker version combination worth treating as a known
+risk, not a one-off fluke, since it reproduced identically after a
+clean broker restart.
+
 | | |
 |---|---|
-| **Pros** | **The most genuine BPMN 2.0 fit of any option here** — the flow above is authored as a real `.bpmn` file in Camunda Modeler (the reference visual BPMN tool), directly matching the stated UML/BPMN/C4 preference: a reviewer reads the *diagram*, not C#, to understand the flow. BPMN 2.0 is a real OMG standard, not a vendor-specific notation |
-| **Cons** | **The heaviest operational cost of every option here** — a real, separate Java/Go engine cluster (Zeebe brokers/gateway) to run and operate, well beyond this project's own dev/POC AppHost orchestration scope; the C# client is community-maintained (`camunda-community-hub`), not first-party; step-up/delegation still has to be plumbed in as custom job-worker code exactly like Temporal above — Camunda supplies the *visual flow*, not this project's own security mechanisms. **The `.bpmn` file itself diffs badly** — see the "textual and diff-friendly" evaluation criterion above; the same real, documented BPMN-DI-noise problem applies to every `.bpmn` file this tool produces, not a hypothetical edge case |
+| **Pros** | **The most genuine BPMN 2.0 fit of any option here** — the flow above is authored as a real `.bpmn` file in Camunda Modeler (the reference visual BPMN tool), directly matching the stated UML/BPMN/C4 preference: a reviewer reads the *diagram*, not C#, to understand the flow. BPMN 2.0 is a real OMG standard, not a vendor-specific notation. Message correlation (`bpmn:message` + `intermediateCatchEvent`) is a clean, standard-notation way to express "pause for outside input," genuinely visible in the diagram itself, unlike Option C's signal (invisible in any diagram) |
+| **Cons** | **The heaviest operational cost of every option here, now confirmed rather than assumed** — a real, separate Java/Go engine cluster (Zeebe brokers/gateway) to run and operate, well beyond this project's own dev/POC AppHost orchestration scope, and — new finding — a materially heavier *first-run* cost too: three non-obvious environment variables just to reach an unauthenticated baseline, and a high-level client API (`NewWorker`) that silently didn't work at all, discovered only by building and running the real thing, not by reading either project's docs. The C# client is community-maintained (`camunda-community-hub`), not first-party; step-up/delegation still has to be plumbed in as custom job-worker code exactly like Temporal above — Camunda supplies the *visual flow*, not this project's own security mechanisms. **The `.bpmn` file itself diffs badly** — see the "textual and diff-friendly" evaluation criterion above; the same real, documented BPMN-DI-noise problem applies to every `.bpmn` file this tool produces, not a hypothetical edge case |
 
 ### Option E — NRules + DMN (rules/decision engines — answers "validations," not "flows/approvals")
 

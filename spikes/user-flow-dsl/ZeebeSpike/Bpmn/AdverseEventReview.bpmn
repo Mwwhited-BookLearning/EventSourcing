@@ -1,0 +1,124 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:zeebe="http://camunda.org/schema/zeebe/1.0" id="Definitions_AdverseEventReview" targetNamespace="https://oobdev.example/bpmn/user-flow-dsl-spike">
+  <bpmn:message id="Message_AuthorityDecisionPublished" name="AuthorityDecisionPublished">
+    <bpmn:extensionElements>
+      <zeebe:subscription correlationKey="=entityId" />
+    </bpmn:extensionElements>
+  </bpmn:message>
+  <bpmn:process id="AdverseEventReview" isExecutable="true">
+    <bpmn:startEvent id="StartEvent">
+      <bpmn:outgoing>Flow_start_publish</bpmn:outgoing>
+    </bpmn:startEvent>
+
+    <bpmn:serviceTask id="PublishAdverseEventReported" name="Coordinator publishes AdverseEventReported">
+      <bpmn:extensionElements>
+        <zeebe:taskDefinition type="publish-event" />
+      </bpmn:extensionElements>
+      <bpmn:incoming>Flow_start_publish</bpmn:incoming>
+      <bpmn:outgoing>Flow_publish_gwSerious</bpmn:outgoing>
+    </bpmn:serviceTask>
+
+    <bpmn:exclusiveGateway id="GwSerious" name="SeriousAdverseEvent?" default="Flow_gwSerious_foldImmediate">
+      <bpmn:incoming>Flow_publish_gwSerious</bpmn:incoming>
+      <bpmn:outgoing>Flow_gwSerious_setStatus</bpmn:outgoing>
+      <bpmn:outgoing>Flow_gwSerious_foldImmediate</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+
+    <bpmn:serviceTask id="SetAuthorityStatusPending" name="AuthorityStatus = pending_review">
+      <bpmn:extensionElements>
+        <zeebe:taskDefinition type="set-status-pending" />
+      </bpmn:extensionElements>
+      <bpmn:incoming>Flow_gwSerious_setStatus</bpmn:incoming>
+      <bpmn:outgoing>Flow_setStatus_delegate</bpmn:outgoing>
+    </bpmn:serviceTask>
+
+    <bpmn:serviceTask id="DelegateSecondaryOpinionAccess" name="PI delegates scoped secondary opinion access (ADR-043)">
+      <bpmn:extensionElements>
+        <zeebe:taskDefinition type="delegate-access" />
+      </bpmn:extensionElements>
+      <bpmn:incoming>Flow_setStatus_delegate</bpmn:incoming>
+      <bpmn:outgoing>Flow_delegate_colleagueReview</bpmn:outgoing>
+    </bpmn:serviceTask>
+
+    <bpmn:serviceTask id="ColleagueReview" name="Colleague reviews via delegated read">
+      <bpmn:extensionElements>
+        <zeebe:taskDefinition type="colleague-review" />
+      </bpmn:extensionElements>
+      <bpmn:incoming>Flow_delegate_colleagueReview</bpmn:incoming>
+      <bpmn:outgoing>Flow_colleagueReview_requestDecision</bpmn:outgoing>
+    </bpmn:serviceTask>
+
+    <bpmn:serviceTask id="RequestAuthorityDecision" name="PI publishes authorityDecision, step-up required (ADR-066)">
+      <bpmn:extensionElements>
+        <zeebe:taskDefinition type="request-decision" />
+      </bpmn:extensionElements>
+      <bpmn:incoming>Flow_colleagueReview_requestDecision</bpmn:incoming>
+      <bpmn:outgoing>Flow_requestDecision_wait</bpmn:outgoing>
+    </bpmn:serviceTask>
+
+    <bpmn:intermediateCatchEvent id="WaitForAuthorityDecision" name="Wait for authority decision">
+      <bpmn:incoming>Flow_requestDecision_wait</bpmn:incoming>
+      <bpmn:outgoing>Flow_wait_gwAccepted</bpmn:outgoing>
+      <bpmn:messageEventDefinition messageRef="Message_AuthorityDecisionPublished" />
+    </bpmn:intermediateCatchEvent>
+
+    <bpmn:exclusiveGateway id="GwAccepted" name="accepted?" default="Flow_gwAccepted_leaveUntouched">
+      <bpmn:incoming>Flow_wait_gwAccepted</bpmn:incoming>
+      <bpmn:outgoing>Flow_gwAccepted_foldNow</bpmn:outgoing>
+      <bpmn:outgoing>Flow_gwAccepted_leaveUntouched</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+
+    <bpmn:serviceTask id="FoldNow" name="Fold now (catch-up)">
+      <bpmn:extensionElements>
+        <zeebe:taskDefinition type="fold-now" />
+      </bpmn:extensionElements>
+      <bpmn:incoming>Flow_gwAccepted_foldNow</bpmn:incoming>
+      <bpmn:outgoing>Flow_foldNow_end</bpmn:outgoing>
+    </bpmn:serviceTask>
+
+    <bpmn:serviceTask id="LeaveUntouched" name="Entity Store left untouched">
+      <bpmn:extensionElements>
+        <zeebe:taskDefinition type="leave-untouched" />
+      </bpmn:extensionElements>
+      <bpmn:incoming>Flow_gwAccepted_leaveUntouched</bpmn:incoming>
+      <bpmn:outgoing>Flow_leaveUntouched_end</bpmn:outgoing>
+    </bpmn:serviceTask>
+
+    <bpmn:serviceTask id="FoldImmediate" name="Fold immediately (Full)">
+      <bpmn:extensionElements>
+        <zeebe:taskDefinition type="fold-immediate" />
+      </bpmn:extensionElements>
+      <bpmn:incoming>Flow_gwSerious_foldImmediate</bpmn:incoming>
+      <bpmn:outgoing>Flow_foldImmediate_end</bpmn:outgoing>
+    </bpmn:serviceTask>
+
+    <bpmn:endEvent id="EndAccepted">
+      <bpmn:incoming>Flow_foldNow_end</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:endEvent id="EndRejected">
+      <bpmn:incoming>Flow_leaveUntouched_end</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:endEvent id="EndNonSerious">
+      <bpmn:incoming>Flow_foldImmediate_end</bpmn:incoming>
+    </bpmn:endEvent>
+
+    <bpmn:sequenceFlow id="Flow_start_publish" sourceRef="StartEvent" targetRef="PublishAdverseEventReported" />
+    <bpmn:sequenceFlow id="Flow_publish_gwSerious" sourceRef="PublishAdverseEventReported" targetRef="GwSerious" />
+    <bpmn:sequenceFlow id="Flow_gwSerious_setStatus" name="yes" sourceRef="GwSerious" targetRef="SetAuthorityStatusPending">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">=severityScore &gt;= 7 or eventType = "Cardiac"</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+    <bpmn:sequenceFlow id="Flow_gwSerious_foldImmediate" name="no (default)" sourceRef="GwSerious" targetRef="FoldImmediate" />
+    <bpmn:sequenceFlow id="Flow_setStatus_delegate" sourceRef="SetAuthorityStatusPending" targetRef="DelegateSecondaryOpinionAccess" />
+    <bpmn:sequenceFlow id="Flow_delegate_colleagueReview" sourceRef="DelegateSecondaryOpinionAccess" targetRef="ColleagueReview" />
+    <bpmn:sequenceFlow id="Flow_colleagueReview_requestDecision" sourceRef="ColleagueReview" targetRef="RequestAuthorityDecision" />
+    <bpmn:sequenceFlow id="Flow_requestDecision_wait" sourceRef="RequestAuthorityDecision" targetRef="WaitForAuthorityDecision" />
+    <bpmn:sequenceFlow id="Flow_wait_gwAccepted" sourceRef="WaitForAuthorityDecision" targetRef="GwAccepted" />
+    <bpmn:sequenceFlow id="Flow_gwAccepted_foldNow" name="yes" sourceRef="GwAccepted" targetRef="FoldNow">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">=accepted</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+    <bpmn:sequenceFlow id="Flow_gwAccepted_leaveUntouched" name="no (default)" sourceRef="GwAccepted" targetRef="LeaveUntouched" />
+    <bpmn:sequenceFlow id="Flow_foldNow_end" sourceRef="FoldNow" targetRef="EndAccepted" />
+    <bpmn:sequenceFlow id="Flow_leaveUntouched_end" sourceRef="LeaveUntouched" targetRef="EndRejected" />
+    <bpmn:sequenceFlow id="Flow_foldImmediate_end" sourceRef="FoldImmediate" targetRef="EndNonSerious" />
+  </bpmn:process>
+</bpmn:definitions>

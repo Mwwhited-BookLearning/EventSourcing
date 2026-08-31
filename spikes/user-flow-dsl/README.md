@@ -27,6 +27,13 @@ Run any of them with `dotnet run` from its own directory.
   locally-downloaded Temporal Server (no manual Docker setup), and
   worked correctly on the first real run with no API-mismatch friction
   at all, the smoothest integration of any spike in this folder.
+- **`ZeebeSpike/`** — Option D (Camunda 8 / Zeebe, real BPMN 2.0 engine).
+  See its own [`README.md`](ZeebeSpike/README.md) — needs a real broker
+  container (docker run command included) and, by a wide margin, the
+  most operational friction of any spike here: three undocumented env
+  vars just to reach an unauthenticated local broker, plus a high-level
+  client API that silently never worked, worked around with a
+  hand-rolled polling loop using the same SDK's lower-level primitives.
 
 ## PlantUML-native (`PlantUmlNativeSpike/`) — Option G1
 
