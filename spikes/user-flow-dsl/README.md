@@ -10,6 +10,18 @@ questions.md` row 1 is still not decided).
 
 Run any of them with `dotnet run` from its own directory.
 
+## At a glance
+
+| Spike | Framework(s) | What it does | Configured by | Text-file format |
+|---|---|---|---|---|
+| [`PlantUmlNativeSpike/`](PlantUmlNativeSpike/) (Option G1) | [PlantUML](https://plantuml.com/activity-diagram-beta) Activity Diagram syntax — no parsing framework, hand-rolled | Hand-rolled recursive-descent parser + interpreter for a constrained PlantUML Activity Diagram subset, executed directly against a C# delegate registry | Text file | PlantUML Activity Diagram (`.puml`) |
+| [`ElsaSpike/`](ElsaSpike/) (Option B) | [Elsa Workflows](https://elsaworkflows.io) 3.7.1 | A `Sequence`/`If` workflow with a custom blocking/bookmark activity (`WaitForAuthorityDecisionActivity`), resumed via a real bookmark round trip | Code (C# fluent workflow-builder API) | — none |
+| [`AntlrCustomDslSpike/`](AntlrCustomDslSpike/) (Option G2) | [ANTLR4](https://www.antlr.org) (`Antlr4BuildTasks`/`Antlr4.Runtime.Standard`) | A wholly custom textual DSL — a real `.g4` grammar compiled into a Visitor-pattern parser, walked into a small AST/interpreter | Text file | Custom `UserFlowDsl` grammar (`.flow`, defined by `Grammar/UserFlowDsl.g4`) |
+| [`NRulesDmnSpike/`](NRulesDmnSpike/) (Option E) | [NRules](https://nrules.net) (RETE engine) + [`net.adamec.lib.common.dmn.engine`](https://github.com/adamecr/Common.DMN.Engine) (DMN) | NRules forward-chaining rules drive the flow's sequencing (no AST); the one multi-factor classification decision is delegated to a real DMN table | Both — rules by code (NRules Fluent DSL), classification by text file | DMN 1.3, the real OMG standard (`.dmn`) |
+| [`TemporalSpike/`](TemporalSpike/) (Option C) | [Temporal](https://temporal.io) (.NET SDK) | Real `[Workflow]`/`[Activity]`/`[WorkflowSignal]` classes run against a locally-downloaded Temporal Server | Code (C# classes with Temporal SDK attributes) | — none |
+| [`ZeebeSpike/`](ZeebeSpike/) (Option D) | [Camunda 8 / Zeebe](https://camunda.io) (`zb-client`) | A real BPMN 2.0 process deployed to and executed by a real Zeebe broker, with job workers polling via the SDK's own lower-level primitives | Text file | BPMN 2.0 XML (`.bpmn`) |
+| [`PlantBpmnSpike/`](PlantBpmnSpike/) (Option H) | [PlantBPMN](https://codeberg.org/Some1/PlantBPMN) (PlantUML → BPMN) + XSLT (.NET `XslCompiledTransform`) | PlantUML compiled to real BPMN XML via PlantBPMN; a real XSLT stylesheet renders a BPMN file back into PlantUML text (the reverse direction) | Text file, in both directions | PlantUML (`.puml`, input) → BPMN 2.0 XML (`.bpmn`, compiled) → XSLT 1.0 stylesheet (`.xslt`, drives the reverse render) |
+
 - **`PlantUmlNativeSpike/`** — Option G1 (hand-authored PlantUML Activity
   Diagram, parsed and executed directly). See below.
 - **`ElsaSpike/`** — Option B (Elsa Workflows). See below.
