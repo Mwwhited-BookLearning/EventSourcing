@@ -300,10 +300,38 @@ ctx.WithInputParameter("SeriousAdverseEvent", true);
 var result = ctx.ExecuteDecision("RequiresReview");
 ```
 
+**Actually built and run end to end** (`spikes/user-flow-dsl/NRulesDmnSpike/`,
+its own README has the full account), and taken further than this
+section's own original sketch above: rather than one standalone rule and
+one standalone decision shown in isolation, the spike composes them the
+way a real integration would — NRules' RETE engine drives the *whole*
+eight-step sequence as eight small forward-chaining rules matched purely
+against accumulating facts (no AST, no interpreter loop, unlike every
+other option in this document), and DMN is invoked from *inside* one of
+those rules (`ClassifyEventRule`, via NRules' own dependency-injection
+seam) to make the one genuinely multi-factor decision (severity score
+*and* event type both bearing on the outcome) rather than an inline C#
+condition. All three scenarios pass. One finding worth calling out on
+its own: **NRules' forward-chaining naturally pauses waiting for outside
+input, for free** — `session.Fire()` simply runs out of rules whose
+preconditions are satisfied once it reaches the step needing the PI's
+real decision, with no purpose-built blocking/bookmark API of the kind
+Option B's Elsa spike needed to build for the exact same "pause for a
+human" requirement. Two real, worth-naming friction points, both from
+the DMN engine specifically, neither from NRules: (1) `ExecuteDecision`
+is keyed by the DMN `<decision>`'s `name` attribute, not its `id` —
+undocumented in the package's own README, found only by running it and
+reading the real exception; (2) the DMN engine pulls a stale,
+high-severity-CVE `Newtonsoft.Json 12.0.2` transitively (via
+`DynamicExpresso.Core`, confirmed via `dotnet list package
+--include-transitive`) — a real dependency-hygiene concern this
+project's own Polly/OSMF-era license-and-dependency checking habit
+exists to catch, flagged here rather than silently accepted.
+
 | | |
 |---|---|
-| **Pros** | `DMN`'s decision-table notation is itself a real, visual, OMG-standardized diagram (pairs with BPMN specifically — the two specs are designed to compose), matching the stated preference the same way BPMN does; `NRules`' RETE engine handles genuinely complex multi-fact rule interaction this project's own hand-written `if` chains (`JsonSchemaInstanceValidator`) don't attempt |
-| **Cons** | Neither covers "flows/approvals" at all — this project's own real validation needs (`JsonSchemaInstanceValidator`'s `dependentRequired`/`if`/`then`/`else`, already built and JSON-Schema-standard) already cover single-event structural/conditional validation without a new dependency; a RETE engine's real value (`NRules`) is multi-fact inference across many objects at once, which nothing in this project's current validation needs actually requires yet |
+| **Pros** | `DMN`'s decision-table notation is itself a real, visual, OMG-standardized diagram (pairs with BPMN specifically — the two specs are designed to compose), matching the stated preference the same way BPMN does; `NRules`' RETE engine handles genuinely complex multi-fact rule interaction this project's own hand-written `if` chains (`JsonSchemaInstanceValidator`) don't attempt. The spike's own finding that a "pause for human input" point falls out of forward-chaining for free, with no dedicated blocking API, is a genuine, unexpected structural advantage over Option B for exactly the shape this scenario needs |
+| **Cons** | Neither covers "flows/approvals" at all — this project's own real validation needs (`JsonSchemaInstanceValidator`'s `dependentRequired`/`if`/`then`/`else`, already built and JSON-Schema-standard) already cover single-event structural/conditional validation without a new dependency; a RETE engine's real value (`NRules`) is multi-fact inference across many objects at once, which nothing in this project's current validation needs actually requires yet. Modeling a *sequential* flow as a set of forward-chaining rules matched against accumulating facts is a real inversion of control worth naming honestly — there is no single place that reads top-to-bottom as "the flow"; the sequence only emerges from which facts unlock which rules, a genuinely harder mental model for a non-developer than any diagram-based option here. `net.adamec.lib.common.dmn.engine`'s stale transitive `Newtonsoft.Json` dependency is a real, unresolved supply-chain concern specific to this DMN library choice, separate from NRules itself |
 
 ### Option F — Hand-authored PlantUML Activity Diagrams documenting Option A (no new engine at all)
 

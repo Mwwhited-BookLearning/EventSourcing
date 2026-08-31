@@ -17,6 +17,11 @@ Run any of them with `dotnet run` from its own directory.
   real ANTLR4 `.g4` grammar). See its own
   [`README.md`](AntlrCustomDslSpike/README.md) for the grammar/instance
   file-schema relationship and findings.
+- **`NRulesDmnSpike/`** — Option E (NRules rule engine + a real DMN 1.3
+  decision table). See its own
+  [`README.md`](NRulesDmnSpike/README.md) — the flow has no AST at all,
+  only forward-chaining rules matched against accumulating facts, and
+  the "wait for human input" pause point falls out of that for free.
 
 ## PlantUML-native (`PlantUmlNativeSpike/`) — Option G1
 
