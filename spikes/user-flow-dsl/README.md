@@ -22,6 +22,13 @@ Run any of them with `dotnet run` from its own directory.
 | [`ZeebeSpike/`](ZeebeSpike/) (Option D) | [Camunda 8 / Zeebe](https://camunda.io) (`zb-client`) | A real BPMN 2.0 process deployed to and executed by a real Zeebe broker, with job workers polling via the SDK's own lower-level primitives | Text file | BPMN 2.0 XML (`.bpmn`) |
 | [`PlantBpmnSpike/`](PlantBpmnSpike/) (Option H) | [PlantBPMN](https://codeberg.org/Some1/PlantBPMN) (PlantUML → BPMN) + XSLT (.NET `XslCompiledTransform`) | PlantUML compiled to real BPMN XML via PlantBPMN; a real XSLT stylesheet renders a BPMN file back into PlantUML text (the reverse direction) | Text file, in both directions | PlantUML (`.puml`, input) → BPMN 2.0 XML (`.bpmn`, compiled) → XSLT 1.0 stylesheet (`.xslt`, drives the reverse render) |
 
+**[`SchemaValidation/`](SchemaValidation/)** isn't a spike — it's a real
+validator (`dotnet run`, CI-usable exit code) checking the DMN/BPMN/XSLT
+files above against real, checked-in official OMG schemas. Its own
+[`README.md`](SchemaValidation/README.md) also covers, and is honest
+about, the two formats with no formal schema at all (PlantUML, the
+custom `UserFlowDsl` grammar).
+
 - **`PlantUmlNativeSpike/`** — Option G1 (hand-authored PlantUML Activity
   Diagram, parsed and executed directly). See below.
 - **`ElsaSpike/`** — Option B (Elsa Workflows). See below.
