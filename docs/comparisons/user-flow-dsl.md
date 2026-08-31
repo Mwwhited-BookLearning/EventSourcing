@@ -607,6 +607,37 @@ pass, named here as an honest scope boundary rather than assumed away.
 | **Pros** | The only option combining a real, standards-based execution engine (in principle; not actually reached this pass, see below) with a genuinely clean, diff-friendly, non-developer-readable textual source — PlantUML text stays the thing anyone actually reads or edits; BPMN XML becomes a build artifact, the same way a compiled binary is never what a developer reviews by hand. The reverse-direction XSLT visualizer genuinely works, confirmed against both a correct and a broken real BPMN file, and is real, standard, no-third-party-library .NET code (`XslCompiledTransform`) |
 | **Cons** | `PlantBPMN` is small, single-maintainer, Go-based (introduces a Go toolchain dependency into a .NET-first repo purely for this conversion step) — real, but nowhere near as mature/maintained as `Antlr4.Runtime.Standard` or the engines in Options B/D themselves; **now independently verified, not just flagged as unconfirmed, to have a real nested-if/else generation defect** (a dead-end join gateway) that would need working around or reporting upstream before this option could be trusted for any flow with more than one level of branching, which this specific scenario genuinely needs. **Never actually reaches a real running engine in this pass** — PlantBPMN only targets Flowable, not the Zeebe broker this document's own Option D already stood up, so pairing the two as originally envisioned needs an unbuilt Flowable-to-Zeebe dialect bridge on top of everything else |
 
+## Scorecard
+
+Rated against this document's own six stated evaluation criteria
+above — direct preferences, not invented axes. `✅` meets it, `⚠️`
+partial/real caveat, `❌` doesn't meet it. Every rating below is backed
+by a real spike run, not theory alone; see each option's own section
+above and each spike's own README for the finding behind a `⚠️`/`❌`.
+
+| Option | Visual notation | Textual & diff-friendly | .NET-native, no separate service | License/maintenance risk | Fits this repo's conventions | Non-developer-readable source |
+|---|---|---|---|---|---|---|
+| **A** — status quo | ❌ no diagram at all | ✅ plain C# | ✅ in-process | ✅ no new dependency | ✅ already the convention | ❌ C# only |
+| **B** — Elsa | ⚠️ real designer exists, not evaluated; own format isn't diagram-as-text | ❌ serialized definitions embed designer layout inline with logic | ✅✅ embeddable, in-process — genuine strength | ⚠️ MIT, but comparison doc's own v4/BPMN claim didn't hold against the installable 3.7.1 | ⚠️ workable, but 5 real API-drift issues found only by running it, including one silent-wrong-behavior trap | ❌ C# + JSON |
+| **C** — Temporal | ❌ zero diagrammatic form | ✅ plain C#, no embedded layout | ❌ real, separate always-on server cluster in production (embedded dev server is local-only) | ✅ MIT, verified | ✅ no real friction found — smoothest integration of every spike here | ❌ C# only |
+| **D** — Zeebe/Camunda 8 | ✅ most genuine real BPMN 2.0 fit | ❌ verified BPMN DI-noise diff problem, same family as every `.bpmn` this tool produces | ❌❌ heaviest cost confirmed: real broker cluster, *plus* 3 undocumented env vars and a `NewWorker()` API that silently never worked across every client/broker version combination tried | ⚠️ `zb-client` itself Apache-2.0, but community- not first-party-maintained | ⚠️ step-up/delegation bolted on as custom job-worker code; the `NewWorker()` gap is a real trust cost | ✅ diagram yes, ❌ raw `.bpmn` XML source no |
+| **E** — NRules + DMN | ⚠️ DMN table is a real visual OMG standard; the NRules rule-sequencing half has none | ⚠️ DMN's own DI section embeds layout too, same family of concern as BPMN, confirmed by building one | ✅✅ both fully in-process, no server | ✅ both MIT, but the DMN engine pulls a stale, high-severity-CVE `Newtonsoft.Json` transitively | ✅✅ the "pause for human input" falls out of forward-chaining for free — the best structural fit found this pass | ⚠️ DMN table yes (tabular), NRules rules no (C#) |
+| **F** — PlantUML docs only | ✅ real PlantUML diagram | ✅✅ best-in-class — layout computed at render time, never stored | ✅ zero new engine, pure documentation | ✅ no new dependency | ✅ doesn't touch runtime code at all | ✅ diagram-as-code, source itself reads close to plain English |
+| **G1** — PlantUML-native (executable) | ✅ identical `.puml`, real diagram | ✅✅ same file, zero translation step | ✅ ~150 lines, zero NuGet dependencies | ✅ no new dependency | ✅ explicit-registration pattern already used elsewhere in this repo | ✅ same PlantUML text, and it's the thing that actually runs |
+| **G2** — ANTLR custom DSL | ⚠️ real textual DSL, but rendering via PlantUML still needs an unbuilt generation step | ✅ own custom text file, no embedded layout | ✅ real ANTLR4 .NET runtime, in-process | ✅ `Antlr4.Runtime.Standard` BSD-3-Clause, verified | ✅ same explicit-registration pattern, no API-drift friction at all | ⚠️ reads close to plain English, but it's a bespoke syntax nobody already knows, unlike PlantUML |
+| **H** — PlantBPMN + XSLT | ⚠️ real PlantUML source in principle, but a confirmed generator defect breaks it for nested branching | ✅✅ PlantUML source diffs like F/G1; the compiled `.bpmn` is a build artifact, not the reviewed source | ❌ never reaches a real running engine this pass (Flowable-only target, not Zeebe); adds a Go toolchain dependency | ✅ PlantBPMN itself MIT, verified | ⚠️ real, reproducible nested-if/else defect found and confirmed unfixed across every available version | ✅ PlantUML source, same property as F/G1 |
+
+Three things the table can't show in one glyph, worth stating plainly:
+only **G1**, **F**, and (partially) **G2** clear every column without a
+real caveat attached — and of those, only **G1** and **H** in principle
+are both diagram-as-source *and* actually executable, with **H**
+currently failing on the one criterion the others don't even attempt
+(reaching a real running engine). **E**'s NRules half is the strongest
+single structural finding in this whole exercise (free durable-pause
+semantics) despite scoring weakly on the visual/readability columns —
+a reminder that this scorecard rates against *this project's stated
+preferences*, not "best engine in the abstract."
+
 ## Recommendation
 
 **Updated after actually building and running both Option G1 and
