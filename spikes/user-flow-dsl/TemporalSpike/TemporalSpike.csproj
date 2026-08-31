@@ -1,0 +1,17 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Spike only, docs/comparisons/user-flow-dsl.md Option C. Not part of
+       EventStore.slnx on purpose: this is throwaway research code proving
+       the shape works, not a production dependency. -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Temporalio" Version="1.18.0" />
+  </ItemGroup>
+
+</Project>

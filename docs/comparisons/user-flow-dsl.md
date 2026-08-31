@@ -230,10 +230,32 @@ public class AdverseEventReviewWorkflow
 await workflowHandle.SignalAsync(wf => wf.ReceiveDecisionAsync(isApproved: true));
 ```
 
+**Actually built and run end to end** (`spikes/user-flow-dsl/
+TemporalSpike/`, its own README has the full account) — the full eight
+actions as real `[Activity]`-attributed methods (Temporal's own
+designated place for side effects; nothing runs directly inside
+workflow code), a `[Workflow]` class with the branching logic above, and
+`Temporalio.Testing.WorkflowEnvironment.StartLocalAsync()` running a
+real, current Temporal Server as a local subprocess with **no manual
+Docker/cluster setup at all** — it lazily downloads the actual server
+binary on first use and tears it down on disposal. All three scenarios
+pass, including a genuine signal-based pause/resume round trip (not
+simulated) for the two `SeriousAdverseEvent` cases. **Every real API
+guess compiled and ran correctly on the first try** — no reflection
+probing against the installed assembly was needed here, unlike Option B
+(Elsa) and Option E (the DMN engine) in this same document, a real,
+worth-naming data point in this SDK's favor. The dev server's own
+startup logs did print a few `ERROR`-level "shard status unknown" lines
+during its first few hundred milliseconds of shard initialization —
+transient startup noise, not a real failure; the workflow completed
+correctly regardless, but worth flagging per this project's own "no
+false Error-level noise" convention if this were ever run inside a
+long-lived service rather than a short-lived spike process.
+
 | | |
 |---|---|
-| **Pros** | Genuinely durable execution — a workflow survives a process crash mid-wait with no extra code, which this project's own hand-rolled mechanisms don't get for free; real, current .NET SDK; signals map cleanly onto "an external decision arrives later" |
-| **Cons** | **A separate, always-on server cluster** (the Temporal Server + a persistence store of its own) — the heaviest infrastructure addition of every option here, for a project whose own orchestration (`ADR-026`) is deliberately dev/POC-scoped; **zero visual notation** — a workflow is pure C# with no diagrammatic form at all, directly against the stated preference for BPMN/UML/PlantUML-style visibility; step-up authentication/delegated access (steps 3 and 5) still need to be built as ordinary application code calling into this project's existing `ADR-043`/`ADR-066` mechanisms from inside the workflow — Temporal replaces the "wait for later" shape, not the security/delegation primitives underneath it |
+| **Pros** | Genuinely durable execution — a workflow survives a process crash mid-wait with no extra code, which this project's own hand-rolled mechanisms don't get for free; real, current .NET SDK, and — confirmed now, not assumed — a notably *smoother* real integration experience than Option B's Elsa spike needed, with the installed package's real API matching its own documented shape exactly; signals map cleanly onto "an external decision arrives later," durably, across a real dev-server process boundary, not just an in-memory await |
+| **Cons** | **A separate, always-on server cluster in production** (the Temporal Server + a persistence store of its own) — the heaviest infrastructure addition of every option here, for a project whose own orchestration (`ADR-026`) is deliberately dev/POC-scoped; the embedded dev server this spike uses is a testing/local convenience, not a substitute for that real operational cost. **Zero visual notation** — a workflow is pure C# with no diagrammatic form at all, directly against the stated preference for BPMN/UML/PlantUML-style visibility; step-up authentication/delegated access (steps 3 and 5) still need to be built as ordinary application code calling into this project's existing `ADR-043`/`ADR-066` mechanisms from inside an Activity — Temporal replaces the "wait for later" shape, not the security/delegation primitives underneath it |
 
 ### Option D — Camunda 8 / Zeebe (real BPMN 2.0 engine)
 

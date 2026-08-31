@@ -22,6 +22,11 @@ Run any of them with `dotnet run` from its own directory.
   [`README.md`](NRulesDmnSpike/README.md) — the flow has no AST at all,
   only forward-chaining rules matched against accumulating facts, and
   the "wait for human input" pause point falls out of that for free.
+- **`TemporalSpike/`** — Option C (Temporal durable execution). See its
+  own [`README.md`](TemporalSpike/README.md) — runs against a real,
+  locally-downloaded Temporal Server (no manual Docker setup), and
+  worked correctly on the first real run with no API-mismatch friction
+  at all, the smoothest integration of any spike in this folder.
 
 ## PlantUML-native (`PlantUmlNativeSpike/`) — Option G1
 
