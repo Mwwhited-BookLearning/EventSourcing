@@ -101,5 +101,20 @@ idiomatic Zeebe client code, just without the convenience wrapper. This
 reproduced identically after a clean broker restart, so it reads as a
 real compatibility gap between this client version (`zb-client
 2.10.0`) and this broker version (`camunda/zeebe:8.8.0`) rather than a
-one-off fluke — worth a second look with a different client/broker
-version pairing before relying on `NewWorker` in this stack.
+one-off fluke.
+
+**Retested across four client/broker combinations, not just the one
+above** — `zb-client` 2.10.0 is already NuGet's current latest, so the
+matrix instead varied the broker (`camunda/zeebe:8.8.0`, the newer patch
+`8.8.36`, and the newer minor `8.9.11`, `latest` at the time of testing)
+and tried one older client (`zb-client` 2.9.0) against the newest
+broker. Same isolated `NewWorker()` reproduction (register all eight
+job types, create one process instance, wait 15s for the first job to
+activate) run each time. **Every single combination reproduced the
+identical failure** — no job ever activated via `NewWorker()`, on any
+pairing tried. This rules out "stale client" or "stale broker" as the
+explanation; whatever the gap is, it isn't fixed by moving either side
+forward within this recent version range, and the hand-rolled
+`NewActivateJobsCommand`/`NewCompleteJobCommand` polling loop in
+`Program.cs` remains the only combination in this whole exercise that
+actually worked.

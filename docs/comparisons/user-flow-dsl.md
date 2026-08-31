@@ -312,10 +312,14 @@ anywhere, across a full container restart and multiple builder-option
 combinations tried; a manual `NewActivateJobsCommand`/
 `NewCompleteJobCommand` polling loop against the exact same broker
 worked immediately and reliably. The spike ships the working manual
-loop, not the high-level wrapper — a real, unresolved gap in this
-specific client/broker version combination worth treating as a known
-risk, not a one-off fluke, since it reproduced identically after a
-clean broker restart.
+loop, not the high-level wrapper. **Retested since across four client/
+broker combinations** (`zb-client` 2.10.0 and the one-minor-older 2.9.0,
+against `camunda/zeebe` 8.8.0/8.8.36/8.9.11) — `zb-client` 2.10.0 is
+already NuGet's current latest, so there was nothing newer to try on
+that side. Every combination reproduced the identical failure, ruling
+out "just a stale version" as the explanation; this reads as a real,
+structural gap worth treating as a known risk in this client library,
+not a one-off fluke or something a version bump fixes.
 
 | | |
 |---|---|
@@ -566,7 +570,16 @@ connected graph and works fine — the defect is specific to nesting.
 This is exactly the "round-trips *this* worked example's branching
 shape correctly" question this section's Cons row previously left
 open, and the honest answer is: partially, with a real, named
-limitation, not a clean yes.
+limitation, not a clean yes. **Checked for an escape hatch and found
+none**: Codeberg's own issue tracker for this project has zero open or
+closed issues at all (genuinely unreported), and of its five release
+tags, only `v1.0.4` (already `@latest`, already what this spike used)
+actually runs via the documented `go run module@version` invocation —
+`1.0.0` isn't a resolvable module version, and `v1.0.1`–`v1.0.3` all
+panic on startup (`open ./templates: no such file or directory`, a
+working-directory-relative template lookup that only resolves inside a
+full local clone). There is no older, still-runnable release to
+regression-test this defect against.
 
 The reverse direction — the literal original ask ("an XSLT over BPMN
 files to PlantUML diagrams") — was also built for real: a genuine

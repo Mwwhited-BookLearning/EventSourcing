@@ -61,6 +61,25 @@ appears to attach the outer continuation to the wrong node when a second
 a one-off fluke (rebuilding from the same `.puml` twice produces the
 same broken shape both times).
 
+**Checked whether an older PlantBPMN release avoids this, and whether
+it's already a known, reported issue** — neither escape hatch exists.
+Codeberg's own issue tracker for this project shows **zero** open or
+closed issues at all, so this is genuinely unreported. Of the five
+release tags (`1.0.0`, `v1.0.1`–`v1.0.4`), `v1.0.4` (what `@latest`
+resolves to, and what this spike used throughout) is the **only one
+actually invocable** via the documented `go run
+codeberg.org/Some1/PlantBPMN@<version>` form: `1.0.0` isn't a resolvable
+Go module version at all (`invalid version: unknown revision v1.0.0`),
+and `v1.0.1`–`v1.0.3` all panic immediately with `open ./templates: no
+such file or directory` — those releases apparently look up their BPMN
+XML templates via a path relative to the process's working directory
+rather than an embedded (`//go:embed`) resource, which only resolves
+inside a full local clone of the repo, not when Go fetches and runs the
+module from its module cache. So there is no older, still-runnable
+version of this tool to regression-test the nested-if defect against
+this way — `v1.0.4` is simultaneously the newest release and the only
+one this invocation method can reach at all.
+
 ## The XSLT (`Xslt/BpmnToPlantUml.xslt`)
 
 Walks the BPMN graph via `sourceRef`/`targetRef` keys, not document
