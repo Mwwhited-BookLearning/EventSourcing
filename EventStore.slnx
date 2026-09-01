@@ -59,6 +59,7 @@
   </Folder>
   <Folder Name="/samples/">
     <Project Path="src/Samples.Meridian/Samples.Meridian.csproj" />
+    <Project Path="src/Samples.Meridian.Flows/Samples.Meridian.Flows.csproj" />
     <Project Path="src/Samples.Meridian.Seed/Samples.Meridian.Seed.csproj" />
     <Project Path="src/Samples.Meridian.Simulator/Samples.Meridian.Simulator.csproj" />
     <Project Path="src/Samples.Orders.Projections/Samples.Orders.Projections.csproj" />

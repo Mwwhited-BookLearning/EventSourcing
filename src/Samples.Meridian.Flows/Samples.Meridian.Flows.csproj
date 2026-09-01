@@ -1,0 +1,37 @@
+<Project Sdk="Microsoft.NET.Sdk.Worker">
+
+  <!-- ADR-101: the real, live-running host for the two Meridian flow
+       definitions (MeridianWorkflowAFlow/MeridianWorkflowCFlow). Mirrors
+       Samples.Vitals.Flows/Samples.Orders.Projections' own separate-
+       process shape exactly. -->
+  <ItemGroup>
+    <ProjectReference Include="..\EventStore.Flows\EventStore.Flows.csproj" />
+    <ProjectReference Include="..\Samples.Meridian\Samples.Meridian.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="10.0.11" />
+    <!-- ADR-080 (dependency-vulnerability scanning) found this pulling
+         SQLitePCLRaw.lib.e_sqlite3 2.1.11 (GHSA-2m69-gcr7-jv3q, high). A
+         direct override bumps NuGet's higher-version-wins resolution to a
+         patched release. -->
+    <PackageReference Include="SQLitePCLRaw.lib.e_sqlite3" Version="3.53.3" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.11">
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+      <PrivateAssets>all</PrivateAssets>
+    </PackageReference>
+    <PackageReference Include="Microsoft.Extensions.Hosting" Version="10.0.11" />
+    <PackageReference Include="Microsoft.Extensions.Http" Version="10.0.11" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <!-- Worked proving-ground example, explicitly NOT part of the
+         framework (ADR-030), never a published package, same posture
+         Samples.Vitals.Flows/Samples.Orders.Projections already established. -->
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+</Project>
