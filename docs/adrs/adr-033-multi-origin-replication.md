@@ -86,6 +86,15 @@ Consequences:
   finally has a real consumer — diagnosing which site's write most
   recently won a fold, useful when investigating a `ConflictFlag`.
 
+**Additive note (`ADR-102`)**: this mechanism was verified genuinely
+cross-provider for the first time — two peers running different
+`Host.<Provider>` artifacts (a real SQL Server Testcontainer and a real
+SQLite file, plus a live three-node mesh also including Postgres,
+orchestrated together under `EventStore.AppHost`) — confirming directly
+that `PeerSyncClient`/`PeerSyncReceiver`'s plain-HTTP-JSON transport
+never assumed same-provider peers. No change to this ADR's own Decision;
+`ADR-102` is verification, not revision.
+
 **Compliance note** (a proving-ground compliance review, this session):
 the minimum-replication-factor-of-2 requirement is the concrete
 mechanism satisfying HIPAA's Contingency Plan standard (45 CFR

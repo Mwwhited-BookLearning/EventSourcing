@@ -13,6 +13,11 @@
 
   <ItemGroup>
     <PackageReference Include="Aspire.Hosting.PostgreSQL" Version="13.4.6" />
+    <!-- Multi-provider peer-sync topology (ADR-033, the queued cross-
+         provider-peer-sync ADR): a real SQL Server container resource,
+         the identical AddPostgres/AddDatabase shape above, first-party
+         Aspire support. -->
+    <PackageReference Include="Aspire.Hosting.SqlServer" Version="13.4.6" />
     <!-- ADR-076 propagation: orchestrates client-web's own Vite dev
          server as a real Aspire resource, per direct request, rather
          than requiring `npm run dev` to be started by hand alongside
@@ -22,6 +27,8 @@
 
   <ItemGroup>
     <ProjectReference Include="..\EventStore.Host.Postgres\EventStore.Host.Postgres.csproj" />
+    <ProjectReference Include="..\EventStore.Host.Sqlite\EventStore.Host.Sqlite.csproj" />
+    <ProjectReference Include="..\EventStore.Host.SqlServer\EventStore.Host.SqlServer.csproj" />
     <ProjectReference Include="..\EventStore.DevIdp\EventStore.DevIdp.csproj" />
     <ProjectReference Include="..\EventStore.Migrator\EventStore.Migrator.csproj" />
     <ProjectReference Include="..\Samples.Vitals.Seed\Samples.Vitals.Seed.csproj" />

@@ -72,6 +72,7 @@
          so referencing both unaliased is an ambiguous-type compile error. -->
     <ProjectReference Include="..\..\src\EventStore.DevIdp\EventStore.DevIdp.csproj" Aliases="DevIdpAssembly" />
     <ProjectReference Include="..\..\src\EventStore.Gateway\EventStore.Gateway.csproj" Aliases="GatewayAssembly" />
+    <ProjectReference Include="..\..\src\EventStore.Host.SqlServer\EventStore.Host.SqlServer.csproj" Aliases="HostSqlServerAssembly" />
   </ItemGroup>
 
 </Project>

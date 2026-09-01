@@ -1547,6 +1547,14 @@ so this is a deliberate, honestly-flagged scope narrowing, not a gap
 against what was promised. Revisit if a later item's own scope actually
 needs the efficiency (none currently do).
 
+**Additive note (`ADR-102`)**: this item's own peer-sync mechanism was
+verified genuinely cross-provider for the first time — a real SQL
+Server Testcontainer peer, a real SQLite-file peer, and a real
+Postgres-backed `eventstore` peer, all gossiping together under a real,
+`EventStore.AppHost`-orchestrated three-node mesh. Every exit criterion
+above already held per-provider; this closes the "never actually run
+cross-provider" gap without changing any of them.
+
 ## Non-Authoritative Capture
 
 **Scope**: `ADR-035` (`AuthorityStatus`, `authorityDecision` events,

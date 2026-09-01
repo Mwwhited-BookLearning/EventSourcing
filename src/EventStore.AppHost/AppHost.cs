@@ -12,6 +12,21 @@ var builder = DistributedApplication.CreateBuilder(args);
 // production config management.
 int Port(string key, int fallback) => builder.Configuration.GetValue($"Ports:{key}", fallback);
 
+// ADR-033 (the queued cross-provider-peer-sync ADR) -- which providers
+// actually run, as which peers, in a given `aspire run` is genuinely
+// configurable at this orchestration layer, per direct request: this
+// does NOT reverse ADR-001's own "exactly one provider per running
+// process, no runtime Database:Provider switch" decision (each peer
+// below still hardcodes its own single provider internally, unchanged);
+// it's a separate, one-level-up choice about which of the three already-
+// built Host.<Provider> artifacts get stood up as peers in this
+// particular topology. Both default true, so a plain `aspire run` gives
+// a real three-provider mesh out of the box (config keys are ordinary
+// appsettings.json/env-var overrides, same as every other value in this
+// file's own opening comment).
+var enableSqlitePeer = builder.Configuration.GetValue("Topology:EnableSqlitePeer", true);
+var enableSqlServerPeer = builder.Configuration.GetValue("Topology:EnableSqlServerPeer", true);
+
 // docs/06-solution-structure.md's own sketch passes the bare server
 // resource ("db") straight to WithReference(db) -- that injects only
 // server-level connection info (host/port/credentials), no Database=...,
@@ -91,7 +106,8 @@ var devIdp = builder.AddProject<Projects.EventStore_DevIdp>("devidp") // a proje
 // "eventstore" ever starts accepting traffic.
 var migrator = builder.AddProject<Projects.EventStore_Migrator>("migrator")
     .WithReference(db)
-    .WaitFor(db);
+    .WaitFor(db)
+    .WithEnvironment("Database__Provider", "Postgres");
 
 // Vitals/Meridian proving-ground demo data -- same one-shot, direct-DB
 // shape as migrator above (ADR-076's posture, applied to seeding instead
@@ -225,6 +241,117 @@ var eventstore = builder.AddProject<Projects.EventStore_Host_Postgres>("eventsto
 // ProjectionHost's own reconnect-on-404 loop already tolerates a
 // not-yet-registered event type -- it just avoids a burst of expected
 // startup reconnect noise before VitalsWorkflowB/D's schemas exist.
+// ADR-033 (the queued cross-provider-peer-sync ADR) -- two more real peer
+// nodes, each its own single-provider Host.<Provider> (ADR-001
+// unchanged), joined into the SAME gossip mesh "eventstore" already
+// participates in. PeerSyncClient/PeerSyncReceiver (src/EventStore.
+// Replication/) move events as plain JSON over HTTP through the
+// ordinary publish/Inbox pipeline -- provider-agnostic by construction,
+// confirmed directly against that code before writing this -- so this
+// is exercising an existing, real mechanism cross-provider for the
+// first time, not building a new one.
+IResourceBuilder<ProjectResource>? eventstoreSqlServer = null;
+if (enableSqlServerPeer)
+{
+    // Same AddPostgres/AddDatabase shape as the write side above --
+    // Aspire.Hosting.SqlServer's own first-party container resource, not
+    // a custom one.
+    // A real, found startup failure, not assumed: SQL Server's own password
+    // policy rejects anything not spanning at least 3 of {uppercase,
+    // lowercase, digit, symbol} -- the Postgres dev password above
+    // ("duplex-local-dev-only") has no uppercase/digit and would fail the
+    // identical way if reused here; confirmed by actually starting the
+    // container and reading its own log ("Unable to set system
+    // administrator password: Password validation failed... not complex
+    // enough"), not assumed from the docs alone.
+    var sqlServerPassword = builder.AddParameter("sqlserver-password", builder.Configuration["SqlServer:DevPassword"] ?? "Duplex-Local-Dev-Only1!", secret: true);
+    var sqlServerServer = builder.AddSqlServer("sqlserver-server", sqlServerPassword).WithDataVolume();
+    var sqlServerDb = sqlServerServer.AddDatabase("SqlServer");
+
+    var migratorSqlServer = builder.AddProject<Projects.EventStore_Migrator>("migrator-sqlserver")
+        .WithReference(sqlServerDb)
+        .WaitFor(sqlServerDb)
+        .WithEnvironment("Database__Provider", "SqlServer");
+
+    eventstoreSqlServer = builder.AddProject<Projects.EventStore_Host_SqlServer>("eventstore-sqlserver")
+        .WithHttpEndpoint(port: Port("EventStoreSqlServerHttp", 5002))
+        .WithHttpsEndpoint(port: Port("EventStoreSqlServerHttps", 5003))
+        .WithReference(sqlServerDb)
+        .WaitFor(sqlServerDb)
+        .WaitForCompletion(migratorSqlServer)
+        .WithReference(devIdp)
+        .WithEnvironment("Authentication__Authority", devIdp.GetEndpoint("http"))
+        .WithEnvironment("Authentication__RequireHttpsMetadata", "false")
+        .WithEnvironment("OriginId__OriginId", "sqlserver-secondary");
+
+    sqlServerServer.WithParentRelationship(eventstoreSqlServer);
+    migratorSqlServer.WithParentRelationship(eventstoreSqlServer);
+}
+
+IResourceBuilder<ProjectResource>? eventstoreSqlite = null;
+if (enableSqlitePeer)
+{
+    // A local file, not a container -- both this migrator and the Host
+    // resource below run from their own project directory directly under
+    // src/ (Aspire's own default working directory for a project
+    // resource), so this one relative connection string resolves to the
+    // SAME literal file for both, the identical trick ADR-101's shared
+    // "../pending-tasks.db" already uses.
+    const string sqlitePeerConnectionString = "Data Source=../eventstore-sqlite-peer.db";
+
+    var migratorSqlite = builder.AddProject<Projects.EventStore_Migrator>("migrator-sqlite")
+        .WithEnvironment("Database__Provider", "Sqlite")
+        .WithEnvironment("ConnectionStrings__Sqlite", sqlitePeerConnectionString);
+
+    eventstoreSqlite = builder.AddProject<Projects.EventStore_Host_Sqlite>("eventstore-sqlite")
+        .WithHttpEndpoint(port: Port("EventStoreSqliteHttp", 5004))
+        .WithHttpsEndpoint(port: Port("EventStoreSqliteHttps", 5005))
+        .WaitForCompletion(migratorSqlite)
+        .WithReference(devIdp)
+        .WithEnvironment("ConnectionStrings__Sqlite", sqlitePeerConnectionString)
+        .WithEnvironment("Authentication__Authority", devIdp.GetEndpoint("http"))
+        .WithEnvironment("Authentication__RequireHttpsMetadata", "false")
+        .WithEnvironment("OriginId__OriginId", "sqlite-edge");
+
+    migratorSqlite.WithParentRelationship(eventstoreSqlite);
+}
+
+// Full static mesh (ADR-051 -- explicit seed configuration, no discovery
+// magic), wired here rather than at each node's own definition above
+// since it needs to reference whichever OTHER peers this run actually
+// enabled -- the identical "declared after everything it references"
+// shape the CORS wiring below already uses for the same reason.
+// PeerSyncClient reuses the same seeded identity every peer authenticates
+// as (DevIdpSeeder.cs's own "peer-sync-client"), scope "peer:sync".
+var seedPeerIndex = 0;
+eventstore.WithEnvironment("OriginId__OriginId", "pg-primary")
+    .WithEnvironment("PeerSyncClient__ClientId", "peer-sync-client")
+    .WithEnvironment("PeerSyncClient__ClientSecret", "peer-sync-client-secret");
+if (eventstoreSqlite is not null)
+    eventstore.WithEnvironment($"PeerSync__SeedPeers__{seedPeerIndex++}", eventstoreSqlite.GetEndpoint("https"));
+if (eventstoreSqlServer is not null)
+    eventstore.WithEnvironment($"PeerSync__SeedPeers__{seedPeerIndex++}", eventstoreSqlServer.GetEndpoint("https"));
+
+if (eventstoreSqlite is not null)
+{
+    seedPeerIndex = 0;
+    eventstoreSqlite.WithEnvironment("PeerSyncClient__ClientId", "peer-sync-client")
+        .WithEnvironment("PeerSyncClient__ClientSecret", "peer-sync-client-secret")
+        .WithEnvironment($"PeerSync__SeedPeers__{seedPeerIndex++}", eventstore.GetEndpoint("https"));
+    if (eventstoreSqlServer is not null)
+        eventstoreSqlite.WithEnvironment($"PeerSync__SeedPeers__{seedPeerIndex++}", eventstoreSqlServer.GetEndpoint("https"));
+}
+
+if (eventstoreSqlServer is not null)
+{
+    seedPeerIndex = 0;
+    eventstoreSqlServer.WithEnvironment("PeerSyncClient__ClientId", "peer-sync-client")
+        .WithEnvironment("PeerSyncClient__ClientSecret", "peer-sync-client-secret")
+        .WithEnvironment($"PeerSync__SeedPeers__{seedPeerIndex++}", eventstore.GetEndpoint("https"));
+    if (eventstoreSqlite is not null)
+        eventstoreSqlServer.WithEnvironment($"PeerSync__SeedPeers__{seedPeerIndex++}", eventstoreSqlite.GetEndpoint("https"));
+}
+
 var vitalsFlows = builder.AddProject<Projects.Samples_Vitals_Flows>("vitals-flows")
     .WithReference(eventstore)
     .WaitFor(eventstore)
