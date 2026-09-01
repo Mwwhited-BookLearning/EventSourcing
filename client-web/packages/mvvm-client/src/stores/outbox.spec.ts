@@ -1,4 +1,4 @@
-import { describe, expect, it, beforeEach } from 'vitest'
+import { describe, expect, it, beforeEach, vi } from 'vitest'
 import { setActivePinia, createPinia } from 'pinia'
 import { useOutboxStore } from './outbox'
 import { resetDbConnectionForTests } from '../db/indexedDb'
@@ -40,6 +40,32 @@ describe('ClientOutbox (ADR-039)', () => {
     await restarted.loadFromDb('instance-a')
     expect(restarted.pendingFor('instance-a')).toHaveLength(1)
     expect(restarted.pendingFor('instance-a')[0]?.commandId).toBe('cmd-1')
+  })
+
+  // Found by actually running dispatchCommand through a real Playwright/
+  // Chromium browser (OfflineOutboxSyncPlaybookTests.cs) -- SyncManager
+  // being PRESENT doesn't mean `.register()` succeeds; a real headless/
+  // automated context with no Background Sync permission grant throws a
+  // real NotAllowedError there. This is a best-effort opportunistic
+  // optimization (ADR-069) layered on the outbox write -- it must never
+  // take the durable enqueue itself down with it.
+  it('enqueue never throws even when the opportunistic Background Sync registration itself throws', async () => {
+    vi.stubGlobal('navigator', {
+      onLine: true,
+      serviceWorker: {
+        ready: Promise.resolve({
+          sync: {
+            register: () => Promise.reject(new Error('NotAllowedError: Background Sync permission denied')),
+          },
+        }),
+      },
+    })
+
+    const store = useOutboxStore()
+    await expect(store.enqueue(makeEntry())).resolves.toBeUndefined()
+    expect(store.pendingFor('instance-a')).toHaveLength(1)
+
+    vi.unstubAllGlobals()
   })
 
   it('a queued command applies once connectivity resumes, with no duplicate application', async () => {

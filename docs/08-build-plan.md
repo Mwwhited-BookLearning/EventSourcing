@@ -3963,6 +3963,87 @@ suite concurrency — caught by a real, if intermittent, failure, not
 hypothesized; widened to several short ticks. `npm run build` and
 `npm run build:offline-player` both still succeed.
 
+**Manual "force offline/online" UI control, plus a real in-browser proof
+(direct request, this pass)** — everything above had only ever been
+verified by mocked Vitest specs, never a real browser. New
+`stores/connectivity.ts` (`useConnectivityStore`, `mvvm-client`) holds a
+`forcedOffline` flag independent of the real `navigator.onLine` signal;
+`App.vue` gained "Go Offline"/"Go Online" buttons (`data-testid`
+`force-offline`/`force-online`) that toggle it, and a
+`connectivity-status` element showing the combined effective state.
+`useEntityViewActions.dispatchCommand`/`captureDeviceReading` now gate
+their immediate-flush attempt on `useConnectivityStore.
+isEffectivelyOnline()` instead of reading `navigator.onLine` inline
+directly — same real signal, now ANDed with the manual override. **A
+real design pitfall found and avoided before it shipped**: this method
+is deliberately a plain Pinia *action*, not a `getters` entry — Pinia
+getters are wrapped in Vue's `computed()`, which only re-evaluates when
+a tracked *reactive* dependency changes; `navigator.onLine` is a plain,
+non-reactive global, so a `computed` version would have cached its
+first read and silently ignored every later real connectivity change
+that didn't happen to coincide with `forcedOffline` also toggling — a
+real bug that would have specifically broken the *automatic* detection
+half this item's own exit criteria require, caught by reasoning through
+Pinia's own getter-caching semantics before writing the test, not
+discovered by the test failing. New `tests/EventStore.E2ETests/
+OfflineOutboxSyncPlaybookTests.cs` proves both trigger paths for real
+against a live Chromium browser: Part 1 uses Playwright's own
+`BrowserContext.SetOfflineAsync` to drop and restore the *real* network
+(exercising `useOnlineStatus`'s existing listener completely
+unmodified), Part 2 exercises the new manual buttons — both converge on
+the same outbox enqueue/flush cycle, confirmed by the header's queued-
+command count. Playbook: `docs/playbooks/core/user/go-offline-and-
+resync.md` (a new `core/` domain in that catalog, since this capability
+is `App.vue`/`mvvm-client`-level, owned by no single Vitals/Meridian
+persona). `connectivity.spec.ts` (5 scenarios, including one asserting
+the plain-method-not-getter freshness guarantee directly) plus a new
+`outbox.spec.ts` scenario: Vitest suite regression 138/138 (27 files).
+
+**Three more real, previously-undiscovered gaps, found only by actually
+getting this test to pass against a live host rather than stopping at
+"it compiles"** — this project's own standing rule, proven out again:
+- `stores/outbox.ts`'s `registerBackgroundSync` could throw uncaught —
+  `SyncManager` being *present* doesn't mean `.register()` *succeeds*; a
+  real `NotAllowedError` surfaced in this exact Playwright/Chromium test
+  environment (no Background Sync permission grant), which silently
+  broke every line of the caller's own code *after* `enqueue()` — a
+  correctness bug independent of this test, now fixed with a `try/catch`
+  around the best-effort registration (never around the durable write
+  itself).
+- App.vue's own generic "Dispatch a command" demo panel (`amountInput`/
+  `submitAmountCommand`, present since item 21) had, it turns out,
+  *never once* successfully published against any real, currently-
+  orchestrated schema — every Vitals/Meridian event type's own
+  `required` JSON Schema fields (`PatientScreened` needs `SubjectId`/
+  `SiteId`/`EligibilityStatus`) rejected a bare `{ Amount }` patch with a
+  real 400, leaving the outbox entry permanently `Pending`, retried
+  forever with no visible error. Nobody had ever clicked "Set Amount" in
+  a real browser before this pass. Fixed by merging the currently cached
+  entity's own already-known fields (`entityCache.get(...).data`,
+  guaranteed populated before `currentEntityId` is ever set to that
+  entity) underneath the new `Amount` value — schema-agnostic, works
+  against any domain's `required` list.
+- Deeper still: even with a schema-compliant payload, **no DevIdp-seeded
+  HTTP client anywhere in this repo holds the specific claim any real
+  Vitals/Meridian event type's `RequiredClaims` demands** (e.g.
+  `PatientScreened`'s `patient:enroll`) — those events have only ever
+  been created by `Samples.Vitals.Seed`/`Simulator` calling
+  `PublishService` in-process, bypassing the HTTP auth layer entirely.
+  No amount of client-side fixing could make a real browser session
+  publish one. Resolved by having this test register and target its
+  **own** throwaway, no-`RequiredClaims` schema (`AppId
+  "e2e-offline-demo"`, `EventType "OrderPlaced"`) via the same real
+  DPoP-bound HTTP calls this session's cross-provider content-parity
+  script already proved out, and by adding one new DevIdp client
+  (`demo-dispatcher-client`, `DevIdpSeeder.cs`) holding both
+  `events:follow` and `events:publish` — the one identity a single
+  `ClientConfig` instance actually needs to both subscribe and dispatch,
+  which no existing seeded client held (each was deliberately scoped to
+  exactly one real capability need until now). `appConfig.ts`'s own
+  documented query-string override ("query string wins if present") is
+  what lets one already-running `client-web-vitals` process serve this
+  throwaway entity without a new AppHost resource.
+
 ## Device Input Integration
 
 **Scope**: `ADR-070` — how HID/raw-USB/serial/BLE device streams reach

@@ -57,6 +57,7 @@ export * from './outbox/exportImport'
 export * from './playback/bundle'
 export * from './playback/verifyBundle'
 
+export * from './stores/connectivity'
 export * from './stores/entityCache'
 export * from './stores/outbox'
 export * from './stores/viewDefinitions'
