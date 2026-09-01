@@ -63,6 +63,7 @@
     <Project Path="src/Samples.Meridian.Simulator/Samples.Meridian.Simulator.csproj" />
     <Project Path="src/Samples.Orders.Projections/Samples.Orders.Projections.csproj" />
     <Project Path="src/Samples.Vitals/Samples.Vitals.csproj" />
+    <Project Path="src/Samples.Vitals.Flows/Samples.Vitals.Flows.csproj" />
     <Project Path="src/Samples.Vitals.Seed/Samples.Vitals.Seed.csproj" />
     <Project Path="src/Samples.Vitals.Simulator/Samples.Vitals.Simulator.csproj" />
   </Folder>
