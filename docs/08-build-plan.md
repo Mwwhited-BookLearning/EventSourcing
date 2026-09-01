@@ -115,7 +115,7 @@ provider they apply to — not "code written."
 | 54 | [Searchable Blind-Index & Bucketed-Range Encrypted-Field Indexes](#searchable-blind-index--bucketed-range-encrypted-field-indexes) | GDPR/CCPA Erasure, Property-Level Masking, Follow API + Filter Pushdown | Done |
 | 55 | [Order-Revealing Encryption Range Index (opt-in)](#order-revealing-encryption-range-index-opt-in) | Searchable Blind-Index & Bucketed-Range Encrypted-Field Indexes | Built, pending required security review (not Done) |
 | 56 | [In-Database Native Predicate Evaluator Seam](#in-database-native-predicate-evaluator-seam) | Searchable Blind-Index & Bucketed-Range Encrypted-Field Indexes | SQL Server built and verified; PostgreSQL written, not verified (not Done) |
-| 57 | [PlantUML-Native User-Flow Engine & Pending-Task Read Model](#plantuml-native-user-flow-engine--pending-task-read-model) | CQRS Read-Model Projections (worked example) | SQLite/PostgreSQL hosts wired + `myTasks`; SQL Server host wiring open (not Done) |
+| 57 | [PlantUML-Native User-Flow Engine & Pending-Task Read Model](#plantuml-native-user-flow-engine--pending-task-read-model) | CQRS Read-Model Projections (worked example) | Done |
 
 Two groups worth naming up front, since they explain most of the
 ordering below:
@@ -250,7 +250,7 @@ state "Local Services" as tierLocal {
   state "Searchable Blind-Index &\nBucketed-Range Indexes" as a31 #palegreen
   state "Order-Revealing\nEncryption Range Index" as a32 #palegoldenrod
   state "In-Database Native\nPredicate Evaluator Seam" as a33 #palegoldenrod
-  state "PlantUML-Native Flow Engine &\nPending-Task Read Model" as a34 #palegoldenrod
+  state "PlantUML-Native Flow Engine &\nPending-Task Read Model" as a34 #palegreen
 }
 state "UI" as tierUi {
   state "MVVM Client" as p20 #palegreen
@@ -5360,18 +5360,27 @@ navigates to the existing Queue screen. `client-web`'s own
 `useMyTasks.spec.ts` covers the composable in isolation (token caching,
 scope handling, polling/stop).
 
-**Status: SQLite and PostgreSQL hosts wired (`EventStore.Host.Sqlite`,
-`EventStore.Host.Postgres` both register `PendingTasksDbContext`/get
-`myTasks` via `AddEventStoreGraphQl()`), and `EventStore.AppHost` runs
+**Status: Done.** All three `EventStore.Host.<Provider>` projects
+(SQLite, PostgreSQL, SQL Server) register the same read-only
+`PendingTasksDbContext` and automatically get `myTasks` via the shared
+`AddEventStoreGraphQl()`. `EventStore.Host.SqlServer`'s own copy was
+verified by booting the real host process and confirming the DI
+container builds cleanly through to a genuine `SqlException` on the
+unreachable write-side connection (an environment fact — no real SQL
+Server instance was stood up for this check — not a registration
+failure; a bad `PendingTasksDbContext` wiring would fail at container-
+build time instead, before any network call). `EventStore.AppHost` runs
 two real worker resources (`vitals-flows`/`meridian-flows`) sharing one
 physical SQLite file with `eventstore` itself — the first CQRS
 projection this repo has ever wired into a real orchestrated AppHost run
 (neither this item's own dependency nor `Samples.Orders.Projections` had
-been, before this pass). `EventStore.Host.SqlServer` wiring is the one
-remaining gap (`TODO.md`) — not a design gap, `EventStore.AppHost`
-(`ADR-001`) only ever targets one `Host.<Provider>` at a time and
-currently targets Postgres, so nothing has forced SQL Server's own
-mechanical copy of the same three changes yet.**
+been, before this pass). `EventStore.AppHost` only ever targets one
+`Host.<Provider>` at a time (currently Postgres, `ADR-001`), so the SQL
+Server host itself has no AppHost-driven live verification the way
+SQLite/Postgres do — a real, if narrow, verification gap relative to
+those two, not tracked further since nothing in this project's own
+"Done" bar (`08-build-plan.md`'s own header) has ever required
+AppHost-level proof specifically, only exit-criteria-level proof.
 
 ## Suggested References
 
