@@ -87,7 +87,12 @@ public static class DevIdpSeeder
         // comment on vitals-pi-client/meridian-analyst-client for the full
         // reasoning on why these are separate identities.
         ["vitals-pi-client"] = [("review", "ae"), ("review", "ionm"), ("consent", "approve")],
-        ["meridian-analyst-client"] = [("identity", "aml-review")],
+        // Same union-of-every-decision-claim rule as vitals-pi-client above --
+        // this was missing "identity:review" (MeridianWorkflowA's own decision
+        // claim), found via the flow engine's myTasks query, which surfaced the
+        // gap directly: this identity could resolve Workflow C's sanctions
+        // tasks but never Workflow A's identity-verification ones.
+        ["meridian-analyst-client"] = [("identity", "review"), ("identity", "aml-review")],
     };
 
     public static IReadOnlyList<(string Type, string Value)> GetExtraClaims(string clientId) =>

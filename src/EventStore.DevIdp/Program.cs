@@ -351,8 +351,18 @@ app.MapPost("/connect/token", async (
 
     identity.SetClaim(Claims.Subject, await applicationManager.GetClientIdAsync(application));
     identity.SetScopes(request.GetScopes());
+    // AddClaim, not SetClaim -- SetClaim REPLACES any existing claim of the
+    // same type, so a client seeded with more than one claim sharing a type
+    // (vitals-pi-client's own "review":"ae"/"review":"ionm" pair,
+    // DevIdpSeeder.ExtraClaims) silently lost every value but the last one
+    // looped over. Found via a real issued token's own decoded JWT payload
+    // showing only "review":"ionm", never "ae" -- the exact class of bug
+    // the sibling AddClaim(new Claim(...)) call sites below (rbac
+    // permissions, delegated-grant capabilities, federated claims) already
+    // avoid; this was the one remaining SetClaim call still looping over a
+    // set that can legitimately hold more than one same-typed claim.
     foreach (var (claimType, claimValue) in DevIdpSeeder.GetExtraClaims(request.ClientId!))
-        identity.SetClaim(claimType, claimValue);
+        identity.AddClaim(new Claim(claimType, claimValue));
     // ADR-046 -- RBAC's own role-to-permission flattening, opt-in via a
     // new, non-standard "app_id" form parameter (Role/UserPermission are
     // AppId-scoped): every EXISTING client_credentials caller that never

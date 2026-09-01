@@ -64,6 +64,7 @@ const menuOptions = computed<MenuOption[]>(() => {
     { label: navLabel('/detail', 'Detail'), key: '/detail' },
     { label: navLabel('/browse', 'Browse'), key: '/browse' },
     { label: navLabel('/compose', 'Compose'), key: '/compose' },
+    { label: navLabel('/tasks', 'My Tasks'), key: '/tasks' },
   ]
   if (queueDomain) items.push({ label: navLabel('/queue', 'Queue'), key: '/queue' })
   if (queueDomain === 'meridian') items.push({ label: navLabel('/relying-party', 'Relying-Party Access'), key: '/relying-party' })
