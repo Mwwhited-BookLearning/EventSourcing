@@ -14,4 +14,11 @@ public static class FlowActions
 {
     public static Action<JsonObject> Narrate(string flowName, string stepName) =>
         _ => Console.WriteLine($"[{flowName}] {stepName}");
+
+    // Every converted workflow's plain action labels narrate themselves
+    // verbatim (the label text IS the audit-trail message) -- this avoids
+    // repeating each label twice (once as the dictionary key, once as the
+    // narrated text) in every *.Flow.cs registration.
+    public static IReadOnlyDictionary<string, Action<JsonObject>> NarrateAll(string flowName, params string[] labels) =>
+        labels.ToDictionary(label => label, label => Narrate(flowName, label));
 }

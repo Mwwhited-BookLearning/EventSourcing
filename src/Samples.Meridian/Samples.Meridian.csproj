@@ -2,6 +2,19 @@
 
   <ItemGroup>
     <ProjectReference Include="..\EventStore.SchemaRegistry\EventStore.SchemaRegistry.csproj" />
+    <ProjectReference Include="..\EventStore.Flows\EventStore.Flows.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- ADR-101: the real, checked-in diagram source AND the executing
+         flow definition are the SAME file, embedded so the assembly can
+         read it at runtime, never copied/re-typed into a C# string. -->
+    <EmbeddedResource Include="..\..\docs\domains\digital-identity-kyc\features\customer-onboarding-and-identity-verification.puml">
+      <LogicalName>Samples.Meridian.customer-onboarding-and-identity-verification.puml</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Include="..\..\docs\domains\digital-identity-kyc\features\periodic-screening-and-sar-escalation.puml">
+      <LogicalName>Samples.Meridian.periodic-screening-and-sar-escalation.puml</LogicalName>
+    </EmbeddedResource>
   </ItemGroup>
 
   <PropertyGroup>

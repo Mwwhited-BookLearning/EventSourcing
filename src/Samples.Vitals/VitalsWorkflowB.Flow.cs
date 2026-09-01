@@ -1,5 +1,3 @@
-using System.Reflection;
-using System.Text.Json.Nodes;
 using EventStore.Flows;
 
 namespace Samples.Vitals;
@@ -25,32 +23,17 @@ namespace Samples.Vitals;
 // pending_review and go through PI sign-off anyway.
 public static class VitalsWorkflowBFlow
 {
-    public static FlowDefinition Build()
-    {
-        var puml = ReadEmbeddedPuml();
-        return FlowDefinition.Parse(
-            name: "vitals-workflow-b-adverse-event-review",
-            raiserEventType: "AdverseEventReported",
-            appId: VitalsWorkflowB.AppId,
-            entityIdField: "$.AeId",
-            pumlSource: puml,
-            actions: new Dictionary<string, Action<JsonObject>>
-            {
-                ["Coordinator publishes AdverseEventReported"] = FlowActions.Narrate("vitals-workflow-b", "Coordinator publishes AdverseEventReported"),
-                ["AuthorityStatus set to pending_review (ADR-035/042)"] = FlowActions.Narrate("vitals-workflow-b", "AuthorityStatus set to pending_review (ADR-035/042)"),
-                ["PI delegates scoped secondary opinion access (ADR-043)"] = FlowActions.Narrate("vitals-workflow-b", "PI delegates scoped secondary opinion access (ADR-043)"),
-                ["Colleague reviews via delegated read"] = FlowActions.Narrate("vitals-workflow-b", "Colleague reviews via delegated read"),
-                ["Entity Store catches up now (accepted, ADR-042)"] = FlowActions.Narrate("vitals-workflow-b", "Entity Store catches up now (accepted, ADR-042)"),
-                ["Entity Store never reflects this event (rejected, stays visible in the Live View, ADR-042)"] = FlowActions.Narrate("vitals-workflow-b", "Entity Store never reflects this event (rejected, stays visible in the Live View, ADR-042)"),
-            });
-    }
-
-    private static string ReadEmbeddedPuml()
-    {
-        var assembly = typeof(VitalsWorkflowBFlow).Assembly;
-        using var stream = assembly.GetManifestResourceStream("Samples.Vitals.adverse-event-capture-and-review.puml")
-            ?? throw new InvalidOperationException("Embedded resource \"Samples.Vitals.adverse-event-capture-and-review.puml\" not found.");
-        using var reader = new StreamReader(stream);
-        return reader.ReadToEnd();
-    }
+    public static FlowDefinition Build() => FlowDefinition.Parse(
+        name: "vitals-workflow-b-adverse-event-review",
+        raiserEventType: "AdverseEventReported",
+        appId: VitalsWorkflowB.AppId,
+        entityIdField: "$.AeId",
+        pumlSource: EmbeddedPuml.Read(typeof(VitalsWorkflowBFlow).Assembly, "Samples.Vitals.adverse-event-capture-and-review.puml"),
+        actions: FlowActions.NarrateAll("vitals-workflow-b",
+            "Coordinator publishes AdverseEventReported",
+            "AuthorityStatus set to pending_review (ADR-035/042)",
+            "PI delegates scoped secondary opinion access (ADR-043)",
+            "Colleague reviews via delegated read",
+            "Entity Store catches up now (accepted, ADR-042)",
+            "Entity Store never reflects this event (rejected, stays visible in the Live View, ADR-042)"));
 }

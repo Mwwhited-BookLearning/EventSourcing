@@ -12,6 +12,9 @@
     <EmbeddedResource Include="..\..\docs\domains\clinical-trials-device-telemetry\features\adverse-event-capture-and-review.puml">
       <LogicalName>Samples.Vitals.adverse-event-capture-and-review.puml</LogicalName>
     </EmbeddedResource>
+    <EmbeddedResource Include="..\..\docs\domains\clinical-trials-device-telemetry\features\intraoperative-monitoring-and-alert-response.puml">
+      <LogicalName>Samples.Vitals.intraoperative-monitoring-and-alert-response.puml</LogicalName>
+    </EmbeddedResource>
   </ItemGroup>
 
   <PropertyGroup>
