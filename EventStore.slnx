@@ -12,6 +12,7 @@
     <Project Path="src/EventStore.Erasure/EventStore.Erasure.csproj" />
     <Project Path="src/EventStore.ExpectedResponse/EventStore.ExpectedResponse.csproj" />
     <Project Path="src/EventStore.FeatureFlags/EventStore.FeatureFlags.csproj" />
+    <Project Path="src/EventStore.Flows/EventStore.Flows.csproj" />
     <Project Path="src/EventStore.Follow.Api/EventStore.Follow.Api.csproj" />
     <Project Path="src/EventStore.Gateway/EventStore.Gateway.csproj" />
     <Project Path="src/EventStore.GraphQL/EventStore.GraphQL.csproj" />

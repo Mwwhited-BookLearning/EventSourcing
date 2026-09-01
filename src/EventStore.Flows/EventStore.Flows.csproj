@@ -1,0 +1,27 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- ADR-101: the promoted, framework-level home for the PlantUML-native
+       (Option G1) user-flow interpreter, docs/comparisons/user-flow-dsl.md.
+       Read-side only: references EventStore.Projections.Abstractions/.Host
+       for IProjection<T>/ProjectionHost, nothing from the write side
+       (EventStore.Router/.Persistence/.Domain): the flow engine never
+       needs write-side fold internals, only the same public Follow-derived
+       merged snapshot every other projection already works from. -->
+  <ItemGroup>
+    <ProjectReference Include="..\EventStore.Projections.Abstractions\EventStore.Projections.Abstractions.csproj" />
+    <ProjectReference Include="..\EventStore.Projections.Host\EventStore.Projections.Host.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="10.0.11" />
+    <PackageReference Include="SQLitePCLRaw.lib.e_sqlite3" Version="3.53.3" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.11" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+</Project>

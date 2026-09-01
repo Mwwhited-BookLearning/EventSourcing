@@ -5,6 +5,7 @@ using System.Runtime.CompilerServices;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using EventStore.Dpop;
+using EventStore.Projections.Abstractions;
 using Microsoft.Extensions.Options;
 
 namespace EventStore.Projections.Host;
