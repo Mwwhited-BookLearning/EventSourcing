@@ -116,6 +116,33 @@ patient's record across all four.
   already documented for this domain.
   1. [Device Onboarding and Continuous Monitoring](features/device-onboarding-and-continuous-monitoring.md) — pairing, channel provisioning, continuous ingestion, and the detector's escalating publish.
   2. [Adverse Event Capture and Review](features/adverse-event-capture-and-review.md) — that publish's non-authoritative capture, delegated secondary-opinion review, and the investigator's signed-off decision.
+
+`ADR-101`'s flow engine executes Workflow B's review decision directly —
+the diagram below is the *same file*, embedded verbatim as
+`Samples.Vitals.adverse-event-capture-and-review.puml` and parsed by a
+real ANTLR4 grammar into the `vitals-workflow-b-adverse-event-review`
+flow, driving the `myTasks` read model this domain's own "My Tasks"
+screen queries. Nothing here is invented documentation — it is the
+reviewed source and the thing that actually runs.
+
+![Workflows diagram](../../diagrams/domains/clinical-trials-device-telemetry/README/01-workflows.svg)
+
+```plantuml
+@startuml
+:Coordinator publishes AdverseEventReported;
+:AuthorityStatus set to pending_review (ADR-035/042);
+:PI delegates scoped secondary opinion access (ADR-043);
+:Colleague reviews via delegated read;
+:task "PI must review and sign off on the adverse event" claim="review:ae" resolvedBy="authorityDecision";
+if (decision?) then (yes)
+  :Entity Store catches up now (accepted, ADR-042);
+else (no)
+  :Entity Store never reflects this event (rejected, stays visible in the Live View, ADR-042);
+endif
+stop
+@enduml
+```
+
 - **Workflow C — Trial Data Export & Subject Rights**: two related "data
   leaving the system properly" needs — a sponsor/regulator's lineage
   export and bitemporal system-time playback of the same patient's
@@ -131,6 +158,31 @@ patient's record across all four.
   escalated), and an attending neurologist's later, signed interpretation
   reuses Workflow B's exact `authorityDecision` mechanism unchanged.
   1. [Intraoperative Monitoring and Alert Response](features/intraoperative-monitoring-and-alert-response.md)
+
+`ADR-101`'s flow engine executes Workflow D's review decision the same
+way — embedded verbatim as `Samples.Vitals.intraoperative-monitoring-
+and-alert-response.puml`, the `vitals-workflow-d-ionm-alert-response`
+flow. The technician's acknowledgment is narrated as an independent
+fact, never gating the task — matching this workflow's own Gherkin,
+where acknowledgment and `AuthorityStatus` are deliberately separate
+axes (`ADR-094` vs. `ADR-042`).
+
+![Workflows diagram](../../diagrams/domains/clinical-trials-device-telemetry/README/02-workflows.svg)
+
+```plantuml
+@startuml
+:Detector publishes IonmAlertRaised (TelemetryPointer to fast channel);
+:ExpectedResponseTracker starts (2-minute acknowledgment window, ADR-094);
+:Technician acknowledges within the window (independent of AuthorityStatus);
+:task "Neurologist must review and sign off on the IONM alert" claim="review:ionm" resolvedBy="authorityDecision";
+if (decision?) then (yes)
+  :Entity Store catches up now (accepted, ADR-042), reflecting Finding, Severity, and AckedBy together;
+else (no)
+  :Entity Store never reflects this event (rejected, stays visible in the Live View, ADR-042);
+endif
+stop
+@enduml
+```
 
 ## Special concerns
 

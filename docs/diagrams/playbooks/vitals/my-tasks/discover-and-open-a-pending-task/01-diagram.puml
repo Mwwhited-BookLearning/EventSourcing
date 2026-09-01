@@ -1,0 +1,22 @@
+@startuml
+autonumber
+participant "Samples.Vitals.Simulator" as simulator
+participant "eventstore\n(Host.Postgres)" as eventstore
+participant "vitals-flows\n(ProjectionHost<PendingTask>)" as flows
+database "PendingTasks\n(shared SQLite)" as pendingTasks
+participant "Duplex Client\n(My Tasks tab)" as client
+actor "Principal Investigator" as pi
+
+simulator -> eventstore: POST /publish/IonmAlertRaised\n{ AlertId, SubjectId, Finding, Severity }\n(every ~20s, forever)
+flows -> eventstore: QUERY /graphql\nsubscription on_trial1_IonmAlertRaised (Follow, REPLAY)
+eventstore --> flows: new IonmAlertRaised event
+flows -> flows: walk the real embedded .puml (FlowInterpreter) -> open "review:ionm" task
+flows -> pendingTasks: upsert PendingTask row
+
+client -> eventstore: QUERY /graphql { myTasks { ... } }\n(polled every 10s, as vitals-pi-client)
+eventstore -> pendingTasks: read (read-only PendingTasksDbContext)
+eventstore --> client: the open task appears in the list
+
+pi -> client: click "Open"
+client -> client: navigate to /queue (AuthorityQueue.vue) -- decision UI unchanged
+@enduml

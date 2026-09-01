@@ -115,6 +115,7 @@ provider they apply to — not "code written."
 | 54 | [Searchable Blind-Index & Bucketed-Range Encrypted-Field Indexes](#searchable-blind-index--bucketed-range-encrypted-field-indexes) | GDPR/CCPA Erasure, Property-Level Masking, Follow API + Filter Pushdown | Done |
 | 55 | [Order-Revealing Encryption Range Index (opt-in)](#order-revealing-encryption-range-index-opt-in) | Searchable Blind-Index & Bucketed-Range Encrypted-Field Indexes | Built, pending required security review (not Done) |
 | 56 | [In-Database Native Predicate Evaluator Seam](#in-database-native-predicate-evaluator-seam) | Searchable Blind-Index & Bucketed-Range Encrypted-Field Indexes | SQL Server built and verified; PostgreSQL written, not verified (not Done) |
+| 57 | [PlantUML-Native User-Flow Engine & Pending-Task Read Model](#plantuml-native-user-flow-engine--pending-task-read-model) | CQRS Read-Model Projections (worked example) | SQLite/PostgreSQL hosts wired + `myTasks`; SQL Server host wiring open (not Done) |
 
 Two groups worth naming up front, since they explain most of the
 ordering below:
@@ -249,6 +250,7 @@ state "Local Services" as tierLocal {
   state "Searchable Blind-Index &\nBucketed-Range Indexes" as a31 #palegreen
   state "Order-Revealing\nEncryption Range Index" as a32 #palegoldenrod
   state "In-Database Native\nPredicate Evaluator Seam" as a33 #palegoldenrod
+  state "PlantUML-Native Flow Engine &\nPending-Task Read Model" as a34 #palegoldenrod
 }
 state "UI" as tierUi {
   state "MVVM Client" as p20 #palegreen
@@ -396,6 +398,7 @@ p8 --> a31
 p4 --> a31
 a31 --> a32
 a31 --> a33
+p9 --> a34
 @enduml
 ```
 
@@ -5310,6 +5313,65 @@ Python's `cryptography` package exists in the standard Testcontainers
 maintaining a custom Postgres image for this one function is real,
 separate infrastructure work, not done this pass. Both evaluators remain
 scoped to the `Local` backend only, per `ADR-098`'s own Decision.
+
+## PlantUML-Native User-Flow Engine & Pending-Task Read Model
+
+**Scope**: `ADR-101` — resolves `docs/comparisons/user-flow-dsl.md`
+(Option G1). A new `EventStore.Flows` library: a real ANTLR4 grammar +
+generated Listener parsing a constrained PlantUML Activity Diagram
+subset into an AST (`ActivityNode`/`ActionNode`/`IfNode`/`StopNode`),
+`FlowInterpreter` walking it statelessly against a merged JSON snapshot,
+and `FlowProjection` — an ordinary `IProjection<PendingTask>` built on
+the unmodified `ProjectionHost<T>` from "CQRS Read-Model Projections"
+above, using three additive, default-interface-method extensions to
+`IProjection<TReadModel>` (an eventId-aware `GetKey` overload,
+`OverrideChangeKind`, a nullable `Project` return — see
+`docs/09-cqrs-read-models.md`'s own "Second worked example" section for
+the full shape). Backend event routing/approval automation was already
+fully built by prior items (`AuthorityDecisionResolver`, `StepUpEvaluator`,
+`ExpectedResponseWatcher`) and is explicitly **not** touched here — this
+item is purely a read-side consumer of that already-decided behavior,
+narrating it via a real, embedded `.puml` per flow rather than adding a
+write-side engine. Converts all four existing Vitals/Meridian workflows
+(B, D, A, C) to register a `FlowDefinition` alongside their existing,
+unmodified schema registration. Client-side: `useMyTasks.ts`/
+`MyTasksView.vue`/`TasksView.vue` — a single cross-domain, polled (not
+subscribed — there is no `myTasks` Subscription field) task list at
+`/tasks`, reachable from any `client-web` instance with no domain gate.
+
+**Depends on**: CQRS Read-Model Projections (worked example) — this item
+is a second `IProjection<T>` built on that same, unmodified
+`ProjectionHost<T>`/`ProjectionsDbContext` mechanism.
+
+**Exit criteria**: `EventStore.UnitTests` (`FlowInterpreterTests` and one
+`*FlowTests` class per converted workflow, all against the REAL embedded
+`.puml`, not a synthetic AST) prove parsing, task-pause/resolve, and
+nested-`if` propagation. `PendingTaskProjectionSqliteTests` — the same
+real, two-`WebApplicationFactory`-TestServer HTTP bar "CQRS Read-Model
+Projections" established — registers `VitalsWorkflowB`'s real schemas,
+publishes a real `AdverseEventReported` over HTTP, and confirms a
+`PendingTask` row appears then is deleted after a real step-up-signed
+`authorityDecision`. `TasksListPlaybookTests`
+(`docs/playbooks/vitals/my-tasks/discover-and-open-a-pending-task.md`) —
+a genuine, full-`AppHost`-driven Playwright playbook against a real
+Postgres-backed deployment, confirming a live `IonmAlertRaised` (from
+`Samples.Vitals.Simulator`) produces a real task in `/tasks` and "Open"
+navigates to the existing Queue screen. `client-web`'s own
+`useMyTasks.spec.ts` covers the composable in isolation (token caching,
+scope handling, polling/stop).
+
+**Status: SQLite and PostgreSQL hosts wired (`EventStore.Host.Sqlite`,
+`EventStore.Host.Postgres` both register `PendingTasksDbContext`/get
+`myTasks` via `AddEventStoreGraphQl()`), and `EventStore.AppHost` runs
+two real worker resources (`vitals-flows`/`meridian-flows`) sharing one
+physical SQLite file with `eventstore` itself — the first CQRS
+projection this repo has ever wired into a real orchestrated AppHost run
+(neither this item's own dependency nor `Samples.Orders.Projections` had
+been, before this pass). `EventStore.Host.SqlServer` wiring is the one
+remaining gap (`TODO.md`) — not a design gap, `EventStore.AppHost`
+(`ADR-001`) only ever targets one `Host.<Provider>` at a time and
+currently targets Postgres, so nothing has forced SQL Server's own
+mechanical copy of the same three changes yet.**
 
 ## Suggested References
 

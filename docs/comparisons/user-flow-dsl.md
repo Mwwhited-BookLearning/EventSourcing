@@ -2,9 +2,10 @@
 
 # Should user flows/validations/approvals move to a general-purpose DSL, or keep composing this project's existing bespoke mechanisms?
 
-**Raised by:** `docs/10-open-questions.md` row 1 — direct request
-("searching for good DSLs to use to define user flows, validations,
-approvals and so on"). **Not yet decided** — written for the user to
+**Raised by:** direct request ("searching for good DSLs to use to define
+user flows, validations, approvals and so on"), originally tracked as
+`docs/10-open-questions.md` row 1 (that row is now deleted, resolved —
+see this doc's own Decision section below). Written for the user to
 compare side by side and choose from directly, not to argue toward a
 predetermined pick.
 
@@ -738,3 +739,20 @@ DMN's own decision-table XML carries the identical diff-noise
 consideration as BPMN's — worth checking directly against whatever DMN
 authoring tool is actually used, not assumed clean by association with
 "it's XML, like everything else here."
+
+## Decision
+
+**Option G1 was adopted — `ADR-101`.** Promoted into the real framework
+(`src/EventStore.Flows`) as a read-side `IProjection<PendingTask>`
+consumer of the existing CQRS projection mechanism (`ADR-015`/`ADR-016`),
+never a write-side engine — the AST is re-evaluated statelessly against
+each entity's merged snapshot, with no separate "flow instance" storage,
+satisfying the "just a query, fed from events" requirement `ADR-101`
+itself states in full. One refinement beyond this document's own G1
+spike, direct request made after this comparison was written: parsing
+uses a real ANTLR4 grammar + generated Listener (`Antlr4BuildTasks`),
+not the spike's hand-rolled line-based parser — a strict superset of the
+same constrained PlantUML Activity Diagram subset, so every rating in
+the Scorecard above still holds. All four existing Vitals/Meridian
+workflows (B, D, A, C) were converted; the client-side task list this
+decision also drives is `ADR-101`'s own second half.

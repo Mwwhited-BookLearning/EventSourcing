@@ -67,6 +67,22 @@ left.)
   `extract-diagrams.mjs` is a required step after any E2E test run that
   touches a playbook doc, not just after hand-editing a diagram.
 
+- [ ] **Wire `EventStore.Host.SqlServer` with `PendingTasksDbContext`/
+  `myTasks` (`ADR-101`)** — `EventStore.Host.Sqlite` and
+  `EventStore.Host.Postgres` both register a read-only
+  `PendingTasksDbContext` (`ConnectionStrings:PendingTasks`, always
+  SQLite regardless of write-side provider, per `docs/09-cqrs-read-
+  models.md`'s own "one EF Core provider is sufficient" precedent) and
+  automatically get the `myTasks` GraphQL query via
+  `AddEventStoreGraphQl()`. `EventStore.Host.SqlServer/Program.cs` has
+  neither — a mechanical copy of the same three changes (`EventStore.Flows`
+  project reference, `ConnectionStrings:PendingTasks` in
+  `appsettings.json`, the `AddDbContext<PendingTasksDbContext>` call in
+  `Program.cs`) closes it. Not yet done only because `EventStore.AppHost`
+  (`ADR-001`) targets exactly one `Host.<Provider>` at a time (currently
+  Postgres), so nothing has forced it yet — no design gap, just no
+  consumer.
+
 - [ ] **`FollowClient.TailAsync`/`GetChangeKindAsync` should return their
   own discriminated result, not throw for a known outcome** —
   `docs/patterns/known-outcomes-are-not-exceptions.md`'s own named
