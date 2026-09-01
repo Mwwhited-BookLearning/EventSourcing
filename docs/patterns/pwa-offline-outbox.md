@@ -148,3 +148,19 @@ device with no network path at all, reusing `ADR-068`'s portable bundle
 format. The outbox's `Flush` operation itself is unchanged either way —
 these are additional ways to invoke the same idempotent operation, not
 a new outbox.
+
+**A manual "force offline/online" override, layered on top of real
+connectivity, not a replacement for it.** `useConnectivityStore`
+(`mvvm-client`) holds one `forcedOffline` flag; the reference app's
+"Go Offline"/"Go Online" buttons toggle it, purely so a demo or test can
+exercise the offline path deterministically without touching real
+network state. `useEntityViewActions.dispatchCommand`/
+`captureDeviceReading` gate their immediate-flush attempt on
+`isEffectivelyOnline()` — the real `navigator.onLine` value ANDed with
+`!forcedOffline`, re-read fresh on every call rather than cached, since
+the real signal is a plain, non-reactive global a Vue `computed` would
+otherwise capture stale. `docs/playbooks/core/user/go-offline-and-
+resync.md` (`OfflineOutboxSyncPlaybookTests.cs`) proves both the real,
+automatic detection path (Playwright's `BrowserContext.
+SetOfflineAsync`) and the manual override converge on the same
+enqueue/flush cycle, live in a real browser.

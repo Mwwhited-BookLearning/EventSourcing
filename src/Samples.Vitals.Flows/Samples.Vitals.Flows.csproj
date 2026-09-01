@@ -1,0 +1,41 @@
+<Project Sdk="Microsoft.NET.Sdk.Worker">
+
+  <!-- ADR-101: the real, live-running host for the two Vitals flow
+       definitions (VitalsWorkflowBFlow/VitalsWorkflowDFlow). Mirrors
+       Samples.Orders.Projections' own separate-process shape exactly
+       (a ProjectionHost consumes the write-side host's public Follow
+       endpoint over configured HTTP, never the same process): confirmed
+       necessary, not just copied, by hitting a real self-referential
+       HTTP-client bootstrapping problem when this was first tried wired
+       directly into EventStore.Host.Sqlite's own composition root. -->
+  <ItemGroup>
+    <ProjectReference Include="..\EventStore.Flows\EventStore.Flows.csproj" />
+    <ProjectReference Include="..\Samples.Vitals\Samples.Vitals.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="10.0.11" />
+    <!-- ADR-080 (dependency-vulnerability scanning) found this pulling
+         SQLitePCLRaw.lib.e_sqlite3 2.1.11 (GHSA-2m69-gcr7-jv3q, high). A
+         direct override bumps NuGet's higher-version-wins resolution to a
+         patched release. -->
+    <PackageReference Include="SQLitePCLRaw.lib.e_sqlite3" Version="3.53.3" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.11">
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+      <PrivateAssets>all</PrivateAssets>
+    </PackageReference>
+    <PackageReference Include="Microsoft.Extensions.Hosting" Version="10.0.11" />
+    <PackageReference Include="Microsoft.Extensions.Http" Version="10.0.11" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <!-- Worked proving-ground example, explicitly NOT part of the
+         framework (ADR-030), never a published package, same posture
+         Samples.Orders.Projections already established. -->
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+</Project>

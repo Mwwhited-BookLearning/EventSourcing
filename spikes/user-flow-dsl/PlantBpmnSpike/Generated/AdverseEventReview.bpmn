@@ -1,0 +1,145 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
+             xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+             xmlns:xsd="http://www.w3.org/2001/XMLSchema"
+             xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI"
+             xmlns:omgdc="http://www.omg.org/spec/DD/20100524/DC"
+             xmlns:omgdi="http://www.omg.org/spec/DD/20100524/DI"
+             xmlns:flowable="http://flowable.org/bpmn"
+             typeLanguage="http://www.w3.org/2001/XMLSchema"
+             expressionLanguage="http://www.w3.org/1999/XPath"
+             targetNamespace="http://www.flowable.org/processdef">
+    
+     
+    <message id="PlantBPMN-AdverseEventReported" name="AdverseEventReported" />
+     
+
+    <process id="PlantBPMN-Puml_AdverseEventReview" name="PlantBPMN-Puml_AdverseEventReview" isExecutable="true">
+        <startEvent id="PlantBPMN-f6b36f99-45b4-4b25-a0ed-79bea0434f97" name="AdverseEventReported"> 
+        
+                      <messageEventDefinition messageRef="PlantBPMN-AdverseEventReported"/>
+         
+        </startEvent>
+        <sequenceFlow id="PlantBPMN-bfc5a1ca-7fb9-46cc-92f0-9b229cd7a931" sourceRef="PlantBPMN-f6b36f99-45b4-4b25-a0ed-79bea0434f97" targetRef="PlantBPMN-6015656c-ab11-4337-a3b6-511dae9210e1">
+        
+        </sequenceFlow>
+        <serviceTask id="PlantBPMN-6015656c-ab11-4337-a3b6-511dae9210e1" name="Coordinator publishes AdverseEventReported" 
+         
+         
+         
+         
+         />
+        <sequenceFlow id="PlantBPMN-e2c35291-bfe1-4c60-b8d6-97331dd7956f" sourceRef="PlantBPMN-6015656c-ab11-4337-a3b6-511dae9210e1" targetRef="PlantBPMN-b7d0fb9f-1c8c-409f-aa9c-c3c32a38e040">
+        
+        </sequenceFlow>
+        <exclusiveGateway id="PlantBPMN-b7d0fb9f-1c8c-409f-aa9c-c3c32a38e040" name="SeriousAdverseEvent"
+         />
+        <sequenceFlow id="PlantBPMN-d5104354-fc52-40b8-a8f4-fbfb4ebc4457" sourceRef="PlantBPMN-b7d0fb9f-1c8c-409f-aa9c-c3c32a38e040" targetRef="PlantBPMN-b8970660-6aca-49fa-b56c-3ba245ca45ff">
+        
+            
+            <conditionExpression xsi:type="tFormalExpression"><![CDATA[yes]]></conditionExpression>
+            
+        
+        </sequenceFlow>
+        <serviceTask id="PlantBPMN-b8970660-6aca-49fa-b56c-3ba245ca45ff" name="AuthorityStatus = pending_review" 
+         
+         
+         
+         
+         />
+        <sequenceFlow id="PlantBPMN-66d269a4-1b72-4c63-9a62-1f56478a08e0" sourceRef="PlantBPMN-b8970660-6aca-49fa-b56c-3ba245ca45ff" targetRef="PlantBPMN-d9ac3fe2-63c0-4c83-a7e4-b052c790c35d">
+        
+        </sequenceFlow>
+        <serviceTask id="PlantBPMN-d9ac3fe2-63c0-4c83-a7e4-b052c790c35d" name="PI delegates scoped secondary opinion access" 
+         
+         
+         
+         
+         />
+        <sequenceFlow id="PlantBPMN-636becea-e476-4851-b6e8-faf5415725f4" sourceRef="PlantBPMN-d9ac3fe2-63c0-4c83-a7e4-b052c790c35d" targetRef="PlantBPMN-38d8b05f-16a8-497c-9942-003ffe8b03a7">
+        
+        </sequenceFlow>
+        <serviceTask id="PlantBPMN-38d8b05f-16a8-497c-9942-003ffe8b03a7" name="Colleague reviews via delegated read" 
+         
+         
+         
+         
+         />
+        <sequenceFlow id="PlantBPMN-e9001427-c857-4396-a818-ce38f6705a4f" sourceRef="PlantBPMN-38d8b05f-16a8-497c-9942-003ffe8b03a7" targetRef="PlantBPMN-7ed08e59-2a56-46bd-a82c-0dee880121ff">
+        
+        </sequenceFlow>
+        <serviceTask id="PlantBPMN-7ed08e59-2a56-46bd-a82c-0dee880121ff" name="PI publishes authorityDecision" 
+         
+         
+         
+         
+         />
+        <sequenceFlow id="PlantBPMN-4bb07f29-a4ba-4d0f-88d2-bccd65760aaa" sourceRef="PlantBPMN-7ed08e59-2a56-46bd-a82c-0dee880121ff" targetRef="PlantBPMN-2ca38533-1f3e-40ac-9620-49e11a50567a">
+        
+        </sequenceFlow>
+        <exclusiveGateway id="PlantBPMN-2ca38533-1f3e-40ac-9620-49e11a50567a" name="accepted"
+         />
+        <sequenceFlow id="PlantBPMN-645a60b0-0f2a-49ac-b19f-47a3b158e8c0" sourceRef="PlantBPMN-2ca38533-1f3e-40ac-9620-49e11a50567a" targetRef="PlantBPMN-849ee162-96db-4401-9824-06bf622bb3a1">
+        
+            
+            <conditionExpression xsi:type="tFormalExpression"><![CDATA[yes]]></conditionExpression>
+            
+        
+        </sequenceFlow>
+        <serviceTask id="PlantBPMN-849ee162-96db-4401-9824-06bf622bb3a1" name="Fold now catch-up" 
+         
+         
+         
+         
+         />
+        <sequenceFlow id="PlantBPMN-b9e7594c-fc41-4f8e-b82c-47b27b9d482b" sourceRef="PlantBPMN-849ee162-96db-4401-9824-06bf622bb3a1" targetRef="PlantBPMN-13bfa39b-3bc2-467d-ae07-b230499889b5">
+        
+        </sequenceFlow>
+        <exclusiveGateway id="PlantBPMN-13bfa39b-3bc2-467d-ae07-b230499889b5" name="endif" />
+        <sequenceFlow id="PlantBPMN-e72e21cb-76e6-4af4-a829-53b10f7f8ee8" sourceRef="PlantBPMN-2ca38533-1f3e-40ac-9620-49e11a50567a" targetRef="PlantBPMN-3d64cd8e-2d5f-4378-8782-d13fae39465c">
+        
+            
+            <conditionExpression xsi:type="tFormalExpression"><![CDATA[no]]></conditionExpression>
+            
+        
+        </sequenceFlow>
+        <serviceTask id="PlantBPMN-3d64cd8e-2d5f-4378-8782-d13fae39465c" name="Entity Store left untouched" 
+         
+         
+         
+         
+         />
+        <sequenceFlow id="PlantBPMN-7ae4dc3e-dfac-4d4f-8d9f-96ca6ebffbc5" sourceRef="PlantBPMN-3d64cd8e-2d5f-4378-8782-d13fae39465c" targetRef="PlantBPMN-13bfa39b-3bc2-467d-ae07-b230499889b5">
+        
+        </sequenceFlow>
+        <sequenceFlow id="PlantBPMN-c1dc3695-60a5-48fb-9965-1d033d0cfbc0" sourceRef="PlantBPMN-7ed08e59-2a56-46bd-a82c-0dee880121ff" targetRef="PlantBPMN-7ec614e8-e017-40bc-bd22-54f677292c61">
+        
+        </sequenceFlow>
+        <exclusiveGateway id="PlantBPMN-7ec614e8-e017-40bc-bd22-54f677292c61" name="endif" />
+        <sequenceFlow id="PlantBPMN-2f9232d8-9193-4fcd-9496-797115b5848a" sourceRef="PlantBPMN-7ec614e8-e017-40bc-bd22-54f677292c61" targetRef="PlantBPMN-b952efd7-7cad-4879-aaa5-bfee9cb787e1">
+        
+        </sequenceFlow>
+        <endEvent id="PlantBPMN-b952efd7-7cad-4879-aaa5-bfee9cb787e1" name="stop" />
+        <sequenceFlow id="PlantBPMN-fb1cdb6d-6ac1-41c5-9851-1236eb485cce" sourceRef="PlantBPMN-b7d0fb9f-1c8c-409f-aa9c-c3c32a38e040" targetRef="PlantBPMN-aecaaaff-f19f-4695-a9e3-1cc1d8fa1104">
+        
+            
+            <conditionExpression xsi:type="tFormalExpression"><![CDATA[no]]></conditionExpression>
+            
+        
+        </sequenceFlow>
+        <serviceTask id="PlantBPMN-aecaaaff-f19f-4695-a9e3-1cc1d8fa1104" name="Fold immediately Full" 
+         
+         
+         
+         
+         />
+        <sequenceFlow id="PlantBPMN-72bc6e9c-3a47-4d72-bda0-d8bd4468bbfa" sourceRef="PlantBPMN-aecaaaff-f19f-4695-a9e3-1cc1d8fa1104" targetRef="PlantBPMN-7ec614e8-e017-40bc-bd22-54f677292c61">
+        
+        </sequenceFlow>
+    </process>
+    <bpmndi:BPMNDiagram id="PlantBPMN-41af82eb-8c05-4e95-9a6c-791405c11ec9">
+        <bpmndi:BPMNPlane id="PlantBPMN-07329213-31de-48f3-bab2-1405e182809f" bpmnElement="PlantBPMN-Puml_AdverseEventReview">
+        </bpmndi:BPMNPlane>
+    </bpmndi:BPMNDiagram>
+
+</definitions>

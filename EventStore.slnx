@@ -12,6 +12,7 @@
     <Project Path="src/EventStore.Erasure/EventStore.Erasure.csproj" />
     <Project Path="src/EventStore.ExpectedResponse/EventStore.ExpectedResponse.csproj" />
     <Project Path="src/EventStore.FeatureFlags/EventStore.FeatureFlags.csproj" />
+    <Project Path="src/EventStore.Flows/EventStore.Flows.csproj" />
     <Project Path="src/EventStore.Follow.Api/EventStore.Follow.Api.csproj" />
     <Project Path="src/EventStore.Gateway/EventStore.Gateway.csproj" />
     <Project Path="src/EventStore.GraphQL/EventStore.GraphQL.csproj" />
@@ -58,10 +59,12 @@
   </Folder>
   <Folder Name="/samples/">
     <Project Path="src/Samples.Meridian/Samples.Meridian.csproj" />
+    <Project Path="src/Samples.Meridian.Flows/Samples.Meridian.Flows.csproj" />
     <Project Path="src/Samples.Meridian.Seed/Samples.Meridian.Seed.csproj" />
     <Project Path="src/Samples.Meridian.Simulator/Samples.Meridian.Simulator.csproj" />
     <Project Path="src/Samples.Orders.Projections/Samples.Orders.Projections.csproj" />
     <Project Path="src/Samples.Vitals/Samples.Vitals.csproj" />
+    <Project Path="src/Samples.Vitals.Flows/Samples.Vitals.Flows.csproj" />
     <Project Path="src/Samples.Vitals.Seed/Samples.Vitals.Seed.csproj" />
     <Project Path="src/Samples.Vitals.Simulator/Samples.Vitals.Simulator.csproj" />
   </Folder>

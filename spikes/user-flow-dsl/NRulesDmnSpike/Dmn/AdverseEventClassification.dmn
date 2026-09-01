@@ -1,0 +1,83 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="https://www.omg.org/spec/DMN/20191111/MODEL/" xmlns:dmndi="https://www.omg.org/spec/DMN/20191111/DMNDI/" xmlns:dc="http://www.omg.org/spec/DMN/20180521/DC/" xmlns:di="http://www.omg.org/spec/DMN/20180521/DI/" id="definitions_adverseeventclassification" name="AdverseEventClassification" namespace="https://oobdev.example/dmn/user-flow-dsl-spike">
+  <decision id="classifyAdverseEvent" name="Classify Adverse Event">
+    <informationRequirement id="InformationRequirement_severity">
+      <requiredInput href="#InputData_severityScore" />
+    </informationRequirement>
+    <informationRequirement id="InformationRequirement_eventtype">
+      <requiredInput href="#InputData_eventType" />
+    </informationRequirement>
+    <decisionTable id="DecisionTable_classifyAdverseEvent" hitPolicy="FIRST">
+      <input id="InputClause_severityScore" label="SeverityScore">
+        <inputExpression id="LiteralExpression_severityScore" typeRef="integer">
+          <text>SeverityScore</text>
+        </inputExpression>
+      </input>
+      <input id="InputClause_eventType" label="EventType">
+        <inputExpression id="LiteralExpression_eventType" typeRef="string">
+          <text>EventType</text>
+        </inputExpression>
+      </input>
+      <output id="Output_reviewPath" label="ReviewPath" name="ReviewPath" typeRef="string" />
+      <rule id="row-classify-1">
+        <description>Any event severe enough (7+) goes to secondary review, regardless of type</description>
+        <inputEntry id="UnaryTests_classify-1-1">
+          <text>&gt;= 7</text>
+        </inputEntry>
+        <inputEntry id="UnaryTests_classify-1-2">
+          <text></text>
+        </inputEntry>
+        <outputEntry id="LiteralExpression_classify-1">
+          <text>"SecondaryReview"</text>
+        </outputEntry>
+      </rule>
+      <rule id="row-classify-2">
+        <description>Cardiac events always get secondary review regardless of severity score</description>
+        <inputEntry id="UnaryTests_classify-2-1">
+          <text></text>
+        </inputEntry>
+        <inputEntry id="UnaryTests_classify-2-2">
+          <text>"Cardiac"</text>
+        </inputEntry>
+        <outputEntry id="LiteralExpression_classify-2">
+          <text>"SecondaryReview"</text>
+        </outputEntry>
+      </rule>
+      <rule id="row-classify-3">
+        <description>Fallback: everything else folds immediately, no secondary review</description>
+        <inputEntry id="UnaryTests_classify-3-1">
+          <text></text>
+        </inputEntry>
+        <inputEntry id="UnaryTests_classify-3-2">
+          <text></text>
+        </inputEntry>
+        <outputEntry id="LiteralExpression_classify-3">
+          <text>"ImmediateFold"</text>
+        </outputEntry>
+      </rule>
+    </decisionTable>
+  </decision>
+  <inputData id="InputData_severityScore" name="SeverityScore" />
+  <inputData id="InputData_eventType" name="EventType" />
+  <dmndi:DMNDI>
+    <dmndi:DMNDiagram id="DMNDiagram_classifyAdverseEvent">
+      <dmndi:DMNShape id="DMNShape_classifyAdverseEvent" dmnElementRef="classifyAdverseEvent">
+        <dc:Bounds height="80" width="180" x="337" y="218" />
+      </dmndi:DMNShape>
+      <dmndi:DMNShape id="DMNShape_severityScore" dmnElementRef="InputData_severityScore">
+        <dc:Bounds height="45" width="125" x="209" y="86" />
+      </dmndi:DMNShape>
+      <dmndi:DMNShape id="DMNShape_eventType" dmnElementRef="InputData_eventType">
+        <dc:Bounds height="45" width="125" x="499" y="95" />
+      </dmndi:DMNShape>
+      <dmndi:DMNEdge id="DMNEdge_severity" dmnElementRef="InformationRequirement_severity">
+        <di:waypoint x="287" y="131" />
+        <di:waypoint x="438" y="218" />
+      </dmndi:DMNEdge>
+      <dmndi:DMNEdge id="DMNEdge_eventtype" dmnElementRef="InformationRequirement_eventtype">
+        <di:waypoint x="549" y="140" />
+        <di:waypoint x="460" y="218" />
+      </dmndi:DMNEdge>
+    </dmndi:DMNDiagram>
+  </dmndi:DMNDI>
+</definitions>

@@ -49,11 +49,30 @@ public interface IProjection<TReadModel> where TReadModel : class
     IReadOnlyCollection<string> EventTypes { get; }        // which event types to Follow
 
     string GetKey(string eventType, JsonNode payload);     // e.g. payload["OrderId"] -- projection-defined, not global
+    // eventId-aware overload, ADR-101 -- a default interface method, so
+    // OrderSummaryProjection (which never needs it) is unaffected. Needed
+    // by a projection whose KEY is the raiser event's own identity (there
+    // is no payload field to key by) rather than a data field.
+    string GetKey(string eventType, Guid eventId, JsonNode payload) => GetKey(eventType, payload);
+
+    // ADR-101 -- another default interface method: null means "defer to
+    // this event type's own real ChangeKind registration." A projection
+    // that correlates a SEPARATE type's own event onto an existing key
+    // (e.g. a decision event resolving an earlier request) can force
+    // Partial for that one event type without touching that type's own,
+    // unrelated Full/Partial registration.
+    ChangeKind? OverrideChangeKind(string eventType) => null;
 
     // mergedState is the CURRENT, fully-merged snapshot for this key, after
     // ProjectionHost has already applied this event per its ChangeKind
     // (ADR-016) -- Full replace or Partial merge-patch, already done.
-    TReadModel Project(string key, JsonNode mergedState);
+    // Nullable return, ADR-101 -- null means "no read-model row for this
+    // key right now," and ProjectionHost deletes any existing row rather
+    // than upserting. OrderSummaryProjection never returns null and is
+    // unaffected; a projection whose row's very existence is conditional
+    // on some part of the merged state (e.g. "is there still an open task
+    // here") uses this to represent "gone," not a sentinel/empty object.
+    TReadModel? Project(string key, JsonNode mergedState);
 }
 ```
 
@@ -86,9 +105,10 @@ database, a Follow connection, or a checkpoint in sight.
         reimplemented differently here.
    d. Upsert the merged snapshot back to `ProjectionSnapshot`, and update
       `LastAppliedSequenceNumber` for that row.
-   e. Call `projection.Project(key, mergedSnapshot)`, upsert the returned
-      `TReadModel` into the projection's own read-model table, keyed by
-      `key`.
+   e. Call `projection.Project(key, mergedSnapshot)`. A non-null result
+      is upserted into the projection's own read-model table, keyed by
+      `key`; `null` (`ADR-101`) deletes the existing row for that key, if
+      any, instead.
    f. Advance `ProjectionCheckpoint.LastSequenceNumber` to the highest
       `SequenceNumber` applied so far in the current batch (see below).
 
@@ -167,7 +187,8 @@ in different-sized batches.
 A dedicated `ProjectionsDbContext` (in `EventStore.Projections.Host`) owns
 `ProjectionCheckpoint`, `ProjectionSnapshot`, and every registered
 projection's read-model table(s) (e.g. `OrderSummary` — see
-[`features/cqrs-projections.md`](features/cqrs-projections.md)). It is a
+[`features/cqrs-projections.md`](features/cqrs-projections.md) — and
+`PendingTask`, `ADR-101`, see above). It is a
 **separate database** from `EventStoreContext` — never the same connection
 string, never a cross-database join — reachable from the write side only
 by `ProjectionHost` acting as an ordinary HTTP client of the public Follow
@@ -209,6 +230,57 @@ concrete Orders domain carried end-to-end through this design: `Full` and
 for one event's trip from Follow through the snapshot merge to the
 upserted row, and the Gherkin scenarios `08-build-plan.md`'s "CQRS
 Read-Model Projections" item is built against.
+
+## Second worked example: the flow engine's `PendingTask` (`ADR-101`)
+
+`OrderSummary` above never returns null and never needs a raiser event's
+own identity as its key — a second, later projection did, and rather
+than build a parallel mechanism, `ADR-101`'s PlantUML-native flow engine
+(`EventStore.Flows`) extends this exact interface with the three
+additive members shown above, then IS an ordinary `IProjection<PendingTask>`
+built on the unmodified `ProjectionHost`:
+
+```csharp
+public class PendingTask
+{
+    public string Key { get; set; } = default!;        // PK: the raiser event's own EventId, or a resolver's correlation-field value
+    public string FlowName { get; set; } = default!;
+    public string Description { get; set; } = default!;
+    public string? RequiredClaim { get; set; }
+    public string TriggeringEventId { get; set; } = default!;
+    public string AppId { get; set; } = default!;
+    public string EntityId { get; set; } = default!;
+    public DateTimeOffset RaisedAt { get; set; }
+}
+```
+
+`FlowProjection.Project` walks the flow's own parsed PlantUML AST
+(`FlowInterpreter.Evaluate`) against the merged snapshot on every
+relevant event: reaching an unresolved `task` node returns a
+`PendingTask`; reaching `stop`, or a resolved task, returns `null` — the
+delete-on-null case above. `GetKey`'s 3-arg overload keys a **raiser**
+event (e.g. `AdverseEventReported`) by its own `EventId` (there is no
+payload field to key by), and keys a **resolver** event (e.g.
+`authorityDecision`) by whichever field the flow's own `task ...
+correlatedBy="..."` clause names. `OverrideChangeKind` forces `Partial`
+for every resolver type, without touching that type's own real,
+unrelated `ChangeKind` registration (`authorityDecision` is registered
+`Full` for its own entity-fold purpose elsewhere). One
+`PendingTasksDbContext` is shared by every registered flow (`AddFlow`,
+`EventStore.Flows.FlowEngineServiceCollectionExtensions`) — deliberately
+NOT the `AddProjection<TReadModel,TProjection>` helper below, since that
+helper assumes exactly one projection per read-model type, and every
+flow here shares the one `PendingTask` shape.
+
+The property this design exists to prove — "a `PendingTask` row exists
+for exactly as long as the AST walk currently reaches an unresolved task
+for that key, with no separate flow-instance state anywhere" — is what
+makes this whole mechanism satisfy "just a query, fed from events like
+everything else": nothing here is a durable workflow-instance engine
+(Temporal/Zeebe-shaped), because there is no instance state to be
+durable in the first place. See `ADR-101` for the full design and
+`docs/comparisons/user-flow-dsl.md` for the alternatives weighed before
+choosing it.
 
 ## Suggested References
 

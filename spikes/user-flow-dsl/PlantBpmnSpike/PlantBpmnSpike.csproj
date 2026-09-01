@@ -1,0 +1,30 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Spike only, docs/comparisons/user-flow-dsl.md Option H. Not part of
+       EventStore.slnx on purpose: this is throwaway research code proving
+       the shape works, not a production dependency. Generated/*.bpmn is
+       real, unedited output from an actual PlantBPMN run against Puml/*.puml
+       (see this project's own README.md for the exact docker/go command);
+       it is checked in as evidence of that run, not regenerated at build
+       time, since doing so would require Docker/Go available at dotnet
+       build time, which this project does not otherwise need. -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Content Include="Puml\*.puml">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="Generated\*.bpmn">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="Xslt\BpmnToPlantUml.xslt">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+  </ItemGroup>
+
+</Project>

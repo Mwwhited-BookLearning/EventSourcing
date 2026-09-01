@@ -1,0 +1,13 @@
+@startuml
+:Coordinator publishes AdverseEventReported;
+:AuthorityStatus set to pending_review (ADR-035/042);
+:PI delegates scoped secondary opinion access (ADR-043);
+:Colleague reviews via delegated read;
+:task "PI must review and sign off on the adverse event" claim="review:ae" resolvedBy="authorityDecision";
+if (decision?) then (yes)
+  :Entity Store catches up now (accepted, ADR-042);
+else (no)
+  :Entity Store never reflects this event (rejected, stays visible in the Live View, ADR-042);
+endif
+stop
+@enduml

@@ -43,6 +43,22 @@ public static class DevIdpSeeder
         // (ADR-043's own comment on this exact union).
         ("vitals-pi-client", "vitals-pi-client-secret", ["events:publish"]),
         ("meridian-analyst-client", "meridian-analyst-client-secret", ["events:publish"]),
+        // "Pluggable Outbox Flush Triggers" (ADR-069) real in-browser proof
+        // (OfflineOutboxSyncPlaybookTests.cs) -- App.vue's generic, domain-
+        // agnostic "Dispatch a command" demo panel needs BOTH events:follow
+        // (its own live subscription) AND events:publish (the command it
+        // dispatches) on the SAME identity, since ClientConfig carries one
+        // scope for the whole instance. No existing client held both (each
+        // was deliberately scoped to one real capability need) -- a real,
+        // previously-undiscovered gap found only by actually clicking that
+        // panel's "Set Amount" button for the first time: every
+        // Vitals/Meridian business event type's own RequiredClaims (e.g.
+        // PatientScreened's "patient:enroll") are held by no seeded HTTP
+        // client at all, only asserted in-process by the seeders
+        // themselves, so this identity targets a throwaway, no-
+        // RequiredClaims schema the test registers for itself instead of
+        // any real domain event type.
+        ("demo-dispatcher-client", "demo-dispatcher-client-secret", ["events:follow", "events:publish"]),
     ];
 
     // ADR-040/043 -- only a caller that legitimately constructs header-
@@ -87,7 +103,12 @@ public static class DevIdpSeeder
         // comment on vitals-pi-client/meridian-analyst-client for the full
         // reasoning on why these are separate identities.
         ["vitals-pi-client"] = [("review", "ae"), ("review", "ionm"), ("consent", "approve")],
-        ["meridian-analyst-client"] = [("identity", "aml-review")],
+        // Same union-of-every-decision-claim rule as vitals-pi-client above --
+        // this was missing "identity:review" (MeridianWorkflowA's own decision
+        // claim), found via the flow engine's myTasks query, which surfaced the
+        // gap directly: this identity could resolve Workflow C's sanctions
+        // tasks but never Workflow A's identity-verification ones.
+        ["meridian-analyst-client"] = [("identity", "review"), ("identity", "aml-review")],
     };
 
     public static IReadOnlyList<(string Type, string Value)> GetExtraClaims(string clientId) =>

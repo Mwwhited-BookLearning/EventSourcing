@@ -1,0 +1,12 @@
+@startuml
+:Applicant uploads identity document and biometric capture;
+:Applicant self-attests IdentityClaimSubmitted via UCAN (AuthorityStatus starts unattested, ADR-036);
+:Router exchanges the UCAN via token exchange (AuthorityStatus becomes pending_review on success);
+:task "Analyst must review the self-attested identity claim" claim="identity:review" resolvedBy="authorityDecision";
+if (decision?) then (yes)
+  :Entity Store folds the claim now (accepted, ADR-042);
+else (no)
+  :Entity Store never reflects this claim (rejected, stays visible in the Live View, ADR-042);
+endif
+stop
+@enduml

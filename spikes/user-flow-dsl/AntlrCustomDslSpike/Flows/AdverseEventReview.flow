@@ -1,0 +1,14 @@
+do "Coordinator publishes AdverseEventReported";
+if "SeriousAdverseEvent" then {
+  do "AuthorityStatus = pending_review";
+  do "PI delegates scoped secondary opinion access (ADR-043)";
+  do "Colleague reviews via delegated read";
+  do "PI publishes authorityDecision, step-up required (ADR-066)";
+  if "accepted" then {
+    do "Fold now (catch-up)";
+  } else {
+    do "Entity Store left untouched";
+  }
+} else {
+  do "Fold immediately (Full)";
+}

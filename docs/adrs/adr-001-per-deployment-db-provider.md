@@ -36,3 +36,19 @@ main convenience. Still requires all three migration histories to be kept
 in sync manually when the model changes (unchanged from the runtime-switch
 alternative — this risk is about EF Core migrations not being portable
 across providers, not about how the provider is selected).
+
+**Orchestration-level topology configurability is a separate, unaffected
+concern** (the queued cross-provider-peer-sync ADR, direct request):
+`EventStore.AppHost` (`ADR-026`, dev/POC orchestration only) can, and
+now does, run more than one of the three already-built `Host.<Provider>`
+artifacts side by side as real peer nodes (`Topology:EnableSqlitePeer`/
+`EnableSqlServerPeer` config flags), each still hardcoding exactly one
+provider internally, per this ADR's own Decision, unchanged. Choosing
+*which providers participate in a given topology* at orchestration time
+is not the same thing as a single process branching on
+`Database:Provider` at its own startup — this ADR's rejection of the
+latter still stands. `EventStore.Migrator` (the one-shot, exit-
+immediately schema-apply step, `ADR-076`) is the one exception that
+genuinely does branch on a `Database:Provider` value: a tool with no
+request path to silently misroute at runtime doesn't carry the risk this
+ADR's Decision was written to avoid.

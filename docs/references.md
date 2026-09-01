@@ -180,6 +180,7 @@ comprehensive index, organized by whether the concept was actually
 | Leakage-abuse attack against Order-Revealing Encryption specifically | [Grubbs, Sekniqi, Bindschaedler, Naveed, Ristenpart — Leakage-Abuse Attacks Against Order-Revealing Encryption, 2016](https://eprint.iacr.org/2016/895.pdf) | `ADR-097` — the specific break motivating that ADR's stricter, override-free guardrail relative to `ADR-096`'s bucketed approach |
 | BitTorrent piece-hashing (BEP 3) | [bittorrent.org — BEP 3](https://www.bittorrent.org/beps/bep_0003.html) | `ADR-032` — considered and rejected in favor of content-defined chunking: fixed-size pieces don't survive insertions/deletions without re-hashing everything downstream |
 | IPFS / UnixFS chunking | [specs.ipfs.tech — UnixFS](https://specs.ipfs.tech/unixfs/) | `ADR-032` — considered alongside BitTorrent as a fixed/target-sized chunking precedent, not content-defined by default |
+| ANTLR4 | [antlr.org](https://www.antlr.org/) | `ADR-101` — the real grammar/parser generator behind `EventStore.Flows`' PlantUML Activity Diagram subset parser (`Antlr4BuildTasks` NuGet package, Listener pattern), replacing the comparison spike's own hand-rolled line-based parser — see `docs/libraries/dotnet/antlr4.md` |
 
 ## Reference-only — considered, not adopted
 

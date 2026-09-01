@@ -1,5 +1,6 @@
 extern alias DevIdpAssembly;
 
+using System.IdentityModel.Tokens.Jwt;
 using System.Net;
 using System.Net.Http.Headers;
 using System.Text.Json.Nodes;
@@ -159,6 +160,47 @@ internal static class AuthScenarioAssertions
         Assert.IsFalse(disallowed.Headers.Contains("Access-Control-Allow-Origin"), "expected no CORS headers for an origin not on the allow-list");
     }
 
+    // docs/bugs/framework/service/devidp-token-endpoint-missing-standalone-cors-origin.md --
+    // DevIdp's own /connect/token endpoint has the identical config-driven
+    // CORS mechanism as any EventStore.Host.* (Program.cs's own comment on
+    // CorsBeforeOpenIddictStartupFilter), but its Development appsettings
+    // never populated Cors:AllowedOrigins with the standalone-dev origin
+    // Host.Sqlite's own Development appsettings already carries -- found by
+    // actually running client-web standalone (`npm run dev:vitals`, no
+    // AppHost) against a manually-started DevIdp and getting a real
+    // "blocked by CORS policy" browser console error on the token request.
+    public static async Task DevIdpTokenEndpointGetsCorsHeadersForAnAllowedOrigin(HttpClient devIdpClient, string allowedOrigin, string disallowedOrigin)
+    {
+        var allowed = await Preflight(devIdpClient, allowedOrigin, "/connect/token");
+        Assert.IsTrue(allowed.Headers.TryGetValues("Access-Control-Allow-Origin", out var allowedValues), "expected CORS headers for an allow-listed origin on DevIdp's own token endpoint");
+        Assert.AreEqual(allowedOrigin, allowedValues!.Single());
+
+        var disallowed = await Preflight(devIdpClient, disallowedOrigin, "/connect/token");
+        Assert.IsFalse(disallowed.Headers.Contains("Access-Control-Allow-Origin"), "expected no CORS headers for an origin not on DevIdp's own allow-list");
+    }
+
+    // docs/bugs/framework/service/devidp-duplicate-typed-extra-claims-collapse.md --
+    // DevIdpSeeder.ExtraClaims lets one client hold more than one claim of
+    // the SAME type (vitals-pi-client's own "review":"ae"/"review":"ionm"
+    // pair) -- Program.cs's token-issuance loop used to call
+    // identity.SetClaim(type, value) per tuple, which REPLACES any existing
+    // claim of that type rather than adding to it, so only the last-looped
+    // value of a repeated type ever survived into the issued token. Found
+    // by decoding a REAL vitals-pi-client token's own JWT payload (not by
+    // reading the seeding code back) while live-verifying the flow engine's
+    // myTasks GraphQL query against a real browser: the payload showed only
+    // "review":"ionm", never "ae", even though DevIdpSeeder.ExtraClaims
+    // lists both.
+    public static async Task AClientSeededWithMultipleSameTypedExtraClaimsGetsAllOfThemInTheIssuedToken(HttpClient devIdpClient)
+    {
+        var (token, _) = await GetTokenAsync(devIdpClient, "vitals-pi-client", "vitals-pi-client-secret", "events:publish");
+        var claims = new JwtSecurityTokenHandler().ReadJwtToken(token).Claims.ToList();
+
+        Assert.IsTrue(claims.Any(c => c.Type == "review" && c.Value == "ae"), "expected the issued token to still carry review:ae alongside review:ionm");
+        Assert.IsTrue(claims.Any(c => c.Type == "review" && c.Value == "ionm"), "expected the issued token to still carry review:ionm alongside review:ae");
+        Assert.IsTrue(claims.Any(c => c.Type == "consent" && c.Value == "approve"), "expected the issued token to still carry the unrelated consent:approve claim too");
+    }
+
     // ADR-017's own consequence text, verbatim: "a request with a
     // technically-valid bearer token but a missing/invalid DPoP proof is
     // rejected 401." The bearer token here is entirely genuine (a real,
@@ -260,9 +302,9 @@ internal static class AuthScenarioAssertions
         Assert.AreEqual(HttpStatusCode.Forbidden, readOtherAppIdResponse.StatusCode);
     }
 
-    private static async Task<HttpResponseMessage> Preflight(HttpClient hostClient, string origin)
+    private static async Task<HttpResponseMessage> Preflight(HttpClient hostClient, string origin, string path = "/publish/whatever")
     {
-        using var request = new HttpRequestMessage(HttpMethod.Options, "/publish/whatever");
+        using var request = new HttpRequestMessage(HttpMethod.Options, path);
         request.Headers.Add("Origin", origin);
         request.Headers.Add("Access-Control-Request-Method", "POST");
         request.Headers.Add("Access-Control-Request-Headers", "authorization,content-type");

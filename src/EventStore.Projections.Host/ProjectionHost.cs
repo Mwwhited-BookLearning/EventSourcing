@@ -66,7 +66,12 @@ public class ProjectionHost<TReadModel>(
     // SSE stream.
     public async Task<int> CatchUpOnceAsync(string eventType, int maxEventsToConsume, TimeSpan idleTimeout, CancellationToken ct)
     {
-        var changeKind = await followClient.GetChangeKindAsync(eventType, ct);
+        // ADR-101: a projection can force its own ChangeKind for this event
+        // type (EventStore.Flows.FlowProjection does, for resolver event
+        // types) without touching that type's real global registration --
+        // short-circuits the lookup entirely when overridden, computed once
+        // per catch-up cycle here, same as the un-overridden case always was.
+        var changeKind = projection.OverrideChangeKind(eventType) ?? await followClient.GetChangeKindAsync(eventType, ct);
         var fromSequenceNumber = await ReadCheckpointAsync(ct);
 
         using var idleTimeoutCts = idleTimeout == Timeout.InfiniteTimeSpan ? null : new CancellationTokenSource();
@@ -120,7 +125,10 @@ public class ProjectionHost<TReadModel>(
             var db = scope.ServiceProvider.GetRequiredService<ProjectionsDbContext>();
 
             var payload = envelope.Payload!;
-            var key = projection.GetKey(eventType, payload);
+            // ADR-101: the eventId-aware overload -- a projection that
+            // doesn't override it just falls back to the original 2-arg
+            // GetKey, unchanged.
+            var key = projection.GetKey(eventType, envelope.EventId, payload);
 
             var snapshotRow = await db.Snapshots.SingleOrDefaultAsync(s => s.ProjectionName == projection.Name && s.Key == key, ct);
             var existingSnapshot = snapshotRow is null ? null : JsonNode.Parse(snapshotRow.SnapshotJson);
@@ -136,7 +144,17 @@ public class ProjectionHost<TReadModel>(
 
             var readModel = projection.Project(key, mergedSnapshot);
             var existingReadModel = await db.Set<TReadModel>().FindAsync([key], ct);
-            if (existingReadModel is null)
+            if (readModel is null)
+            {
+                // ADR-101: null means "no row for this key right now" --
+                // delete one if it exists (EventStore.Flows.FlowProjection's
+                // own use: a task that's just been resolved). Every existing
+                // projection never returns null, so this branch is
+                // unreachable for them.
+                if (existingReadModel is not null)
+                    db.Set<TReadModel>().Remove(existingReadModel);
+            }
+            else if (existingReadModel is null)
                 db.Set<TReadModel>().Add(readModel);
             else
                 db.Entry(existingReadModel).CurrentValues.SetValues(readModel);

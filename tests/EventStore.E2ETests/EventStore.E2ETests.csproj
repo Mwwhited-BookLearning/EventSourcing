@@ -40,6 +40,12 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\EventStore.AppHost\EventStore.AppHost.csproj" />
+    <!-- OfflineOutboxSyncPlaybookTests registers its own throwaway schema
+         and seed event over real HTTP (DPoP-bound, ADR-017) before driving
+         the browser, the same pattern this session's own cross-provider
+         content-parity scratchpad script already established, now made
+         durable as a real test rather than a one-off script. -->
+    <ProjectReference Include="..\..\src\EventStore.Dpop\EventStore.Dpop.csproj" />
   </ItemGroup>
 
 </Project>

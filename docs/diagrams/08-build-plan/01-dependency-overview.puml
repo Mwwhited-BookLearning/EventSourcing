@@ -52,6 +52,7 @@ state "Local Services" as tierLocal {
   state "Searchable Blind-Index &\nBucketed-Range Indexes" as a31 #palegreen
   state "Order-Revealing\nEncryption Range Index" as a32 #palegoldenrod
   state "In-Database Native\nPredicate Evaluator Seam" as a33 #palegoldenrod
+  state "PlantUML-Native Flow Engine &\nPending-Task Read Model" as a34 #palegreen
 }
 state "UI" as tierUi {
   state "MVVM Client" as p20 #palegreen
@@ -199,4 +200,5 @@ p8 --> a31
 p4 --> a31
 a31 --> a32
 a31 --> a33
+p9 --> a34
 @enduml

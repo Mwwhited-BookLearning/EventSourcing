@@ -1,0 +1,12 @@
+@startuml
+:Detector publishes IonmAlertRaised (TelemetryPointer to fast channel);
+:ExpectedResponseTracker starts (2-minute acknowledgment window, ADR-094);
+:Technician acknowledges within the window (independent of AuthorityStatus);
+:task "Neurologist must review and sign off on the IONM alert" claim="review:ionm" resolvedBy="authorityDecision";
+if (decision?) then (yes)
+  :Entity Store catches up now (accepted, ADR-042), reflecting Finding, Severity, and AckedBy together;
+else (no)
+  :Entity Store never reflects this event (rejected, stays visible in the Live View, ADR-042);
+endif
+stop
+@enduml

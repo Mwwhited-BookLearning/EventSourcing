@@ -1,0 +1,26 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Spike only, docs/comparisons/user-flow-dsl.md Option E. Not part of
+       EventStore.slnx on purpose: this is throwaway research code proving
+       the shape works, not a production dependency. -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="NRules" Version="1.0.4" />
+    <PackageReference Include="net.adamec.lib.common.dmn.engine" Version="1.1.1" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- The real DMN 1.3 decision table, a standalone standard XML file,
+         never an inline C# string literal, per direct request. -->
+    <Content Include="Dmn\AdverseEventClassification.dmn">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+  </ItemGroup>
+
+</Project>

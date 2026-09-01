@@ -15,11 +15,31 @@ export type IngestSampleFn = (entry: ClientOutboxEntry) => Promise<{ ok: boolean
 // same caveat every other Background Sync mention in this codebase
 // already states) -- silently skipped, never thrown, when unsupported;
 // `useOnlineStatus`'s open-focus fallback still covers that case.
+//
+// A second, previously-undiscovered failure mode, found only by actually
+// driving `enqueue` through a real Playwright/Chromium browser (never
+// exercised for real before -- every prior test was a mocked Vitest
+// spec): `sync.register()` can genuinely THROW even where `SyncManager`
+// itself is present (a real `NotAllowedError` in an automated/headless
+// context with no Background Sync permission grant, e.g. under
+// `BrowserContext.SetOfflineAsync`). The feature-detect above only
+// covers the API being absent, not a runtime rejection -- and this is a
+// best-effort, opportunistic optimization layered on top of the outbox
+// write, never something the outbox's own durability guarantee
+// (CLAUDE.md's standing "never lose or corrupt data" requirement) may
+// depend on succeeding. `enqueue`'s caller (`useEntityViewActions.
+// dispatchCommand`/`captureDeviceReading`) must see the entry safely
+// queued either way, so this is wrapped rather than left to propagate.
 async function registerBackgroundSync(): Promise<void> {
   if (typeof navigator === 'undefined' || !('serviceWorker' in navigator)) return
-  const registration = await navigator.serviceWorker.ready
-  if (!('sync' in registration)) return
-  await (registration as ServiceWorkerRegistration & { sync: { register(tag: string): Promise<void> } }).sync.register('flush-outbox')
+  try {
+    const registration = await navigator.serviceWorker.ready
+    if (!('sync' in registration)) return
+    await (registration as ServiceWorkerRegistration & { sync: { register(tag: string): Promise<void> } }).sync.register('flush-outbox')
+  } catch {
+    // Best-effort only -- useOnlineStatus's open-focus fallback and every
+    // other flush trigger (ADR-069) still cover delivery regardless.
+  }
 }
 
 // ADR-039's client-local outbox (Model layer, per the Vue mapping in

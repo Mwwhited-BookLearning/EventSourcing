@@ -1,0 +1,38 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Spike only, docs/comparisons/user-flow-dsl.md Option G2. Not part of
+       EventStore.slnx on purpose: this is throwaway research code proving
+       the shape works, not a production dependency. -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Antlr4BuildTasks" Version="12.14.0" />
+    <PackageReference Include="Antlr4.Runtime.Standard" Version="4.13.1" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Antlr4BuildTasks compiles this via the real ANTLR4 Java tool
+         (downloads its own JRE, no local Java/Docker setup needed) into a
+         lexer/parser/visitor base class. Visitor, not Listener, per
+         direct request. -->
+    <Antlr4 Include="Grammar\UserFlowDsl.g4">
+      <Visitor>true</Visitor>
+      <Listener>false</Listener>
+    </Antlr4>
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- The actual DSL source, a real standalone file, never an inline
+         C# string literal, per direct request. Copied next to the built
+         binary so it's loaded via an ordinary file read at runtime. -->
+    <Content Include="Flows\AdverseEventReview.flow">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+  </ItemGroup>
+
+</Project>

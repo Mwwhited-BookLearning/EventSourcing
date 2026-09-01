@@ -77,6 +77,29 @@ follow one applicant's full lifecycle across all four docs.
      — the applicant self-attests a DID/UCAN identity claim, which an
      analyst then reviews to an accepted, claims-bearing identity record
      (`ADR-036`, `ADR-035`/`ADR-042`, `ADR-046`).
+
+`ADR-101`'s flow engine executes the analyst's review decision directly
+— embedded verbatim as `Samples.Meridian.customer-onboarding-and-
+identity-verification.puml`, the `meridian-workflow-a-identity-
+verification` flow.
+
+![Workflows diagram](../../diagrams/domains/digital-identity-kyc/README/01-workflows.svg)
+
+```plantuml
+@startuml
+:Applicant uploads identity document and biometric capture;
+:Applicant self-attests IdentityClaimSubmitted via UCAN (AuthorityStatus starts unattested, ADR-036);
+:Router exchanges the UCAN via token exchange (AuthorityStatus becomes pending_review on success);
+:task "Analyst must review the self-attested identity claim" claim="identity:review" resolvedBy="authorityDecision";
+if (decision?) then (yes)
+  :Entity Store folds the claim now (accepted, ADR-042);
+else (no)
+  :Entity Store never reflects this claim (rejected, stays visible in the Live View, ADR-042);
+endif
+stop
+@enduml
+```
+
 - **Workflow B — Relying-Party Access.**
   1. [Relying-Party Verification Request](features/relying-party-verification-request.md)
      — a relying party (a bank, a landlord) requests confirmation of the
@@ -92,6 +115,37 @@ follow one applicant's full lifecycle across all four docs.
      digitally signed SAR filing record (`ADR-066`). Deliberately
      demonstrates the manual-decision flow `ADR-079`'s
      `ISanctionsScreeningProvider` seam composes with, not replaces.
+
+`ADR-101`'s flow engine executes both of this workflow's decision points
+— embedded verbatim as `Samples.Meridian.periodic-screening-and-sar-
+escalation.puml`, the `meridian-workflow-c-sanctions-screening-and-sar`
+flow. Two sequential `task` nodes share one key via their own distinct
+`correlatedBy` fields (`targetEventId` for the confirm/dismiss decision,
+`TargetScreeningEventId` for the SAR filing) — confirmed against this
+workflow's own Gherkin that `SarFilingRecorded` only ever follows an
+already-accepted `authorityDecision`, never an alternative resolution,
+so no engine change was needed to support it.
+
+![Workflows diagram](../../diagrams/domains/digital-identity-kyc/README/02-workflows.svg)
+
+```plantuml
+@startuml
+:PeriodicScreeningWorker publishes SanctionsScreeningPerformed;
+if (MatchFound?) then (yes)
+  :task "Compliance officer must confirm or dismiss the sanctions match" claim="identity:aml-review" resolvedBy="authorityDecision";
+  if (decision?) then (yes)
+    :Entity Store catches up now, confirmed match (ADR-042);
+    :task "Compliance officer must file a SAR for the confirmed match" claim="identity:aml-review" resolvedBy="SarFilingRecorded" correlatedBy="TargetScreeningEventId";
+    :SAR filed, step-up-signed (ADR-066);
+  else (no)
+    :Entity Store never reflects this event (false positive, ADR-042);
+  endif
+else (no)
+  :Entity Store folds immediately (routine, no match, ADR-042);
+endif
+stop
+@enduml
+```
 
 ## Feature docs
 

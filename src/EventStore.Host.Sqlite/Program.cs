@@ -2,6 +2,7 @@ using EventStore.Derivation;
 using EventStore.Erasure;
 using EventStore.ExpectedResponse;
 using EventStore.FeatureFlags;
+using EventStore.Flows;
 using EventStore.Follow.Api;
 using EventStore.GraphQL;
 using EventStore.Interchange;
@@ -49,6 +50,10 @@ if (builder.Configuration["FeatureFlags:AppId"] is { } featureFlagsAppId)
 builder.Services.AddDbContext<EventStoreContext>(options => options.UseSqlite(
     builder.Configuration.GetConnectionString("Sqlite"),
     x => x.MigrationsAssembly("EventStore.Persistence.Migrations.Sqlite")));
+// Read-only here -- the Samples.*.Flows worker hosts own writing/migrating
+// this database; myTasks (PendingTaskQueries) only ever queries it.
+builder.Services.AddDbContext<PendingTasksDbContext>(options => options.UseSqlite(
+    builder.Configuration.GetConnectionString("PendingTasks")));
 builder.AddDbReachabilityHealthCheck(); // ADR-084 -- readiness fails when THIS database is unreachable
 builder.Services.AddScoped<IJsonPathTranslator, SqliteJsonPathTranslator>();
 builder.Services.AddScoped<IFilterableFieldIndexDdlGenerator, SqliteFilterableFieldIndexDdlGenerator>();

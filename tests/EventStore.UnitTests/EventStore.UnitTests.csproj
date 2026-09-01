@@ -27,6 +27,9 @@
     <ProjectReference Include="..\..\src\EventStore.Domain\EventStore.Domain.csproj" />
     <ProjectReference Include="..\..\src\EventStore.Erasure\EventStore.Erasure.csproj" />
     <ProjectReference Include="..\..\src\EventStore.ServiceDefaults\EventStore.ServiceDefaults.csproj" />
+    <ProjectReference Include="..\..\src\EventStore.Flows\EventStore.Flows.csproj" />
+    <ProjectReference Include="..\..\src\Samples.Vitals\Samples.Vitals.csproj" />
+    <ProjectReference Include="..\..\src\Samples.Meridian\Samples.Meridian.csproj" />
     <ProjectReference Include="..\..\src\EventStore.Persistence\EventStore.Persistence.csproj" />
     <ProjectReference Include="..\..\src\EventStore.Persistence.Migrations.Sqlite\EventStore.Persistence.Migrations.Sqlite.csproj" />
     <ProjectReference Include="..\..\src\EventStore.Replication\EventStore.Replication.csproj" />

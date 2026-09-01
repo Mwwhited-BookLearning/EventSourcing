@@ -1,14 +1,7 @@
 using System.Text.Json.Nodes;
+using EventStore.Projections.Abstractions;
 
 namespace EventStore.Projections.Host;
-
-// A local enum, deliberately not a reference to EventStore.Domain's own
-// ChangeKind -- ProjectionHost's only contact with the write side is HTTP
-// JSON (the new GET /registry/{eventType}/change-kind endpoint returns this
-// as a plain string), so it parses its own copy rather than sharing a CLR
-// type across the write/read boundary the project-reference graph otherwise
-// keeps hard (docs/06-solution-structure.md).
-public enum ChangeKind { Full, Partial }
 
 // docs/09-cqrs-read-models.md's own sketch, verbatim. Applied once,
 // centrally, per ADR-016: Full replaces a key's whole snapshot; Partial

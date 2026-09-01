@@ -115,6 +115,7 @@ provider they apply to — not "code written."
 | 54 | [Searchable Blind-Index & Bucketed-Range Encrypted-Field Indexes](#searchable-blind-index--bucketed-range-encrypted-field-indexes) | GDPR/CCPA Erasure, Property-Level Masking, Follow API + Filter Pushdown | Done |
 | 55 | [Order-Revealing Encryption Range Index (opt-in)](#order-revealing-encryption-range-index-opt-in) | Searchable Blind-Index & Bucketed-Range Encrypted-Field Indexes | Built, pending required security review (not Done) |
 | 56 | [In-Database Native Predicate Evaluator Seam](#in-database-native-predicate-evaluator-seam) | Searchable Blind-Index & Bucketed-Range Encrypted-Field Indexes | SQL Server built and verified; PostgreSQL written, not verified (not Done) |
+| 57 | [PlantUML-Native User-Flow Engine & Pending-Task Read Model](#plantuml-native-user-flow-engine--pending-task-read-model) | CQRS Read-Model Projections (worked example) | Done |
 
 Two groups worth naming up front, since they explain most of the
 ordering below:
@@ -249,6 +250,7 @@ state "Local Services" as tierLocal {
   state "Searchable Blind-Index &\nBucketed-Range Indexes" as a31 #palegreen
   state "Order-Revealing\nEncryption Range Index" as a32 #palegoldenrod
   state "In-Database Native\nPredicate Evaluator Seam" as a33 #palegoldenrod
+  state "PlantUML-Native Flow Engine &\nPending-Task Read Model" as a34 #palegreen
 }
 state "UI" as tierUi {
   state "MVVM Client" as p20 #palegreen
@@ -396,6 +398,7 @@ p8 --> a31
 p4 --> a31
 a31 --> a32
 a31 --> a33
+p9 --> a34
 @enduml
 ```
 
@@ -1543,6 +1546,14 @@ only require convergence-with-conflicts-flagged, not hash-tree diffing,
 so this is a deliberate, honestly-flagged scope narrowing, not a gap
 against what was promised. Revisit if a later item's own scope actually
 needs the efficiency (none currently do).
+
+**Additive note (`ADR-102`)**: this item's own peer-sync mechanism was
+verified genuinely cross-provider for the first time — a real SQL
+Server Testcontainer peer, a real SQLite-file peer, and a real
+Postgres-backed `eventstore` peer, all gossiping together under a real,
+`EventStore.AppHost`-orchestrated three-node mesh. Every exit criterion
+above already held per-provider; this closes the "never actually run
+cross-provider" gap without changing any of them.
 
 ## Non-Authoritative Capture
 
@@ -3952,6 +3963,87 @@ suite concurrency — caught by a real, if intermittent, failure, not
 hypothesized; widened to several short ticks. `npm run build` and
 `npm run build:offline-player` both still succeed.
 
+**Manual "force offline/online" UI control, plus a real in-browser proof
+(direct request, this pass)** — everything above had only ever been
+verified by mocked Vitest specs, never a real browser. New
+`stores/connectivity.ts` (`useConnectivityStore`, `mvvm-client`) holds a
+`forcedOffline` flag independent of the real `navigator.onLine` signal;
+`App.vue` gained "Go Offline"/"Go Online" buttons (`data-testid`
+`force-offline`/`force-online`) that toggle it, and a
+`connectivity-status` element showing the combined effective state.
+`useEntityViewActions.dispatchCommand`/`captureDeviceReading` now gate
+their immediate-flush attempt on `useConnectivityStore.
+isEffectivelyOnline()` instead of reading `navigator.onLine` inline
+directly — same real signal, now ANDed with the manual override. **A
+real design pitfall found and avoided before it shipped**: this method
+is deliberately a plain Pinia *action*, not a `getters` entry — Pinia
+getters are wrapped in Vue's `computed()`, which only re-evaluates when
+a tracked *reactive* dependency changes; `navigator.onLine` is a plain,
+non-reactive global, so a `computed` version would have cached its
+first read and silently ignored every later real connectivity change
+that didn't happen to coincide with `forcedOffline` also toggling — a
+real bug that would have specifically broken the *automatic* detection
+half this item's own exit criteria require, caught by reasoning through
+Pinia's own getter-caching semantics before writing the test, not
+discovered by the test failing. New `tests/EventStore.E2ETests/
+OfflineOutboxSyncPlaybookTests.cs` proves both trigger paths for real
+against a live Chromium browser: Part 1 uses Playwright's own
+`BrowserContext.SetOfflineAsync` to drop and restore the *real* network
+(exercising `useOnlineStatus`'s existing listener completely
+unmodified), Part 2 exercises the new manual buttons — both converge on
+the same outbox enqueue/flush cycle, confirmed by the header's queued-
+command count. Playbook: `docs/playbooks/core/user/go-offline-and-
+resync.md` (a new `core/` domain in that catalog, since this capability
+is `App.vue`/`mvvm-client`-level, owned by no single Vitals/Meridian
+persona). `connectivity.spec.ts` (5 scenarios, including one asserting
+the plain-method-not-getter freshness guarantee directly) plus a new
+`outbox.spec.ts` scenario: Vitest suite regression 138/138 (27 files).
+
+**Three more real, previously-undiscovered gaps, found only by actually
+getting this test to pass against a live host rather than stopping at
+"it compiles"** — this project's own standing rule, proven out again:
+- `stores/outbox.ts`'s `registerBackgroundSync` could throw uncaught —
+  `SyncManager` being *present* doesn't mean `.register()` *succeeds*; a
+  real `NotAllowedError` surfaced in this exact Playwright/Chromium test
+  environment (no Background Sync permission grant), which silently
+  broke every line of the caller's own code *after* `enqueue()` — a
+  correctness bug independent of this test, now fixed with a `try/catch`
+  around the best-effort registration (never around the durable write
+  itself).
+- App.vue's own generic "Dispatch a command" demo panel (`amountInput`/
+  `submitAmountCommand`, present since item 21) had, it turns out,
+  *never once* successfully published against any real, currently-
+  orchestrated schema — every Vitals/Meridian event type's own
+  `required` JSON Schema fields (`PatientScreened` needs `SubjectId`/
+  `SiteId`/`EligibilityStatus`) rejected a bare `{ Amount }` patch with a
+  real 400, leaving the outbox entry permanently `Pending`, retried
+  forever with no visible error. Nobody had ever clicked "Set Amount" in
+  a real browser before this pass. Fixed by merging the currently cached
+  entity's own already-known fields (`entityCache.get(...).data`,
+  guaranteed populated before `currentEntityId` is ever set to that
+  entity) underneath the new `Amount` value — schema-agnostic, works
+  against any domain's `required` list.
+- Deeper still: even with a schema-compliant payload, **no DevIdp-seeded
+  HTTP client anywhere in this repo holds the specific claim any real
+  Vitals/Meridian event type's `RequiredClaims` demands** (e.g.
+  `PatientScreened`'s `patient:enroll`) — those events have only ever
+  been created by `Samples.Vitals.Seed`/`Simulator` calling
+  `PublishService` in-process, bypassing the HTTP auth layer entirely.
+  No amount of client-side fixing could make a real browser session
+  publish one. Resolved by having this test register and target its
+  **own** throwaway, no-`RequiredClaims` schema (`AppId
+  "e2e-offline-demo"`, `EventType "OrderPlaced"`) via the same real
+  DPoP-bound HTTP calls this session's cross-provider content-parity
+  script already proved out, and by adding one new DevIdp client
+  (`demo-dispatcher-client`, `DevIdpSeeder.cs`) holding both
+  `events:follow` and `events:publish` — the one identity a single
+  `ClientConfig` instance actually needs to both subscribe and dispatch,
+  which no existing seeded client held (each was deliberately scoped to
+  exactly one real capability need until now). `appConfig.ts`'s own
+  documented query-string override ("query string wins if present") is
+  what lets one already-running `client-web-vitals` process serve this
+  throwaway entity without a new AppHost resource.
+
 ## Device Input Integration
 
 **Scope**: `ADR-070` — how HID/raw-USB/serial/BLE device streams reach
@@ -5310,6 +5402,74 @@ Python's `cryptography` package exists in the standard Testcontainers
 maintaining a custom Postgres image for this one function is real,
 separate infrastructure work, not done this pass. Both evaluators remain
 scoped to the `Local` backend only, per `ADR-098`'s own Decision.
+
+## PlantUML-Native User-Flow Engine & Pending-Task Read Model
+
+**Scope**: `ADR-101` — resolves `docs/comparisons/user-flow-dsl.md`
+(Option G1). A new `EventStore.Flows` library: a real ANTLR4 grammar +
+generated Listener parsing a constrained PlantUML Activity Diagram
+subset into an AST (`ActivityNode`/`ActionNode`/`IfNode`/`StopNode`),
+`FlowInterpreter` walking it statelessly against a merged JSON snapshot,
+and `FlowProjection` — an ordinary `IProjection<PendingTask>` built on
+the unmodified `ProjectionHost<T>` from "CQRS Read-Model Projections"
+above, using three additive, default-interface-method extensions to
+`IProjection<TReadModel>` (an eventId-aware `GetKey` overload,
+`OverrideChangeKind`, a nullable `Project` return — see
+`docs/09-cqrs-read-models.md`'s own "Second worked example" section for
+the full shape). Backend event routing/approval automation was already
+fully built by prior items (`AuthorityDecisionResolver`, `StepUpEvaluator`,
+`ExpectedResponseWatcher`) and is explicitly **not** touched here — this
+item is purely a read-side consumer of that already-decided behavior,
+narrating it via a real, embedded `.puml` per flow rather than adding a
+write-side engine. Converts all four existing Vitals/Meridian workflows
+(B, D, A, C) to register a `FlowDefinition` alongside their existing,
+unmodified schema registration. Client-side: `useMyTasks.ts`/
+`MyTasksView.vue`/`TasksView.vue` — a single cross-domain, polled (not
+subscribed — there is no `myTasks` Subscription field) task list at
+`/tasks`, reachable from any `client-web` instance with no domain gate.
+
+**Depends on**: CQRS Read-Model Projections (worked example) — this item
+is a second `IProjection<T>` built on that same, unmodified
+`ProjectionHost<T>`/`ProjectionsDbContext` mechanism.
+
+**Exit criteria**: `EventStore.UnitTests` (`FlowInterpreterTests` and one
+`*FlowTests` class per converted workflow, all against the REAL embedded
+`.puml`, not a synthetic AST) prove parsing, task-pause/resolve, and
+nested-`if` propagation. `PendingTaskProjectionSqliteTests` — the same
+real, two-`WebApplicationFactory`-TestServer HTTP bar "CQRS Read-Model
+Projections" established — registers `VitalsWorkflowB`'s real schemas,
+publishes a real `AdverseEventReported` over HTTP, and confirms a
+`PendingTask` row appears then is deleted after a real step-up-signed
+`authorityDecision`. `TasksListPlaybookTests`
+(`docs/playbooks/vitals/my-tasks/discover-and-open-a-pending-task.md`) —
+a genuine, full-`AppHost`-driven Playwright playbook against a real
+Postgres-backed deployment, confirming a live `IonmAlertRaised` (from
+`Samples.Vitals.Simulator`) produces a real task in `/tasks` and "Open"
+navigates to the existing Queue screen. `client-web`'s own
+`useMyTasks.spec.ts` covers the composable in isolation (token caching,
+scope handling, polling/stop).
+
+**Status: Done.** All three `EventStore.Host.<Provider>` projects
+(SQLite, PostgreSQL, SQL Server) register the same read-only
+`PendingTasksDbContext` and automatically get `myTasks` via the shared
+`AddEventStoreGraphQl()`. `EventStore.Host.SqlServer`'s own copy was
+verified by booting the real host process and confirming the DI
+container builds cleanly through to a genuine `SqlException` on the
+unreachable write-side connection (an environment fact — no real SQL
+Server instance was stood up for this check — not a registration
+failure; a bad `PendingTasksDbContext` wiring would fail at container-
+build time instead, before any network call). `EventStore.AppHost` runs
+two real worker resources (`vitals-flows`/`meridian-flows`) sharing one
+physical SQLite file with `eventstore` itself — the first CQRS
+projection this repo has ever wired into a real orchestrated AppHost run
+(neither this item's own dependency nor `Samples.Orders.Projections` had
+been, before this pass). `EventStore.AppHost` only ever targets one
+`Host.<Provider>` at a time (currently Postgres, `ADR-001`), so the SQL
+Server host itself has no AppHost-driven live verification the way
+SQLite/Postgres do — a real, if narrow, verification gap relative to
+those two, not tracked further since nothing in this project's own
+"Done" bar (`08-build-plan.md`'s own header) has ever required
+AppHost-level proof specifically, only exit-criteria-level proof.
 
 ## Suggested References
 

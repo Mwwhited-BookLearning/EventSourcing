@@ -2,6 +2,7 @@ using EventStore.Derivation;
 using EventStore.Erasure;
 using EventStore.ExpectedResponse;
 using EventStore.FeatureFlags;
+using EventStore.Flows;
 using EventStore.Follow.Api;
 using EventStore.GraphQL;
 using EventStore.Interchange;
@@ -86,6 +87,12 @@ builder.Services.AddDbContext<EventStoreContext>(options => options.UseNpgsql(
     x => x
         .MigrationsAssembly("EventStore.Persistence.Migrations.Postgres")
         .EnableRetryOnFailure(maxRetryCount: 20, maxRetryDelay: TimeSpan.FromSeconds(2), errorCodesToAdd: ["3D000", "40001"])));
+// Read-only here -- the Samples.*.Flows worker hosts own writing/migrating
+// this database. Always SQLite regardless of eventstore's own write-side
+// provider (docs/09-cqrs-read-models.md's own "one EF Core provider is
+// sufficient" posture, already established for OrdersProjectionsDbContext).
+builder.Services.AddDbContext<PendingTasksDbContext>(options => options.UseSqlite(
+    builder.Configuration.GetConnectionString("PendingTasks")));
 builder.AddDbReachabilityHealthCheck(); // ADR-084 -- readiness fails when THIS database is unreachable
 builder.Services.AddScoped<IJsonPathTranslator, PostgresJsonPathTranslator>();
 builder.Services.AddScoped<IFilterableFieldIndexDdlGenerator, PostgresFilterableFieldIndexDdlGenerator>();

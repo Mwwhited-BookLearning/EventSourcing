@@ -2,6 +2,7 @@ import { ref } from 'vue'
 import { useOutboxStore } from '../stores/outbox'
 import { useEntityCacheStore } from '../stores/entityCache'
 import { useViewDefinitionsStore } from '../stores/viewDefinitions'
+import { useConnectivityStore } from '../stores/connectivity'
 import type { ClientOutboxEntry, FollowedEventEnvelope } from '../types'
 import { fetchToken } from '../api/authClient'
 import { publishCommand } from '../api/publishClient'
@@ -88,6 +89,7 @@ export function useEntityViewActions(config: ClientConfig, deps: { fetchToken?: 
   const outbox = useOutboxStore()
   const entityCache = useEntityCacheStore()
   const viewDefinitions = useViewDefinitionsStore()
+  const connectivity = useConnectivityStore()
   const token = ref<string | null>(null)
   const locale = ref('en-US')
   const translations = ref<Record<string, string>>(resolveTranslations('en-US'))
@@ -116,6 +118,10 @@ export function useEntityViewActions(config: ClientConfig, deps: { fetchToken?: 
   // Never mutates the entity cache directly (ADR-039) -- enqueues into the
   // durable outbox and, if online, attempts an immediate flush; the
   // confirmed state only lands once the Subscription delivers it back.
+  // "Online" here is `connectivity.isEffectivelyOnline()` -- the real
+  // `navigator.onLine` signal AND NOT a manual "force offline" override
+  // (`useConnectivityStore`), so a demo/test can exercise the offline path
+  // deterministically without touching real network state.
   async function dispatchCommand(
     entityId: string,
     patch: Record<string, unknown>,
@@ -136,7 +142,7 @@ export function useEntityViewActions(config: ClientConfig, deps: { fetchToken?: 
       attempts: 0,
     }
     await outbox.enqueue(entry)
-    if (typeof navigator === 'undefined' || navigator.onLine) await flush()
+    if (connectivity.isEffectivelyOnline()) await flush()
   }
 
   async function flush(): Promise<void> {
@@ -158,7 +164,7 @@ export function useEntityViewActions(config: ClientConfig, deps: { fetchToken?: 
   // caller's own per-integration configuration, never inferred here.
   async function captureDeviceReading(reading: DeviceReading, mapping: ReadingMapping): Promise<void> {
     await outbox.enqueue(toOutboxEntry(config.instanceId, reading, mapping))
-    if (typeof navigator === 'undefined' || navigator.onLine) await flush()
+    if (connectivity.isEffectivelyOnline()) await flush()
   }
 
   // Discovers the dynamically-built payload type's own fields via GraphQL

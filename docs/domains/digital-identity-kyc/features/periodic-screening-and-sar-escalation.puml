@@ -1,0 +1,16 @@
+@startuml
+:PeriodicScreeningWorker publishes SanctionsScreeningPerformed;
+if (MatchFound?) then (yes)
+  :task "Compliance officer must confirm or dismiss the sanctions match" claim="identity:aml-review" resolvedBy="authorityDecision";
+  if (decision?) then (yes)
+    :Entity Store catches up now, confirmed match (ADR-042);
+    :task "Compliance officer must file a SAR for the confirmed match" claim="identity:aml-review" resolvedBy="SarFilingRecorded" correlatedBy="TargetScreeningEventId";
+    :SAR filed, step-up-signed (ADR-066);
+  else (no)
+    :Entity Store never reflects this event (false positive, ADR-042);
+  endif
+else (no)
+  :Entity Store folds immediately (routine, no match, ADR-042);
+endif
+stop
+@enduml

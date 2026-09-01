@@ -6,6 +6,7 @@ import ComposeView from './views/ComposeView.vue'
 import QueueView from './views/QueueView.vue'
 import RelyingPartyView from './views/RelyingPartyView.vue'
 import LineageView from './views/LineageView.vue'
+import TasksView from './views/TasksView.vue'
 
 // ADR-099 -- one route per what used to be an `activeTab` branch. Routes
 // are keyed by path (not name) so App.vue's own n-menu can key its items
@@ -17,6 +18,9 @@ export const router = createRouter({
     { path: '/detail', component: DetailView },
     { path: '/browse', component: BrowseView },
     { path: '/compose', component: ComposeView },
+    // ADR-101 -- cross-domain by design, no requiresDomain gate: the myTasks
+    // query itself spans every domain sharing this Host's own database.
+    { path: '/tasks', component: TasksView },
     { path: '/queue', component: QueueView, meta: { requiresDomain: true } },
     { path: '/relying-party', component: RelyingPartyView, meta: { requiresDomain: 'meridian' } },
     { path: '/lineage', component: LineageView },

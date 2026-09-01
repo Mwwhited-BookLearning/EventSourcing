@@ -3,6 +3,7 @@
   <ItemGroup>
     <ProjectReference Include="..\EventStore.Abstractions\EventStore.Abstractions.csproj" />
     <ProjectReference Include="..\EventStore.Erasure\EventStore.Erasure.csproj" />
+    <ProjectReference Include="..\EventStore.Flows\EventStore.Flows.csproj" />
     <ProjectReference Include="..\EventStore.Persistence\EventStore.Persistence.csproj" />
     <ProjectReference Include="..\EventStore.SchemaRegistry\EventStore.SchemaRegistry.csproj" />
     <ProjectReference Include="..\EventStore.Follow.Api\EventStore.Follow.Api.csproj" />

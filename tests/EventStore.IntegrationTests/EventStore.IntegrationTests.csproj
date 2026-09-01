@@ -54,6 +54,7 @@
     <ProjectReference Include="..\..\src\Samples.Meridian\Samples.Meridian.csproj" />
     <ProjectReference Include="..\..\src\EventStore.Spiffe\EventStore.Spiffe.csproj" />
     <ProjectReference Include="..\..\src\EventStore.Masking\EventStore.Masking.csproj" />
+    <ProjectReference Include="..\..\src\EventStore.Flows\EventStore.Flows.csproj" />
     <ProjectReference Include="..\..\src\EventStore.Projections.Abstractions\EventStore.Projections.Abstractions.csproj" />
     <ProjectReference Include="..\..\src\EventStore.Projections.Host\EventStore.Projections.Host.csproj" />
     <ProjectReference Include="..\..\src\Samples.Orders.Projections\Samples.Orders.Projections.csproj" />
@@ -71,6 +72,7 @@
          so referencing both unaliased is an ambiguous-type compile error. -->
     <ProjectReference Include="..\..\src\EventStore.DevIdp\EventStore.DevIdp.csproj" Aliases="DevIdpAssembly" />
     <ProjectReference Include="..\..\src\EventStore.Gateway\EventStore.Gateway.csproj" Aliases="GatewayAssembly" />
+    <ProjectReference Include="..\..\src\EventStore.Host.SqlServer\EventStore.Host.SqlServer.csproj" Aliases="HostSqlServerAssembly" />
   </ItemGroup>
 
 </Project>
