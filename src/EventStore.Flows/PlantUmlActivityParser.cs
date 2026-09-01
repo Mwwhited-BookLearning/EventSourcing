@@ -1,82 +1,52 @@
-using System.Text.RegularExpressions;
+using Antlr4.Runtime;
+using Antlr4.Runtime.Tree;
 
 namespace EventStore.Flows;
 
-// Promoted verbatim from spikes/user-flow-dsl/PlantUmlNativeSpike/
-// PlantUmlActivityParser.cs (ADR-101) -- the grammar itself does not grow
-// for this promotion. "task"/condition-field conventions live entirely in
-// FlowInterpreter, one level up; this parser never sees them, it only ever
-// produces plain ActionNode/IfNode/StopNode exactly as it always did.
-// Deliberately narrow: throws on anything outside start/stop/:action;/
-// if-then-else-endif rather than silently ignoring it, so an unsupported
-// diagram construct is a loud, immediate failure, not a quietly wrong
-// execution.
+// ADR-101: real ANTLR4 parsing (Grammar/PlantUmlActivityDiagram.g4,
+// Antlr4BuildTasks, Listener pattern), replacing the hand-rolled
+// recursive-descent parser this project's own spike
+// (spikes/user-flow-dsl/PlantUmlNativeSpike/PlantUmlActivityParser.cs)
+// originally proved the shape with -- same public API, so nothing else in
+// EventStore.Flows (FlowInterpreter, FlowDefinition, ...) needed to change
+// for this swap.
 public static class PlantUmlActivityParser
 {
-    private static readonly Regex IfPattern = new(@"^if \((?<cond>.+)\) then \(yes\)$", RegexOptions.Compiled);
-
     public static IReadOnlyList<ActivityNode> Parse(string source)
     {
-        var lines = source
-            .Split('\n')
-            .Select(l => l.Trim())
-            .Where(l => l.Length > 0)
-            .ToList();
-        var index = 0;
-        return ParseBlock(lines, ref index, terminators: null);
+        var lexer = new PlantUmlActivityDiagramLexer(new AntlrInputStream(source));
+        var errorListener = new ThrowingErrorListener();
+        lexer.RemoveErrorListeners();
+        lexer.AddErrorListener(errorListener);
+
+        var parser = new PlantUmlActivityDiagramParser(new CommonTokenStream(lexer));
+        parser.RemoveErrorListeners();
+        parser.AddErrorListener(errorListener);
+
+        var tree = parser.diagram();
+        var listener = new ActivityAstBuilderListener();
+        ParseTreeWalker.Default.Walk(listener, tree);
+        return listener.Result;
     }
 
-    private static List<ActivityNode> ParseBlock(List<string> lines, ref int index, HashSet<string>? terminators)
+    // The old hand-rolled parser threw NotSupportedException on anything
+    // outside its subset, loudly, immediately -- a real ANTLR syntax error
+    // must fail exactly the same way, not the library's own default
+    // (print to stderr, keep going with a best-effort parse tree).
+    private sealed class ThrowingErrorListener : BaseErrorListener, IAntlrErrorListener<int>
     {
-        var nodes = new List<ActivityNode>();
-        while (index < lines.Count)
-        {
-            var line = lines[index];
+        // Parser errors (offending symbol already tokenized as an IToken) --
+        // overrides BaseErrorListener's own virtual member.
+        public override void SyntaxError(TextWriter output, IRecognizer recognizer, IToken offendingSymbol, int line, int charPositionInLine, string msg, RecognitionException e) =>
+            Throw(line, charPositionInLine, msg);
 
-            if (terminators is not null && terminators.Contains(line))
-                break; // caller consumes it
+        // Lexer errors (offending symbol is still a raw codepoint, not yet
+        // an IToken) -- BaseErrorListener only implements IAntlrErrorListener<IToken>,
+        // so the lexer's own int-typed interface needs a separate, explicit implementation.
+        void IAntlrErrorListener<int>.SyntaxError(TextWriter output, IRecognizer recognizer, int offendingSymbol, int line, int charPositionInLine, string msg, RecognitionException e) =>
+            Throw(line, charPositionInLine, msg);
 
-            switch (line)
-            {
-                case "@startuml" or "start":
-                    index++;
-                    continue;
-                case "@enduml":
-                    index++;
-                    return nodes;
-                case "stop":
-                    nodes.Add(new StopNode());
-                    index++;
-                    continue;
-            }
-
-            if (line.StartsWith(':') && line.EndsWith(';'))
-            {
-                nodes.Add(new ActionNode(line[1..^1]));
-                index++;
-                continue;
-            }
-
-            var ifMatch = IfPattern.Match(line);
-            if (ifMatch.Success)
-            {
-                index++;
-                var thenBranch = ParseBlock(lines, ref index, ["else (no)", "endif"]);
-                var elseBranch = new List<ActivityNode>();
-                if (index < lines.Count && lines[index] == "else (no)")
-                {
-                    index++;
-                    elseBranch = ParseBlock(lines, ref index, ["endif"]);
-                }
-                if (index < lines.Count && lines[index] == "endif")
-                    index++;
-                nodes.Add(new IfNode(ifMatch.Groups["cond"].Value, thenBranch, elseBranch));
-                continue;
-            }
-
-            throw new NotSupportedException(
-                $"Unsupported Activity Diagram line (Option G1's own deliberately narrow subset doesn't cover this): \"{line}\"");
-        }
-        return nodes;
+        private static void Throw(int line, int charPositionInLine, string msg) =>
+            throw new NotSupportedException($"Unsupported Activity Diagram syntax at line {line}:{charPositionInLine} (Option G1's own deliberately narrow subset doesn't cover this): {msg}");
     }
 }
