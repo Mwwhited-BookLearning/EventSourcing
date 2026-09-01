@@ -75,13 +75,36 @@ Consequences:
   accepted, explicitly-stated cost (`docs/comparisons/peer-sync-
   topology.md`) — fine for a handful of regional sites, worth revisiting
   only if site count grows into the dozens.
-- The Schema Registry (`docs/data/schema-registry.md`) is now itself
+- ~~The Schema Registry (`docs/data/schema-registry.md`) is now itself
   replicated data, not synchronously-consistent side infrastructure — a
   client emitting an event at a schema version its local site's registry
   hasn't heard about yet still gets a self-sufficient, version-tagged
   event (`ADR-020`'s live upcast validation and `ADR-027`'s
   materialization already handle a lagging *version*; this extends the
-  same tolerance to a lagging *registry replica*, not a new mechanism).
+  same tolerance to a lagging *registry replica*, not a new mechanism).~~
+  **Corrected (`ADR-102`), a real overclaim found by actually running a
+  genuine multi-peer mesh, not by re-reading this text**:
+  `SchemaRegistryService.RegisterAsync` writes `EventTypeDefinition`
+  directly to this site's own local table (`SchemaRegistryService.cs`
+  line 221) — it does **not** flow through the fold pipeline peer sync
+  replicates. `AppendSchemaRegisteredAsync` does append a reserved
+  `schemaregistered` event (`ADR-067`) alongside it, and *that* event
+  genuinely does travel to every peer via the ordinary mechanism — but
+  it carries only `{EventTypeName, Version}`, an audit/notification
+  shape, not the schema itself, and no worker anywhere folds it back
+  into a live `EventTypeDefinition` row on the receiving peer (unlike
+  `EventStore.DevIdp`'s own `RbacProjectionWorker`, which *does* fold
+  its own reserved control-plane events this way). A schema registered
+  on one peer is genuinely invisible to every other peer's own registry
+  until independently registered there too — confirmed directly: a
+  real GraphQL entity query against two peers a schema wasn't
+  registered on correctly errored `"the field ... does not exist on
+  the type Query"`, and only succeeded, identically on all three, once
+  the same registration was repeated on each. See
+  `docs/10-open-questions.md` row 1 for the genuinely undecided fork
+  this leaves open (build the missing fold worker, or correct this
+  ADR's own claim permanently down to "the reserved notification event
+  replicates; the registry itself does not").
 - `EntityStoreRow.LastAppliedOriginId` (`docs/data/entity-store.md`)
   finally has a real consumer — diagnosing which site's write most
   recently won a fold, useful when investigating a `ConflictFlag`.

@@ -455,3 +455,17 @@ client-web/packages/*/*.tsbuildinfo
 # large (tens of MB), self-contained executable per provider, regenerated
 # on demand from the committed migrations, never itself a source artifact.
 scripts/bundles/
+
+# Local SQLite data files -- EventStore.Host.Sqlite's own eventstore.db,
+# the flow engine's shared pending-tasks.db (ADR-101), and the
+# multi-provider mesh's eventstore-sqlite-peer.db (ADR-102) all get
+# created directly under src/ by a real local/AppHost run and are never
+# source artifacts -- every schema they hold is reproduced from the
+# committed EF Core migrations. Repeatedly showed up as untracked files
+# this session and had to be cleaned up by hand before every commit. No
+# .db file is tracked anywhere in this repo today (confirmed via `git
+# ls-files` before adding this blanket pattern), so this can't silently
+# hide a real, already-committed fixture.
+*.db
+*.db-shm
+*.db-wal
