@@ -37,6 +37,7 @@ public static class GraphQlServiceCollectionExtensions
             .AddGraphQLServer()
             .AddQueryType<Query>()
             .AddTypeExtension<RegistryQueries>()
+            .AddTypeExtension<PendingTaskQueries>()
             .AddTypeExtension<LineageQueries>()
             .AddTypeExtension<LineageExportQueries>()
             .AddTypeExtension<CapabilitiesQueries>()
