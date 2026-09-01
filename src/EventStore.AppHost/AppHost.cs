@@ -205,7 +205,43 @@ var eventstore = builder.AddProject<Projects.EventStore_Host_Postgres>("eventsto
     .WithUrlForEndpoint("https", _ => new ResourceUrlAnnotation { Url = "/scalar/v1", DisplayText = "OpenAPI (Scalar)" })
     .WithUrlForEndpoint("https", _ => new ResourceUrlAnnotation { Url = "/openapi.json", DisplayText = "OpenAPI JSON" })
     .WithUrlForEndpoint("https", _ => new ResourceUrlAnnotation { Url = "/asyncapi-ui", DisplayText = "AsyncAPI UI" })
-    .WithUrlForEndpoint("https", _ => new ResourceUrlAnnotation { Url = "/asyncapi.json", DisplayText = "AsyncAPI JSON" });
+    .WithUrlForEndpoint("https", _ => new ResourceUrlAnnotation { Url = "/asyncapi.json", DisplayText = "AsyncAPI JSON" })
+    // ADR-101 -- always SQLite regardless of eventstore's own write-side
+    // provider (docs/09-cqrs-read-models.md's own "one EF Core provider is
+    // sufficient" posture, already established for OrdersProjectionsDbContext).
+    // A relative path, not absolute: eventstore/vitals-flows/meridian-flows
+    // all run from their own project directory directly under src/ (Aspire's
+    // own default working directory for a project resource, matching plain
+    // `dotnet run --project`), so "../pending-tasks.db" resolves to the
+    // SAME literal src/pending-tasks.db file for all three -- required for
+    // one cross-domain myTasks query to see both domains' tasks at all.
+    .WithEnvironment("ConnectionStrings__PendingTasks", "Data Source=../pending-tasks.db");
+
+// ADR-101 -- the flow engine's own worker host: one ProjectionHost<PendingTask>
+// per registered flow (VitalsWorkflowB/D), a Follow consumer of eventstore's
+// HTTP API like any other (ProjectionsScenarioAssertions.cs's own header
+// comment: "ProjectionHost's only reachable dependency on the write side is
+// HTTP"). WaitForCompletion(vitalsSeed) isn't strictly required --
+// ProjectionHost's own reconnect-on-404 loop already tolerates a
+// not-yet-registered event type -- it just avoids a burst of expected
+// startup reconnect noise before VitalsWorkflowB/D's schemas exist.
+var vitalsFlows = builder.AddProject<Projects.Samples_Vitals_Flows>("vitals-flows")
+    .WithReference(eventstore)
+    .WaitFor(eventstore)
+    .WithReference(devIdp)
+    .WaitForCompletion(vitalsSeed)
+    .WithEnvironment("Follow__BaseAddress", eventstore.GetEndpoint("https"))
+    .WithEnvironment("DevIdp__BaseAddress", devIdp.GetEndpoint("http"))
+    .WithEnvironment("ConnectionStrings__PendingTasks", "Data Source=../pending-tasks.db");
+
+var meridianFlows = builder.AddProject<Projects.Samples_Meridian_Flows>("meridian-flows")
+    .WithReference(eventstore)
+    .WaitFor(eventstore)
+    .WithReference(devIdp)
+    .WaitForCompletion(meridianSeed)
+    .WithEnvironment("Follow__BaseAddress", eventstore.GetEndpoint("https"))
+    .WithEnvironment("DevIdp__BaseAddress", devIdp.GetEndpoint("http"))
+    .WithEnvironment("ConnectionStrings__PendingTasks", "Data Source=../pending-tasks.db");
 
 // client-web's own MVVM client (ADR-039), run as a real Vite dev server
 // under Aspire rather than started by hand. App.vue reads hostBaseUrl/
@@ -447,5 +483,7 @@ clientWebMeridianScreening.WithParentRelationship(meridianSeed);
 clientWebMeridianSarFiling.WithParentRelationship(meridianSeed);
 vitalsSimulator.WithParentRelationship(vitalsSeed);
 meridianSimulator.WithParentRelationship(meridianSeed);
+vitalsFlows.WithParentRelationship(vitalsSeed);
+meridianFlows.WithParentRelationship(meridianSeed);
 
 builder.Build().Run();
