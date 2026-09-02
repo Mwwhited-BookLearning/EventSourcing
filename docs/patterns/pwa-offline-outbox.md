@@ -164,3 +164,23 @@ resync.md` (`OfflineOutboxSyncPlaybookTests.cs`) proves both the real,
 automatic detection path (Playwright's `BrowserContext.
 SetOfflineAsync`) and the manual override converge on the same
 enqueue/flush cycle, live in a real browser.
+
+**A rejection is a third outcome, distinct from delivered or still
+pending.** `ClientOutboxEntry.status` always declared a `'Failed'`
+terminal state alongside `'Pending'`/`'Delivered'`, but nothing ever set
+it — a real, previously-undiscovered gap (TODO.md, `docs/changes/
+2026-09-02.md`) found while making App.vue's own demo dispatch panel
+schema-correct for the first time: once the payload was finally valid,
+a caller lacking the right claim still got rejected, and the outbox
+retried that permanent rejection forever, indistinguishable from an
+ordinary transient failure, with no visible signal anything was wrong.
+`PublishResult.permanentFailure` (`publishClient.ts`) is `true` for a
+400/403 — an outcome no amount of retrying will ever change — and
+`useOutboxStore.flush` now moves such an entry to `'Failed'` instead of
+incrementing `attempts` forever; a thrown exception (a real dropped
+connection) is always treated as transient, never `'Failed'`, since only
+a real HTTP response the server actually returned can be a permanent
+rejection. `exportOutboxBundle` already excluded `'Failed'` entries from
+export (its own comment always assumed this state existed); the reference
+app's header now shows a failed count alongside the queued count so a
+permanent rejection is visible rather than silently vanishing.

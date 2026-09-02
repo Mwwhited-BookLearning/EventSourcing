@@ -127,6 +127,51 @@ describe('ClientOutbox (ADR-039)', () => {
     expect(store.pendingFor('instance-a')).toHaveLength(0)
   })
 
+  // Found while fixing App.vue's "Dispatch a command" demo panel (TODO.md):
+  // OutboxEntryStatus already declared a 'Failed' terminal state (and
+  // exportOutboxBundle's own comment already assumed it existed), but
+  // nothing anywhere had ever actually set it -- a genuinely rejected
+  // command (a 400/403 the server will never accept by mere retry) was
+  // stuck retrying forever, indistinguishable from an ordinary transient
+  // failure, with no visible signal anything was even wrong.
+  it('a permanently-failed delivery (permanentFailure: true) moves the entry to Failed, never retried again', async () => {
+    const store = useOutboxStore()
+    await store.enqueue(makeEntry())
+
+    let publishCalls = 0
+    await store.flush(async () => { publishCalls += 1; return { ok: false, permanentFailure: true } })
+
+    expect(store.pendingFor('instance-a')).toHaveLength(0)
+    expect(store.failedFor('instance-a')).toHaveLength(1)
+    expect(store.failedFor('instance-a')[0]?.status).toBe('Failed')
+
+    // A redundant flush trigger (ADR-069) must never re-attempt a Failed
+    // entry -- it's terminal, not merely Pending-with-many-attempts.
+    await store.flush(async () => { publishCalls += 1; return { ok: true } })
+    expect(publishCalls).toBe(1)
+    expect(store.failedFor('instance-a')).toHaveLength(1)
+  })
+
+  it('an ordinary transient failure (permanentFailure absent/false) still retries, never marked Failed', async () => {
+    const store = useOutboxStore()
+    await store.enqueue(makeEntry())
+
+    await store.flush(async () => ({ ok: false, permanentFailure: false }))
+    expect(store.pendingFor('instance-a')).toHaveLength(1)
+    expect(store.pendingFor('instance-a')[0]?.attempts).toBe(1)
+    expect(store.failedFor('instance-a')).toHaveLength(0)
+  })
+
+  it('a thrown exception (a real network drop, not a real HTTP response) is always treated as transient, never Failed', async () => {
+    const store = useOutboxStore()
+    await store.enqueue(makeEntry())
+
+    await store.flush(async () => { throw new Error('network drop') })
+    expect(store.pendingFor('instance-a')).toHaveLength(1)
+    expect(store.pendingFor('instance-a')[0]?.attempts).toBe(1)
+    expect(store.failedFor('instance-a')).toHaveLength(0)
+  })
+
   it('exports pending entries to a verifiable bundle and imports them into a fresh instance (ADR-069 sneakernet transfer)', async () => {
     const source = useOutboxStore()
     await source.enqueue(makeEntry({ commandId: 'cmd-export-1' }))

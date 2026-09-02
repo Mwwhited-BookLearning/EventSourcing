@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { useEventComposer } from './useEventComposer'
+import { useEventComposer, resolveEventTypeFieldCasing } from './useEventComposer'
 
 function jsonResponse(body: unknown): Response {
   return new Response(JSON.stringify(body), { status: 200, headers: { 'content-type': 'application/json' } })
@@ -94,11 +94,20 @@ describe('useEventComposer', () => {
     expect(JSON.parse(init.body).meaning).toBe('reviewed')
   })
 
-  it('reports a failed publish rather than throwing', async () => {
+  it('reports a failed publish rather than throwing, flagged permanentFailure for a 403 (useOutboxStore.flush stops retrying this)', async () => {
     const composer = useEventComposer({ hostBaseUrl: 'https://host', authBaseUrl: 'https://auth', appId: 'trial1' }, { fetchToken })
     global.fetch = vi.fn().mockResolvedValue(new Response('', { status: 403 }))
     const result = await composer.publish('PatientScreened', { SubjectId: 'S-0099' })
     expect(result.ok).toBe(false)
+    expect(result.permanentFailure).toBe(true)
+  })
+
+  it('does not flag a transient server error (5xx) as permanentFailure -- worth retrying', async () => {
+    const composer = useEventComposer({ hostBaseUrl: 'https://host', authBaseUrl: 'https://auth', appId: 'trial1' }, { fetchToken })
+    global.fetch = vi.fn().mockResolvedValue(new Response('', { status: 503 }))
+    const result = await composer.publish('PatientScreened', { SubjectId: 'S-0099' })
+    expect(result.ok).toBe(false)
+    expect(result.permanentFailure).toBeFalsy()
   })
 
   // ADR-066/RFC 9470 -- the actual step-up-then-retry flow: a 401 challenge
@@ -143,5 +152,51 @@ describe('useEventComposer', () => {
     expect(stepUpFetchToken).toHaveBeenCalledWith('https://auth', 'composer-client', 'composer-client-secret', 'events:publish registry:admin', 'urn:test:step-up')
     const secondCallToken = (global.fetch as ReturnType<typeof vi.fn>).mock.calls[1][1].headers.Authorization
     expect(secondCallToken).toBe('Bearer composer-token-stepped-up')
+  })
+})
+
+// TODO.md's own tracked gap, closed this pass: App.vue's "Dispatch a
+// command" demo panel only ever saw a schema's fields GraphQL-camelCased
+// (e.g. `subjectId`), never a real PascalCase schema's own declared name
+// (`SubjectId`) -- a case-sensitive `required` check can never be
+// satisfied by re-publishing camelCased keys. This reuses the Composer's
+// own already-correct schema introspection (registry:admin) purely to
+// recover the real casing, without publishing anything itself.
+describe('resolveEventTypeFieldCasing', () => {
+  const fetchToken = vi.fn().mockResolvedValue('composer-token')
+
+  function schemaResponse(schema: object): Response {
+    return new Response(
+      JSON.stringify({ data: { eventTypes: [{ name: 'PatientScreened', version: 1, entityType: 'Patient', isActive: true }], eventType: { jsonSchema: JSON.stringify(schema), requiredSignature: null } } }),
+      { status: 200, headers: { 'content-type': 'application/json' } },
+    )
+  }
+
+  it('maps a camelCased field name back to the schema\'s own real PascalCase declaration', async () => {
+    // A fresh Response per call, not a single shared instance -- resolving
+    // (listEventTypes then getEventTypeDetail) makes two separate fetch
+    // calls, and Response.json() can only be read once per instance.
+    global.fetch = vi.fn().mockImplementation(async () => schemaResponse({
+      type: 'object',
+      properties: { SubjectId: { type: 'string' }, SiteId: { type: 'string' } },
+      required: ['SubjectId', 'SiteId'],
+    }))
+    const casing = await resolveEventTypeFieldCasing({ hostBaseUrl: 'https://host', authBaseUrl: 'https://auth', appId: 'trial1' }, 'PatientScreened', { fetchToken })
+    expect(casing.get('subjectid')).toBe('SubjectId')
+    expect(casing.get('siteid')).toBe('SiteId')
+  })
+
+  it('returns an empty map (never throws) when the event type is not found', async () => {
+    global.fetch = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ data: { eventTypes: [] } }), { status: 200, headers: { 'content-type': 'application/json' } }),
+    )
+    const casing = await resolveEventTypeFieldCasing({ hostBaseUrl: 'https://host', authBaseUrl: 'https://auth', appId: 'trial1' }, 'NeverRegistered', { fetchToken })
+    expect(casing.size).toBe(0)
+  })
+
+  it('returns an empty map (never throws) when introspection itself fails, so a caller falls back to sending its patch un-recased', async () => {
+    global.fetch = vi.fn().mockRejectedValue(new Error('network drop'))
+    const casing = await resolveEventTypeFieldCasing({ hostBaseUrl: 'https://host', authBaseUrl: 'https://auth', appId: 'trial1' }, 'PatientScreened', { fetchToken })
+    expect(casing.size).toBe(0)
   })
 })

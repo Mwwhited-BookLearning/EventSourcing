@@ -40,7 +40,7 @@ namespace EventStore.IntegrationTests;
 // already fully built by the time this ever runs, so the self-reference
 // hazard never has a chance to occur; BackgroundService.StartAsync/
 // ExecuteAsync are never invoked at all. This exercises the REAL Follow
-// subscription (FollowClient.TailAsync against the Host's own real
+// subscription (FollowClient.ConnectAsync against the Host's own real
 // /follow/{eventType} SSE endpoint, real DPoP-bound client_credentials
 // token acquisition against DevIdp itself) and the real event-dispatch-
 // by-type logic inside ApplyAsync -- not just the fold target methods
@@ -194,7 +194,8 @@ public class RbacProjectionWorkerHttpSqliteTests
         await GrantRoleAsync(appId, actorId, "role-worker-1");
 
         var worker = CreateWorker();
-        var consumed = await worker.CatchUpOnceAsync(appId, "RoleGranted", maxEventsToConsume: 1, TimeSpan.FromSeconds(15), CancellationToken.None);
+        var (outcome, consumed) = await worker.CatchUpOnceAsync(appId, "RoleGranted", maxEventsToConsume: 1, TimeSpan.FromSeconds(15), CancellationToken.None);
+        Assert.AreEqual(CatchUpOutcome.Completed, outcome);
         Assert.AreEqual(1, consumed, "expected the real Follow subscription to deliver exactly the one RoleGranted event just published");
 
         var (token, _) = await AuthScenarioAssertions.GetTokenAsync(_devIdpClient, "colleague-client", "colleague-client-secret", "", appId);
@@ -211,11 +212,12 @@ public class RbacProjectionWorkerHttpSqliteTests
         await GrantRoleAsync(appId, actorId, "role-worker-2");
 
         var worker = CreateWorker();
-        var grantedConsumed = await worker.CatchUpOnceAsync(appId, "RoleGranted", maxEventsToConsume: 1, TimeSpan.FromSeconds(15), CancellationToken.None);
+        var (_, grantedConsumed) = await worker.CatchUpOnceAsync(appId, "RoleGranted", maxEventsToConsume: 1, TimeSpan.FromSeconds(15), CancellationToken.None);
         Assert.AreEqual(1, grantedConsumed);
 
         await RevokeRoleAsync(appId, actorId, "role-worker-2");
-        var revokedConsumed = await worker.CatchUpOnceAsync(appId, "RoleRevoked", maxEventsToConsume: 1, TimeSpan.FromSeconds(15), CancellationToken.None);
+        var (revokedOutcome, revokedConsumed) = await worker.CatchUpOnceAsync(appId, "RoleRevoked", maxEventsToConsume: 1, TimeSpan.FromSeconds(15), CancellationToken.None);
+        Assert.AreEqual(CatchUpOutcome.Completed, revokedOutcome);
         Assert.AreEqual(1, revokedConsumed, "expected the real Follow subscription to deliver exactly the one RoleRevoked event just published");
 
         var (token, _) = await AuthScenarioAssertions.GetTokenAsync(_devIdpClient, "colleague-client", "colleague-client-secret", "", appId);
@@ -232,40 +234,41 @@ public class RbacProjectionWorkerHttpSqliteTests
         // asking for up to 5 with a short idle timeout must return after
         // that one, once the timeout elapses with no second event ever
         // arriving, rather than hanging until maxEventsToConsume is
-        // actually reached. A genuinely NEVER-registered event type
-        // 404s instead of idling (RbacProjectionWorker.TailForeverAsync's
-        // own reconnect loop is what's designed to absorb that -- not
-        // this bounded, single-pass method), so this needs a real,
-        // already-registered type to observe the idle-timeout path at
-        // all -- confirmed by actually running this against a genuinely
-        // unregistered type first and getting a 404, not a graceful zero.
+        // actually reached. A genuinely never-registered event type returns
+        // CatchUpOutcome.UnregisteredEventType immediately instead of idling
+        // (see CatchUpOnceAsyncReturnsUnregisteredEventTypeInsteadOfThrowing
+        // below), so this needs a real, already-registered type to observe
+        // the idle-timeout path at all.
         await GrantPermissionAsync(appId, actorId, "direct:permWorker3");
 
         var worker = CreateWorker();
-        var consumed = await worker.CatchUpOnceAsync(appId, "PermissionGranted", maxEventsToConsume: 5, TimeSpan.FromSeconds(2), CancellationToken.None);
+        var (outcome, consumed) = await worker.CatchUpOnceAsync(appId, "PermissionGranted", maxEventsToConsume: 5, TimeSpan.FromSeconds(2), CancellationToken.None);
+        Assert.AreEqual(CatchUpOutcome.Completed, outcome);
         Assert.AreEqual(1, consumed, "expected the idle timeout to stop consumption after the one real event, not hang waiting for a 5th that never arrives");
     }
 
     // docs/bugs/framework/service/rbac-fold-404-logged-as-error-forever.md --
-    // RbacProjectionWorker.TailForeverAsync used to catch this exact
-    // HttpRequestException with a bare `catch (Exception ex)`, logging it at
-    // Error and busy-retrying forever for an AppId that has simply never had
-    // this reserved event type happen yet -- an expected, recoverable state,
-    // not a lost connection. The fix discriminates on StatusCode ==
-    // NotFound specifically; this confirms the real exception FollowClient
-    // actually throws for a genuinely unregistered type has that shape, not
-    // assumed from the fix's own code.
+    // RbacProjectionWorker.TailForeverAsync used to catch a thrown
+    // HttpRequestException(NotFound) with its own StatusCode-filtered catch
+    // clause for exactly this case, logging it at Warning instead of the
+    // generic catch's Error. TODO.md's own named follow-on (this pass):
+    // FollowClient.ConnectAsync no longer throws for this well-understood,
+    // routine outcome at all (docs/patterns/known-outcomes-are-not-
+    // exceptions.md) -- CatchUpOnceAsync now returns
+    // CatchUpOutcome.UnregisteredEventType directly, zero events consumed,
+    // no exception anywhere in the path. This confirms that real outcome
+    // for a genuinely unregistered type, not assumed from the fix's own
+    // code.
     [TestMethod]
-    public async Task CatchUpOnceAsyncThrowsAnHttpRequestExceptionWithNotFoundStatusForAGenuinelyUnregisteredEventType()
+    public async Task CatchUpOnceAsyncReturnsUnregisteredEventTypeInsteadOfThrowingForAGenuinelyUnregisteredEventType()
     {
         const string appId = "rbac-worker-demo-5";
 
         var worker = CreateWorker();
-        var ex = await Assert.ThrowsExactlyAsync<HttpRequestException>(() =>
-            worker.CatchUpOnceAsync(appId, "RoleGranted", maxEventsToConsume: 1, TimeSpan.FromSeconds(2), CancellationToken.None));
+        var (outcome, consumed) = await worker.CatchUpOnceAsync(appId, "RoleGranted", maxEventsToConsume: 1, TimeSpan.FromSeconds(2), CancellationToken.None);
 
-        Assert.AreEqual(HttpStatusCode.NotFound, ex.StatusCode,
-            "TailForeverAsync's own catch (HttpRequestException ex) when (ex.StatusCode == HttpStatusCode.NotFound) filter depends on this exact shape");
+        Assert.AreEqual(CatchUpOutcome.UnregisteredEventType, outcome);
+        Assert.AreEqual(0, consumed);
     }
 
     private static async Task GrantPermissionAsync(string appId, string actorId, string permission)

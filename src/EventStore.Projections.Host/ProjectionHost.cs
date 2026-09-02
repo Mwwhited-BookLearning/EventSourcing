@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Text.Json.Nodes;
 using EventStore.Projections.Abstractions;
 using Microsoft.EntityFrameworkCore;
@@ -40,6 +41,10 @@ public class ProjectionHost<TReadModel>(
         {
             try
             {
+                // UnregisteredEventType/Forbidden are routine, expected
+                // outcomes (CatchUpOnceAsync's own comment) -- logged there,
+                // not here; only a genuinely unexpected exception reaches
+                // this catch block now.
                 await CatchUpOnceAsync(eventType, maxEventsToConsume: int.MaxValue, idleTimeout: Timeout.InfiniteTimeSpan, ct);
             }
             catch (OperationCanceledException) when (ct.IsCancellationRequested)
@@ -64,22 +69,76 @@ public class ProjectionHost<TReadModel>(
     // "exercise the mechanics directly, with a timeout" pattern this repo's
     // own Follow/Masking tests already use for Follow's inherently-infinite
     // SSE stream.
-    public async Task<int> CatchUpOnceAsync(string eventType, int maxEventsToConsume, TimeSpan idleTimeout, CancellationToken ct)
+    // Returns the outcome alongside the count rather than just the count --
+    // UnregisteredEventType/Forbidden are routine, expected states (a
+    // reserved/late-registered event type with no schema yet for this AppId,
+    // or a RequiredClaims gate this projection's own token doesn't satisfy),
+    // never thrown as exceptions (docs/patterns/known-outcomes-are-not-
+    // exceptions.md) -- logged at Warning here, once, rather than left for
+    // TailForeverAsync's own catch block to misclassify at Error forever, the
+    // exact bug docs/bugs/framework/service/rbac-fold-404-logged-as-error-
+    // forever.md found for RbacProjectionWorker's own identical shape.
+    public async Task<(CatchUpOutcome Outcome, int EventsConsumed)> CatchUpOnceAsync(string eventType, int maxEventsToConsume, TimeSpan idleTimeout, CancellationToken ct)
     {
         // ADR-101: a projection can force its own ChangeKind for this event
         // type (EventStore.Flows.FlowProjection does, for resolver event
         // types) without touching that type's real global registration --
         // short-circuits the lookup entirely when overridden, computed once
         // per catch-up cycle here, same as the un-overridden case always was.
-        var changeKind = projection.OverrideChangeKind(eventType) ?? await followClient.GetChangeKindAsync(eventType, ct);
+        ChangeKind changeKind;
+        if (projection.OverrideChangeKind(eventType) is { } overridden)
+        {
+            changeKind = overridden;
+        }
+        else
+        {
+            switch (await followClient.GetChangeKindAsync(eventType, ct))
+            {
+                case ChangeKindResult.Found(var found):
+                    changeKind = found;
+                    break;
+                case ChangeKindResult.UnregisteredEventType:
+                    logger.LogWarning("Projection {Projection}'s {EventType} has no registered schema yet; will retry", projection.Name, eventType);
+                    return (CatchUpOutcome.UnregisteredEventType, 0);
+                case ChangeKindResult.Forbidden:
+                    return (CatchUpOutcome.Forbidden, 0);
+                default:
+                    throw new UnreachableException();
+            }
+        }
+
         var fromSequenceNumber = await ReadCheckpointAsync(ct);
+
+        IAsyncEnumerable<FollowedEventEnvelope> events;
+        switch (await followClient.ConnectAsync(eventType, options.Value.AppId, fromSequenceNumber, ct))
+        {
+            case FollowConnectResult.Connected(var connectedEvents):
+                events = connectedEvents;
+                break;
+            case FollowConnectResult.UnregisteredEventType:
+                logger.LogWarning("Projection {Projection}'s {EventType} has no registered schema yet; will retry", projection.Name, eventType);
+                return (CatchUpOutcome.UnregisteredEventType, 0);
+            case FollowConnectResult.Forbidden:
+                // A RequiredClaims Read-direction gate this projection's own
+                // token doesn't satisfy -- not a failure that should crash
+                // the whole host or its other, unrelated event-type
+                // connections (FollowClient's own original comment).
+                return (CatchUpOutcome.Forbidden, 0);
+            case FollowConnectResult.ValidationFailed(var detail):
+                // This client's own request shape (mode/fromSequenceNumber)
+                // is always valid -- a genuinely unexpected outcome, a real
+                // bug, not a routine branch.
+                throw new InvalidOperationException($"Follow connect validation failed unexpectedly for {eventType}: {detail}");
+            default:
+                throw new UnreachableException();
+        }
 
         using var idleTimeoutCts = idleTimeout == Timeout.InfiniteTimeSpan ? null : new CancellationTokenSource();
         using var linkedCts = idleTimeoutCts is null ? null : CancellationTokenSource.CreateLinkedTokenSource(ct, idleTimeoutCts.Token);
         var effectiveCt = linkedCts?.Token ?? ct;
 
         var consumed = 0;
-        var enumerator = followClient.TailAsync(eventType, options.Value.AppId, fromSequenceNumber, effectiveCt).GetAsyncEnumerator(effectiveCt);
+        var enumerator = events.GetAsyncEnumerator(effectiveCt);
         try
         {
             while (consumed < maxEventsToConsume)
@@ -105,7 +164,7 @@ public class ProjectionHost<TReadModel>(
         {
             await enumerator.DisposeAsync();
         }
-        return consumed;
+        return (CatchUpOutcome.Completed, consumed);
     }
 
     private async Task<long> ReadCheckpointAsync(CancellationToken ct)

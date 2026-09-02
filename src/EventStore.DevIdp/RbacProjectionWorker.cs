@@ -1,5 +1,4 @@
 using System.Diagnostics;
-using System.Net;
 using EventStore.Domain.Observability;
 using EventStore.Projections.Host;
 using Microsoft.Extensions.DependencyInjection;
@@ -86,35 +85,43 @@ public class RbacProjectionWorker(
             using var activity = DuplexInstrumentation.ActivitySource.StartActivity($"RbacProjectionWorker.Tail {appId}/{eventType}");
             try
             {
-                await CatchUpOnceAsync(appId, eventType, maxEventsToConsume: int.MaxValue, idleTimeout: Timeout.InfiniteTimeSpan, ct);
+                // UnregisteredEventType/Forbidden are routine, expected
+                // outcomes (docs/patterns/known-outcomes-are-not-
+                // exceptions.md) -- CatchUpOnceAsync itself never throws for
+                // either any more (FollowConnectResult, a discriminated
+                // result FollowClient.ConnectAsync now returns instead of
+                // throwing a bare HttpRequestException the way the old
+                // TailAsync did), so this catch block only ever sees a
+                // genuinely unexpected exception now.
+                var (outcome, _) = await CatchUpOnceAsync(appId, eventType, maxEventsToConsume: int.MaxValue, idleTimeout: Timeout.InfiniteTimeSpan, ct);
+                if (outcome == CatchUpOutcome.UnregisteredEventType)
+                {
+                    // A reserved event type (RoleGranted/RoleRevoked/PermissionGranted/
+                    // AppTrustRootRegistered) only gets a registered schema for a given
+                    // AppId once something of that kind has actually happened there --
+                    // e.g. an AppId that's only ever had roles GRANTED, never revoked,
+                    // genuinely has no "RoleRevoked" type registered yet. This used to
+                    // surface as a thrown HttpRequestException(404), which this loop
+                    // treated exactly like a lost connection -- logging at Error and
+                    // busy-retrying every ReconnectDelay forever, for as long as that
+                    // combination simply never happens (a real, continuous source of
+                    // error-level log noise, found by reading this worker's own real
+                    // logs under a live AppHost run, not assumed). Expected and
+                    // recoverable, but still worth a human noticing if it goes on for a
+                    // while -- direct request to log this at Warning, not Debug,
+                    // precisely so it isn't invisible in a real deployment's default
+                    // log level.
+                    DuplexInstrumentation.WorkerTailReconnects.Add(1,
+                        new KeyValuePair<string, object?>("worker", "RbacProjectionWorker"),
+                        new KeyValuePair<string, object?>("app.id", appId),
+                        new KeyValuePair<string, object?>("event.type", eventType),
+                        new KeyValuePair<string, object?>("reason", "not_yet_registered"));
+                    logger.LogWarning("RBAC fold for {AppId}/{EventType} has no registered schema yet; will retry", appId, eventType);
+                }
             }
             catch (OperationCanceledException) when (ct.IsCancellationRequested)
             {
                 break;
-            }
-            catch (HttpRequestException ex) when (ex.StatusCode == HttpStatusCode.NotFound)
-            {
-                // A reserved event type (RoleGranted/RoleRevoked/PermissionGranted/
-                // AppTrustRootRegistered) only gets a registered schema for a given
-                // AppId once something of that kind has actually happened there --
-                // e.g. an AppId that's only ever had roles GRANTED, never revoked,
-                // genuinely has no "RoleRevoked" type registered yet. FollowClient
-                // .TailAsync's own EnsureSuccessStatusCode surfaces that as an
-                // ordinary 404, which this loop used to treat exactly like a lost
-                // connection -- logging at Error and busy-retrying every
-                // ReconnectDelay forever, for as long as that combination simply
-                // never happens (a real, continuous source of error-level log
-                // noise, found by reading this worker's own real logs under a
-                // live AppHost run, not assumed). Expected and recoverable, but
-                // still worth a human noticing if it goes on for a while --
-                // direct request to log this at Warning, not Debug, precisely so
-                // it isn't invisible in a real deployment's default log level.
-                DuplexInstrumentation.WorkerTailReconnects.Add(1,
-                    new KeyValuePair<string, object?>("worker", "RbacProjectionWorker"),
-                    new KeyValuePair<string, object?>("app.id", appId),
-                    new KeyValuePair<string, object?>("event.type", eventType),
-                    new KeyValuePair<string, object?>("reason", "not_yet_registered"));
-                logger.LogWarning("RBAC fold for {AppId}/{EventType} has no registered schema yet; will retry", appId, eventType);
             }
             catch (Exception ex)
             {
@@ -141,19 +148,40 @@ public class RbacProjectionWorker(
     // <TReadModel>.CatchUpOnceAsync's identical shape and reasoning
     // (TODO.md's own suggested fix). Always Replay from 0 -- see this
     // class's own header comment on why there's no persisted checkpoint.
-    // A 404 (the event type not yet registered for this AppId -- no grant
-    // has happened yet) surfaces as an ordinary exception via FollowClient's
-    // EnsureSuccessStatusCode; a caller driving this directly (a test, or
-    // TailForeverAsync's own reconnect loop) sees it as a thrown exception,
-    // not a silent zero-events return.
-    public async Task<int> CatchUpOnceAsync(string appId, string eventType, int maxEventsToConsume, TimeSpan idleTimeout, CancellationToken ct)
+    // A genuinely unregistered event type for this AppId (no grant has
+    // happened yet) is CatchUpOutcome.UnregisteredEventType, not a thrown
+    // exception -- FollowClient.ConnectAsync returns a discriminated
+    // FollowConnectResult instead of throwing (docs/patterns/known-
+    // outcomes-are-not-exceptions.md); a caller driving this directly (a
+    // test, or TailForeverAsync's own reconnect loop) gets that outcome back
+    // as ordinary data, with zero events consumed.
+    public async Task<(CatchUpOutcome Outcome, int EventsConsumed)> CatchUpOnceAsync(string appId, string eventType, int maxEventsToConsume, TimeSpan idleTimeout, CancellationToken ct)
     {
+        IAsyncEnumerable<FollowedEventEnvelope> events;
+        switch (await followClient.ConnectAsync(eventType, appId, fromSequenceNumber: 0, ct))
+        {
+            case FollowConnectResult.Connected(var connectedEvents):
+                events = connectedEvents;
+                break;
+            case FollowConnectResult.UnregisteredEventType:
+                return (CatchUpOutcome.UnregisteredEventType, 0);
+            case FollowConnectResult.Forbidden:
+                return (CatchUpOutcome.Forbidden, 0);
+            case FollowConnectResult.ValidationFailed(var detail):
+                // This worker's own request shape (mode/fromSequenceNumber)
+                // is always valid -- a genuinely unexpected outcome, a real
+                // bug, not a routine branch.
+                throw new InvalidOperationException($"Follow connect validation failed unexpectedly for {appId}/{eventType}: {detail}");
+            default:
+                throw new UnreachableException();
+        }
+
         using var idleTimeoutCts = idleTimeout == Timeout.InfiniteTimeSpan ? null : new CancellationTokenSource();
         using var linkedCts = idleTimeoutCts is null ? null : CancellationTokenSource.CreateLinkedTokenSource(ct, idleTimeoutCts.Token);
         var effectiveCt = linkedCts?.Token ?? ct;
 
         var consumed = 0;
-        var enumerator = followClient.TailAsync(eventType, appId, fromSequenceNumber: 0, effectiveCt).GetAsyncEnumerator(effectiveCt);
+        var enumerator = events.GetAsyncEnumerator(effectiveCt);
         try
         {
             while (consumed < maxEventsToConsume)
@@ -179,7 +207,7 @@ public class RbacProjectionWorker(
         {
             await enumerator.DisposeAsync();
         }
-        return consumed;
+        return (CatchUpOutcome.Completed, consumed);
     }
 
     private async Task ApplyAsync(string appId, string eventType, FollowedEventEnvelope envelope, CancellationToken ct)

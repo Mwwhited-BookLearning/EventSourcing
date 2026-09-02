@@ -135,7 +135,7 @@ export function useEventComposer(config: EventComposerConfig, deps: { fetchToken
   // never a loop: a second stepUpRequired on the retry is a real, distinct
   // failure (e.g. the IdP itself would refuse this acr), reported as-is
   // rather than retried again.
-  async function publish(eventType: string, payload: Record<string, unknown>, meaning?: string): Promise<{ ok: boolean; status?: string; entityId?: string; steppedUp?: boolean }> {
+  async function publish(eventType: string, payload: Record<string, unknown>, meaning?: string): Promise<{ ok: boolean; status?: string; entityId?: string; permanentFailure?: boolean; steppedUp?: boolean }> {
     const entry = {
       commandId: crypto.randomUUID(),
       instanceId: 'composer',
@@ -160,4 +160,42 @@ export function useEventComposer(config: EventComposerConfig, deps: { fetchToken
   }
 
   return { listEventTypes, getEventTypeDetail, publish }
+}
+
+// A read-only sibling to the Composer's own schema introspection, for ANY
+// caller that needs to re-case a payload's own field names to a schema's
+// REAL declared casing before publishing -- not just the Composer UI
+// itself. EventTypeSchemaReader/GraphQL always exposes a schema's fields
+// camelCased regardless of how the schema itself spelled them (confirmed
+// against every schema in this repo, e.g. "CheckId" resolves as `checkId`),
+// so a caller re-publishing data it only ever saw through that camelCased
+// lens (e.g. useEntityViewActions' own cached entity data,
+// App.vue.submitAmountCommand) needs this mapping to satisfy a PascalCase
+// schema's own `required` check, which is an exact, case-sensitive string
+// match -- found while building OfflineOutboxSyncPlaybookTests.cs
+// (TODO.md), where App.vue's generic "Dispatch a command" panel had never
+// once successfully published against a real Vitals/Meridian schema for
+// exactly this reason. Uses composer-client's identity (registry:admin)
+// purely to READ the schema shape -- never to publish; returns an empty
+// map (not a throw) if the event type isn't found or introspection itself
+// fails, so a caller can fall back to sending its patch un-recased rather
+// than blocking the dispatch entirely.
+export async function resolveEventTypeFieldCasing(
+  config: Pick<EventComposerConfig, 'hostBaseUrl' | 'authBaseUrl' | 'appId' | 'composerClientId' | 'composerClientSecret'>,
+  eventType: string,
+  deps: { fetchToken?: FetchTokenFn } = {},
+): Promise<Map<string, string>> {
+  try {
+    const composer = useEventComposer(config, deps)
+    const types = await composer.listEventTypes()
+    const match = types.find((t) => t.name.toLowerCase() === eventType.toLowerCase())
+    if (!match) return new Map()
+    const detail = await composer.getEventTypeDetail(match.name, match.version)
+    return new Map(detail.fields.map((f) => [f.name.toLowerCase(), f.name]))
+  } catch {
+    // Best-effort -- a caller falls back to sending its patch un-recased
+    // rather than blocking the dispatch entirely (e.g. composer-client
+    // unreachable/misconfigured for this deployment).
+    return new Map()
+  }
 }
