@@ -9,13 +9,26 @@ using EventStore.Upcasting;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
 using Microsoft.Extensions.Caching.Memory;
+using Microsoft.Extensions.Options;
 
 namespace EventStore.SchemaRegistry;
 
 public class SchemaRegistryService(
     EventStoreContext db, IFilterableFieldIndexDdlGenerator indexDdlGenerator, IMemoryCache cache, IUpcastExpressionEvaluator upcastEvaluator,
-    ISchemaChangeNotifier? schemaChangeNotifier = null)
+    ISchemaChangeNotifier? schemaChangeNotifier = null, IOptions<SchemaRegistryOriginIdOptions>? originIdOptions = null)
 {
+    // ADR-033 -- which site's own SchemaRegistered notification this is,
+    // real and per-site-configurable (previously always the literal string
+    // "local" regardless of which site actually registered it, a genuine
+    // bug found while building cross-peer schema-registry replication --
+    // made every peer's own notification indistinguishable from every
+    // other's once synced together). RouterWorker compares an incoming
+    // event's own OriginId against this to decide "mine, already applied
+    // directly" vs "elsewhere, needs folding" -- see SiteOriginId below.
+    private readonly string _originId = originIdOptions?.Value.OriginId ?? SchemaRegistryOriginIdOptions.Default;
+
+    public string SiteOriginId => _originId;
+
     // Must equal EventStore.SpecGeneration.OpenApiDocumentBuilder.CacheKey /
     // AsyncApiDocumentBuilder.CacheKey -- duplicated rather than referenced,
     // since SchemaRegistry has no reason to depend on SpecGeneration just for
@@ -179,10 +192,12 @@ public class SchemaRegistryService(
         // the WHOLE retryable unit -- every read/Add/SaveChanges, not just
         // BeginTransaction/Commit -- runs inside CreateExecutionStrategy's own
         // delegate. Same fix as EventAppender.AppendAsync's own comment
-        // explains in full; newVersion is returned out of the delegate since
-        // it's still needed below for the SchemaRegistered audit event.
+        // explains in full; the full definition (not just newVersion) is
+        // returned out of the delegate since AppendSchemaRegisteredAsync's
+        // own cross-peer replication payload (below) now needs every field
+        // on it, not only the version number.
         var strategy = db.Database.CreateExecutionStrategy();
-        var newVersion = await strategy.ExecuteAsync(async () =>
+        var registeredDefinition = await strategy.ExecuteAsync(async () =>
         {
             var priorActiveVersion = await db.EventTypeDefinitions
                 .Where(e => e.AppId == request.AppId && e.Name == normalizedName && e.IsActive)
@@ -243,7 +258,7 @@ public class SchemaRegistryService(
             }
 
             await transaction.CommitAsync(ct);
-            return newVersion;
+            return definition;
         });
 
         cache.Remove(OpenApiDocumentCacheKey); // ADR-002 -- ~60s TTL otherwise; invalidate immediately on registration
@@ -260,21 +275,52 @@ public class SchemaRegistryService(
         if (normalizedName != SchemaRegisteredEventType.Name.ToLowerInvariant())
         {
             await SchemaRegisteredEventType.EnsureRegisteredAsync(this, request.AppId, ct);
-            await AppendSchemaRegisteredAsync(request.AppId, normalizedName, newVersion, user, ct);
+            await AppendSchemaRegisteredAsync(registeredDefinition, user, ct);
         }
 
-        return new RegisterEventTypeResult.Success(newVersion);
+        return new RegisterEventTypeResult.Success(registeredDefinition.Version);
     }
 
-    private async Task AppendSchemaRegisteredAsync(string appId, string registeredEventTypeName, int version, ClaimsPrincipal? user, CancellationToken ct)
+    // ADR-033/ADR-067 -- the full registration, not just {EventTypeName,
+    // Version} (docs/10-open-questions.md row 1, resolved this pass):
+    // widened so a receiving peer's own ApplyReplicatedRegistrationAsync
+    // below can actually fold this into a usable EventTypeDefinition,
+    // instead of only ever recording that a registration happened
+    // somewhere without knowing what it was.
+    private async Task AppendSchemaRegisteredAsync(EventTypeDefinition definition, ClaimsPrincipal? user, CancellationToken ct)
     {
-        var payload = new JsonObject { ["EventTypeName"] = registeredEventTypeName, ["Version"] = version }.ToJsonString();
+        var replicated = new ReplicatedSchemaRegistration(
+            AppId: definition.AppId,
+            EventTypeName: definition.Name,
+            Version: definition.Version,
+            JsonSchema: definition.JsonSchema,
+            RegisteredAt: definition.RegisteredAt,
+            ParentValidationMode: definition.ParentValidationMode.ToString(),
+            ChangeKind: definition.ChangeKind.ToString(),
+            EntityIdField: definition.EntityIdField,
+            EntityType: definition.EntityType,
+            UpcastFromPrevious: definition.UpcastFromPrevious,
+            DowncastToPrevious: definition.DowncastToPrevious,
+            RejectionBehavior: definition.RejectionBehavior.ToString(),
+            RequiredClaims: definition.RequiredClaims.Select(c => new ReplicatedRequiredClaim(c.Direction.ToString(), c.Claim)).ToList(),
+            FilterableFields: definition.FilterableFields.Select(f => new ReplicatedFilterableField(
+                f.JsonPath, f.DataType.ToString(), f.IsIndexed, f.IndexKind.ToString(),
+                f.SearchableConfig is null ? null : new ReplicatedSearchableIndexConfig(
+                    f.SearchableConfig.IndexKind.ToString(), f.SearchableConfig.KeyScope.ToString(),
+                    f.SearchableConfig.BucketGranularities, f.SearchableConfig.Cardinality?.ToString(),
+                    f.SearchableConfig.AcknowledgeLeakageRisk))).ToList(),
+            RequiredSignature: definition.RequiredSignature is null ? null : new ReplicatedRequiredSignature(
+                definition.RequiredSignature.AcrValues, definition.RequiredSignature.MaxAge, definition.RequiredSignature.EnableRfc3161Timestamp),
+            ExpectedResponse: definition.ExpectedResponse is null ? null : new ReplicatedExpectedResponse(
+                definition.ExpectedResponse.ResponseEventType, definition.ExpectedResponse.Within));
+        var payload = JsonSerializer.Serialize(replicated);
+
         var storedEvent = new StoredEvent
         {
             EventId = Guid.NewGuid(),
-            AppId = appId,
-            EntityId = $"{appId}:schema:{registeredEventTypeName}",
-            OriginId = "local", // mirrors EventStore.Inbox.OriginIdOptions.Default, duplicated rather than referenced -- SchemaRegistry has no other reason to depend on Inbox, which itself depends on SchemaRegistry (ADR-033/090)
+            AppId = definition.AppId,
+            EntityId = $"{definition.AppId}:schema:{definition.Name}",
+            OriginId = _originId, // ADR-033 -- this site's own real, configured identity; was always the literal "local" until this pass, a real bug (see this class's own field comment)
             LogicalClock = "",
             EventType = SchemaRegisteredEventType.Name.ToLowerInvariant(),
             SchemaVersion = 1,
@@ -294,6 +340,128 @@ public class SchemaRegistryService(
             ActorId = user is null ? "system" : AccessLogReaderContext.Resolve(user).ReaderActorId,
         };
         await EventAppender.AppendAsync(db, storedEvent, [], ct);
+    }
+
+    // The peer-sync counterpart to RegisterAsync -- applied when a
+    // SchemaRegistered notification event syncs in from ANOTHER site
+    // (RouterWorker's own SchemaRegistrationReplicationResolver gates this:
+    // never called for this site's own locally-originated copy, which
+    // already applied directly via RegisterAsync itself, above). Trusts the
+    // origin site's own already-validated decision completely -- no
+    // re-validation, no auto-incrementing version (the replicated Version
+    // IS the authoritative one), and never appends a second
+    // SchemaRegistered notification, which would gossip-amplify forever in
+    // a full-mesh topology (ADR-033).
+    public async Task ApplyReplicatedRegistrationAsync(ReplicatedSchemaRegistration replicated, CancellationToken ct = default)
+    {
+        var normalizedName = replicated.EventTypeName.ToLowerInvariant();
+
+        // Already applied -- either an earlier delivery of this exact
+        // event (peer-sync's own catch-up/gossip can redeliver), or
+        // genuinely received via more than one peer hop in the mesh. A
+        // no-op, not an error -- the same idempotency RbacProjectionWorker's
+        // own fold target methods (RoleService.AssignRoleAsync etc.)
+        // already establish.
+        var alreadyApplied = await db.EventTypeDefinitions
+            .AnyAsync(e => e.AppId == replicated.AppId && e.Name == normalizedName && e.Version == replicated.Version, ct);
+        if (alreadyApplied)
+            return;
+
+        var strategy = db.Database.CreateExecutionStrategy();
+        await strategy.ExecuteAsync(async () =>
+        {
+            await using var transaction = await db.Database.BeginTransactionAsync(ct);
+
+            // Only supersede the currently-Active version if the replicated
+            // one is genuinely newer -- an out-of-order/late redelivery of
+            // an OLDER version than what's already active here must never
+            // regress IsActive back onto it.
+            var currentActive = await db.EventTypeDefinitions
+                .Where(e => e.AppId == replicated.AppId && e.Name == normalizedName && e.IsActive)
+                .SingleOrDefaultAsync(ct);
+            var isNewest = currentActive is null || currentActive.Version < replicated.Version;
+            if (isNewest && currentActive is not null)
+            {
+                currentActive.IsActive = false;
+                db.EventTypeDefinitions.Update(currentActive);
+            }
+
+            var filterableFields = replicated.FilterableFields.Select(f => new FilterableField
+            {
+                EventTypeAppId = replicated.AppId,
+                EventTypeName = normalizedName,
+                JsonPath = f.JsonPath,
+                DataType = Enum.Parse<FilterableFieldType>(f.DataType),
+                IsIndexed = f.IsIndexed,
+                IndexKind = Enum.Parse<FilterableFieldIndexKind>(f.IndexKind),
+                SearchableConfig = f.SearchableConfig is null ? null : new SearchableIndexConfig
+                {
+                    IndexKind = Enum.Parse<SearchableIndexKind>(f.SearchableConfig.IndexKind),
+                    KeyScope = Enum.Parse<SearchIndexKeyScope>(f.SearchableConfig.KeyScope),
+                    BucketGranularities = f.SearchableConfig.BucketGranularities,
+                    Cardinality = f.SearchableConfig.Cardinality is null ? null : Enum.Parse<FieldCardinality>(f.SearchableConfig.Cardinality),
+                    AcknowledgeLeakageRisk = f.SearchableConfig.AcknowledgeLeakageRisk,
+                },
+            }).ToList();
+
+            var definition = new EventTypeDefinition
+            {
+                AppId = replicated.AppId,
+                Name = normalizedName,
+                Version = replicated.Version,
+                JsonSchema = replicated.JsonSchema,
+                RegisteredAt = replicated.RegisteredAt,
+                IsActive = isNewest,
+                ParentValidationMode = Enum.Parse<ParentValidationMode>(replicated.ParentValidationMode),
+                RequiredClaims = replicated.RequiredClaims.Select(c => new RequiredClaim { Direction = Enum.Parse<ClaimDirection>(c.Direction), Claim = c.Claim }).ToList(),
+                ChangeKind = Enum.Parse<ChangeKind>(replicated.ChangeKind),
+                EntityIdField = replicated.EntityIdField,
+                EntityType = replicated.EntityType,
+                UpcastFromPrevious = replicated.UpcastFromPrevious,
+                DowncastToPrevious = replicated.DowncastToPrevious,
+                RejectionBehavior = Enum.Parse<RejectionBehavior>(replicated.RejectionBehavior),
+                FilterableFields = filterableFields,
+                RequiredSignature = replicated.RequiredSignature is null ? null : new RequiredSignature
+                {
+                    AcrValues = replicated.RequiredSignature.AcrValues,
+                    MaxAge = replicated.RequiredSignature.MaxAge,
+                    EnableRfc3161Timestamp = replicated.RequiredSignature.EnableRfc3161Timestamp,
+                },
+                ExpectedResponse = replicated.ExpectedResponse is null ? null : new ExpectedResponse
+                {
+                    ResponseEventType = replicated.ExpectedResponse.ResponseEventType,
+                    Within = replicated.ExpectedResponse.Within,
+                },
+            };
+            db.EventTypeDefinitions.Add(definition);
+
+            await db.SaveChangesAsync(ct);
+
+            // Same provider-specific index creation RegisterAsync performs
+            // for its own local registration -- a replicated filterable
+            // field must be genuinely queryable identically on this peer,
+            // not merely present as metadata.
+            foreach (var field in filterableFields.Where(f => f.IsIndexed))
+            {
+                var indexName = $"IX_Events_{replicated.AppId}_{normalizedName}_{replicated.Version}_{field.Id}";
+                var ddlStatements = indexDdlGenerator.GenerateCreateIndexDdl("Events", "Payload", field.JsonPath, indexName);
+                var connection = db.Database.GetDbConnection();
+                var dbTransaction = transaction.GetDbTransaction();
+                foreach (var statement in ddlStatements)
+                {
+                    await using var command = connection.CreateCommand();
+                    command.CommandText = statement;
+                    command.Transaction = dbTransaction;
+                    await command.ExecuteNonQueryAsync(ct);
+                }
+            }
+
+            await transaction.CommitAsync(ct);
+        });
+
+        cache.Remove(OpenApiDocumentCacheKey);
+        cache.Remove(AsyncApiDocumentCacheKey);
+        schemaChangeNotifier?.NotifyChanged();
     }
 
     public async Task<EventTypeDefinition?> GetActiveAsync(string appId, string eventTypeName, CancellationToken ct = default) =>

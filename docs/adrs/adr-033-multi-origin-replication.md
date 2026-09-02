@@ -100,11 +100,15 @@ Consequences:
   real GraphQL entity query against two peers a schema wasn't
   registered on correctly errored `"the field ... does not exist on
   the type Query"`, and only succeeded, identically on all three, once
-  the same registration was repeated on each. See
-  `docs/10-open-questions.md` row 1 for the genuinely undecided fork
-  this leaves open (build the missing fold worker, or correct this
-  ADR's own claim permanently down to "the reserved notification event
-  replicates; the registry itself does not").
+  the same registration was repeated on each.
+  **Resolved by `ADR-103`**: a targeted Router reactor
+  (`SchemaRegistrationReplicationResolver`), not a generic
+  `EventTypeDefinition` rearchitecture, now folds a widened
+  `SchemaRegistered` notification into the receiving peer's own
+  registry — live-verified cross-provider the same way `ADR-102`
+  verified ordinary event replication. `docs/10-open-questions.md` row
+  1 is deleted; see `ADR-103` for the full mechanism and why the fold
+  worker was the chosen fix over permanently downgrading this claim.
 - `EntityStoreRow.LastAppliedOriginId` (`docs/data/entity-store.md`)
   finally has a real consumer — diagnosing which site's write most
   recently won a fold, useful when investigating a `ConflictFlag`.

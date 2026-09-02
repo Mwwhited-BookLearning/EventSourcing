@@ -1,0 +1,22 @@
+@startuml
+autonumber
+participant "Test" as test
+participant "FaultInjector" as injector
+participant "Real code under test" as subject
+
+test -> injector: InjectAsync(action, fault, rate)
+alt rate roll succeeds (fault fires)
+  injector --> test: throws `fault`, `action` never runs
+  note right of test
+    Assert the surrounding code
+    (retry, idempotency check,
+    durable checkpoint) still
+    behaves correctly even though
+    the wrapped call never happened.
+  end note
+else rate roll fails (no fault)
+  injector -> subject: await action()
+  subject --> injector: real result
+  injector --> test: real result, unaffected
+end
+@enduml

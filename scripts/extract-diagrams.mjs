@@ -52,7 +52,22 @@ function processFile(mdPath) {
 
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
-    const headingMatch = /^#{1,6}\s+(.+)$/.exec(line);
+    // A trailing "\r" (every PlaybookRecorder-generated playbook doc --
+    // C#'s StringBuilder.AppendLine uses Environment.NewLine, CRLF on
+    // Windows) is stripped for THIS match only, never from `line` itself
+    // (which still flows into `out`/bodyLines unchanged, preserving
+    // whatever EOL convention the source file actually used). A real,
+    // previously-undiscovered bug found while verifying PlaybookRecorder's
+    // own new diagram-reference emission (TODO.md): `$` only special-cases
+    // a bare "\n" as "end of line" per the ECMAScript spec, not "\r", so
+    // `/^#{1,6}\s+(.+)$/` silently failed to match ANY heading in a CRLF
+    // file at all -- lastHeading stayed at its own initial "diagram"
+    // default for every fence in every such file, regardless of that
+    // file's real heading text. Every playbook's own diagram was
+    // extracted under this generic fallback name -- not wrong in what it
+    // produced (still a unique, valid path), but a real defect against
+    // what the heading-derived-slug feature actually promises.
+    const headingMatch = /^#{1,6}\s+(.+)$/.exec(line.replace(/\r$/, ""));
     if (headingMatch) lastHeading = headingMatch[1];
 
     const fenceMatch = /^```(plantuml|puml)\s*$/.exec(line.trim());

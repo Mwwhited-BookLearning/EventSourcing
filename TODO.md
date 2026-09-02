@@ -37,36 +37,6 @@ above: deleted from this file, full narrative in
 here — a genuinely undecided fork, not decided work with only the doing
 left.)
 
-- [ ] **Write `docs/patterns/fault-injection-chaos-engineering.md`** —
-  found while fixing `docs/bugs/framework/service/follow-client-faults-
-  under-default-http-resilience-timeout.md`: `docs/references.md`'s own
-  "Chaos Engineering" row has pointed at this file since `ADR-063`, but
-  the file itself was never actually written — a pre-existing dangling
-  reference, not introduced this pass. Matches `docs/patterns/README.md`'s
-  own catalog-entry convention (general pattern first, cited, then which
-  ADR applies it here — `ADR-063`, via the now-hand-rolled `FaultInjector`
-  rather than `Polly`+`Simmy`, see `docs/libraries/dotnet/polly-simmy.md`).
-
-- [ ] **`scripts/extract-diagrams.mjs`'s inserted diagram image reference
-  doesn't survive an E2E-test-regenerated playbook doc** — found while
-  verifying the Polly/RBAC fixes by actually running
-  `VitalsWorkflowBAdverseEventPlaybookTests`/
-  `MeridianWorkflowBRelyingPartyAccessPlaybookTests` against a real
-  `AppHost`: regenerating a playbook doc (its own header's own encouraged,
-  ordinary action — "re-run `dotnet test tests/EventStore.E2ETests` to
-  regenerate") overwrites the whole file from `PlaybookRecorder`'s own
-  output, silently dropping the `![diagram](...)` line
-  `extract-diagrams.mjs` had inserted above the fenced PlantUML block
-  — the two pipelines aren't coordinated. Worked around this time by
-  re-running `node scripts/extract-diagrams.mjs` after the test run (its
-  own idempotency guard restores the missing line safely); worth a real
-  fix — either teach `PlaybookRecorder.WriteMarkdownAsync` to emit the
-  image reference itself (mirroring the extraction script's own naming
-  convention) so regeneration never drops it, or note in
-  `docs/changes/{date}.md`/this file that re-running
-  `extract-diagrams.mjs` is a required step after any E2E test run that
-  touches a playbook doc, not just after hand-editing a diagram.
-
 - [ ] **App.vue's generic "Dispatch a command" demo panel still can't
   actually work against any real Vitals/Meridian schema in a live
   deployment** — found while building `OfflineOutboxSyncPlaybookTests.cs`

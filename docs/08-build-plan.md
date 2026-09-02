@@ -1555,6 +1555,19 @@ Postgres-backed `eventstore` peer, all gossiping together under a real,
 above already held per-provider; this closes the "never actually run
 cross-provider" gap without changing any of them.
 
+**Additive note (`ADR-103`)**: `ADR-102`'s own live verification found a
+real, distinct gap this ADR closes — `EventTypeDefinition` itself never
+flowed through this item's own peer-sync fold pipeline, only a bare
+`{EventTypeName, Version}` audit notification did. A schema registered
+on one peer was genuinely invisible to every other peer's own registry
+until independently registered there too. Fixed via a targeted Router
+reactor (mirroring `AuthorityDecisionResolver`/`EntityErasureResolver`'s
+own shape, not a generic `EventTypeDefinition` rearchitecture) folding a
+widened `SchemaRegistered` notification on receipt — live-verified
+cross-provider the same way `ADR-102` verified ordinary events,
+including a replicated `FilterableField`'s own provider-specific index
+DDL actually running on the receiving peer.
+
 ## Non-Authoritative Capture
 
 **Scope**: `ADR-035` (`AuthorityStatus`, `authorityDecision` events,
@@ -1615,8 +1628,11 @@ read surface) also doesn't exist — this item's own tests query
 mechanics directly" posture Sharding & Replication's own tests already
 use, consistent with this item's own text that its GraphQL query shapes
 are "illustrative only." A real, found doc inconsistency surfaced while
-verifying which shape to build against: `docs/10-open-questions.md` row 1
-tracks it, not repeated here.
+verifying which shape to build against — resolved in place, this
+paragraph's own text; a dangling `docs/10-open-questions.md` row 1
+citation here (that row's own content has since been reused and
+deleted more than once for unrelated, later findings) was corrected
+while closing this pass's own row 1.
 
 ## GraphQL-Only Query Layer
 
