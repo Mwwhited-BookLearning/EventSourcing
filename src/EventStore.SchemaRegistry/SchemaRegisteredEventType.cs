@@ -22,12 +22,35 @@ public static class SchemaRegisteredEventType
 {
     public const string Name = "SchemaRegistered";
 
+    // Widened (docs/10-open-questions.md row 1, resolved this pass) from
+    // {EventTypeName, Version} only -- ApplyReplicatedRegistrationAsync
+    // needs the FULL registration to actually fold one, not just an audit
+    // note that a registration happened somewhere. `required` is
+    // unchanged, still just the original two -- every other property is
+    // additive, and ParentValidationMode: "Permissive" (this type's own
+    // registration below) already tolerates a payload carrying MORE than
+    // the schema declares, the same "extra keys are fine" latitude this
+    // repo's schemas already use throughout.
     private const string Schema = """
         {
           "type": "object",
           "properties": {
             "EventTypeName": { "type": "string" },
-            "Version": { "type": "number" }
+            "Version": { "type": "number" },
+            "AppId": { "type": "string" },
+            "JsonSchema": { "type": "string" },
+            "RegisteredAt": { "type": "string" },
+            "ParentValidationMode": { "type": "string" },
+            "ChangeKind": { "type": "string" },
+            "EntityIdField": { "type": "string" },
+            "EntityType": { "type": "string" },
+            "UpcastFromPrevious": { "type": "string" },
+            "DowncastToPrevious": { "type": "string" },
+            "RejectionBehavior": { "type": "string" },
+            "RequiredClaims": { "type": "array" },
+            "FilterableFields": { "type": "array" },
+            "RequiredSignature": { "type": "object" },
+            "ExpectedResponse": { "type": "object" }
           },
           "required": ["EventTypeName", "Version"]
         }

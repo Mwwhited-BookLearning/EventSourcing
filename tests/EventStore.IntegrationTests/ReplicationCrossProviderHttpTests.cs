@@ -8,6 +8,7 @@ using EventStore.Inbox;
 using EventStore.Persistence;
 using EventStore.Persistence.Migrations.Sqlite;
 using EventStore.Replication;
+using EventStore.SchemaRegistry;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
@@ -114,6 +115,18 @@ public class ReplicationCrossProviderHttpTests
                     o.RequireHttpsMetadata = false;
                 });
                 services.Configure<OriginIdOptions>(o => o.OriginId = "sqlite-site");
+                // SchemaRegistryOriginIdOptions is a SEPARATE type from
+                // OriginIdOptions (EventStore.SchemaRegistry can't reference
+                // EventStore.Inbox, ADR-033/090) -- both bind to the same
+                // "OriginId" config section in a real deployment, but this
+                // test's own direct in-code override above only ever affects
+                // the ONE type it names, so schema-registry replication
+                // (AnEventPublishedAtTheSqliteSiteReplicatesTheSchemaTooSchema
+                // RegisteredNeverIndependentlyOnSqlServer, below) needs its
+                // own explicit override too, or both sites would collide on
+                // the shared "local" default and the reactor's OriginId gate
+                // would never fire.
+                services.Configure<SchemaRegistryOriginIdOptions>(o => o.OriginId = "sqlite-site");
             });
         });
         _sqliteClient = _sqliteFactory.CreateClient();
@@ -129,6 +142,7 @@ public class ReplicationCrossProviderHttpTests
                     o.RequireHttpsMetadata = false;
                 });
                 services.Configure<OriginIdOptions>(o => o.OriginId = "sqlserver-site");
+                services.Configure<SchemaRegistryOriginIdOptions>(o => o.OriginId = "sqlserver-site");
             });
         });
         _sqlServerClient = _sqlServerFactory.CreateClient();
@@ -202,5 +216,95 @@ public class ReplicationCrossProviderHttpTests
         await using var sqlServerDb = new EventStoreContext(sqlServerOptions, new SqlServerJsonPathTranslator());
         var replicated = await sqlServerDb.Events.AsNoTracking().SingleAsync(e => e.EventId == published);
         Assert.AreEqual("sqlite-site", replicated.OriginId, "the SQL Server site's own copy must preserve the ORIGINATING site's OriginId, never overwrite it with its own");
+    }
+
+    // docs/10-open-questions.md row 1, resolved this pass: a schema
+    // registered ONLY at the SQLite site must become genuinely queryable
+    // at the real SQL Server site too, having never been independently
+    // registered there -- the exact gap ADR-102's own live cross-provider
+    // verification found (a real GraphQL "field does not exist" error
+    // against a peer nobody had registered the schema on directly).
+    // WidgetCreated is a schema no other test in this file touches, with a
+    // real indexed FilterableField, so this proves BOTH the definition
+    // itself AND its provider-specific index DDL replicate, not just the
+    // bare JsonSchema text.
+    [TestMethod]
+    public async Task AnEventTypeRegisteredOnlyAtTheSqliteSiteBecomesQueryableAtTheRealSqlServerSiteWithNoIndependentRegistrationThere()
+    {
+        var (token, key) = await AuthScenarioAssertions.GetTokenAsync(_devIdpClient, "peer-sync-client", "peer-sync-client-secret", "peer:sync events:publish registry:admin");
+        const string appId = "schema-replication-demo";
+
+        // Confirmed absent at the SQL Server site BEFORE replication --
+        // not "maybe it happened to be there some other way."
+        using var precheckRequest = new HttpRequestMessage(HttpMethod.Get, $"/registry/WidgetCreated?appId={appId}");
+        AuthScenarioAssertions.AttachAuth(precheckRequest, _sqlServerClient, token, key);
+        var precheckResponse = await _sqlServerClient.SendAsync(precheckRequest);
+        Assert.AreEqual(HttpStatusCode.NotFound, precheckResponse.StatusCode);
+
+        using var registerRequest = new HttpRequestMessage(HttpMethod.Put, "/registry/WidgetCreated")
+        {
+            Content = JsonContent.Create(new
+            {
+                appId,
+                jsonSchema = """{ "type": "object", "properties": { "WidgetId": { "type": "string" }, "Category": { "type": "string" } }, "required": ["WidgetId"] }""",
+                filterableFields = new[] { new { jsonPath = "$.Category", dataType = "String", isIndexed = true } },
+                changeKind = "Full", entityIdField = "$.WidgetId",
+            }),
+        };
+        AuthScenarioAssertions.AttachAuth(registerRequest, _sqliteClient, token, key);
+        var registerResponse = await _sqliteClient.SendAsync(registerRequest);
+        Assert.AreEqual(HttpStatusCode.Created, registerResponse.StatusCode, await registerResponse.Content.ReadAsStringAsync());
+
+        // Sweeps and pushes the WHOLE Sqlite event log, same as the sibling
+        // test above -- the SchemaRegistered notification RegisterAsync just
+        // appended is an ordinary row in it, nothing special-cased here.
+        var httpClientFactory = new FixedHttpClientFactory(new Dictionary<string, HttpClient> { ["PeerSync"] = _sqlServerClient, ["DevIdp"] = _devIdpClient });
+        var peerSyncClientOptions = Options.Create(new PeerSyncClientOptions { ClientId = "peer-sync-client", ClientSecret = "peer-sync-client-secret" });
+        var peerSyncClient = new PeerSyncClient(httpClientFactory, peerSyncClientOptions);
+
+        var sqliteOptions = new DbContextOptionsBuilder<EventStoreContext>().UseSqlite($"Data Source={_dbPathSqlite}", x => x.MigrationsAssembly("EventStore.Persistence.Migrations.Sqlite")).Options;
+        await using var sqliteDb = new EventStoreContext(sqliteOptions, new SqliteJsonPathTranslator());
+        var events = await sqliteDb.Events.AsNoTracking().OrderBy(e => e.SequenceNumber).ToListAsync();
+        var pushRequest = new PeerSyncPushRequest("sqlite-site", events.Select(PeerSyncWorker.ToPayload).ToList(), []);
+        var pushResponse = await peerSyncClient.PushAsync("", pushRequest, CancellationToken.None);
+        Assert.AreEqual(events[^1].SequenceNumber, pushResponse.AckedThroughSequenceNumber);
+
+        // The push only appends (Status: "received") -- RouterWorker (a
+        // real BackgroundService in this WebApplicationFactory, per this
+        // class's own ClassInit comment) is what actually folds it into
+        // EventTypeDefinitions via SchemaRegistrationReplicationResolver,
+        // on its own 200ms poll cycle. Polled, not a fixed sleep -- the
+        // same "exercise the mechanics directly" posture every other
+        // async-completion assertion in this suite already uses.
+        JsonElement schemaBody = default;
+        var deadline = DateTime.UtcNow.AddSeconds(15);
+        while (DateTime.UtcNow < deadline)
+        {
+            using var pollRequest = new HttpRequestMessage(HttpMethod.Get, $"/registry/WidgetCreated?appId={appId}");
+            AuthScenarioAssertions.AttachAuth(pollRequest, _sqlServerClient, token, key);
+            var pollResponse = await _sqlServerClient.SendAsync(pollRequest);
+            if (pollResponse.StatusCode == HttpStatusCode.OK)
+            {
+                schemaBody = await pollResponse.Content.ReadFromJsonAsync<JsonElement>();
+                break;
+            }
+            await Task.Delay(TimeSpan.FromMilliseconds(200));
+        }
+        Assert.AreNotEqual(default, schemaBody, "WidgetCreated never became queryable at the SQL Server site within the timeout");
+        Assert.AreEqual("string", schemaBody.GetProperty("properties").GetProperty("WidgetId").GetProperty("type").GetString());
+
+        // Proves the replicated FilterableField's own provider-specific
+        // index DDL actually ran on SQL Server too, not just the bare
+        // EventTypeDefinition row -- a real, queryable, indexed field on
+        // the peer that never independently registered it.
+        var sqlServerOptions = new DbContextOptionsBuilder<EventStoreContext>().UseSqlServer(_sqlServerConnectionString, x => x.MigrationsAssembly("EventStore.Persistence.Migrations.SqlServer")).Options;
+        await using var sqlServerDb = new EventStoreContext(sqlServerOptions, new SqlServerJsonPathTranslator());
+        var replicatedDefinition = await sqlServerDb.EventTypeDefinitions
+            .Include(e => e.FilterableFields)
+            .AsNoTracking()
+            .SingleAsync(e => e.AppId == appId && e.Name == "widgetcreated" && e.IsActive);
+        Assert.AreEqual(1, replicatedDefinition.FilterableFields.Count);
+        Assert.IsTrue(replicatedDefinition.FilterableFields[0].IsIndexed);
+        Assert.AreEqual("$.Category", replicatedDefinition.FilterableFields[0].JsonPath);
     }
 }

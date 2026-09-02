@@ -196,6 +196,32 @@ public class RouterWorker(IServiceScopeFactory scopeFactory, ILogger<RouterWorke
             return;
         }
 
+        // ADR-033/docs/10-open-questions.md row 1 -- a SchemaRegistered
+        // notification that arrived via peer-sync from ANOTHER site, ahead
+        // of the ADR-038 rollback gate just below, not after it (found only
+        // by actually running this cross-peer, not assumed): that gate
+        // treats "this deployment has never seen SchemaRegistered itself
+        // registered for this AppId" as "this deployment predates the
+        // shape, defer forever" -- exactly true, and permanent, for a peer
+        // that only ever RECEIVES replicated schemas and never independently
+        // calls RegisterAsync for that AppId at all. SchemaRegistrationReplication
+        // Resolver reads the raw payload directly (the same "no shared
+        // schema walker" posture AuthorityDecisionResolver/EntityErasureResolver
+        // already use), so it needs no schema resolution here to run
+        // correctly. Marks this event applied and returns immediately,
+        // deliberately skipping this notification's own otherwise-generic
+        // "schema:{name}" entity fold below -- cosmetic lineage bookkeeping,
+        // not something any real caller in this codebase queries, and not
+        // worth re-deriving the bootstrap-registration order this gate
+        // exists to protect just to preserve it for a replicated copy.
+        if (storedEvent.EventType == "schemaregistered" && storedEvent.OriginId != schemaRegistry.SiteOriginId)
+        {
+            await SchemaRegistrationReplicationResolver.ProcessAsync(schemaRegistry, storedEvent, ct);
+            storedEvent.SchemaStatus = "conformant";
+            storedEvent.Status = "applied";
+            return;
+        }
+
         // ADR-021 -- identity resolution is a per-event-TYPE decision, stable
         // across versions, computed against the ACTIVE definition -- hoisted
         // ahead of the schema-status check below, since "Compatibility &
