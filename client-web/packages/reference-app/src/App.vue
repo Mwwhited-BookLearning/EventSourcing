@@ -2,7 +2,7 @@
 import { computed, h, onMounted, onUnmounted, provide, ref } from 'vue'
 import { RouterLink, useRoute, useRouter } from 'vue-router'
 import { NButton, NConfigProvider, NLayout, NLayoutContent, NLayoutHeader, NLayoutSider, NMenu, type MenuOption } from 'naive-ui'
-import { useEntityViewActions, useOnlineStatus, useOutboxStore, useEntityCacheStore, useViewDefinitionsStore, useConnectivityStore, tokens, themeOverrides } from '@eventstore/mvvm-client'
+import { useEntityViewActions, useOnlineStatus, useOutboxStore, useEntityCacheStore, useViewDefinitionsStore, useConnectivityStore, resolveEventTypeFieldCasing, tokens, themeOverrides } from '@eventstore/mvvm-client'
 import { config, queueDomain } from './appConfig'
 import { APP_STATE_KEY } from './appState'
 
@@ -65,30 +65,57 @@ onMounted(async () => {
 onUnmounted(() => viewActions.stopSubscription())
 
 // Real, previously-undiscovered bug, found only by actually clicking "Set
-// Amount" against a live schema for the first time (this pass's own
-// Playwright playbook is the first thing that ever has): every currently-
+// Amount" against a live schema for the first time (a real Playwright
+// playbook was the first thing that ever had): every currently-
 // orchestrated instance's schema (Vitals' PatientScreened, Meridian's
 // ApplicantIdentity, ...) has real `required` fields ("SubjectId"/
 // "SiteId"/"EligibilityStatus", ...) that a bare `{ Amount }` patch never
 // carried -- this generic, domain-agnostic demo panel had never once
 // successfully published against any of them; the server's own JSON
 // Schema validation silently rejected it (400), leaving the outbox entry
-// permanently Pending, retried forever. Fixed by merging the currently
-// cached entity's own already-known fields (guaranteed present --
-// `applyFollowedEvent` populates the cache before `currentEntityId` is
-// ever set to that entity, useEntityViewActions.subscribeToEntity) in
-// underneath the new `Amount` value, satisfying whichever schema's
-// `required` list regardless of domain, the same "Full" changeKind
-// contract every other real publisher in this codebase already sends a
-// complete snapshot for.
+// permanently Pending, retried forever.
+//
+// Two fixes, both TODO.md-tracked gaps closed this pass:
+// 1. Merge the currently cached entity's own already-known fields
+//    (guaranteed present -- `applyFollowedEvent` populates the cache
+//    before `currentEntityId` is ever set to that entity,
+//    useEntityViewActions.subscribeToEntity) in underneath the new
+//    `Amount` value, satisfying whichever schema's `required` list
+//    regardless of domain -- the same "Full" changeKind contract every
+//    other real publisher in this codebase already sends a complete
+//    snapshot for.
+// 2. Re-case those merged keys to the schema's own REAL declared
+//    property names first (`resolveEventTypeFieldCasing`, reusing the
+//    Event Composer's own already-correct schema introspection,
+//    `useEventComposer.ts`) -- the cached data only ever came through
+//    GraphQL's own camelCased field names, but a `required` check is an
+//    exact, case-sensitive string match against every real schema in
+//    this repo's own PascalCase convention (`SubjectId`, not
+//    `subjectId`). Fetched once per instance and cached in
+//    `fieldCasing`, not on every dispatch -- a schema's shape doesn't
+//    change between clicks.
+const fieldCasing = ref<Map<string, string> | null>(null)
+async function ensureFieldCasing(): Promise<Map<string, string>> {
+  fieldCasing.value ??= await resolveEventTypeFieldCasing(config, config.eventType)
+  return fieldCasing.value
+}
+
 async function submitAmountCommand(): Promise<void> {
   if (!currentEntityId.value) return
   const cached = entityCache.get(config.instanceId, currentEntityId.value)
-  await viewActions.dispatchCommand(currentEntityId.value, { ...(cached?.data ?? {}), Amount: Number(amountInput.value) })
+  const casing = await ensureFieldCasing()
+  const recased: Record<string, unknown> = {}
+  for (const [key, value] of Object.entries(cached?.data ?? {})) recased[casing.get(key.toLowerCase()) ?? key] = value
+  await viewActions.dispatchCommand(currentEntityId.value, { ...recased, Amount: Number(amountInput.value) })
   statusMessage.value = effectivelyOnline.value ? 'Command dispatched.' : 'Offline -- queued in the local outbox.'
 }
 
 const pendingCount = computed(() => outbox.pendingFor(config.instanceId).length)
+// A permanently-failed command (a 400/403 the server will never accept by
+// mere retry, useOutboxStore.flush's own new distinction) is terminal, not
+// pending -- shown as its own count rather than silently vanishing from
+// pendingCount with no visible signal anything ever went wrong.
+const failedCount = computed(() => outbox.failedFor(config.instanceId).length)
 
 provide(APP_STATE_KEY, { config, viewActions, currentEntityId, amountInput, statusMessage, submitAmountCommand, selectFromBrowser })
 
@@ -155,6 +182,7 @@ function onSiderUpdateCollapsed(value: boolean): void {
             <code>{{ config.appId }}:{{ config.entityType }}</code> —
             <strong data-testid="connectivity-status">{{ effectivelyOnline ? 'online' : 'offline' }}</strong>
             — {{ pendingCount }} command(s) queued
+            <span v-if="failedCount > 0" data-testid="failed-count"> — {{ failedCount }} failed (won't retry)</span>
             <n-button size="small" data-testid="force-offline" :disabled="!effectivelyOnline" @click="forceOfflineForDemo">Go Offline</n-button>
             <n-button size="small" data-testid="force-online" :disabled="effectivelyOnline" @click="forceOnlineForDemo">Go Online</n-button>
           </p>

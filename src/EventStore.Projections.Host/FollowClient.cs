@@ -43,8 +43,18 @@ public class FollowClient(IHttpClientFactory httpClientFactory, IOptions<FollowC
     // paths for "starting fresh" vs. "resuming"). A fresh token is acquired
     // per call -- a long-lived SSE connection's bearer token is only ever
     // checked at the initial request, so no mid-stream refresh is needed.
-    public async IAsyncEnumerable<FollowedEventEnvelope> TailAsync(
-        string eventTypeName, string appId, long fromSequenceNumber, [EnumeratorCancellation] CancellationToken ct)
+    //
+    // Formerly TailAsync, an `async IAsyncEnumerable` that called
+    // EnsureSuccessStatusCode() and let UnregisteredEventType/Forbidden
+    // surface as a thrown HttpRequestException the moment they crossed the
+    // HTTP boundary -- docs/patterns/known-outcomes-are-not-exceptions.md's
+    // own named follow-on. An iterator method can't also return a non-
+    // enumerable Task<T> for its own connect-time outcome, so this is now a
+    // plain async Task<FollowConnectResult>: the initial request/response
+    // classification happens here, and ReadEventsAsync below (a private
+    // iterator) only ever runs once a Connected outcome is already known.
+    public async Task<FollowConnectResult> ConnectAsync(
+        string eventTypeName, string appId, long fromSequenceNumber, CancellationToken ct)
     {
         var keyPair = DpopKeyPair.Generate();
         var token = await GetAccessTokenAsync(keyPair, ct);
@@ -63,33 +73,58 @@ public class FollowClient(IHttpClientFactory httpClientFactory, IOptions<FollowC
         };
         AttachAuth(request, followClient, keyPair, token);
 
-        using var response = await followClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, ct);
-        // A RequiredClaims Read-direction gate this client's own token doesn't
-        // satisfy (ADR-008/050) means this event type is simply never visible to
-        // this projection -- not a failure that should crash the whole
-        // ProjectionHost or its other, unrelated event-type connections.
+        var response = await followClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, ct);
         if (response.StatusCode == HttpStatusCode.Forbidden)
-            yield break;
-        response.EnsureSuccessStatusCode();
-
-        await using var stream = await response.Content.ReadAsStreamAsync(ct);
-        using var reader = new StreamReader(stream);
-        while (!ct.IsCancellationRequested)
         {
-            var line = await reader.ReadLineAsync(ct);
-            if (line is null)
-                yield break; // stream ended (connection closed) -- ProjectionHost's own loop reconnects
-            if (!line.StartsWith("data: ", StringComparison.Ordinal))
-                continue; // blank separator lines between SSE events
+            response.Dispose();
+            return new FollowConnectResult.Forbidden();
+        }
+        if (response.StatusCode == HttpStatusCode.NotFound)
+        {
+            response.Dispose();
+            return new FollowConnectResult.UnregisteredEventType();
+        }
+        if (!response.IsSuccessStatusCode)
+        {
+            var detail = await response.Content.ReadAsStringAsync(ct);
+            response.Dispose();
+            return new FollowConnectResult.ValidationFailed(detail);
+        }
 
-            yield return JsonSerializer.Deserialize<FollowedEventEnvelope>(line["data: ".Length..], EnvelopeJsonOptions)!;
+        // response is disposed by ReadEventsAsync once the stream is fully
+        // consumed/cancelled (an `await using` inside that iterator), not
+        // here -- it must stay open past this method's own return.
+        return new FollowConnectResult.Connected(ReadEventsAsync(response, ct));
+    }
+
+    private static async IAsyncEnumerable<FollowedEventEnvelope> ReadEventsAsync(
+        HttpResponseMessage response, [EnumeratorCancellation] CancellationToken ct)
+    {
+        using (response)
+        {
+            await using var stream = await response.Content.ReadAsStreamAsync(ct);
+            using var reader = new StreamReader(stream);
+            while (!ct.IsCancellationRequested)
+            {
+                var line = await reader.ReadLineAsync(ct);
+                if (line is null)
+                    yield break; // stream ended (connection closed) -- the caller's own loop reconnects
+                if (!line.StartsWith("data: ", StringComparison.Ordinal))
+                    continue; // blank separator lines between SSE events
+
+                yield return JsonSerializer.Deserialize<FollowedEventEnvelope>(line["data: ".Length..], EnvelopeJsonOptions)!;
+            }
         }
     }
 
     // ADR-016 -- ChangeKind isn't carried on the per-event SSE envelope itself
     // (it's a property of the event TYPE's registration, not the event), so
-    // ProjectionHost fetches it separately via the same HTTP-only path.
-    public async Task<ChangeKind> GetChangeKindAsync(string eventTypeName, CancellationToken ct)
+    // ProjectionHost fetches it separately via the same HTTP-only path. Same
+    // discriminated-result treatment as ConnectAsync above, for the same
+    // reason -- /registry/{eventType}/change-kind is gated by the same
+    // "events:follow" policy Follow itself uses, so its own 404/403 are the
+    // same class of routine, well-understood outcome.
+    public async Task<ChangeKindResult> GetChangeKindAsync(string eventTypeName, CancellationToken ct)
     {
         var keyPair = DpopKeyPair.Generate();
         var token = await GetAccessTokenAsync(keyPair, ct);
@@ -99,9 +134,13 @@ public class FollowClient(IHttpClientFactory httpClientFactory, IOptions<FollowC
         AttachAuth(request, followClient, keyPair, token);
 
         using var response = await followClient.SendAsync(request, ct);
+        if (response.StatusCode == HttpStatusCode.Forbidden)
+            return new ChangeKindResult.Forbidden();
+        if (response.StatusCode == HttpStatusCode.NotFound)
+            return new ChangeKindResult.UnregisteredEventType();
         response.EnsureSuccessStatusCode();
         var body = JsonNode.Parse(await response.Content.ReadAsStringAsync(ct))!;
-        return Enum.Parse<ChangeKind>(body["changeKind"]!.GetValue<string>());
+        return new ChangeKindResult.Found(Enum.Parse<ChangeKind>(body["changeKind"]!.GetValue<string>()));
     }
 
     private static void AttachAuth(HttpRequestMessage request, HttpClient followClient, DpopKeyPair keyPair, string token)

@@ -37,63 +37,24 @@ above: deleted from this file, full narrative in
 here — a genuinely undecided fork, not decided work with only the doing
 left.)
 
-- [ ] **App.vue's generic "Dispatch a command" demo panel still can't
-  actually work against any real Vitals/Meridian schema in a live
-  deployment** — found while building `OfflineOutboxSyncPlaybookTests.cs`
-  (`docs/changes/2026-09-01.md`), worked around for that test's own
-  purposes but not fixed at the product level. Two compounding, separate
-  reasons:
-  - `submitAmountCommand` (`App.vue`) now merges the currently cached
-    entity's own known fields into the patch (this session's fix), but
-    the client only ever sees GraphQL-camelCased field names
-    (`EventTypeSchemaReader`'s own conversion), never a schema's
-    original declared property casing — every real Vitals/Meridian
-    schema uses PascalCase (`SubjectId`, `SiteId`, ...), so a merged
-    patch's `required`-field names never match what JSON Schema
-    validation actually checks against. No client-side mechanism exists
-    today to recover a schema's original casing from a registered
-    `EventTypeDefinition`.
-  - No DevIdp-seeded HTTP client anywhere holds the specific
-    `RequiredClaims` any real business event type demands (e.g.
-    `PatientScreened`'s `patient:enroll`, `VitalsWorkflowA.cs`) — those
-    events have only ever been created in-process by
-    `Samples.Vitals.Seed`/`Simulator` calling `PublishService` directly,
-    bypassing the HTTP auth layer's claim check entirely. No real
-    browser session can dispatch one today, regardless of payload
-    correctness.
-
-  `OfflineOutboxSyncPlaybookTests.cs` sidesteps both by registering its
-  own throwaway, lowercase-field, no-`RequiredClaims` schema and a new
-  `demo-dispatcher-client` (`DevIdpSeeder.cs`) — proves the *outbox*
-  mechanism for real, but the demo panel itself remains non-functional
-  against any of this repo's actual proving-ground schemas. Fixing this
-  for real needs either: a registry endpoint the client can consult for
-  a schema's original field casing (closing the first gap), plus a
-  decision on whether a generic demo identity should be granted a
-  narrow, explicitly-labeled "demo:dispatch" claim per domain (closing
-  the second) — or, alternatively, retiring the generic panel in favor
-  of a per-domain demo action that already speaks the right shape/claim
-  (matching how Vitals/Meridian's own Queue screens already work).
-
-- [ ] **`FollowClient.TailAsync`/`GetChangeKindAsync` should return their
-  own discriminated result, not throw for a known outcome** —
-  `docs/patterns/known-outcomes-are-not-exceptions.md`'s own named
-  follow-on, not done as part of the bug it was found alongside
-  (`docs/bugs/framework/service/rbac-fold-404-logged-as-error-forever.md`,
-  scoped to `RbacProjectionWorker`'s own `catch` clause only). The
-  server side already gets this right — `EventStore.Follow.Api`'s
-  `FollowResult` (`Connected`/`UnregisteredEventType`/`Forbidden`/
-  `ValidationFailed`) is switched on directly, never thrown — but
-  `FollowClient.TailAsync` calls `EnsureSuccessStatusCode()`, converting
-  that same well-understood result back into a thrown
-  `HttpRequestException` the moment it crosses the HTTP boundary, which
-  is why `RbacProjectionWorker` needed its own `catch (HttpRequestException
-  ex) when (ex.StatusCode == HttpStatusCode.NotFound)` filter in the
-  first place. Mirroring `FollowResult` on the client side (a
-  `FollowClientResult`-shaped return instead of a thrown exception)
-  would give every caller — `RbacProjectionWorker`, `ProjectionHost`,
-  `Samples.Orders.Projections` — the distinction for free, rather than
-  each one needing to know and filter on the right `HttpStatusCode`
-  itself. Worth doing the next time `FollowClient` is touched for an
-  unrelated reason, not urgent enough to justify touching all three
-  callers on its own.
+- [ ] **A generic demo identity still can't publish a real Vitals/Meridian
+  business event over HTTP** — the narrower, still-genuinely-open half of
+  the "Dispatch a command" demo-panel gap (`docs/changes/2026-09-02.md`
+  closed the OTHER half, the field-casing gap, for real). No DevIdp-seeded
+  HTTP client anywhere holds the specific `RequiredClaims` any real
+  business event type demands (e.g. `PatientScreened`'s `patient:enroll`,
+  `VitalsWorkflowA.cs`) — those events have only ever been created
+  in-process by `Samples.Vitals.Seed`/`Simulator` calling `PublishService`
+  directly, bypassing the HTTP auth layer's claim check entirely. This is
+  a real security-policy decision, not a technical gap: either (a) grant a
+  narrow, explicitly-labeled "demo:dispatch"-style claim per domain to a
+  shared demo identity (weakens this project's own "one identity per real
+  capability need" convention, `DevIdpSeeder.cs`), or (b) retire the
+  generic cross-domain panel in favor of a per-domain demo action that
+  already speaks the right claim (matching how Vitals/Meridian's own Queue
+  screens already work) — deliberately left undecided here rather than
+  picked unilaterally. In the meantime the *symptom* is fixed: a rejection
+  now marks the outbox entry `Failed` (terminal, visible in the UI) instead
+  of retrying forever silently, with no signal anything is wrong
+  (`useOutboxStore.flush`'s new `permanentFailure` handling,
+  `docs/changes/2026-09-02.md`).

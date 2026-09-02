@@ -232,7 +232,7 @@ internal static class ProjectionsScenarioAssertions
 
         var secondRunConsumedCount = 0;
         foreach (var eventType in projection.EventTypes)
-            secondRunConsumedCount += await host.CatchUpOnceAsync(eventType, int.MaxValue, CatchUpIdleTimeout, CancellationToken.None);
+            secondRunConsumedCount += (await host.CatchUpOnceAsync(eventType, int.MaxValue, CatchUpIdleTimeout, CancellationToken.None)).EventsConsumed;
 
         // Exactly one new event (OrderShipped) is delivered on resume -- OrderPlaced,
         // already reflected via the checkpoint, is not redelivered.

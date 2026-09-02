@@ -3,7 +3,7 @@ import type { ClientOutboxEntry } from '../types'
 import * as clientDb from '../db/indexedDb'
 import { exportOutboxBundle, importOutboxBundle } from '../outbox/exportImport'
 
-export type PublishFn = (entry: ClientOutboxEntry) => Promise<{ ok: boolean }>
+export type PublishFn = (entry: ClientOutboxEntry) => Promise<{ ok: boolean; permanentFailure?: boolean }>
 export type IngestSampleFn = (entry: ClientOutboxEntry) => Promise<{ ok: boolean }>
 
 // ADR-069's "opportunistic" category, armed: registering the SAME sync
@@ -55,6 +55,11 @@ export const useOutboxStore = defineStore('outbox', {
   }),
   getters: {
     pendingFor: (state) => (instanceId: string) => state.entries.filter((e) => e.instanceId === instanceId && e.status === 'Pending'),
+    // A permanently-failed entry (flush's own new `permanentFailure`
+    // handling below) is terminal, not pending -- it must still be
+    // visible somewhere, or it would simply vanish from the UI's queued
+    // count with no signal anything ever went wrong.
+    failedFor: (state) => (instanceId: string) => state.entries.filter((e) => e.instanceId === instanceId && e.status === 'Failed'),
   },
   actions: {
     async loadFromDb(instanceId: string) {
@@ -107,15 +112,28 @@ export const useOutboxStore = defineStore('outbox', {
         if (entry.deliveryKind === 'streamingSample' && !ingestSample) continue
 
         let delivered = false
+        let permanentFailure = false
         try {
           const result = entry.deliveryKind === 'streamingSample' ? await ingestSample!(entry) : await publish(entry)
           delivered = result.ok
+          permanentFailure = !delivered && 'permanentFailure' in result && result.permanentFailure === true
         } catch {
+          // A thrown exception (network drop, DNS failure, ...) is always
+          // transient -- only a real HTTP response the server actually
+          // returned can be a permanent, never-retry-again rejection.
           delivered = false
         }
 
         if (delivered) {
           entry.status = 'Delivered'
+        } else if (permanentFailure) {
+          // A 400/403 the server will never accept by mere retry --
+          // terminal, distinct from an ordinary transient failure. Without
+          // this, the outbox retried a genuinely, permanently rejected
+          // command forever, silently, with no visible signal anything was
+          // even wrong -- the real damage behind TODO.md's own "Dispatch a
+          // command demo panel" gap, found while fixing that gap for real.
+          entry.status = 'Failed'
         } else {
           entry.attempts += 1
         }

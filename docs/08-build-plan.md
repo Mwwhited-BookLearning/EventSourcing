@@ -4060,6 +4060,18 @@ getting this test to pass against a live host rather than stopping at
   what lets one already-running `client-web-vitals` process serve this
   throwaway entity without a new AppHost resource.
 
+**Follow-up pass (`docs/changes/2026-09-02.md`), both TODO.md-tracked**:
+the field-casing gap above was fixed for real (`resolveEventTypeFieldCasing`,
+`useEventComposer.ts`, reusing the Compose tab's own already-correct
+schema introspection — no new registry endpoint was needed after all, an
+earlier claim in this item corrected on inspection). The `RequiredClaims`
+gap is left deliberately open as a real security-policy fork (grant a
+narrow demo claim vs. retire the generic panel), but its symptom is
+fixed: `OutboxEntryStatus` already declared a `'Failed'` terminal state
+nothing had ever actually set — a permanent rejection (400/403,
+`PublishResult.permanentFailure`) now moves an entry there instead of
+retrying it forever, silently, with no visible signal anything was wrong.
+
 ## Device Input Integration
 
 **Scope**: `ADR-070` — how HID/raw-USB/serial/BLE device streams reach

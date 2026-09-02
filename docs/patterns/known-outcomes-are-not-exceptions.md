@@ -109,15 +109,21 @@ condition `ADR-067`'s own design fully anticipates as routine, came out
 looking identical to a genuine dropped connection, at `Error` severity,
 repeating every 2 seconds, forever, in a real running deployment.
 
-The fix (a `catch (HttpRequestException ex) when (ex.StatusCode ==
+The first fix (a `catch (HttpRequestException ex) when (ex.StatusCode ==
 HttpStatusCode.NotFound)` branch ahead of the generic one, logged at
-`Warning` with an honest message) treats the symptom correctly at the
-point it was found, but doesn't fully apply this pattern — the deeper,
-not-yet-done fix would be `FollowClient.TailAsync` itself returning its
-own discriminated result (mirroring the server's own `FollowResult`
-exactly) instead of throwing at all, so every caller gets the
-distinction for free instead of each one needing its own `catch`
-filter. Not done this pass (would touch `FollowClient`'s other callers —
-`ProjectionHost`, `Samples.Orders.Projections` — beyond this one bug's
-scope); worth doing the next time `FollowClient` is touched for an
-unrelated reason.
+`Warning` with an honest message) treated the symptom correctly at the
+point it was found, but didn't fully apply this pattern — it only moved
+the misclassification from `Error` to `Warning` for one caller, still via
+a caught exception's `StatusCode`, not a real discriminated result.
+
+**Closed for real (TODO.md, `docs/changes/2026-09-02.md`)**:
+`FollowClient.TailAsync` is now `ConnectAsync`, returning
+`Task<FollowConnectResult>` (`Connected`/`UnregisteredEventType`/
+`Forbidden`/`ValidationFailed` — `EventStore.Projections.Host`) that
+mirrors the server's own `FollowResult` exactly, never throwing for any of
+the three routine cases; `GetChangeKindAsync` got the identical treatment
+via a new `ChangeKindResult`. Every caller — `ProjectionHost<TReadModel>`
+(and, transitively, every `IProjection<T>` it hosts, `Samples.Orders
+.Projections` included) and `EventStore.DevIdp.RbacProjectionWorker` —
+now switches on the result directly instead of filtering a caught
+exception's `HttpStatusCode`.

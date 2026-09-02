@@ -12,6 +12,19 @@ export interface PublishResult {
   // every other rejection reason already gets, since a caller (useEventComposer)
   // needs the acr_values/max_age to actually retry with a stepped-up token.
   stepUpRequired?: { acrValues: string[]; maxAge: number | null }
+  // A 400 (validation failure) or 403 (Forbidden -- a RequiredClaims gate
+  // this caller's own token doesn't satisfy) will never succeed by merely
+  // retrying the exact same queued command -- distinct from every other
+  // `ok: false` reason (a dropped connection, a real 5xx), which genuinely
+  // IS worth retrying once connectivity/the server recovers.
+  // `useOutboxStore.flush` uses this to mark such an entry `Failed`
+  // (terminal) instead of retrying it forever with no visible signal
+  // anything is even wrong -- a real, previously-undiscovered gap found
+  // while fixing App.vue's "Dispatch a command" demo panel (TODO.md):
+  // `OutboxEntryStatus` already declared a `'Failed'` state (and
+  // `exportOutboxBundle`'s own comment already assumed it existed), but
+  // nothing anywhere had ever actually set it.
+  permanentFailure?: boolean
 }
 
 // The "round trip through ADR-021's Entity Store" ADR-039 requires -- the
@@ -61,7 +74,7 @@ export async function publishCommand(hostBaseUrl: string, token: string, entry: 
         return { ok: false, stepUpRequired: { acrValues: body.acrValues ?? [], maxAge: body.maxAge ?? null } }
       }
     }
-    return { ok: false }
+    return { ok: false, permanentFailure: response.status === 400 || response.status === 403 }
   }
   const body = (await response.json()) as { status: string; entityId: string; conflictFlag: boolean }
   return { ok: true, status: body.status, entityId: body.entityId, conflictFlag: body.conflictFlag }
