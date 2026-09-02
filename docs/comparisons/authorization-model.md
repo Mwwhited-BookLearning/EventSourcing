@@ -142,6 +142,53 @@ know any application's own permission shape.
   involvement to bind a role locally, and the `ClusterRole`'s own
   definition doesn't need to know about any one namespace's resources.
 
+**Further real standards worth naming precisely, found on a later
+completeness pass:**
+- **[SCIM](https://www.rfc-editor.org/rfc/rfc7644.html)** (RFC 7643/7644,
+  IETF Standards Track) — its `Group` resource is the concrete,
+  standardized vehicle for the missing piece above: provisioning
+  generalized roles from an external directory into the central identity
+  layer, rather than inventing a bespoke sync mechanism.
+- **[RFC 9396](https://www.rfc-editor.org/rfc/rfc9396.html)** (OAuth 2.0
+  Rich Authorization Requests, IETF Standards Track, May 2023) — a real,
+  current wire format for exactly the local STS's own output: an
+  `authorization_details` parameter carrying fine-grained,
+  resource/action-specific authorization data (used *alongside* a coarse
+  `scope`, not instead of it) — worth using as the actual token shape a
+  local STS issues, rather than inventing a bespoke claims structure.
+- **[RFC 9635](https://www.rfc-editor.org/info/rfc9635/)** (GNAP, IETF
+  Proposed Standard, Oct 2024) — a genuine alternative to RFC 8693 Token
+  Exchange for this delegation step. Confirmed scope: GNAP is explicitly
+  **not** an OAuth2 extension or replacement — "GNAP and OAuth 2.0 will
+  likely exist in parallel for many deployments" — so adopting it here
+  would mean a second, parallel delegation mechanism, not a drop-in swap.
+  Named for completeness; RFC 8693 (already used at `/connect/token`)
+  remains the better fit absent a reason to run two protocols.
+- **[UMA 2.0](https://docs.kantarainitiative.org/uma/wg/rec-oauth-uma-grant-2.0.html)**
+  (Kantara Initiative Recommendation, 2018) — a genuine, real-world
+  answer to the "resource owner delegates to specific parties" model
+  Option D (DACL) below is missing. Worth naming explicitly *there*
+  rather than only here — see Option D's own note.
+- **[OpenID AuthZEN — Authorization API 1.0](https://openid.net/specs/authorization-api-1_0.html)**
+  (OpenID Foundation, Final Specification approved **January 12, 2026**)
+  — standardizes the exact PDP/PEP decision-request API Option B
+  (ABAC/XACML/NGAC) below describes conceptually (a PEP POSTs subject/
+  resource/action to a PDP endpoint, gets an allow/deny decision back).
+  If Option B is ever chosen, this is the wire protocol to build the
+  PDP/PEP boundary against rather than inventing one.
+- **[RFC 7591](https://www.rfc-editor.org/rfc/rfc7591.html)**/[**7592**](https://www.rfc-editor.org/rfc/rfc7592.html)
+  (OAuth 2.0 Dynamic Client Registration/Management, IETF — 7591
+  Standards Track, 7592 Experimental) and **[RFC 8414](https://www.rfc-editor.org/rfc/rfc8414.html)**
+  (OAuth 2.0 Authorization Server Metadata, IETF Standards Track) — not
+  about the decision model at all, but about a different config-driven
+  gap this whole design direction depends on: `EventStore.DevIdp`'s own
+  `DevIdpSeeder.cs` hardcodes its client list in C# today. If
+  applications are meant to be first-class, self-registering entities
+  (this doc's opening ask), RFC 7591 is the real standard for letting an
+  application register itself via API instead of a code change, and RFC
+  8414 the OAuth-only counterpart to the OIDC Discovery doc already used
+  — distinct from it, not a duplicate.
+
 **This maps onto mechanisms this repo already has, more than it looks
 at first**: `ADR-047`'s `TrustedFederationIssuer`/`FederatedIdentityMapping`
 are already keyed **per-`AppId`** — each application can already trust
@@ -269,6 +316,13 @@ head-to-head comparison of them:
   enumerated graph relations among users, objects, and attributes rather
   than logical formulas — structurally closer to a per-task grant, since
   a task is just another graph node.
+- **[OpenID AuthZEN — Authorization API 1.0](https://openid.net/specs/authorization-api-1_0.html)**
+  (OpenID Foundation, Final as of January 12, 2026) — a current, real
+  wire protocol for the PDP/PEP boundary XACML/NGAC only describe
+  architecturally: a PEP `POST`s subject/resource/action to a PDP
+  endpoint and gets an allow/deny decision back. If this option is ever
+  chosen, build the PDP/PEP boundary to this spec rather than inventing
+  a bespoke request/response shape.
 
 ```
 attribute(actor: Dr. Alvarez)   = { role: "PI", assignedTrial: "T1", assignedSite: "S1" }
@@ -332,6 +386,17 @@ AdverseEventReported:AE-task-42.acl = [
 |---|---|
 | **Pros** | Maximally simple mental model — "who can touch this one thing" is a list on the thing itself, trivially enumerable, no policy engine or role graph to reason about. |
 | **Cons** | **Discretionary is the wrong trust model here** — every real DACL standard checked puts the *resource owner* in control of the list; nothing in this framework has an owner-grants-access concept, every existing grant (`ADR-046` roles, `ADR-043` delegation) is centrally/administratively issued. Using DACL's mechanics without its ownership premise is really just Option A or C wearing a different name. Doesn't generalize to "every PI, org-wide" style rules without one ACL per entity — no `AccessLevel × EntityType`-wide statement is expressible at all. |
+
+**If this framework ever does want a genuine owner-delegates-access model**
+(not the case today, per the Con above), **[UMA 2.0](https://docs.kantarainitiative.org/uma/wg/rec-oauth-uma-grant-2.0.html)**
+(Kantara Initiative Recommendation, 2018) is the real, current
+application-layer standard for it — a resource owner configures policy
+at an authorization server so specific requesting parties get specific
+delegated access to specific protected resources, with defined
+resource-owner/requesting-party/client/resource-server/authorization-
+server roles. Worth citing precisely over NFSv4/NTFS/WebDAV's ACLs
+(above) if this framework's trust model ever actually changes to support
+ownership, since UMA 2.0 is API-native rather than filesystem-shaped.
 
 ### Option E — Classification-based (Mandatory Access Control)
 

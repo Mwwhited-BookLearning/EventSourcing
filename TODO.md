@@ -88,9 +88,16 @@ left.)
   application runs its own local RFC 8693 token-exchange step mapping
   that generalized role into its own entity-type/access-level/per-task
   claims (real precedents verified: Okta's per-API custom authorization
-  servers, Kubernetes `ClusterRole`+per-namespace `RoleBinding`). Decide
-  what "full OIDC+OAuth2" and this STS split mean for this framework and
-  record the decision in `docs/references.md` plus a queued ADR.
+  servers, Kubernetes `ClusterRole`+per-namespace `RoleBinding`). A
+  completeness pass also found real standards for two adjacent gaps this
+  same design direction depends on, both cited in the comparison doc's
+  STS section now: RFC 7591/7592 (OAuth Dynamic Client Registration) for
+  letting an application self-register instead of `DevIdpSeeder.cs`'s
+  current hardcoded C# client list, and RFC 8414 (OAuth Authorization
+  Server Metadata) as the OAuth-only counterpart to the OIDC Discovery
+  doc already used. Decide what "full OIDC+OAuth2" and this STS split
+  mean for this framework and record the decision in `docs/references.md`
+  plus a queued ADR.
 
 - [ ] **Evaluate adopting OpenID Federation as the multi-IdP trust
   pattern.** OpenID Federation 1.0 is now a Final spec (OpenID
@@ -117,8 +124,19 @@ left.)
   fits a bare periodic engine tick with no calendar semantics (e.g. a
   re-screening interval); RFC 5545 `VEVENT`/`VTODO`+`RRULE` fits a
   person/appointment-facing domain object needing time, timezone,
-  duration, and attendees as first-class data. Decide which capability
-  needs which (or both, for different purposes) and record in
+  duration, and attendees as first-class data. **RFC 5545 alone is only
+  the data format, not the scheduling protocol** — a completeness pass
+  found the layer actually missing: RFC 5546 (iTIP) defines the
+  REQUEST/REPLY/CANCEL/COUNTER methods for one party to propose/accept/
+  decline a calendar object to another; RFC 4791 (CalDAV) is the HTTP
+  transport for it; RFC 6638 (CalDAV Scheduling Extensions) is what
+  actually binds iTIP's methods to CalDAV's HTTP transport specifically
+  (vs. RFC 6047/iMIP's email transport, confirmed low relevance here) —
+  without RFC 6638, adopting iTIP+CalDAV alone doesn't actually
+  interoperate. RFC 7265 (jCal) gives a JSON form of the RFC 5545 data,
+  likely a better fit than raw ICS text for this JSON-first framework.
+  Decide which capability needs which (crontab vs. the RFC 5545/5546/
+  4791/6638/7265 stack, or both for different purposes) and record in
   `docs/references.md`, likely with a new pattern doc/ADR.
 
 - [ ] **Design a Contact/Profile entity before building vCard (RFC 6350)
@@ -128,6 +146,11 @@ left.)
   `Contact`/`Profile` — none found). vCard export needs something to
   export *from*; decide that entity's shape (likely in the digital-
   identity-kyc domain) before wiring RFC 6350 import/export on top of it.
+  Same data-vs-protocol gap as the scheduling item above: RFC 6350 is
+  data-only — RFC 6352 (CardDAV) is the HTTP access protocol (address-book
+  collections, content negotiation between vCard 3.0/4.0), and RFC 7095
+  (jCard) gives a JSON form, again likely a better fit here than raw
+  vCard text.
 
 - [ ] **Add "vehicle/equipment maintenance & fuel logs" as a candidate
   domain.** Real standards to ground it in: VMRS (ATA/TMC's hierarchical
@@ -136,7 +159,13 @@ left.)
   position/hours/fuel/machine status — check whether this can reuse the
   existing `ADR-031` streaming/telemetry channel mechanism rather than
   needing a new one). ISO 14224's reliability/maintenance data categories
-  are oil-and-gas-specific but may transfer conceptually. Add at minimum
+  are oil-and-gas-specific but may transfer conceptually. SAE J1939
+  (verified, real) is the underlying heavy-vehicle CAN-bus wire protocol
+  telematics data ultimately traces back to (SPNs like Fuel Level 1,
+  Engine Speed) — the wrong layer for a fuel-log *event schema* itself,
+  worth at most a one-line "traces back to" mention, not a driving
+  citation; VMRS/ISO 15143-3 remain the right fit for the schema layer.
+  Add at minimum
   a "considered" domain doc (`docs/domains/vehicle-equipment-maintenance/
   README.md`, one feature doc, per the existing 13-considered/2-chosen
   structure) and a row in `docs/domains/README.md`'s catalog and
