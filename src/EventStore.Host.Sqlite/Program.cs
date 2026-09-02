@@ -85,6 +85,12 @@ builder.Services.AddExpectedResponseTracking();
 builder.Services.Configure<WebhookOptions>(builder.Configuration.GetSection("Webhooks"));
 builder.Services.AddEventStoreGraphQl();
 builder.Services.Configure<OriginIdOptions>(builder.Configuration.GetSection("OriginId"));
+// SchemaRegistryOriginIdOptions duplicates OriginIdOptions' own shape/section
+// rather than referencing it -- EventStore.SchemaRegistry can't reference
+// EventStore.Inbox, which itself depends on EventStore.SchemaRegistry
+// (ADR-033/090). Same "OriginId" section, so both resolve the same real
+// per-site value.
+builder.Services.Configure<SchemaRegistryOriginIdOptions>(builder.Configuration.GetSection("OriginId"));
 builder.Services.Configure<PeerSyncOptions>(builder.Configuration.GetSection("PeerSync"));
 builder.Services.Configure<PeerSyncClientOptions>(builder.Configuration.GetSection("PeerSyncClient"));
 builder.Services.Configure<RegionOptions>(builder.Configuration.GetSection("Region"));

@@ -2,7 +2,7 @@
 
 ## Overview
 
-![diagram](diagrams/mental-vision/01-diagram.svg)
+![Overview diagram](diagrams/mental-vision/01-overview.svg)
 
 ```plantuml
 @startuml

@@ -102,6 +102,26 @@ public class PlaybookRecorder
         {
             sb.AppendLine("## Sequence Diagram");
             sb.AppendLine();
+            // TODO.md's own tracked gap, closed here: scripts/extract-
+            // diagrams.mjs inserts this exact `![...](....svg)` reference
+            // line immediately above a fenced diagram the FIRST time it
+            // runs, but this method REGENERATES the whole file from
+            // scratch on every E2E test run, silently dropping that
+            // insertion on the next regeneration -- the two pipelines were
+            // never coordinated. Emitting it here instead, computed to the
+            // exact same path/naming convention that script's own
+            // `processFile` uses, means a later `extract-diagrams.mjs` run
+            // recognizes it via that script's own idempotency check
+            // (its nearest-non-blank-line-before-the-fence match) and
+            // never re-inserts or duplicates it -- this file no longer
+            // needs re-running just to restore a reference this method
+            // itself can already emit correctly, every time.
+            var svgReference = ComputeSequenceDiagramSvgReference();
+            if (svgReference is not null)
+            {
+                sb.AppendLine($"![Sequence Diagram]({svgReference})");
+                sb.AppendLine();
+            }
             sb.AppendLine("```plantuml");
             sb.AppendLine(sequenceDiagramPlantUml.Trim());
             sb.AppendLine("```");
@@ -131,5 +151,34 @@ public class PlaybookRecorder
 
         Directory.CreateDirectory(Path.GetDirectoryName(_markdownPath)!);
         await File.WriteAllTextAsync(_markdownPath, sb.ToString());
+    }
+
+    // Mirrors scripts/extract-diagrams.mjs's own processFile/slugify exactly
+    // -- diagramIndex 1 (this method's own single "Sequence Diagram"
+    // heading is always the first, and only, fenced diagram this class
+    // ever emits), slug "sequence-diagram" (slugify("Sequence Diagram")).
+    // A playbook's own path is always docs/playbooks/{domain}/{role}/
+    // {task}.md, so the corresponding .puml/.svg pair always lands at
+    // docs/diagrams/playbooks/{domain}/{role}/{task}/01-sequence-diagram.
+    // {puml,svg} -- computed here purely from _markdownPath's own already-
+    // known "...\docs\..." shape (every real caller builds it via
+    // Path.Combine(repoRoot, "docs", ...)), no filesystem access needed
+    // since the target doesn't need to exist yet (the same "reserve the
+    // path before rendering" posture extract-diagrams.mjs's own header
+    // comment already documents).
+    private string? ComputeSequenceDiagramSvgReference()
+    {
+        var segments = _markdownPath.Split('\\', '/');
+        var docsIndex = Array.LastIndexOf(segments, "docs");
+        if (docsIndex < 0 || docsIndex == segments.Length - 1)
+            return null; // defensive -- every real caller's own path already contains "docs" with more segments after it
+
+        var relDocSegments = segments[(docsIndex + 1)..]; // e.g. ["playbooks","core","user","go-offline-and-resync.md"]
+        var directorySegments = relDocSegments[..^1]; // e.g. ["playbooks","core","user"]
+        var fileNameNoExt = Path.GetFileNameWithoutExtension(relDocSegments[^1]); // e.g. "go-offline-and-resync"
+        var relDocNoExt = string.Join("/", directorySegments) + "/" + fileNameNoExt;
+
+        var upLevels = string.Concat(Enumerable.Repeat("../", directorySegments.Length));
+        return $"{upLevels}diagrams/{relDocNoExt}/01-sequence-diagram.svg";
     }
 }

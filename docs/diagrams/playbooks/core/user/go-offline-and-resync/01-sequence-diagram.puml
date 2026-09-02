@@ -1,0 +1,32 @@
+@startuml
+autonumber
+actor "Site staff" as user
+participant "Duplex Client\n(client-web-vitals)" as client
+participant "useOnlineStatus\n(real navigator events)" as onlineStatus
+participant "useConnectivityStore\n(manual override)" as connectivity
+database "Client Outbox\n(IndexedDB, ADR-039)" as outbox
+participant "eventstore" as server
+
+== Automatic detection (real network) ==
+user -> client: (network drops)
+onlineStatus -> onlineStatus: window 'offline' event -> isOnline = false
+user -> client: dispatch command (Amount)
+client -> outbox: enqueue (Pending) -- NOT flushed (isEffectivelyOnline() false)
+user -> client: (network restored)
+onlineStatus -> onlineStatus: window 'online' event -> isOnline = true
+onlineStatus -> client: onOnline() callback
+client -> outbox: flush()
+outbox -> server: publish queued command
+server --> outbox: 2xx -- entry marked Delivered
+
+== Manual override (buttons) ==
+user -> connectivity: click "Go Offline"
+connectivity -> connectivity: forcedOffline = true
+user -> client: dispatch command (Amount)
+client -> outbox: enqueue (Pending) -- NOT flushed (forcedOffline true)
+user -> connectivity: click "Go Online"
+connectivity -> connectivity: forcedOffline = false
+client -> outbox: flush()
+outbox -> server: publish queued command
+server --> outbox: 2xx -- entry marked Delivered
+@enduml
