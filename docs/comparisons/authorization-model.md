@@ -20,6 +20,18 @@ concrete detail (schema shape + decision pseudocode) that promoting any
 one of them to a real working spike later can start from this analysis
 rather than redoing it.
 
+**Direction received, this session:** each deployed application should
+own its own permission model — its own entity types, its own access
+levels, its own per-task grants — via a local, application-owned
+authorization STS acting as a mapping proxy, so that a centralized
+user-management layer only ever has to define and issue **generalized**
+roles, never anything application-specific. See "Application-owned local
+authorization STS" below — this is a separate, orthogonal axis from the
+six-pattern comparison (it answers *where the mapping step lives*, not
+*which decision model an application uses once it has a subject's local
+claims*), but it directly shapes how any of the six gets deployed once
+more than one application shares the platform.
+
 ## Shared scenario, used identically in every option below
 
 A Vitals clinical trial (`docs/domains/clinical-trials-device-telemetry/`)
@@ -100,6 +112,77 @@ against a blank slate:
   just a bare string), and deliberate **cross-`AppId` data sharing**,
   which neither ADR addresses — `ADR-030`'s whole point was zero-collision
   isolation between applications, not sharing.
+
+## Application-owned local authorization STS
+
+The pattern: a **central identity layer** authenticates a subject and
+issues only **generalized, cross-application roles** (`"clinician"`,
+`"trial-coordinator"`, `"compliance-officer"`) — it has no idea what any
+specific application does with them. Each **deployed application** then
+runs its own local mapping step — an OAuth2 [RFC 8693 Token Exchange](https://www.rfc-editor.org/info/rfc8693/)
+call, the modern, RESTful/JSON successor to the classic WS-Trust
+Security Token Service pattern — that trades the generalized-role token
+for one carrying *that application's own* entity-type × access-level ×
+per-task claims, using whichever of the six decision models above that
+application picks. The application team owns and edits its own mapping
+rules without needing the central identity team involved; the identity
+team owns and edits the generalized role vocabulary without needing to
+know any application's own permission shape.
+
+**Two real, verified precedents for exactly this split:**
+- [Okta custom authorization servers](https://developer.okta.com/docs/concepts/auth-servers/) —
+  each protected API gets its **own** authorization server with its own
+  scopes/claims and access policies, fed by the same central Okta org
+  identity; the org doesn't define per-API scopes itself, each resource
+  server does.
+- [Kubernetes RBAC](https://kubernetes.io/docs/reference/access-authn-authz/rbac/) —
+  a `ClusterRole` is defined once, generally, and reused; a
+  `RoleBinding` **inside one namespace** decides what that generalized
+  role actually grants *there*. The namespace doesn't need cluster-admin
+  involvement to bind a role locally, and the `ClusterRole`'s own
+  definition doesn't need to know about any one namespace's resources.
+
+**This maps onto mechanisms this repo already has, more than it looks
+at first**: `ADR-047`'s `TrustedFederationIssuer`/`FederatedIdentityMapping`
+are already keyed **per-`AppId`** — each application can already trust
+its own external issuer and locally map incoming identities, using the
+same RFC 8693 Token Exchange grant `EventStore.DevIdp`'s `/connect/token`
+already implements. `EventStore.Rbac`'s Role/UserPermission grant API is
+also already `AppId`-scoped (`registry:admin:{appId}`-style). **What's
+missing is the generalized-role layer sitting above all of that** —
+today, every claim/role in this system is already application-specific
+from the moment it's issued; there's no "clinician" role that exists
+independently of any one `AppId`, only per-`AppId` roles like
+`vitals-pi-client`'s `review:ae`. Concretely, closing that gap looks
+like:
+
+```
+Central identity (real external IdP, or DevIdp's own generalized-role issuer)
+  issues: { sub: "user-123", roles: ["clinician"] }             // AppId-agnostic
+
+  → RFC 8693 Token Exchange, addressed to one AppId's own local STS →
+
+Vitals's own local STS (a per-AppId mapping table, same config-driven
+`EventStore.Rbac` pipeline as ADR-046/067, just keyed off the incoming
+generalized role instead of a directly-assigned one)
+  maps: role "clinician" + AppId "trial1" ⇒
+    { EntityType: "AdverseEventReported", AccessLevel: Read }
+    { EntityType: "authorityDecision",     AccessLevel: Write, scope: assignedTaskOnly }
+  issues: an app-scoped access token carrying Vitals's own claims,
+          shaped however Vitals's chosen decision model (RBAC/ABAC/ReBAC/
+          Hybrid/...) expects them
+```
+
+This is also the concrete mechanism that makes "application scope as a
+first-class citizen" (this doc's opening ask) real rather than aspirational:
+today `AppId` is a bare scoping string with no owning record; a local STS
+*is* that owning record's natural home — the place a new application
+registers its own generalized-role-to-permission mapping without
+touching any other application's. Deliberate **cross-application data
+sharing** (also asked for at the top of this doc) becomes a decision one
+application's STS can make explicitly — accepting another `AppId`'s
+issued grant as valid input to its own mapping — rather than something
+requiring a shared, centrally-arbitrated permission store.
 
 ## The fork
 
@@ -280,3 +363,12 @@ this doc's schema sketches are the starting point for that — Option C
 real, since they're the two genuinely new mechanisms; Options A/D/E are
 different enough from the scenario's actual shape that a spike would
 mostly just confirm this doc's own analysis.
+
+**On the application-owned local authorization STS direction (received
+this session, not one of the six options above):** it composes with
+whichever decision model wins independently of this recommendation — the
+STS is what *feeds* an application its local claims, the six options are
+what an application *does* with them once received. Given the direction
+already stated, Option F's `TaskGrant`/`Role` shapes are exactly what
+each application's own local STS would maintain and issue into — no
+rework needed to combine the two.

@@ -76,18 +76,27 @@ left.)
 
 - [ ] **Decide the branch/PR structure for the design threads above** (this
   item and the four below) before they tangle together on one branch.
-  Currently all being scoped on `dev/rbac-permission-matrix-and-app-scopes`
+  Currently all being scoped on `dev/architecture-design-explorations`
   — asked the user whether to split some onto their own dev branches;
   not yet answered.
 
-- [ ] **Decide scope for full OIDC/OAuth2 identity-provider support.**
+- [ ] **Decide scope for full OIDC/OAuth2 identity-provider support —
+  now including an application-owned local authorization STS layer.**
   Today `EventStore.DevIdp` only implements `client_credentials` +
   RFC 8693 Token Exchange (`src/EventStore.DevIdp/Program.cs:133,143,
   279-280`) — no `authorization_code`/PKCE, no ID tokens ever issued
   (`Program.cs:412-414`), no interactive login, no userinfo endpoint. It
   exposes `/.well-known/openid-configuration` for discovery only
-  (`ADR-006`). Decide what "full OIDC+OAuth2" means for this framework
-  and record the decision in `docs/references.md` plus a queued ADR.
+  (`ADR-006`). Per direct request, also design the split named and
+  worked through in `docs/comparisons/authorization-model.md`'s
+  "Application-owned local authorization STS" section: a central identity
+  layer issues only generalized, cross-application roles; each deployed
+  application runs its own local RFC 8693 token-exchange step mapping
+  that generalized role into its own entity-type/access-level/per-task
+  claims (real precedents verified: Okta's per-API custom authorization
+  servers, Kubernetes `ClusterRole`+per-namespace `RoleBinding`). Decide
+  what "full OIDC+OAuth2" and this STS split mean for this framework and
+  record the decision in `docs/references.md` plus a queued ADR.
 
 - [ ] **Evaluate adopting OpenID Federation as the multi-IdP trust
   pattern.** OpenID Federation 1.0 is now a Final spec (OpenID
