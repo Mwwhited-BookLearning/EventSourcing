@@ -170,3 +170,44 @@ left.)
   README.md`, one feature doc, per the existing 13-considered/2-chosen
   structure) and a row in `docs/domains/README.md`'s catalog and
   `docs/comparisons/proving-ground-domain.md`'s coverage matrix.
+
+- [ ] **Recover a lost item: reconcile `06-solution-structure.md`'s
+  project list against what was actually built.** `docs/06-solution-
+  structure.md:42-44` states "reconciling this entire file's project
+  list against what was actually built, item by item... tracked in
+  `TODO.md`, not attempted here" — but no such item exists in `TODO.md`
+  (confirmed via grep). Found during a vision-completeness audit this
+  session; exactly the "flagged in passing, never actually added"
+  failure mode `CLAUDE.md` already names as having happened once before
+  (`ChannelOrigin.Origin`/`OriginId`). Walk `06-solution-structure.md`'s
+  project sketch against the real `src/` tree and correct any drift.
+
+- [ ] **Exercise the SDK codegen story end to end — nothing has ever
+  actually been published or consumed.** `ADR-054` (Kiota for OpenAPI,
+  GraphQL Code Generator for TypeScript, Strawberry Shake for .NET
+  GraphQL clients) and `ADR-062` (SemVer 2.0.0 for every `EventStore.*`
+  package) are both real, Accepted designs — but `ADR-062`'s own
+  "Implementation note, added 2026-08-12" says plainly that no package
+  has ever actually been published to a real registry, and `ADR-080`
+  independently confirms npm/NuGet provenance signing is unbuilt for the
+  identical reason (nothing exists yet to sign). Per this repo's own
+  standing rule that a build succeeding isn't the same bar as actually
+  running the thing: publish one real package to a real (or realistic
+  local) registry, generate a client against it with the tool `ADR-054`
+  names, and confirm it actually works — the entire "genuinely reusable
+  by an outside team" story currently rests on an unverified assumption.
+
+- [ ] **Write a getting-started/quickstart doc.** No file anywhere in
+  this repo walks a new team through standing up a `EventStore.Host.*`
+  project and registering their first event type end to end —
+  `06-solution-structure.md`/`08-build-plan.md` are architecture/
+  dependency references, not an onboarding doc, and `ADR-062` calls the
+  three Host projects "reference implementations/quickstart templates"
+  but that's code, not a walkthrough. Found during a vision-completeness
+  audit: `README.md`/`docs/naming.md` explicitly want this framework to
+  read as "a plausible real infra-product... in the company of things
+  like Kafka, Temporal" — every one of those has a real quickstart doc.
+  While writing it, also state the framework's language/platform scope
+  explicitly (today only inferable from `ADR-054`/`062` naming .NET +
+  TypeScript as the only built client targets) — no doc anywhere
+  currently says this is a deliberate boundary rather than an oversight.

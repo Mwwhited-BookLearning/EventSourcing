@@ -98,7 +98,7 @@ provider they apply to — not "code written."
 | 37 | [Tenant-to-Tenant Federation Mapping](#tenant-to-tenant-federation-mapping) | Multi-Tenancy, Auth + Orchestration, Bulk Ingestion & Interchange Adapters | Done |
 | 38 | [Sanctions/Watchlist Screening Extensibility Seam](#sanctionswatchlist-screening-extensibility-seam) | Scaffolding & Persistence, Non-Authoritative Capture | Done |
 | 39 | [Release Engineering, Packaging & Supply Chain](#release-engineering-packaging--supply-chain) | Scaffolding & Persistence, Compatibility & Deployment Discipline | Done |
-| 40 | [Signing Secret Rotation, Dual Signature](#signing-secret-rotation-dual-signature) | Outbound Webhooks | Done (webhook half only — ticket-exchange half descoped, see `TODO.md`) |
+| 40 | [Signing Secret Rotation, Dual Signature](#signing-secret-rotation-dual-signature) | Outbound Webhooks | Done (both halves — see `ADR-093`'s own "Built, later pass" notes) |
 | 41 | [Lineage Export & Bitemporal Playback](#lineage-export--bitemporal-playback) | Lineage API, Entity-Centric Core Rebuild, MVVM Client, GraphQL-Only Query Layer, Property-Level Masking, GDPR/CCPA Erasure, Delegated Grants/RBAC/Read Audit Logging | Done |
 | 42 | [RFC 3161 Trusted Timestamping](#rfc-3161-trusted-timestamping) | Digital Sign-Off, Lineage Export & Bitemporal Playback | Done |
 | 43 | [Pluggable Outbox Flush Triggers](#pluggable-outbox-flush-triggers) | MVVM Client, Lineage Export & Bitemporal Playback | Done |
@@ -3651,9 +3651,13 @@ successfully during the window; discarding the previous secret (`POST
 /webhooks/subscriptions/{id}/discard-previous-secret`) ends the window,
 after which only the new secret verifies.
 
-**Status: Done, webhook half only** — the ticket-exchange half is
-deliberately descoped, tracked in `TODO.md`, not silently dropped.
-`WebhookSubscriptionService.RotateSigningSecretAsync`/
+**Status: Done, both halves** — corrected here (this pass), since this
+section had gone stale: it previously said the ticket-exchange half was
+descoped and tracked in `TODO.md`, but that half was built for real in a
+later pass (`EventStore.DevIdp`'s `ClientSecretRotationStore`, a real
+pipeline-level credential-validation override — see `ADR-093`'s own
+"Built, later pass" notes for the concrete mechanism) and its `TODO.md`
+item was already removed there. `WebhookSubscriptionService.RotateSigningSecretAsync`/
 `DiscardPreviousSigningSecretAsync` implement the two new endpoints;
 `WebhookSigner.Sign` gained an optional `previousSigningSecret`
 parameter emitting the real Standard Webhooks space-delimited dual-
