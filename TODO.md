@@ -74,12 +74,6 @@ left.)
   re-derive it), add a row to `docs/comparisons/README.md`'s catalog, and
   only then close this item.
 
-- [ ] **Decide the branch/PR structure for the design threads above** (this
-  item and the four below) before they tangle together on one branch.
-  Currently all being scoped on `dev/architecture-design-explorations`
-  — asked the user whether to split some onto their own dev branches;
-  not yet answered.
-
 - [ ] **Decide scope for full OIDC/OAuth2 identity-provider support —
   now including an application-owned local authorization STS layer.**
   Today `EventStore.DevIdp` only implements `client_credentials` +
