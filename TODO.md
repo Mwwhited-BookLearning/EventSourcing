@@ -58,3 +58,102 @@ left.)
   of retrying forever silently, with no signal anything is wrong
   (`useOutboxStore.flush`'s new `permanentFailure` handling,
   `docs/changes/2026-09-02.md`).
+
+- [ ] **Write an authorization-model comparison doc, then decide.** User ask:
+  map app roles to domain permissions; an access level (`Read`/`ReadMasked`/
+  `Write`) × entity-type matrix; a grant scoped to a specific user task; a
+  config-driven backend (no redeploy to change grants); and first-class
+  "application scope" so multiple applications share one platform
+  deployment, including deliberate cross-app-domain data sharing. Per
+  direct request, this is a **doc-only spike** (no throwaway code) —
+  `.claude/templates/comparison-doc-template.md`, covering: RBAC-extended
+  (bolt entity-type/access-level onto existing `ADR-046` flat role model),
+  ABAC/policy-based (XACML/NGAC-style attribute predicates, PDP/PEP/PAP/PIP
+  separation), ReBAC/relationship-tuple (Zanzibar-style `(object, relation,
+  subject)` — the natural fit for "grant per user task"), a named Hybrid,
+  a DACL example, and a Classification-based/MAC example. Per direct
+  request, each pattern's section needs a concrete sketch (schema shape +
+  pseudocode) worked against one real shared scenario (e.g. a Vitals PI
+  reviewing `AdverseEventReported`) — enough to actually show where the
+  patterns diverge, not just abstract pros/cons — so that promoting any
+  one pattern to a real working spike later reuses this analysis instead
+  of redoing it. Ground it in
+  what already exists: `ADR-046`/`047`/`067` (Role/UserPermission, built as
+  `EventStore.DevIdp`-owned EF tables + `EventStore.Rbac`'s scope-gated
+  Minimal API publishing real reserved events — already config-driven, no
+  redeploy, see `docs/data/schema-registry.md:157-182`), `ADR-008`/`050`
+  (`RequiredClaims`, entity-type-wide, not per-instance), `ADR-009`/`057`
+  (the existing three-state field-level masking `x-masking` mechanism —
+  the nearest existing thing to "ReadMasked," but per-field not
+  per-entity-type), and `ADR-030`/`075` (`AppId` already scopes multiple
+  applications within one tenant's deployment post-silo-model — but
+  deliberate cross-`AppId` data *sharing* is genuinely new ground, not
+  something either ADR addresses). Also flag: `EntityType` today is a free
+  string with no controlled vocabulary (`EventTypeDefinition.EntityType`,
+  `src/EventStore.Domain/SchemaRegistry/EventTypeDefinition.cs:27`) — a
+  permission matrix keyed on it inherits that gap unless addressed.
+
+- [ ] **Decide the branch/PR structure for the design threads above** (this
+  item and the four below) before they tangle together on one branch.
+  Currently all being scoped on `dev/rbac-permission-matrix-and-app-scopes`
+  — asked the user whether to split some onto their own dev branches;
+  not yet answered.
+
+- [ ] **Decide scope for full OIDC/OAuth2 identity-provider support.**
+  Today `EventStore.DevIdp` only implements `client_credentials` +
+  RFC 8693 Token Exchange (`src/EventStore.DevIdp/Program.cs:133,143,
+  279-280`) — no `authorization_code`/PKCE, no ID tokens ever issued
+  (`Program.cs:412-414`), no interactive login, no userinfo endpoint. It
+  exposes `/.well-known/openid-configuration` for discovery only
+  (`ADR-006`). Decide what "full OIDC+OAuth2" means for this framework
+  and record the decision in `docs/references.md` plus a queued ADR.
+
+- [ ] **Evaluate adopting OpenID Federation as the multi-IdP trust
+  pattern.** OpenID Federation 1.0 is now a Final spec (OpenID
+  Foundation, approved 2026-02-17), split into a 1.1 core+profiles set
+  approved 2026-05-06 — signed JWT Entity Statements chained to a Trust
+  Anchor. This repo's existing "federation" mechanisms are all single-
+  hop/pairwise, not trust-chain/hierarchy: `ADR-047` (one
+  `TrustedFederationIssuer` per `AppId`, JWKS-verified), `ADR-082`
+  (tenant-to-tenant data mapping), `ADR-044` (UCAN `AppTrustRoot`).
+  Neither OpenID Federation itself nor a rejection of it has ever been
+  evaluated here — decide and record adopted-or-rejected in
+  `docs/references.md` either way, per this repo's own convention that a
+  rejection needs to be as explicit as an adoption.
+
+- [ ] **Decide where crontab-format and RFC 5545 (iCalendar) scheduling
+  each apply, and record it.** No scheduler of any kind exists in this
+  repo today — `ADR-069` explicitly declines to build one (`docs/adrs/
+  adr-069-pluggable-outbox-flush-triggers.md:40`, "this framework doesn't
+  build a scheduler, it only needs `Flush` to be safely callable by
+  one"). Crontab format is POSIX.1 base + de facto Vixie-cron extensions
+  (no RFC — don't cite one). RFC 5545 defines `VEVENT`/`VTODO`/
+  `VJOURNAL`/`VFREEBUSY`/`VTIMEZONE`/`VALARM` plus the `RRULE` recurrence
+  type. The two are genuinely complementary, not redundant: crontab
+  fits a bare periodic engine tick with no calendar semantics (e.g. a
+  re-screening interval); RFC 5545 `VEVENT`/`VTODO`+`RRULE` fits a
+  person/appointment-facing domain object needing time, timezone,
+  duration, and attendees as first-class data. Decide which capability
+  needs which (or both, for different purposes) and record in
+  `docs/references.md`, likely with a new pattern doc/ADR.
+
+- [ ] **Design a Contact/Profile entity before building vCard (RFC 6350)
+  import/export.** No `Contact`/`Profile`-shaped entity exists anywhere
+  in `src/` today (searched digital-identity-kyc domain and broader
+  `src/` for `FirstName`/`GivenName`/`EmailAddress`/`PhoneNumber`/
+  `Contact`/`Profile` — none found). vCard export needs something to
+  export *from*; decide that entity's shape (likely in the digital-
+  identity-kyc domain) before wiring RFC 6350 import/export on top of it.
+
+- [ ] **Add "vehicle/equipment maintenance & fuel logs" as a candidate
+  domain.** Real standards to ground it in: VMRS (ATA/TMC's hierarchical
+  maintenance/repair coding system — industry-standard, no formal SDO)
+  and ISO 15143-3/AEMP 2.0 (JSON/XML telematics data exchange covering
+  position/hours/fuel/machine status — check whether this can reuse the
+  existing `ADR-031` streaming/telemetry channel mechanism rather than
+  needing a new one). ISO 14224's reliability/maintenance data categories
+  are oil-and-gas-specific but may transfer conceptually. Add at minimum
+  a "considered" domain doc (`docs/domains/vehicle-equipment-maintenance/
+  README.md`, one feature doc, per the existing 13-considered/2-chosen
+  structure) and a row in `docs/domains/README.md`'s catalog and
+  `docs/comparisons/proving-ground-domain.md`'s coverage matrix.
