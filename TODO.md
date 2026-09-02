@@ -211,3 +211,91 @@ left.)
   explicitly (today only inferable from `ADR-054`/`062` naming .NET +
   TypeScript as the only built client targets) — no doc anywhere
   currently says this is a deliberate boundary rather than an oversight.
+
+## Design-phase program, per direct request — run in this order
+
+Five sequenced phases; each depends on the previous one's completion.
+Don't start a later phase until the one before it is actually done, per
+direct instruction ("once that is completed... once the designs are
+improved..."). **This entire program is design-phase work — docs and
+ADRs only, no implementation/code changes** (direct instruction: "we are
+currently still just working on a secondary design phase and not actual
+implementations at this time").
+
+**Standing rule for every phase below, per direct instruction: a found
+gap/duplicate/conflict is not automatically a mistake to silently fix.**
+Something that looks missing may have been intentionally descoped or
+removed earlier — ask rather than assume when it's genuinely ambiguous
+which is true. Only resolve unilaterally what's objectively, verifiably
+a drift/error (the same bar the `08-build-plan.md` row 40 fix and the
+`06-solution-structure.md` recovered item already met — each had direct
+textual evidence, not judgment calls). Everything else surfaces as a
+question — either a `docs/10-open-questions.md` row (if it's a real
+design fork) or a direct question back to the user (if it's really "was
+this on purpose") — never a silent correction.
+
+- [ ] **Phase 0 — missing-documents sweep.** `docs/patterns/README.md`
+  has a real, large backlog: **35+ rows still marked "Catalog only"**
+  (a landed, Accepted ADR exists; the full pattern write-up — general
+  pattern explained, cited, PlantUML/Salt diagram, then how this design
+  applies it — was never written). Grep `docs/patterns/README.md` for
+  "Catalog only" for the current, authoritative list rather than
+  re-deriving it here (it will drift). Also covers the two doc gaps
+  already found this session and tracked above (getting-started/
+  quickstart doc; the `06-solution-structure.md` project-list
+  reconciliation). Large enough to need `.claude/protocols/
+  parallel-batch-dispatch.md`'s batching approach, not one pass.
+
+- [ ] **Phase 1 — full ADR review: find and resolve missing, duplicate,
+  and conflicting ADRs.** 103 ADRs exist (`docs/adrs/adr-001-*.md`
+  through `adr-103-*.md`, confirmed no gaps in numbering). A prior
+  session already did a full compliance review + fresh-eyes contradiction
+  hunt at the 74/75-ADR mark (`docs/changes/2026-07-30.md`) — this is a
+  **fresh** full pass at the current 103, since drift has kept happening
+  since then (this session alone found `ADR-036`'s undecided drift and
+  `08-build-plan.md` row 40's stale status). Three things to find and
+  fix, per direct request: **missing** ADRs (a decision clearly implied
+  or already made in prose/code but never formalized as its own ADR —
+  create it), **duplicate** ADRs (two ADRs deciding the same thing,
+  possibly with drifted answers — consolidate via `.claude/protocols/
+  additive-history-editing.md`, never silently delete history), and
+  **conflicting** ADRs (two ADRs whose decisions contradict — resolve
+  the same additive way, one correcting the other in place with a dated
+  note, per this repo's own standing convention). Use the parallel-batch
+  protocol, split by ADR-number range; consolidate cross-range findings
+  centrally before writing any fix, since a conflict by definition spans
+  more than one agent's own range.
+
+- [ ] **Phase 2 — review and flesh out the proving-ground domains.**
+  Once Phase 1 is done: review `docs/domains/clinical-trials-device-
+  telemetry/` (Vitals) and `docs/domains/digital-identity-kyc/`
+  (Meridian) for depth gaps against their own stated 5-feature-doc/
+  4-workflow (Vitals) and 4-feature-doc/3-workflow (Meridian) structure,
+  and flesh out wherever genuinely lacking.
+
+- [ ] **Phase 3 — identify cross-domain functionality that belongs at
+  framework level.** Once Phase 2 is done: look for functionality built
+  or designed for Vitals/Meridian specifically that is actually generic
+  and not currently called out as such — a real candidate for promotion
+  from a domain doc into the Duplex framework/engine level (an ADR,
+  pattern doc, or core mechanism) rather than staying domain-scoped.
+  Name each candidate found and propose the promotion explicitly (new
+  ADR/pattern doc) rather than moving code silently.
+
+- [ ] **Phase 4 — write or update an architecture/design compliance
+  guideline.** Once Phase 3 is done: a guideline doc (new, or an update
+  to an existing one if Phase 1/3 reveals a better home) stating the
+  cross-cutting conventions every ADR/pattern/domain doc and every real
+  implementation should already be complying with — consolidating what's
+  currently scattered across `CLAUDE.md`'s "Conventions established so
+  far" section and this repo's own `.claude/protocols/*.md` files into
+  something aimed at compliance/consistency checking specifically, per
+  direct request.
+
+- [ ] **Phase 5 — configure linting/static-analysis tooling to enforce
+  the guideline.** Once Phase 4 is done: wire up real tooling (.NET
+  analyzers/`.editorconfig`/Roslyn analyzers for `src/`, ESLint/similar
+  for `client-web/`) configured, where mechanically possible, to enforce
+  the guideline's own preferred patterns — ask the user for their
+  specific preferred patterns/rules before configuring, rather than
+  guessing a generic ruleset.
