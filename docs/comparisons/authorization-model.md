@@ -184,6 +184,50 @@ application's STS can make explicitly — accepting another `AppId`'s
 issued grant as valid input to its own mapping — rather than something
 requiring a shared, centrally-arbitrated permission store.
 
+## Extending the schema/metadata itself, instead of (or alongside) a separate store
+
+Direction received: rather than only a separate permission-matrix store,
+the registered schema/metadata for entities and events could be extended
+to declare access-level information directly — the same place
+`RequiredClaims` (`ADR-008`/`050`) and per-field `x-masking` (`ADR-009`)
+already live, on `EventTypeDefinition` itself. This fits part of the ask
+well and one part not at all — worth being precise about which:
+
+- **Good fit — type-wide access-level declarations.**
+  `EventTypeDefinition` could grow an `AccessLevels: [{ Claim,
+  AccessLevel }]` list alongside `RequiredClaims` — e.g. `{ Claim:
+  "role:safety-monitor", AccessLevel: "ReadMasked" }` — giving a whole
+  entity type a claim-to-access-level default without needing per-field
+  `x-masking` opt-in on every property individually. This is a genuinely
+  incremental extension of a mechanism that's already registered,
+  already versioned, and already config-driven (no redeploy — the same
+  `PUT /registry/{eventType}` call that sets `RequiredClaims` today).
+- **Good fit — making a local STS's own mapping rules self-describing.**
+  An application could declare, right in its own registered schema
+  metadata, which generalized roles it accepts and what they map to
+  locally. That turns the STS's mapping table from a private admin
+  config into something visible through the **exact same schema browser**
+  just discussed — Scalar, the AsyncAPI UI, and the GraphQL
+  `eventTypes(appId)`/`eventType(appId, name, version)` query pair
+  (`src/EventStore.GraphQL/RegistryQueries.cs`) would show it
+  automatically. **Decided, this session: since Scalar/AsyncAPI-UI
+  already work as a real schema explorer, no custom `client-web` registry
+  UI is needed for this — for now.** If access-level/STS-mapping metadata
+  moves onto the schema as described above, those two existing generated
+  browsers keep covering it for free; a bespoke admin screen only becomes
+  worth building later if something needs *editing* through a UI, not
+  just *viewing*.
+- **Poor fit — per-user-task grants.** A schema describes a *type*
+  (`AppId`, `Name`, `Version`), evaluated once at registration time; a
+  per-task grant ("Dr. Alvarez may resolve entity instance `AE-task-42`
+  specifically") is a runtime fact about one actor and one entity
+  *instance* — it has no natural home in a type-level schema no matter
+  how far that schema is extended. This is exactly the type-vs-instance
+  line Option F below already draws: extending the schema captures the
+  type-wide half of the answer well, but doesn't remove the need for a
+  separate per-instance store (a `TaskGrant` table or a ReBAC tuple) for
+  the other half.
+
 ## The fork
 
 ### Option A — RBAC-extended
