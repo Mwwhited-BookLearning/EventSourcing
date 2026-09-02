@@ -59,39 +59,20 @@ left.)
   (`useOutboxStore.flush`'s new `permanentFailure` handling,
   `docs/changes/2026-09-02.md`).
 
-- [ ] **Write an authorization-model comparison doc, then decide.** User ask:
-  map app roles to domain permissions; an access level (`Read`/`ReadMasked`/
-  `Write`) × entity-type matrix; a grant scoped to a specific user task; a
-  config-driven backend (no redeploy to change grants); and first-class
-  "application scope" so multiple applications share one platform
-  deployment, including deliberate cross-app-domain data sharing. Per
-  direct request, this is a **doc-only spike** (no throwaway code) —
-  `.claude/templates/comparison-doc-template.md`, covering: RBAC-extended
-  (bolt entity-type/access-level onto existing `ADR-046` flat role model),
-  ABAC/policy-based (XACML/NGAC-style attribute predicates, PDP/PEP/PAP/PIP
-  separation), ReBAC/relationship-tuple (Zanzibar-style `(object, relation,
-  subject)` — the natural fit for "grant per user task"), a named Hybrid,
-  a DACL example, and a Classification-based/MAC example. Per direct
-  request, each pattern's section needs a concrete sketch (schema shape +
-  pseudocode) worked against one real shared scenario (e.g. a Vitals PI
-  reviewing `AdverseEventReported`) — enough to actually show where the
-  patterns diverge, not just abstract pros/cons — so that promoting any
-  one pattern to a real working spike later reuses this analysis instead
-  of redoing it. Ground it in
-  what already exists: `ADR-046`/`047`/`067` (Role/UserPermission, built as
-  `EventStore.DevIdp`-owned EF tables + `EventStore.Rbac`'s scope-gated
-  Minimal API publishing real reserved events — already config-driven, no
-  redeploy, see `docs/data/schema-registry.md:157-182`), `ADR-008`/`050`
-  (`RequiredClaims`, entity-type-wide, not per-instance), `ADR-009`/`057`
-  (the existing three-state field-level masking `x-masking` mechanism —
-  the nearest existing thing to "ReadMasked," but per-field not
-  per-entity-type), and `ADR-030`/`075` (`AppId` already scopes multiple
-  applications within one tenant's deployment post-silo-model — but
-  deliberate cross-`AppId` data *sharing* is genuinely new ground, not
-  something either ADR addresses). Also flag: `EntityType` today is a free
-  string with no controlled vocabulary (`EventTypeDefinition.EntityType`,
-  `src/EventStore.Domain/SchemaRegistry/EventTypeDefinition.cs:27`) — a
-  permission matrix keyed on it inherits that gap unless addressed.
+- [ ] **Decide the authorization model**, now that the comparison doc is
+  written: [`docs/comparisons/authorization-model.md`](docs/comparisons/authorization-model.md)
+  surveys RBAC-extended, ABAC/policy-based (XACML/NGAC), ReBAC/
+  relationship-tuple (Zanzibar-style), a named Hybrid, DACL, and
+  Classification-based (Mandatory Access Control), each worked through
+  one shared scenario (a Vitals PI resolving one assigned
+  `AdverseEventReported` task) with a concrete schema+pseudocode sketch,
+  per direct request, so a later real spike can start from this analysis
+  instead of redoing it. Its Recommendation leans Hybrid (RBAC for
+  coarse entity-type × access-level grants, a Zanzibar-shaped tuple table
+  for per-task grants) but leaves the actual pick to the user. Once
+  decided: write the deciding ADR (cites the comparison, doesn't
+  re-derive it), add a row to `docs/comparisons/README.md`'s catalog, and
+  only then close this item.
 
 - [ ] **Decide the branch/PR structure for the design threads above** (this
   item and the four below) before they tangle together on one branch.
