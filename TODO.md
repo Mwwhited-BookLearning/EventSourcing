@@ -234,17 +234,14 @@ question — either a `docs/10-open-questions.md` row (if it's a real
 design fork) or a direct question back to the user (if it's really "was
 this on purpose") — never a silent correction.
 
-- [ ] **Phase 0 — missing-documents sweep.** `docs/patterns/README.md`
-  has a real, large backlog: **35+ rows still marked "Catalog only"**
-  (a landed, Accepted ADR exists; the full pattern write-up — general
-  pattern explained, cited, PlantUML/Salt diagram, then how this design
-  applies it — was never written). Grep `docs/patterns/README.md` for
-  "Catalog only" for the current, authoritative list rather than
-  re-deriving it here (it will drift). Also covers the two doc gaps
-  already found this session and tracked above (getting-started/
-  quickstart doc; the `06-solution-structure.md` project-list
-  reconciliation). Large enough to need `.claude/protocols/
-  parallel-batch-dispatch.md`'s batching approach, not one pass.
+- [ ] **Phase 0 — missing-documents sweep.** The `docs/patterns/
+  README.md` backlog (41 rows that were "Catalog only") is **done** —
+  all 41 written via 8 parallel batches + 1 caught by a follow-up manual
+  pass (`docs/changes/2026-09-02.md` has the full narrative). What's
+  left in this phase: the two doc gaps already found this session and
+  tracked as their own items above (getting-started/quickstart doc; the
+  `06-solution-structure.md` project-list reconciliation) — do those,
+  then this item closes.
 
 - [ ] **Phase 1 — full ADR review: find and resolve missing, duplicate,
   and conflicting ADRs.** 103 ADRs exist (`docs/adrs/adr-001-*.md`
