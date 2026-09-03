@@ -208,64 +208,11 @@ question — either a `docs/10-open-questions.md` row (if it's a real
 design fork) or a direct question back to the user (if it's really "was
 this on purpose") — never a silent correction.
 
-Phase 0 (missing-documents sweep) is **done** — all three parts closed:
-the `docs/patterns/README.md` 41-row backlog, `docs/getting-started.md`
-(new, linked from `README.md`'s document index, including the
-language/platform scope statement it was asked to state explicitly), and
-`06-solution-structure.md`'s project-list reconciliation (12 real
-projects that had zero mention anywhere in that file — `EventStore.Flows`,
-`.WorkerWakeSignal`, `.SqlClr.SqlServer`, `.Benchmarks`, and all eight
-`Samples.Vitals*`/`Samples.Meridian*` projects — added in place). Full
-narrative in `docs/changes/2026-09-02.md`. **Phase 1 (the full ADR
-review) is next.**
-
-**Phase 1 (full ADR review) is now fully done**, all 21 Tier A findings
-and all 3 Tier B judgment calls resolved (the user answered all three
-directly: yes to `ADR-010`↔`ADR-037` cross-referencing, literal
-strikethrough for `ADR-011`, yes to correcting `distributed-correctness-
-testing.md`). Full narrative in `docs/changes/2026-09-02.md`. No missing
-or duplicate ADRs were found anywhere across the 103-ADR corpus.
-
-**Phase 2 is next.**
-
-**Phase 2 is done.** A read-only audit (2 parallel agents, one per
-domain) found both domains structurally excellent — every feature doc
-fully populated against the template (context, sequence/ER diagrams,
-Salt mockups, substantive multi-scenario Gherkin), all workflows
-correctly wired, Special Concerns and Glossaries both substantive. Four
-real, code-confirmed findings, all fixed: two feature docs per domain
-described a mechanism that was never built exactly that way (Vitals'
-`ConsentApproval`/`ConsentApprovalResolver` reuses the shared
-`authorityDecision` reactor instead; Vitals' `IonmAlertRaised` is
-`ChangeKind: "Partial"` not `"Full"`, a real fold-ordering fix; Meridian's
-Workflow A has no Router-initiated token exchange, self-attestation goes
-straight to `unattested`; Meridian's Workflow B has no `accessGrant`
-event or generic entity-query field, delegation is a client-signed
-`UcanDelegation` instead) — all four divergences were *already*
-documented centrally in `docs/domains/README.md`'s own run-and-found-
-divergences list, just never cross-referenced from inside the specific
-feature doc a reader would actually open; added those cross-references.
-Also added 5 ADRs to Meridian's `README.md` `## Applicable ADRs` that
-were demonstrably load-bearing throughout its own feature docs but
-missing from the summary list (`ADR-008`, `066`, `079`, `096`, `101`).
-Full narrative in `docs/changes/2026-09-02.md`.
-
-**Phase 3 is next.**
-
-**Phase 3 is done.** A read-only cross-domain review found two real
-candidates (and correctly ruled out two others as already properly
-resolved — `AuthorityQueue.vue` is already generic, not duplicated; the
-"secondary opinion" terminology echo is already a promoted, shared
-mechanism). Both real candidates handled: a new pattern-interaction doc
-(`docs/patterns/interactions/claim-gated-step-up-signoff.md`, pure docs,
-written this session) documenting the "capture → claim-gated decision →
-step-up sign-off → authoritative fold" composition both domains build
-identically; and a framework-level registration-helper promotion
-(needs a decision + a code change, tracked as its own item above since
-code is out of scope this session). Full narrative in `docs/changes/
+Phases 0-3 (missing-documents sweep, full ADR review, proving-ground
+domain review, cross-domain-to-framework review) are all **done** — per
+this file's own workflow, deleted from here rather than kept as
+completion narratives; the full account of each is in `docs/changes/
 2026-09-02.md`.
-
-**Phase 4 is next.**
 
 - [ ] **Phase 4 — write or update an architecture/design compliance
   guideline.** Once Phase 3 is done: a guideline doc (new, or an update
