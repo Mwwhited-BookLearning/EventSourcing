@@ -214,23 +214,20 @@ this file's own workflow, deleted from here rather than kept as
 completion narratives; the full account of each is in `docs/changes/
 2026-09-02.md`.
 
-- [ ] **Phase 4 — write or update an architecture/design compliance
-  guideline.** Once Phase 3 is done: a guideline doc (new, or an update
-  to an existing one if Phase 1/3 reveals a better home) stating the
-  cross-cutting conventions every ADR/pattern/domain doc and every real
-  implementation should already be complying with — consolidating what's
-  currently scattered across `CLAUDE.md`'s "Conventions established so
-  far" section and this repo's own `.claude/protocols/*.md` files into
-  something aimed at compliance/consistency checking specifically, per
-  direct request.
-
 - [ ] **Phase 5 — configure linting/static-analysis tooling to enforce
-  the guideline.** Once Phase 4 is done: wire up real tooling (.NET
+  the guideline.** `docs/architecture-design-guidelines.md` (Phase 4,
+  done) already scopes this: its closing "Summary: what Phase 5's
+  tooling can realistically enforce" section names the genuinely
+  🔧-mechanical rules worth real lint/analyzer configuration (no
+  `!include` in PlantUML, no AutoMapper/Newtonsoft references, no `--`
+  in `.csproj` XML comments, a `dotnet test --logger` invocation check,
+  a constructor-injection-only Roslyn analyzer) and explicitly says the
+  rest is a review checklist, not a lint target — don't try to force
+  everything in the guideline into a linter. Wire up real tooling (.NET
   analyzers/`.editorconfig`/Roslyn analyzers for `src/`, ESLint/similar
-  for `client-web/`) configured, where mechanically possible, to enforce
-  the guideline's own preferred patterns — ask the user for their
-  specific preferred patterns/rules before configuring, rather than
-  guessing a generic ruleset.
+  for `client-web/`) for that 🔧 list — ask the user for their specific
+  preferred rules/severities before configuring, rather than guessing a
+  generic ruleset.
 
 - [ ] **One-line code-comment fix, deferred only because this session is
   design-phase-only (no `src/` changes).** `src/EventStore.Domain/

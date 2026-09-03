@@ -65,6 +65,12 @@ re-derive the process from scratch:
 ## Layout
 
 - `README.md` — entry point: what the system is, doc index, open decisions.
+- `docs/architecture-design-guidelines.md` — cross-cutting compliance/
+  consistency reference: the conventions established below, reorganized
+  for checking a piece of work against rather than narrated as history.
+  Check this before/while reviewing an ADR, pattern, domain doc, or code
+  change; read the specific `.claude/protocols/*.md` file when actually
+  *doing* the matching recurring task.
 - `.claude/context.md` — **read this first when resuming cold** (a new
   session, a lost/unresumable conversation, a handoff to someone else):
   a snapshot of current state, what's actively in flight, and working
