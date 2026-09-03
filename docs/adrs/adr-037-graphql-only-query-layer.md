@@ -72,6 +72,16 @@ Decision:
   (`ADR-033`).
 
 Consequences:
+- **`ADR-010`'s tail-vs-replay `mode` mechanism is re-expressed here, not
+  replaced** — added per direct request, a design-compliance audit this
+  session found no cross-reference existed either direction. The
+  `mode=tail`/`mode=replay`+`fromSequenceNumber` semantics `ADR-010`
+  decided are unchanged in substance; they now arrive as GraphQL
+  Subscription arguments instead of `04-odata-filter-pushdown.md`-era
+  query-string parameters, resolved the same "one continuous poll loop,
+  only the initial `lastSeen` value differs" way `ADR-010` itself
+  specifies. See `ADR-010` for the full mode semantics — this ADR only
+  changed the transport/document language they arrive in.
 - `03-api-contracts.md`'s entire OData-era publish/lineage/registry query
   documentation needs rewriting — flagged as a real, substantial
   propagation debt, not yet done.

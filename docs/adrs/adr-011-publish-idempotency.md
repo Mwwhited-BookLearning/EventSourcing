@@ -28,8 +28,10 @@ Decision:
     caller's `eventId` is used for the new row instead of a generated one.
   - **Found, `PayloadHash` matches** the incoming request's: this is an
     **idempotent replay** — return the identical response as the original
-    successful publish (`202`, same status envelope — `ADR-023`
-    superseded this row's original `201` framing). No new row, no
+    successful publish (~~`201`~~ **`202`, same status envelope —
+    superseded by `ADR-023`**, corrected to the literal strikethrough
+    convention here per direct request, replacing the earlier lightweight
+    parenthetical note). No new row, no
     re-validation; the store performs no write at all.
   - **Found, `PayloadHash` differs**: `409 Conflict` — the same `eventId`
     was reused for genuinely different content. This is a caller bug

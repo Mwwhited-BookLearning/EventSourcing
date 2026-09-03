@@ -62,3 +62,11 @@ Consequences:
   reconciling those different shapes into one; `ADR-018` (event upcasting)
   is what actually resolves that, layered on top of the cursor mechanics
   decided here.
+- **Re-expressed, not replaced, by `ADR-037`** (added per direct
+  request — a design-compliance audit this session found neither ADR
+  cross-referenced the other): once GraphQL became the sole query layer,
+  `mode`/`fromSequenceNumber` arrive as Subscription arguments instead of
+  a query-string parameter — the semantics decided above (default
+  `tail`, `replay` with an optional `fromSequenceNumber`, one continuous
+  poll loop, no server-managed checkpoint) are unchanged in substance.
+  See `ADR-037` for the transport-level change.

@@ -219,22 +219,12 @@ projects that had zero mention anywhere in that file — `EventStore.Flows`,
 narrative in `docs/changes/2026-09-02.md`. **Phase 1 (the full ADR
 review) is next.**
 
-Phase 1 (full ADR review) is **done** — a read-only 8-batch audit across
-all 103 ADRs, cross-checked against real `src/` code, found 21 Tier A
-(objectively verifiable) issues, all fixed additively per `.claude/
-protocols/additive-history-editing.md`, plus 3 Tier B (genuine judgment
-calls) left unresolved on purpose. No missing or duplicate ADRs were
-found — every finding was an unmarked supersession, a stale correction
-note, or a claimed-done propagation edit that wasn't actually done. Full
-narrative in `docs/changes/2026-09-02.md`. **The 3 Tier B items still
-need your call**:
-1. Does `ADR-010` need an explicit cross-reference from `ADR-037`?
-2. Is `ADR-011`'s lightweight parenthetical correction style acceptable,
-   or should it be struck through per the strikethrough protocol's letter?
-3. Should `docs/comparisons/distributed-correctness-testing.md` get the
-   same "implementation note" correction `fault-injection-chaos-
-   engineering.md` already has, given Polly/Simmy went through a full
-   adopt-then-reject cycle it doesn't currently reflect?
+**Phase 1 (full ADR review) is now fully done**, all 21 Tier A findings
+and all 3 Tier B judgment calls resolved (the user answered all three
+directly: yes to `ADR-010`↔`ADR-037` cross-referencing, literal
+strikethrough for `ADR-011`, yes to correcting `distributed-correctness-
+testing.md`). Full narrative in `docs/changes/2026-09-02.md`. No missing
+or duplicate ADRs were found anywhere across the 103-ADR corpus.
 
 **Phase 2 is next.**
 
