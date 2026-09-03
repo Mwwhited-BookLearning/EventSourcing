@@ -252,14 +252,20 @@ Full narrative in `docs/changes/2026-09-02.md`.
 
 **Phase 3 is next.**
 
-- [ ] **Phase 3 — identify cross-domain functionality that belongs at
-  framework level.** Once Phase 2 is done: look for functionality built
-  or designed for Vitals/Meridian specifically that is actually generic
-  and not currently called out as such — a real candidate for promotion
-  from a domain doc into the Duplex framework/engine level (an ADR,
-  pattern doc, or core mechanism) rather than staying domain-scoped.
-  Name each candidate found and propose the promotion explicitly (new
-  ADR/pattern doc) rather than moving code silently.
+**Phase 3 is done.** A read-only cross-domain review found two real
+candidates (and correctly ruled out two others as already properly
+resolved — `AuthorityQueue.vue` is already generic, not duplicated; the
+"secondary opinion" terminology echo is already a promoted, shared
+mechanism). Both real candidates handled: a new pattern-interaction doc
+(`docs/patterns/interactions/claim-gated-step-up-signoff.md`, pure docs,
+written this session) documenting the "capture → claim-gated decision →
+step-up sign-off → authoritative fold" composition both domains build
+identically; and a framework-level registration-helper promotion
+(needs a decision + a code change, tracked as its own item above since
+code is out of scope this session). Full narrative in `docs/changes/
+2026-09-02.md`.
+
+**Phase 4 is next.**
 
 - [ ] **Phase 4 — write or update an architecture/design compliance
   guideline.** Once Phase 3 is done: a guideline doc (new, or an update
@@ -289,3 +295,24 @@ Full narrative in `docs/changes/2026-09-02.md`.
   its code sample), just not in the shipped file itself. Update the
   comment to `"Router" | "PeerSyncOutboxPump" | "WebhookOutboxPump" |
   "ExpectedResponseWatcher"` once code changes are back in scope.
+
+- [ ] **Promote the duplicated "ensure claim on shared `authorityDecision`
+  type" registration helper into `EventStore.SchemaRegistry` itself —
+  needs a decision, then a code change (deferred, design-phase-only).**
+  Found during Phase 3 (cross-domain-to-framework review):
+  `src/Samples.Vitals/VitalsSharedTypes.cs`'s and `src/Samples.Meridian/
+  MeridianSharedTypes.cs`'s `EnsureAuthorityDecisionRegisteredAsync`
+  methods are byte-for-byte identical in schema and near-identical in
+  body, called from every Vitals/Meridian workflow that needs a decision
+  reactor. This duplication already has a real, observed cost, not just
+  a hypothetical one: Vitals' copy hardcodes a `RequiredSignature`
+  parameter, Meridian's doesn't, so when Meridian's Workflow C needed
+  step-up on its own decision it couldn't extend the shared type the
+  way Vitals did — it had to hand-register a wholly separate event type
+  (`SarFilingRecorded`) instead. Promote to something like
+  `SchemaRegistryService.EnsureClaimOnReservedTypeAsync(appId, typeName,
+  jsonSchema, publishClaim, requiredSignature?)`, documented in
+  `docs/patterns/interactions/claim-gated-step-up-signoff.md` (written
+  this session, already flags this exact gap). The reactor this
+  registers for (`AuthorityDecisionResolver`) is already genuinely
+  framework-level; only the registration convenience is duplicated.
