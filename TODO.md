@@ -55,19 +55,6 @@ left.)
   domain's STS/middleware expansion actually built before this can
   close — tracked here until then, not a design decision anymore.
 
-- [ ] **Design a Contact/Profile entity before building vCard (RFC 6350)
-  import/export.** No `Contact`/`Profile`-shaped entity exists anywhere
-  in `src/` today (searched digital-identity-kyc domain and broader
-  `src/` for `FirstName`/`GivenName`/`EmailAddress`/`PhoneNumber`/
-  `Contact`/`Profile` — none found). vCard export needs something to
-  export *from*; decide that entity's shape (likely in the digital-
-  identity-kyc domain) before wiring RFC 6350 import/export on top of it.
-  Same data-vs-protocol gap as the scheduling item above: RFC 6350 is
-  data-only — RFC 6352 (CardDAV) is the HTTP access protocol (address-book
-  collections, content negotiation between vCard 3.0/4.0), and RFC 7095
-  (jCard) gives a JSON form, again likely a better fit here than raw
-  vCard text.
-
 - [ ] **Add "vehicle/equipment maintenance & fuel logs" as a candidate
   domain.** Real standards to ground it in: VMRS (ATA/TMC's hierarchical
   maintenance/repair coding system — industry-standard, no formal SDO)

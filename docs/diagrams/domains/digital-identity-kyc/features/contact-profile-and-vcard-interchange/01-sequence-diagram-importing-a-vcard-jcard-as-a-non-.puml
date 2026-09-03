@@ -1,0 +1,34 @@
+@startuml
+autonumber
+actor "Relying party or applicant client\n(ordinary app-session JWT, ADR-006)" as caller
+participant "Interchange endpoint\n(EventStore.Interchange)" as interchangeEp
+participant "VCardAdapter\n(IInterchangeFormatAdapter, ADR-072)" as adapter
+participant "PublishEndpoint\n(Inbox)" as inbox
+participant "EventStore.Fold\n(Live View only, ungated -- ADR-042)" as fold
+database "Event Log" as eventLog
+database "Live View" as liveView
+
+caller -> interchangeEp: POST /interchange/vcard/import\n{ appId: "kyc",\n  jcard: ["vcard", [ ["version",{},"text","4.0"],\n    ["fn",{},"text","Jane R. Smith"],\n    ["n",{},"text",["Smith","Jane","R","",""]],\n    ["email",{"type":"work"},"text","jane.smith@example.com"],\n    ["tel",{"type":"cell"},"text","+1-555-0100"],\n    ["adr",{},"text",["","","123 Main St","Springfield","IL","62704","USA"]],\n    ["org",{},"text","Acme Bank"] ] ] }
+interchangeEp -> adapter: ParseInboundAsync(appId: "kyc", rawMessage: <jCard JSON>)
+adapter -> adapter: map jCard properties -> ContactProfileUpdatedPayload\n(FN/N -> FormattedName/GivenName/FamilyName,\n EMAIL/TEL -> Email/PhoneNumber, ADR -> PostalAddress,\n ORG -> OrganizationName)
+adapter --> interchangeEp: InterchangeInboundResult(\n  EventType: "ContactProfileUpdated", Payload: <JSON>,\n  ReviewPending: true)
+note right of adapter
+  ReviewPending defaults true (ADR-072's own default for
+  externally-sourced data, same posture Hl7V2Adapter/
+  FhirAdapter already apply to EMR-sourced input) -- an
+  imported vCard is exactly as unverified as an inbound
+  HL7v2 ADT^A01 message until a human confirms it.
+end note
+interchangeEp -> inbox: POST /publish/ContactProfileUpdated\n{ payload, entityId: "kyc:ApplicantIdentity:applicant-1001",\n  reviewPending: true }
+inbox -> eventLog: INSERT StoredEvent\n(AuthorityStatus: "pending_review" -- ADR-042's explicit\n review-pending marker, same mechanism BiometricCaptureRecorded uses)
+inbox --> caller: 202 { status: "received", authorityStatus: "pending_review" }
+inbox -> fold: fold into Live View only (ADR-042)
+fold -> liveView: UPSERT LiveEntityStoreRow\n(merged Data including imported contact fields,\n AuthorityStatus: "pending_review")
+note right of liveView
+  Visible immediately, wrapped isAuthoritative: false.
+  The authoritative Entity Store does not yet reflect the
+  imported profile -- it catches up only once an analyst's
+  authorityDecision accepts it (the SAME AuthorityDecisionResolver
+  every other doc in this domain already reuses -- not a new one).
+end note
+@enduml

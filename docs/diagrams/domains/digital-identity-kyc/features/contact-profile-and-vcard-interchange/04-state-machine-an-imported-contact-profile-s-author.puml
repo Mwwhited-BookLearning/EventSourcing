@@ -1,0 +1,32 @@
+@startuml
+[*] --> PendingReview : ContactProfileUpdated published via\nVCardAdapter.ParseInboundAsync\n(ReviewPending: true, ADR-072/ADR-035 default)
+PendingReview --> Accepted : authorityDecision{decision: accepted}\npublished by a caller holding\n"identity:review" (ADR-046, reused resolver)
+PendingReview --> Rejected : authorityDecision{decision: rejected}\npublished by a caller holding\n"identity:review"
+Accepted --> [*]
+Rejected --> [*]
+
+note right of PendingReview
+  Visible immediately via LiveEntityStoreRow, wrapped
+  isAuthoritative: false (ADR-042) -- an imported vCard is
+  exactly as unverified as inbound EMR data until reviewed.
+  Never "unattested" -- that value is specific to ADR-036's
+  self-attested-credential trigger, a different one of
+  ADR-042's two named triggers than this doc exercises
+  (the SAME "automated/external, unconfirmed" trigger
+  document-and-biometric-capture.md's liveness detector uses).
+end note
+
+note right of Accepted
+  Unlocks: the authoritative Entity Store folds this
+  profile's fields onto applicant-1001's existing row
+  (ADR-042/ADR-016 Partial merge) -- now available to
+  VCardAdapter.FormatOutboundAsync's export path.
+end note
+
+note right of Rejected
+  Payload stays unchanged (Annotate, this event type's
+  default RejectionBehavior, ADR-035) -- never reaches the
+  authoritative Entity Store, stays visible in the Event Log
+  and Live View, re-labeled.
+end note
+@enduml

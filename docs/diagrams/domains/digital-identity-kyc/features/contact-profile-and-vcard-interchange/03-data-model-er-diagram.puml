@@ -1,0 +1,62 @@
+@startuml
+hide circle
+skinparam linetype ortho
+
+entity "StoredEvent\n(ContactProfileUpdated)" as profileEvent {
+  * SequenceNumber : bigint <<PK>>
+  --
+  EventId : uuid <<unique>>
+  EntityId : string
+  ' "kyc:ApplicantIdentity:applicant-1001" (ADR-021) -- SAME EntityId
+  ' as IdentityClaimSubmitted/IdentityDocumentUploaded/BiometricCaptureRecorded
+  Payload : text
+  ' FormattedName/GivenName/FamilyName/Email/PhoneNumber/PostalAddress (all masked),
+  ' TimeZone/PreferredLanguage/JobTitle/OrganizationName/Categories (unmasked)
+  AuthorityStatus : string {pending_review|accepted|rejected}
+  ' pending_review is this event type's default (ADR-072/ADR-042) --
+  ' externally-sourced (imported) data, never "unattested" (that value
+  ' is ADR-036's self-attested-credential trigger specifically)
+  AuthorityDecisionRef : uuid?
+}
+
+entity "EntityStoreRow\n(ApplicantIdentity, authoritative)" as entityStore {
+  * EntityId : string <<PK>>
+  --
+  EntityType : string
+  Version : bigint
+  Data : text
+  ' accumulates fields from IdentityDocumentUploaded, BiometricCaptureRecorded,
+  ' IdentityClaimSubmitted, AND now ContactProfileUpdated -- ChangeKind.Partial
+  AuthorityStatus : string
+}
+
+entity "LiveEntityStoreRow\n(ungated counterpart)" as liveView {
+  * EntityId : string <<PK>>
+  --
+  Data : text
+  AuthorityStatus : string
+}
+
+entity "WebhookSubscription" as webhookSub {
+  * SubscriptionId : uuid <<PK>>
+  --
+  AppId : string
+  TargetUrl : string
+  EventTypes : string[]
+  ' now includes "ContactProfileUpdated"
+  FixedClaimsSnapshot : text
+}
+
+profileEvent "*" --> "0..1" entityStore : "folds into, ONLY once\nAuthorityStatus = accepted (ADR-042)"
+profileEvent "*" --> "1" liveView : "folds into immediately,\nregardless of AuthorityStatus (ADR-042)"
+webhookSub ..> profileEvent : "EventTypes match triggers a\nVCardAdapter-transformed,\nmasked outbound delivery (ADR-060/ADR-072)"
+
+note right of entityStore
+  Same row every other feature doc in this domain contributes
+  to -- an analyst reviewing applicant-1001's identity claim
+  downstream already sees this doc's contact fields merged in,
+  if accepted first (ADR-016's Partial merge, exercised earlier
+  in the entity's life, same pattern document-and-biometric-
+  capture.md already established).
+end note
+@enduml

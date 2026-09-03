@@ -93,3 +93,20 @@ Consequences:
 - No change to `ADR-023`'s content-level persist-everything posture, and
   no change to `ADR-060`'s webhook delivery/signing mechanics — this ADR
   adds a transform step around both, not a new posture.
+
+**Addendum, 2026-09-03 — a fifth concrete adapter, `VCardAdapter`,
+designed against this same seam (no new ADR needed, per this ADR's own
+"..." in the adapter list above):** digital-identity-kyc's own
+Contact/Profile entity (RFC 6350's `FN`/`N`/`EMAIL`/`TEL`/`ADR`/`ORG`
+subset, wire format RFC 7095 jCard) needed vCard import/export — see
+[`../domains/digital-identity-kyc/features/contact-profile-and-vcard-
+interchange.md`](../domains/digital-identity-kyc/features/contact-profile-and-vcard-interchange.md).
+Notable: this is the **first genuinely bidirectional** adapter
+(`Hl7V2Adapter`/`FhirAdapter` are inbound-only, `IchE2bR3Adapter`/
+`Gs1EpcisAdapter` outbound-only) — confirms the interface's own
+per-direction `NotSupportedException` design was already general enough
+to support one without a shape change. CardDAV (RFC 6352) was
+considered as a transport surface and declined for the same reason
+`ADR-032` declined WebDAV entirely (plain HTTP already serves both
+directions this adapter needs) — not a new decision, the same one
+applied to a narrower, WebDAV-extension protocol.

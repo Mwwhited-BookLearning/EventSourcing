@@ -70,6 +70,10 @@ built for one industry.
 - `ADR-101` — PlantUML-native flow engine — added; backs this README's
   own Workflow A/C diagrams directly, an infrastructure fit rather than
   a domain-defining one.
+- `ADR-072` — bulk ingestion & interchange-format adapters — added; this
+  domain's own new vCard/jCard `VCardAdapter` (Workflow D) is a concrete
+  instance of that ADR's extensibility seam, an infrastructure fit
+  rather than a domain-defining one, same framing as `ADR-101` above.
 
 **Weak/no fit:**
 - `ADR-031` (streaming channels) — no natural telemetry story at all,
@@ -77,8 +81,8 @@ built for one industry.
 
 ## Workflows
 
-Four feature docs, together tracing three real end-to-end workflows
-through this domain — not four disconnected examples. Every entity below
+Five feature docs, together tracing four real end-to-end workflows
+through this domain — not five disconnected examples. Every entity below
 resolves to the same running example, `kyc:ApplicantIdentity:applicant-1001`
 (`ADR-021`'s `{appId}:{entityType}:{uniqueId}` format), so a reader can
 follow one applicant's full lifecycle across all four docs.
@@ -162,14 +166,27 @@ stop
 @enduml
 ```
 
+- **Workflow D — Contact/Profile Data Portability & Interchange.**
+  1. [Contact/Profile and vCard Interchange](features/contact-profile-and-vcard-interchange.md)
+     — a contact/profile record (address, phone, email, organization) is
+     imported from a standard vCard/jCard representation (`ADR-072`'s
+     new `VCardAdapter`), captured non-authoritatively pending analyst
+     review (`ADR-035`/`ADR-042`, reusing the same `authorityDecision`
+     resolver every other workflow in this domain already uses), then
+     exported back out to a relying party in the same standard form.
+     Not currently wired into `ADR-101`'s flow engine (no
+     `Samples.Meridian` flow file exists for it) — purely a design-doc
+     level workflow trace, unlike Workflows A and C above.
+
 ## Feature docs
 
-All four docs the Workflows section above sequences:
+All five docs the Workflows section above sequences:
 
 - [Document and Biometric Capture](features/document-and-biometric-capture.md) — the upstream half of onboarding: attachment upload/linking and biometric liveness capture, feeding the identity claim below.
 - [Customer Onboarding and Identity Verification](features/customer-onboarding-and-identity-verification.md) — an applicant's self-attested DID/UCAN identity claim (`ADR-036`) flows from non-authoritative capture (`ADR-035`/`ADR-042`) through analyst review to an accepted, claims-bearing identity record (`ADR-046`).
 - [Relying-Party Verification Request](features/relying-party-verification-request.md) — a delegated, entity-scoped, time-boxed access grant (`ADR-043`) lets a relying party pull a claims-gated confirmation of verification status, logged (`ADR-045`).
 - [Periodic Screening and SAR Escalation](features/periodic-screening-and-sar-escalation.md) — periodic re-screening, compliance review, and digitally signed SAR filing (`ADR-066`), demonstrating the manual-decision flow `ADR-079`'s sanctions-screening seam composes with.
+- [Contact/Profile and vCard Interchange](features/contact-profile-and-vcard-interchange.md) — a Contact/Profile entity mapped onto vCard 4.0 (`ADR-072`'s new `VCardAdapter`, RFC 6350/7095), imported non-authoritatively and exported back out to relying parties in jCard form.
 
 ## Special concerns
 
