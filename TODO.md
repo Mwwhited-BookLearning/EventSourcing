@@ -79,34 +79,3 @@ account of each is in `docs/changes/2026-09-02.md` (Phase 0) and
 `docs/changes/2026-09-03.md` (Phase 1 onward — split across the two
 files since work crossed a real midnight boundary mid-session).
 
-- [ ] **One-line code-comment fix, deferred only because this session is
-  design-phase-only (no `src/` changes).** `src/EventStore.Domain/
-  LeaderElection/LeaderLease.cs`'s own header comment still lists
-  `"UpcastMaterializer"` as a valid `WorkerRole` value (never used —
-  confirmed via repo-wide grep) and omits `"ExpectedResponseWatcher"`
-  (the real 4th role, `ADR-094`) — found during Phase 1's ADR review,
-  already fixed in `ADR-078`'s own text (both the Decision bullet and
-  its code sample), just not in the shipped file itself. Update the
-  comment to `"Router" | "PeerSyncOutboxPump" | "WebhookOutboxPump" |
-  "ExpectedResponseWatcher"` once code changes are back in scope.
-
-- [ ] **Promote the duplicated "ensure claim on shared `authorityDecision`
-  type" registration helper into `EventStore.SchemaRegistry` itself —
-  needs a decision, then a code change (deferred, design-phase-only).**
-  Found during Phase 3 (cross-domain-to-framework review):
-  `src/Samples.Vitals/VitalsSharedTypes.cs`'s and `src/Samples.Meridian/
-  MeridianSharedTypes.cs`'s `EnsureAuthorityDecisionRegisteredAsync`
-  methods are byte-for-byte identical in schema and near-identical in
-  body, called from every Vitals/Meridian workflow that needs a decision
-  reactor. This duplication already has a real, observed cost, not just
-  a hypothetical one: Vitals' copy hardcodes a `RequiredSignature`
-  parameter, Meridian's doesn't, so when Meridian's Workflow C needed
-  step-up on its own decision it couldn't extend the shared type the
-  way Vitals did — it had to hand-register a wholly separate event type
-  (`SarFilingRecorded`) instead. Promote to something like
-  `SchemaRegistryService.EnsureClaimOnReservedTypeAsync(appId, typeName,
-  jsonSchema, publishClaim, requiredSignature?)`, documented in
-  `docs/patterns/interactions/claim-gated-step-up-signoff.md` (written
-  this session, already flags this exact gap). The reactor this
-  registers for (`AuthorityDecisionResolver`) is already genuinely
-  framework-level; only the registration convenience is duplicated.

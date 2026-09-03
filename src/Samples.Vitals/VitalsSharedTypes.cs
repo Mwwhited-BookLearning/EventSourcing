@@ -60,23 +60,8 @@ public static class VitalsSharedTypes
     // already carries every decision claim this domain names, per each
     // workflow's own Background), so this only ever widens who CAN
     // decide, never lets an under-privileged caller through.
-    public static async Task EnsureAuthorityDecisionRegisteredAsync(SchemaRegistryService registry, string appId, string requiredPublishClaim, CancellationToken ct = default)
-    {
-        var active = await registry.GetActiveAsync(appId, AuthorityDecisionType, ct);
-        var existingClaims = active?.RequiredClaims
-            .Where(c => c.Direction == ClaimDirection.Publish)
-            .Select(c => c.Claim)
-            .ToList() ?? [];
-        if (existingClaims.Contains(requiredPublishClaim))
-            return; // already covers this workflow's own decision claim -- no new version needed
-
-        var claims = existingClaims.Append(requiredPublishClaim).Distinct()
-            .Select(c => new RequiredClaimRequest("Publish", c)).ToList();
-
-        await registry.RegisterAsync(AuthorityDecisionType, new RegisterEventTypeRequest(
-            AppId: appId, JsonSchema: AuthorityDecisionSchema, FilterableFields: [],
-            ChangeKind: "Full", EntityIdField: "$.targetEventId", ParentValidationMode: "Permissive",
-            RequiredClaims: claims, UpcastFromPrevious: null, DowncastToPrevious: null,
-            RequiredSignature: new RequiredSignatureRequest(["urn:trial:step-up"], 300)), ct);
-    }
+    public static Task EnsureAuthorityDecisionRegisteredAsync(SchemaRegistryService registry, string appId, string requiredPublishClaim, CancellationToken ct = default) =>
+        registry.EnsureClaimOnReservedTypeAsync(
+            appId, AuthorityDecisionType, AuthorityDecisionSchema, requiredPublishClaim,
+            new RequiredSignatureRequest(["urn:trial:step-up"], 300), ct);
 }

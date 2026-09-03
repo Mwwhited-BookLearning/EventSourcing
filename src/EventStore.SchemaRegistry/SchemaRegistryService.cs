@@ -281,6 +281,50 @@ public class SchemaRegistryService(
         return new RegisterEventTypeResult.Success(registeredDefinition.Version);
     }
 
+    // Promoted from Samples.Vitals.VitalsSharedTypes/Samples.Meridian.
+    // MeridianSharedTypes's own byte-for-byte-identical
+    // EnsureAuthorityDecisionRegisteredAsync methods (TODO.md, "Promote the
+    // duplicated ... registration helper into EventStore.SchemaRegistry
+    // itself") -- both sample apps register a shared, reactor-named type
+    // (EventStore.Router's AuthorityDecisionResolver resolves purely by
+    // targetEventId, with no per-AppId or per-domain knowledge of the type
+    // name itself) that every workflow needing a human decision on an
+    // already-captured record widens with its own Publish-direction claim,
+    // ADR-050's OR-of-list semantics (any ONE listed claim satisfies the
+    // gate) meaning each caller only ever ADDS to the list, never replaces
+    // it. This duplication had a real, observed cost before promotion:
+    // Vitals' own copy hardcoded a RequiredSignature parameter that
+    // Meridian's copy omitted, so Meridian's Workflow C had to hand-register
+    // a wholly separate event type (SarFilingRecorded) instead of reusing
+    // this one when it needed step-up sign-off. EntityIdField/ChangeKind/
+    // ParentValidationMode are fixed, not parameters -- they're inherent to
+    // what "a reserved type AuthorityDecisionResolver can resolve" means
+    // (docs/patterns/interactions/claim-gated-step-up-signoff.md), not a
+    // per-caller choice the way jsonSchema/requiredPublishClaim/
+    // requiredSignature are.
+    public async Task EnsureClaimOnReservedTypeAsync(
+        string appId, string typeName, string jsonSchema, string requiredPublishClaim,
+        RequiredSignatureRequest? requiredSignature = null, CancellationToken ct = default)
+    {
+        var normalizedName = typeName.ToLowerInvariant();
+        var active = await GetActiveAsync(appId, normalizedName, ct);
+        var existingClaims = active?.RequiredClaims
+            .Where(c => c.Direction == ClaimDirection.Publish)
+            .Select(c => c.Claim)
+            .ToList() ?? [];
+        if (existingClaims.Contains(requiredPublishClaim))
+            return; // already covers this caller's own claim -- no new version needed
+
+        var claims = existingClaims.Append(requiredPublishClaim).Distinct()
+            .Select(c => new RequiredClaimRequest("Publish", c)).ToList();
+
+        await RegisterAsync(normalizedName, new RegisterEventTypeRequest(
+            AppId: appId, JsonSchema: jsonSchema, FilterableFields: [],
+            ChangeKind: "Full", EntityIdField: "$.targetEventId", ParentValidationMode: "Permissive",
+            RequiredClaims: claims, UpcastFromPrevious: null, DowncastToPrevious: null,
+            RequiredSignature: requiredSignature), ct);
+    }
+
     // ADR-033/ADR-067 -- the full registration, not just {EventTypeName,
     // Version} (docs/10-open-questions.md row 1, resolved this pass):
     // widened so a receiving peer's own ApplyReplicatedRegistrationAsync

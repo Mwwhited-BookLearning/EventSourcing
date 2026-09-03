@@ -31,22 +31,6 @@ public static class MeridianSharedTypes
         }
         """;
 
-    public static async Task EnsureAuthorityDecisionRegisteredAsync(SchemaRegistryService registry, string appId, string requiredPublishClaim, CancellationToken ct = default)
-    {
-        var active = await registry.GetActiveAsync(appId, AuthorityDecisionType, ct);
-        var existingClaims = active?.RequiredClaims
-            .Where(c => c.Direction == ClaimDirection.Publish)
-            .Select(c => c.Claim)
-            .ToList() ?? [];
-        if (existingClaims.Contains(requiredPublishClaim))
-            return;
-
-        var claims = existingClaims.Append(requiredPublishClaim).Distinct()
-            .Select(c => new RequiredClaimRequest("Publish", c)).ToList();
-
-        await registry.RegisterAsync(AuthorityDecisionType, new RegisterEventTypeRequest(
-            AppId: appId, JsonSchema: AuthorityDecisionSchema, FilterableFields: [],
-            ChangeKind: "Full", EntityIdField: "$.targetEventId", ParentValidationMode: "Permissive",
-            RequiredClaims: claims, UpcastFromPrevious: null, DowncastToPrevious: null), ct);
-    }
+    public static Task EnsureAuthorityDecisionRegisteredAsync(SchemaRegistryService registry, string appId, string requiredPublishClaim, CancellationToken ct = default) =>
+        registry.EnsureClaimOnReservedTypeAsync(appId, AuthorityDecisionType, AuthorityDecisionSchema, requiredPublishClaim, ct: ct);
 }
