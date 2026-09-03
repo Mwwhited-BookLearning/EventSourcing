@@ -20,7 +20,12 @@ Decision:
   registration mechanism, same declarative expression mechanism
   (currently OData `compute()` per `ADR-018`; if `ADR-018` itself moves
   onto JS/CEL + GraphQL directives once the OData-to-GraphQL swap lands,
-  `downcastToPrevious` moves with it — the two stay symmetric by
+  `downcastToPrevious` moves with it — **confirmed, this move actually
+  happened and the predicted symmetry held**: `src/EventStore.Upcasting/
+  DowncastChain.cs` constructs with the same `IUpcastExpressionEvaluator`
+  `UpcastChain` uses, CEL by default per `ADR-053` — found by a design-
+  compliance audit this session, which checked the prediction against
+  the real code rather than assuming it — the two stay symmetric by
   construction, not by separately remembering to update both).
 - **`DowncastChain` walks backward, hop by hop**, from an entity's actual
   current shape down to whatever older version a consumer explicitly

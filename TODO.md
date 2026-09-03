@@ -219,25 +219,24 @@ projects that had zero mention anywhere in that file — `EventStore.Flows`,
 narrative in `docs/changes/2026-09-02.md`. **Phase 1 (the full ADR
 review) is next.**
 
-- [ ] **Phase 1 — full ADR review: find and resolve missing, duplicate,
-  and conflicting ADRs.** 103 ADRs exist (`docs/adrs/adr-001-*.md`
-  through `adr-103-*.md`, confirmed no gaps in numbering). A prior
-  session already did a full compliance review + fresh-eyes contradiction
-  hunt at the 74/75-ADR mark (`docs/changes/2026-07-30.md`) — this is a
-  **fresh** full pass at the current 103, since drift has kept happening
-  since then (this session alone found `ADR-036`'s undecided drift and
-  `08-build-plan.md` row 40's stale status). Three things to find and
-  fix, per direct request: **missing** ADRs (a decision clearly implied
-  or already made in prose/code but never formalized as its own ADR —
-  create it), **duplicate** ADRs (two ADRs deciding the same thing,
-  possibly with drifted answers — consolidate via `.claude/protocols/
-  additive-history-editing.md`, never silently delete history), and
-  **conflicting** ADRs (two ADRs whose decisions contradict — resolve
-  the same additive way, one correcting the other in place with a dated
-  note, per this repo's own standing convention). Use the parallel-batch
-  protocol, split by ADR-number range; consolidate cross-range findings
-  centrally before writing any fix, since a conflict by definition spans
-  more than one agent's own range.
+Phase 1 (full ADR review) is **done** — a read-only 8-batch audit across
+all 103 ADRs, cross-checked against real `src/` code, found 21 Tier A
+(objectively verifiable) issues, all fixed additively per `.claude/
+protocols/additive-history-editing.md`, plus 3 Tier B (genuine judgment
+calls) left unresolved on purpose. No missing or duplicate ADRs were
+found — every finding was an unmarked supersession, a stale correction
+note, or a claimed-done propagation edit that wasn't actually done. Full
+narrative in `docs/changes/2026-09-02.md`. **The 3 Tier B items still
+need your call**:
+1. Does `ADR-010` need an explicit cross-reference from `ADR-037`?
+2. Is `ADR-011`'s lightweight parenthetical correction style acceptable,
+   or should it be struck through per the strikethrough protocol's letter?
+3. Should `docs/comparisons/distributed-correctness-testing.md` get the
+   same "implementation note" correction `fault-injection-chaos-
+   engineering.md` already has, given Polly/Simmy went through a full
+   adopt-then-reject cycle it doesn't currently reflect?
+
+**Phase 2 is next.**
 
 - [ ] **Phase 2 — review and flesh out the proving-ground domains.**
   Once Phase 1 is done: review `docs/domains/clinical-trials-device-
@@ -272,3 +271,14 @@ review) is next.**
   the guideline's own preferred patterns — ask the user for their
   specific preferred patterns/rules before configuring, rather than
   guessing a generic ruleset.
+
+- [ ] **One-line code-comment fix, deferred only because this session is
+  design-phase-only (no `src/` changes).** `src/EventStore.Domain/
+  LeaderElection/LeaderLease.cs`'s own header comment still lists
+  `"UpcastMaterializer"` as a valid `WorkerRole` value (never used —
+  confirmed via repo-wide grep) and omits `"ExpectedResponseWatcher"`
+  (the real 4th role, `ADR-094`) — found during Phase 1's ADR review,
+  already fixed in `ADR-078`'s own text (both the Decision bullet and
+  its code sample), just not in the shipped file itself. Update the
+  comment to `"Router" | "PeerSyncOutboxPump" | "WebhookOutboxPump" |
+  "ExpectedResponseWatcher"` once code changes are back in scope.

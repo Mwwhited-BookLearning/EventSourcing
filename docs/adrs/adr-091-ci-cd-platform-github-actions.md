@@ -59,4 +59,14 @@ Consequences:
   CI platform. This doesn't touch this ADR's own Decision (GitHub
   Actions is still the CI/CD platform, when one is used) — only how
   much of item 39's *scope* currently runs through it.
+  **Corrected again — found stale by a design-compliance audit this
+  session**: `.github/workflows/ci.yml` and `.github/dependabot.yml` no
+  longer exist. Both were deleted 2026-08-27, per direct request,
+  logged in `docs/changes/2026-08-28.md` — but this ADR (and
+  `08-build-plan.md`'s item 39, still marked Done) were never updated
+  afterward to say so. Whether the files should be rebuilt, or whether
+  this ADR's own Decision needs revisiting given they were deliberately
+  removed, is left as an open call for the user — this note only
+  corrects the file-existence claim to match current reality, it does
+  not decide whether the removal should stand.
 - Resolves `docs/10-open-questions.md` row 5.

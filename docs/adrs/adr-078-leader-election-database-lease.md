@@ -14,10 +14,18 @@ caching, a related but distinct assumption not resolved by this ADR.
 
 Decision:
 - **Single-active-worker, not concurrency-safe multi-instance.** Exactly
-  one instance of each singleton background-worker *role* — the
+  one instance of each singleton background-worker *role* — ~~the
   `Router`/fold step (`ADR-021`), `UpcastMaterializer` (`ADR-027`), the
   peer-sync outbox pump (`ADR-033`), and the webhook outbox pump
-  (`ADR-060`) are each their **own** role with their **own** lease, not
+  (`ADR-060`)~~ **corrected — this ADR's own Consequences section
+  already caught this, but the Decision text above and the code comment
+  it was copied into were never updated to match, found by a design-
+  compliance audit this session**: the real four roles are `"Router"`
+  (`ADR-021`), `"PeerSyncOutboxPump"` (`ADR-033`), `"WebhookOutboxPump"`
+  (`ADR-060`), and `"ExpectedResponseWatcher"` (`ADR-094`, added later).
+  `UpcastMaterializer` has no independent lease — there is no separate,
+  independently-schedulable process for it to protect — are each their
+  **own** role with their **own** lease, not
   one shared lease across all of them — is ever actively running per
   site at a time.
 - **`ADR-024`'s optimistic concurrency is explicitly not the mechanism
@@ -40,7 +48,7 @@ Decision:
   ```csharp
   public class LeaderLease
   {
-      public string WorkerRole { get; set; } = default!;  // "Router" | "UpcastMaterializer" | "PeerSyncOutboxPump" | "WebhookOutboxPump"
+      public string WorkerRole { get; set; } = default!;  // "Router" | "PeerSyncOutboxPump" | "WebhookOutboxPump" | "ExpectedResponseWatcher" -- corrected, this session (see the Decision section's own note above)
       public string LeaseHolderId { get; set; } = default!; // this instance's own identity (host name + process id, or similar)
       public DateTimeOffset LeaseExpiresAt { get; set; }
   }

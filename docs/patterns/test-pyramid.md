@@ -85,7 +85,11 @@ though it remains the standard starting vocabulary.
 ## How this application uses it
 
 `ADR-055` adopts the pyramid directly, one concrete tool per tier:
-`MSTest`+`Moq` for backend unit tests and `Vitest`+`Vue Test Utils` for
+`MSTest` for backend unit tests (`Moq` was decided but, per the very
+next paragraph, never actually needed — corrected here, a design-
+compliance audit this session caught this doc's own opening clause
+still asserting Moq as a live tool, contradicted three sentences later
+by its own citation) and `Vitest`+`Vue Test Utils` for
 frontend unit tests at the base; the existing `Testcontainers`-based
 `EventStore.IntegrationTests` suite (already exercising the framework's
 real HTTP/GraphQL surface against real SQLite/Postgres/SQL Server

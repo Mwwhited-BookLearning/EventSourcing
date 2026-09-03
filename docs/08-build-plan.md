@@ -97,7 +97,7 @@ provider they apply to — not "code written."
 | 36 | [Bulk Ingestion & External Interchange-Format Adapters](#bulk-ingestion--external-interchange-format-adapters) | Publish API, Non-Authoritative Capture, Outbound Webhooks | Done |
 | 37 | [Tenant-to-Tenant Federation Mapping](#tenant-to-tenant-federation-mapping) | Multi-Tenancy, Auth + Orchestration, Bulk Ingestion & Interchange Adapters | Done |
 | 38 | [Sanctions/Watchlist Screening Extensibility Seam](#sanctionswatchlist-screening-extensibility-seam) | Scaffolding & Persistence, Non-Authoritative Capture | Done |
-| 39 | [Release Engineering, Packaging & Supply Chain](#release-engineering-packaging--supply-chain) | Scaffolding & Persistence, Compatibility & Deployment Discipline | Done |
+| 39 | [Release Engineering, Packaging & Supply Chain](#release-engineering-packaging--supply-chain) | Scaffolding & Persistence, Compatibility & Deployment Discipline | Underlying commands verified locally; the CI workflow file itself was deleted 2026-08-27 per direct request and not yet replaced (not Done) |
 | 40 | [Signing Secret Rotation, Dual Signature](#signing-secret-rotation-dual-signature) | Outbound Webhooks | Done (both halves — see `ADR-093`'s own "Built, later pass" notes) |
 | 41 | [Lineage Export & Bitemporal Playback](#lineage-export--bitemporal-playback) | Lineage API, Entity-Centric Core Rebuild, MVVM Client, GraphQL-Only Query Layer, Property-Level Masking, GDPR/CCPA Erasure, Delegated Grants/RBAC/Read Audit Logging | Done |
 | 42 | [RFC 3161 Trusted Timestamping](#rfc-3161-trusted-timestamping) | Digital Sign-Off, Lineage Export & Bitemporal Playback | Done |
@@ -3606,6 +3606,14 @@ executed).**
   and npm graphs together) from a real `dotnet pack` output, confirming
   the underlying mechanism still works standalone, outside any workflow
   file.
+  **Corrected again — found stale by a design-compliance audit this
+  session**: `.github/workflows/ci.yml` and `.github/dependabot.yml` no
+  longer exist — both were deleted 2026-08-27, per direct request
+  (`docs/changes/2026-08-28.md`), and this item's status/detail were
+  never updated to reflect it. Nothing above this note is currently
+  true: there is no CI workflow file, real or unexecuted, on this
+  branch. Whether to rebuild it is an open call, not decided here — see
+  `docs/10-open-questions.md`.
 
 ## Signing Secret Rotation, Dual Signature
 

@@ -50,7 +50,10 @@ Consequences:
   contradicts this — WCAG 2.1 AA conformance is achievable in MVVM,
   MVP, MVC, or code-behind alike; this ADR doesn't favor one over
   another.
-- `06-solution-structure.md`/build-plan exit criteria should eventually
+- ~~`06-solution-structure.md`/build-plan exit criteria should eventually
   include an accessibility conformance check per screen — not yet
   detailed, flagged as remaining propagation work alongside this
-  session's other new-ADR build-plan gaps.
+  session's other new-ADR build-plan gaps.~~ **Done — found stale by a
+  design-compliance audit this session**: `08-build-plan.md` item 45,
+  "Accessibility Standard," is Status: Done with a detailed exit
+  criterion and a real `a11y.spec.ts` conformance check.

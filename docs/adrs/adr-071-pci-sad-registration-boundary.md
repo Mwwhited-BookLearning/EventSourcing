@@ -79,9 +79,14 @@ Consequences:
   *framework* itself, being domain-agnostic (`ADR-030`), should still
   have an answer for it even though neither proving-ground application
   needs it directly.
-- `docs/data/schema-registry.md`'s masking section gains the
+- ~~`docs/data/schema-registry.md`'s masking section gains the
   `PCI-SAD` reserved classification value and this ADR's cross-
-  reference — not yet added, flagged as remaining propagation work.
+  reference — not yet added, flagged as remaining propagation work.~~
+  **Done — found stale by a design-compliance audit this session**:
+  `docs/data/schema-registry.md` (lines 638-650) fully documents
+  `"PCI-SAD"`; `08-build-plan.md`'s "PCI-DSS Sensitive Authentication
+  Data Registration Boundary" item is Status: Done, implemented in
+  `src/EventStore.SchemaRegistry/MaskingSchemaValidator.cs`.
 - **A confirming, non-action finding from the same review, worth
   recording rather than silently dropping**: brokerage/capital-markets'
   other headline requirement — SEC Rule 17a-4's broker-dealer

@@ -111,6 +111,10 @@ real requirements for the digital-identity/KYC proving-ground domain
 to a sanctioned party just as easily as a legitimate one — screening
 against a prohibition list, and any SAR filing decision, is separate
 business logic layered on top of a verified identity, not something
-self-attestation itself resolves. Tracked as an open question: whether
+self-attestation itself resolves. ~~Tracked as an open question: whether
 this belongs as a framework-level extensibility seam or purely
-domain/application logic.
+domain/application logic.~~ **Resolved by `ADR-079`** (found stale here
+by a design-compliance audit this session — `ADR-079` decided this back
+in `docs/changes/2026-07-31.md`, but the resolution was never linked
+back to this ADR's own text): yes, a framework-level
+`ISanctionsScreeningProvider` extensibility seam.

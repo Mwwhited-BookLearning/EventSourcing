@@ -38,7 +38,9 @@ alternative — this risk is about EF Core migrations not being portable
 across providers, not about how the provider is selected).
 
 **Orchestration-level topology configurability is a separate, unaffected
-concern** (the queued cross-provider-peer-sync ADR, direct request):
+concern** (`ADR-033` — backfilled here from "the queued cross-provider-
+peer-sync ADR" placeholder now that it exists, per this repo's own
+"never hardcode a future ADR's number" convention, direct request):
 `EventStore.AppHost` (`ADR-026`, dev/POC orchestration only) can, and
 now does, run more than one of the three already-built `Host.<Provider>`
 artifacts side by side as real peer nodes (`Topology:EnableSqlitePeer`/

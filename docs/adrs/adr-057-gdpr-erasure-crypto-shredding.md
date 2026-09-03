@@ -128,6 +128,14 @@ Decision:
   data" principle — only the erased *content* is gone.
 
 Consequences:
+- **Extended by `ADR-096`/`ADR-097`, added here — found un-cross-
+  referenced by a design-compliance audit this session**: both add a
+  searchable-encryption seam (`ISearchIndexKeyStore`, equality/bucketed-
+  range blind indexes, and an opt-in Order-Revealing Encryption sibling)
+  on top of this ADR's crypto-shredded fields, plus a new erasure side-
+  effect step in `EntityErasureResolver` to also purge the search index
+  entries a crypto-shredded field's plaintext would otherwise still be
+  findable through. See `ADR-096`/`ADR-097` for the full mechanism.
 - **`ADR-009`'s "no deletion mechanism, and none is wanted" section is
   superseded by this ADR** — struck through there, not deleted, per this
   project's additive-history convention. `README.md`'s "What this system
