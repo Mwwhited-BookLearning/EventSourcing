@@ -45,6 +45,18 @@ built for one industry.
 - `ADR-047` — claims augmentation for federated IdPs, when a relying
   party's own IdP needs enrichment with this platform's
   verification-specific claims.
+- `ADR-008` — event-type `RequiredClaims` — added, found missing by a
+  Phase 2 domain-completeness audit despite being the base claim-gating
+  mechanism every feature doc in this domain actually registers events
+  against.
+- `ADR-066` — step-up authentication (RFC 9470) — added; load-bearing
+  for the entire SAR-filing flow (`periodic-screening-and-sar-
+  escalation.md`), not incidental.
+- `ADR-079` — sanctions/watchlist screening extensibility seam — added;
+  this domain's own use case is what motivated the ADR, discussed at
+  length in Special Concerns below but previously absent from this list.
+- `ADR-096` — searchable blind-index encryption — added; every one of
+  this domain's 4 feature docs has a dedicated section using it.
 
 **Secondary fit:**
 - `ADR-009`/`ADR-050`/`ADR-052` — PII masking/classification.
@@ -55,6 +67,9 @@ built for one industry.
   stay in-country, a real driver for this mechanism.
 - `ADR-043`/`ADR-044` — delegated access/application-defined
   permissions, moderate.
+- `ADR-101` — PlantUML-native flow engine — added; backs this README's
+  own Workflow A/C diagrams directly, an infrastructure fit rather than
+  a domain-defining one.
 
 **Weak/no fit:**
 - `ADR-031` (streaming channels) — no natural telemetry story at all,

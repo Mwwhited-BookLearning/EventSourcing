@@ -228,12 +228,29 @@ or duplicate ADRs were found anywhere across the 103-ADR corpus.
 
 **Phase 2 is next.**
 
-- [ ] **Phase 2 — review and flesh out the proving-ground domains.**
-  Once Phase 1 is done: review `docs/domains/clinical-trials-device-
-  telemetry/` (Vitals) and `docs/domains/digital-identity-kyc/`
-  (Meridian) for depth gaps against their own stated 5-feature-doc/
-  4-workflow (Vitals) and 4-feature-doc/3-workflow (Meridian) structure,
-  and flesh out wherever genuinely lacking.
+**Phase 2 is done.** A read-only audit (2 parallel agents, one per
+domain) found both domains structurally excellent — every feature doc
+fully populated against the template (context, sequence/ER diagrams,
+Salt mockups, substantive multi-scenario Gherkin), all workflows
+correctly wired, Special Concerns and Glossaries both substantive. Four
+real, code-confirmed findings, all fixed: two feature docs per domain
+described a mechanism that was never built exactly that way (Vitals'
+`ConsentApproval`/`ConsentApprovalResolver` reuses the shared
+`authorityDecision` reactor instead; Vitals' `IonmAlertRaised` is
+`ChangeKind: "Partial"` not `"Full"`, a real fold-ordering fix; Meridian's
+Workflow A has no Router-initiated token exchange, self-attestation goes
+straight to `unattested`; Meridian's Workflow B has no `accessGrant`
+event or generic entity-query field, delegation is a client-signed
+`UcanDelegation` instead) — all four divergences were *already*
+documented centrally in `docs/domains/README.md`'s own run-and-found-
+divergences list, just never cross-referenced from inside the specific
+feature doc a reader would actually open; added those cross-references.
+Also added 5 ADRs to Meridian's `README.md` `## Applicable ADRs` that
+were demonstrably load-bearing throughout its own feature docs but
+missing from the summary list (`ADR-008`, `066`, `079`, `096`, `101`).
+Full narrative in `docs/changes/2026-09-02.md`.
+
+**Phase 3 is next.**
 
 - [ ] **Phase 3 — identify cross-domain functionality that belongs at
   framework level.** Once Phase 2 is done: look for functionality built
