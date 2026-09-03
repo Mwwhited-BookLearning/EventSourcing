@@ -124,6 +124,16 @@ same way that doc's `authorityDecision` is keyed, resolved by a sibling
 `ConsentApprovalResolver`, gated behind the same `ADR-066` step-up
 challenge.
 
+**Illustrative narrative, not the built shape — cross-referenced here
+per a Phase 2 domain-completeness audit**: `Samples.Vitals` reuses the
+core engine's own generic, already-tested `authoritydecision` reserved
+event type/`AuthorityDecisionResolver` directly, rather than a genuinely
+separate `ConsentApproval` type and `ConsentApprovalResolver` class —
+`EventStore.Router`'s fold primitives are internal, unreachable from a
+separate sample assembly. See `docs/domains/README.md`'s first
+run-and-found divergence for the full explanation; the request/response
+shapes and business logic below are otherwise accurate.
+
 ![Sequence diagram — investigator countersignature, role separation, and catch-up fold](../../../diagrams/domains/clinical-trials-device-telemetry/features/patient-enrollment-and-informed-consent/02-sequence-diagram-investigator-countersignature-rol.svg)
 
 ```plantuml

@@ -69,6 +69,12 @@ Decision:
   mechanisms rather than only visible in an operator's logs.
 
 Consequences:
+- **Extended by `ADR-093`, added here — found un-cross-referenced by a
+  design-compliance audit this session**: `WebhookSubscription.
+  SigningSecret` is now a current+previous pair, not a single value, to
+  support rotation without a dead window. See `ADR-093` for the full
+  rotation mechanism (the built half — the ticket-exchange half in
+  `ADR-040` is a separate, later-built mechanism).
 - Resolves the outbound half of the generalized-framework review's
   extensibility finding (`docs/10-open-questions.md`).
 - **Honest limitation, stated rather than glossed over**: once a payload

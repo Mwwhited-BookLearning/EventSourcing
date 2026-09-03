@@ -94,11 +94,25 @@ Consequences:
 - `docs/data/schema-registry.md` gains the `Role` entity — done this
   pass. ~~`UserPermission` is identity-provider state (like role
   assignment itself), not a schema-registry entity — no core-engine
-  data model change for it.~~ **Superseded by `ADR-067`** — `Role` and
+  data model change for it.~~ ~~**Superseded by `ADR-067`** — `Role` and
   `UserPermission` are both now core-engine entities, folded from
   reserved control-plane events; `docs/data/schema-registry.md` needs
   `UserPermission` added alongside `Role`, flagged as remaining
-  propagation work.
+  propagation work.~~ **Corrected again — this correction was itself
+  wrong, per `docs/data/schema-registry.md`'s own later correction note
+  (lines 157-182 there), found stale here by a design-compliance audit
+  this session**: building the actual `ADR-067` mechanism confirmed
+  `Role`/`RoleAssignment`/`UserPermission`/`AppTrustRoot` all live as
+  `EventStore.DevIdp`-owned EF tables, never as core-engine
+  `EntityStoreRow`s. Role/permission *assignment* does publish real,
+  hash-chained reserved events into the core Event Log
+  (`RoleGranted`/`RoleRevoked`/`PermissionGranted`, via
+  `EventStore.Rbac`'s scope-gated API) — `RbacProjectionWorker` then
+  follows that stream and folds it back into DevIdp's own local tables.
+  So the *assignment action* is a real core-engine event, but the
+  entities themselves stay outside the core engine. `docs/data/schema-
+  registry.md` correctly documents this shape today; nothing needs
+  adding there.
 - **No explicit-deny/negative-permission concept exists anywhere in
   this model, by design** — consistent with the additive-only decision
   above. An application that genuinely needs to revoke a specific

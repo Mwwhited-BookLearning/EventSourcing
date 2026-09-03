@@ -109,6 +109,11 @@ Decision:
   an alternative auth path for anything that can already send a header.
 
 Consequences:
+- **Extended by `ADR-093`, added here — found un-cross-referenced by a
+  design-compliance audit this session**: the shared secret this ADR's
+  ticket-signing mechanism uses is now a current+previous pair, not a
+  single value, to support rotation without a dead window. See `ADR-093`
+  for the full rotation mechanism.
 - **Honest residual risk, stated rather than hidden**: this reopens a
   *narrower* version of exactly the risk `ADR-012` removed
   (secret-bearing material in a URL). Two threats are defended

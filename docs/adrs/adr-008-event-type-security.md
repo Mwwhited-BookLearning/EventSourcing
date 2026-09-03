@@ -14,11 +14,18 @@ event type might require a `clearance:phi` claim that most callers with
 plain `events:publish`/`events:follow` scopes don't have).
 
 Decision:
-- `EventTypeDefinition` gains two optional fields,
+- ~~`EventTypeDefinition` gains two optional fields,
   `RequiredPublishClaim`/`RequiredReadClaim` (`02-data-model.md`), each a
   single `"type:value"` claim string (e.g. `"clearance:secret"`) or `null`
   for no extra restriction. v1 supports exactly one required claim per
-  direction — not an AND/OR set of claims.
+  direction — not an AND/OR set of claims.~~ **Superseded by `ADR-050`**
+  (found un-struck-through by a design-compliance audit this session,
+  despite the Consequences section below already carrying the pointer):
+  `EventTypeDefinition.RequiredClaims` is a single `List<RequiredClaim>`
+  field, each entry `{ Direction, Claim }`, OR-matched per direction —
+  there are no separate `RequiredPublishClaim`/`RequiredReadClaim`
+  fields in the actual implementation
+  (`src/EventStore.Domain/SchemaRegistry/EventTypeDefinition.cs`).
 - These are genuinely separate from each other, per explicit direction: a
   caller can be allowed to publish `PatientAdmitted` events without being
   allowed to read them back (or vice versa) — one claim does not imply the

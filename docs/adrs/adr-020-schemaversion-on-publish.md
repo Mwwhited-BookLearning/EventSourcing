@@ -98,17 +98,24 @@ Consequences:
   design package's feature docs and Gherkin scenarios, none of which
   state one today — flagged as a real cross-doc follow-up, not
   exhaustively rewritten here.
-- `EventUpcastFailed` needs its own fixed schema (source type, source
+- ~~`EventUpcastFailed` needs its own fixed schema (source type, source
   version, verbatim original payload, failed-hop identifier, failure
   reason) baked into the platform rather than the registry — the first
   event type this design has that an operator didn't register. Its
   `ChangeKind`/claims answer (most likely `Full`, no claims beyond the
   base scopes, so it's visible to the same audience as the failing
-  attempt) isn't designed further here.
-- `EventAppender`'s idempotency check (`ADR-011`) still applies to
+  attempt) isn't designed further here.~~ **Moot — found by a design-
+  compliance audit this session to still describe a mechanism this same
+  ADR's own Decision section above already retired**: `EventUpcastFailed`
+  was removed from `PublishService` entirely once `ADR-023`'s persist-
+  everything posture landed (`08-build-plan.md` confirms the retirement
+  is real and complete). Nothing needs a schema, since nothing is stored
+  under this type any more.
+- ~~`EventAppender`'s idempotency check (`ADR-011`) still applies to
   whichever event actually gets stored — a retried publish with the same
   `eventId` and an upcast failure replays the *original*
-  `EventUpcastFailed` response, not a fresh attempt.
+  `EventUpcastFailed` response, not a fresh attempt.~~ **Moot, same
+  reason as above.**
 - Does not change `ADR-018`'s read-time `UpcastChain` at all — it remains
   necessary and unchanged for every event stored before this ADR existed,
   or stored under a hop whose `compute()` clause only broke *after* that

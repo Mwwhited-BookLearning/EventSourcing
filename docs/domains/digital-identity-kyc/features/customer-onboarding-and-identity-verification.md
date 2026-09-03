@@ -64,6 +64,20 @@ This doc deliberately does **not** re-derive:
 
 ## Sequence diagram — self-attested claim, captured then exchanged
 
+**Illustrative narrative, not the built shape — cross-referenced here
+per a Phase 2 domain-completeness audit**: no Router-initiated,
+platform-side OAuth Token Exchange call exists anywhere in
+`EventStore.Router`/`EventStore.Inbox` (confirmed by search) — the real,
+built mechanism is entirely caller-initiated, and there's no path for a
+genuinely first-time, unregistered applicant DID to self-attest this
+way. `Samples.Meridian` models the central self-attestation step using
+`ADR-035`'s credential-agnostic `AttestedActorId`/`AttestedClaims`
+instead, going straight to `unattested`, skipping the
+`pending_review`-via-exchange stage this diagram shows. See
+`docs/domains/README.md`'s fifth run-and-found divergence for the full
+explanation; the request/response shapes and business logic below are
+otherwise accurate.
+
 ![Sequence diagram — self-attested claim, captured then exchanged](../../../diagrams/domains/digital-identity-kyc/features/customer-onboarding-and-identity-verification/01-sequence-diagram-self-attested-claim-captured-then.svg)
 
 ```plantuml

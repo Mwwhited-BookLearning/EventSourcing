@@ -128,11 +128,18 @@ Consequences:
   under a delegated grant), now writes an `AccessLogEntry` — found
   stale by a design review this session, since this ADR's text was
   never updated after `ADR-045` shipped.
-- Revocation before natural expiration relies on the IdP actually
+- ~~Revocation before natural expiration relies on the IdP actually
   checking revocation status at each exchange/introspection call, not
   just the UCAN's own `exp` — same operational requirement `ADR-040`'s
   ticket consumption already has (a still-unexpired-but-revoked
-  credential must still fail), not a new category of problem.
+  credential must still fail), not a new category of problem.~~
+  **Corrected, direct request, resolved by `ADR-104`**: this bullet
+  described a requirement that was never actually built (the correction
+  above already established there was no revocation-before-expiry
+  mechanism at all) — `ADR-104` is the real decision that closes this
+  gap: a live revocation check at `UcanValidator.ValidateAsync`, backed
+  by a `UcanDelegationRevoked` reserved event, alongside the offline
+  checks this ADR already establishes.
 - **True-offline break-glass (zero upstream contact, not just a
   currently-connected peer granting to another) composes directly from
   two already-adopted mechanisms, not a third one.** Raised this

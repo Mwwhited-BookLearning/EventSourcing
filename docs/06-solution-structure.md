@@ -39,9 +39,18 @@ independent site deployments, and the Gateway-to-Host hop this item
 introduces -- both share one internal mTLS listener per Host
 (`EventStore.Host.Core.SpiffePeerIdentity`/`SpiffePeerOptions.
 AllowedInternalCallerPaths`), not one per sketched service below.
-Reconciling this entire file's project list against what was actually
-built, item by item, is a larger, separate cleanup -- tracked in
-`TODO.md`, not attempted here.
+**Reconciliation pass, this session** (closing the item above, and the
+matching `TODO.md` entry it pointed at): checked the tree below against
+the real `src/` directory listing directly. The renames/consolidations
+already documented above (`.PeerSync`→`.Replication`,
+`.InterchangeAdapters`+`.Hl7v2MllpListener`→`.Interchange`+
+`.Interchange.Abstractions`, `.Fold`/`.Sharding` never built as their own
+projects) all still hold, confirmed. What this pass found and added:
+**twelve real projects existed with zero mention anywhere in this
+file** — `EventStore.Flows`, `EventStore.WorkerWakeSignal`,
+`EventStore.SqlClr.SqlServer`, `EventStore.Benchmarks`, and all eight
+`Samples.Vitals*`/`Samples.Meridian*` projects — added to the tree below
+in their own right places rather than left as a silent gap.
 
 **Deployment-unit note, added this session (`ADR-075`)**: this whole
 solution builds to **one dedicated deployment per tenant** (the silo
@@ -65,6 +74,7 @@ EventStore.sln
     EventStore.Persistence.Migrations.Sqlite/
     EventStore.Persistence.Migrations.Postgres/
     EventStore.Persistence.Migrations.SqlServer/
+    EventStore.SqlClr.SqlServer/     -- ADDED, this reconciliation pass -- EncryptedPredicateFunctions.cs, ADR-098's "In-Database Native Predicate Evaluator Seam" (build-plan item 56): a SQL CLR assembly deployed into SQL Server so an encrypted-field range predicate can be evaluated natively by the database engine rather than pulled client-side first; SQL Server built and verified, the equivalent PostgreSQL path (a native extension) is written but not yet verified (build-plan item 56's own "not Done" status)
     EventStore.SchemaRegistry/      -- registration service, AppId-scoped lookups (ADR-030), ParentLinkService, upcast/downcast map validation (ADR-018/028); complex-case upcast mappings run sandboxed via Jint, common case via CEL (candidates only, see docs/libraries/dotnet/cel-dotnet.md)
     EventStore.ViewRegistry/        -- ViewDefinitionService/RegisterViewDefinitionRequest/Result + TranslationKeyValidator -- the same registration-service shape as SchemaRegistry above, but for the MVVM client's own ViewDefinition rows (docs/data/schema-registry.md, ADR-039) rather than EventTypeDefinition rows
     EventStore.Inbox/               -- POST /publish; Idempotent Receiver + always-202 append (ADR-011/023) -- the ONLY still-blocking-on-shape step is "can I parse the envelope at all"
@@ -85,6 +95,7 @@ EventStore.sln
                                      -- PeerAddressBook/PeerSyncEndpoints/PeerSyncOptions), wired directly into each Host
                                      -- process via AddReplication()/MapPeerSyncEndpoints() -- no Program.cs of its own
     EventStore.LeaderElection/       -- LeaderElectionService/LeaseHolderId, build-plan item 32 -- the lease-gated "internal follower" shape every singleton background worker in this solution needs when more than one Host replica can be running at once (PeerSyncWorker, WebhookOutboxPump, ExpectedResponseWatcher below); a DB-row lease, not a distributed-lock library, since the DB is already the one shared, durable resource every replica already talks to
+    EventStore.WorkerWakeSignal/     -- ADDED, this reconciliation pass -- IWorkerWakeSignal (ADR-095, build-plan item 53, "Push-Notification Wake-Up Layer"): a "wake sooner" layer on top of every background worker's own existing poll loop, never a replacement for it -- one implementation per provider (SqliteWorkerWakeSignal in-process only, PostgresWorkerWakeSignal via LISTEN/NOTIFY, SqlServerWorkerWakeSignal via Service Broker); a missed/lost signal just means a worker waits its full, already-safe poll interval, exactly as if this project didn't exist
     EventStore.Masking/              -- the real IPayloadMasker implementation (PayloadMasker + FixedValueMaskingStrategy/PartialRevealMaskingStrategy/HashMaskingStrategy), ADR-009/057 -- the data-level half of masking described in the "IPayloadMasker" section below; MaskingSchemaTransformer (the schema-level half) stays in EventStore.SpecGeneration, not here, since it's needed at spec-build time regardless of masking's own build phase
     EventStore.Erasure/              -- ErasureKeyService/ErasureScopeResolver/EntityErasureResolver + LocalErasureKeyStore/HashiCorpVaultErasureKeyStore (IErasureKeyStore, ADR-057/062) + PayloadEncryptor -- crypto-shredding: a masked leaf's "value" branch decrypts against the entity's own EntityErasureKey, and destroying that key (on EntityErasureRequested) makes every field it protected permanently unrecoverable without deleting the event log rows themselves (ADR-009's no-erasure stance, reversed by ADR-057)
     EventStore.Webhooks/            -- outbound webhook dispatcher: drains the durable WebhookOutbox (same fault/abend/restart-tolerant primitive as PeerSync/client outbox, ADR-033/039), Standard Webhooks HMAC signing, masks every payload against its subscription's fixed claim set before sending, exponential-backoff retry, dead-letters as WebhookDeliveryFailed on exhaustion (ADR-060)
@@ -136,6 +147,13 @@ EventStore.sln
                                            -- sketch's own prose elsewhere calling it "a separate deployable". The real running
                                            -- hosts that reference it are Samples.Orders.Projections (below, has a real
                                            -- Program.cs) and EventStore.DevIdp's own RbacProjectionWorker
+    EventStore.Flows/                     -- ADDED, this reconciliation pass -- ADR-101's PlantUML-native executable flow
+                                           -- engine: PlantUmlActivityParser/ActivityAstBuilderListener (a real ANTLR4
+                                           -- grammar + generated Listener, Antlr4BuildTasks NuGet package, not a hand-rolled
+                                           -- parser) builds ActivityAst, FlowInterpreter evaluates it statelessly,
+                                           -- FlowProjection runs as one more IProjection<PendingTask> consumer of
+                                           -- ProjectionHost above -- see docs/patterns/plantuml-native-executable-flow.md
+                                           -- and docs/comparisons/user-flow-dsl.md for the alternatives weighed first
 
     -- MVVM client (ADR-039) -- consumes the framework, doesn't extend it:
     EventStore.Client.Core/               -- NEVER BUILT. This was sketched as a separate .NET class library (ViewModel
@@ -187,7 +205,45 @@ EventStore.sln
 
     -- Sample application, explicitly NOT part of the framework (ADR-030):
     Samples.Orders.Projections/           -- worked example: OrderSummaryProjection (features/cqrs-projections.md)
+
+    -- Proving-ground domain applications, ADDED this reconciliation pass --
+    -- also explicitly NOT part of the framework (ADR-030), same footing as
+    -- Samples.Orders.Projections above. Each domain is four projects:
+    -- workflow event-type registration + reactors, a Flows host running
+    -- that domain's own PendingTask read model (EventStore.Flows above),
+    -- a one-shot seeder, and a background simulator publishing ongoing
+    -- activity -- see docs/domains/clinical-trials-device-telemetry/ and
+    -- docs/domains/digital-identity-kyc/ for the domain docs themselves:
+    Samples.Vitals/                       -- VitalsWorkflowA-D.cs: event-type registration + RequiredClaims for
+                                           -- clinical-trials-device-telemetry's four workflows (PatientScreened/
+                                           -- InformedConsentCaptured, DeviceOnboarded/AdverseEventReported,
+                                           -- ConsentWithdrawn, IonmAlertRaised/Acknowledged), VitalsSharedTypes.cs's
+                                           -- shared authorityDecision reactor type
+    Samples.Vitals.Flows/                 -- Program.cs: a Host running EventStore.Flows' FlowEngine against
+                                           -- Workflow B/D's own .Flow.cs PlantUML flow definitions, backed by its
+                                           -- own PendingTasks database (ADR-101)
+    Samples.Vitals.Seed/                  -- one-shot: registers Vitals' event types, publishes initial trial/site/
+                                           -- PI seed data directly via PublishService (in-process, not over HTTP --
+                                           -- see TODO.md's own open item on the demo-identity/claims gap this implies)
+    Samples.Vitals.Simulator/             -- background: publishes ongoing simulated device telemetry/adverse-event
+                                           -- activity against a running deployment, same in-process PublishService
+                                           -- call pattern as Seed above
+    Samples.Meridian/                     -- MeridianWorkflowA/C.cs: event-type registration + RequiredClaims for
+                                           -- digital-identity-kyc's workflows (IdentityDocumentUploaded/
+                                           -- BiometricCaptureRecorded/IdentityClaimSubmitted, SanctionsScreeningPerformed/
+                                           -- SarFilingRecorded), MeridianSharedTypes.cs's shared authorityDecision
+                                           -- reactor type
+    Samples.Meridian.Flows/               -- same shape as Samples.Vitals.Flows above, running Meridian's own
+                                           -- Workflow A/C .Flow.cs definitions against its own PendingTasks database
+    Samples.Meridian.Seed/                -- same shape as Samples.Vitals.Seed above, for Meridian's own seed data
+    Samples.Meridian.Simulator/           -- same shape as Samples.Vitals.Simulator above, for Meridian's own
+                                           -- ongoing simulated activity
   tests/
+    EventStore.Benchmarks/           -- ADDED, this reconciliation pass -- a BenchmarkDotNet-style console app
+                                      -- (FoldStepBenchmarks.cs, JsonPathTranslationBenchmarks.cs), not an automated
+                                      -- test: run manually to measure the Router's own fold-step cost and each
+                                      -- provider's JSON-path-translation cost, not executed as part of any test
+                                      -- suite or CI gate
     EventStore.UnitTests/            -- Built per ADR-063's own decision ("adopt now, alongside ADR-055's
                                       -- EventStore.UnitTests"), correcting THIS line's own earlier "never built"
                                       -- claim (stale as of this pass -- found while reconciling it against the

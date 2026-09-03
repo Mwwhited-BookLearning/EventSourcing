@@ -210,7 +210,7 @@ entity "EntityStoreRow\n(trial1:IonmAlert:alert-77)" as entityStore {
   --
   Version : bigint
   Data : text
-  ' Finding, Severity, AckedBy -- accumulated via\n' Full (IonmAlertRaised) + Partial (IonmAlertAcknowledged) folds
+  ' Finding, Severity, AckedBy -- accumulated via\n' Partial (IonmAlertRaised) + Partial (IonmAlertAcknowledged) folds\n' -- corrected, Phase 2 domain-completeness audit: IonmAlertRaised is\n' Partial, not Full, in the built sample (see Background below and\n' docs/domains/README.md's fourth run-and-found divergence) -- a Full\n' fold here would silently erase AckedBy depending on fold order
   AuthorityStatus : string
 }
 
@@ -367,7 +367,11 @@ Feature: Intraoperative Monitoring and Alert Response
 
   Background:
     Given two Origin TelemetryChannels are provisioned for "trial1:Patient:S-0091": "ionm-s0091-fast" (Purpose "fast") and "ionm-s0091-full" (Purpose "full")
-    And the event type "IonmAlertRaised" version 1 is registered with EntityIdField "$.AlertId", ChangeKind "Full", RejectionBehavior "Annotate", and ExpectedResponse { "ResponseEventType": "IonmAlertAcknowledged", "Within": "PT2M" }
+    # ChangeKind "Partial", not "Full" -- corrected, Phase 2 domain-completeness audit: a real,
+    # found-by-running-it fix (VitalsWorkflowD.cs's own comment has the full mechanics; see also
+    # docs/domains/README.md's fourth run-and-found divergence) -- "Full" would silently erase
+    # the AckedBy field IonmAlertAcknowledged's own Partial fold contributes, depending on fold order
+    And the event type "IonmAlertRaised" version 1 is registered with EntityIdField "$.AlertId", ChangeKind "Partial", RejectionBehavior "Annotate", and ExpectedResponse { "ResponseEventType": "IonmAlertAcknowledged", "Within": "PT2M" }
     And the event type "IonmAlertAcknowledged" version 1 is registered with EntityIdField "$.AlertId", ChangeKind "Partial"
     And the event type "authorityDecision" is already registered per adverse-event-capture-and-review.md, with EntityIdField "$.targetEventId" and RequiredSignature { "AcrValues": ["urn:trial:step-up"], "MaxAge": 300 }
     And "neuro-12" is an attending neurologist with sufficient privilege to sign a authorityDecision

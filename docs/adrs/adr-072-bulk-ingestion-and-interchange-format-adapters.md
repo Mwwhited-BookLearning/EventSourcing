@@ -76,11 +76,15 @@ Decision:
 Consequences:
 - `docs/extensibility-points.md` gains the `IInterchangeFormatAdapter`
   row.
-- `06-solution-structure.md` gains a new project concept for the
+- ~~`06-solution-structure.md` gains a new project concept for the
   MLLP-listener component specifically (a background TCP listener,
   distinct from every other component in this design, which are all
   HTTP/GraphQL) — not yet detailed, flagged as remaining propagation
-  work.
+  work.~~ **Done — found stale by a design-compliance audit this
+  session**: `docs/06-solution-structure.md` (lines 108-117) documents
+  `EventStore.Interchange`/`EventStore.Interchange.Abstractions` and the
+  MLLP listener in detail; `src/EventStore.Interchange/
+  Hl7V2MllpListener.cs` is real.
 - **MLLP's lack of inherent security is a real, named operational
   requirement, not glossed over**: an `Hl7V2Adapter` deployment must
   provide its own transport security (TLS termination, or network-level

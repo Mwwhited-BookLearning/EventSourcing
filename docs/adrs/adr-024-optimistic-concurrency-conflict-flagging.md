@@ -33,7 +33,11 @@ Decision:
 - **Entity change-history becomes a first-class query**, not new storage
   — "every event for entity X" is a stream read from `SequenceNumber` 0
   filtered by `EntityId`, already fully answerable by Follow's existing
-  mechanics (`ADR-010`) once `EntityId` exists (`ADR-021`); `ADR-029`'s
+  mechanics (`ADR-010`) once `EntityId` exists (`ADR-021`); ~~`ADR-029`~~
+  **corrected, a design-compliance audit this session found this
+  misattributed — `ADR-029` is the logical-order fold, unrelated to
+  GraphQL; `08-build-plan.md` independently caught and fixed the
+  identical mistake in its own text** — `ADR-037`'s
   GraphQL layer additionally exposes it as a direct
   `entityHistory(entityId, property)` query, matching
   `docs/design-docs/08 §8.4`'s shape.

@@ -202,10 +202,13 @@ Consequences:
   offline player (sharing `ADR-039`'s Vue playback component, a separate
   `vite-plugin-singlefile`-configured build, not a separate app) — not
   yet detailed, flagged as remaining propagation work.
-  **Corrected, 2026-08-11: built.** `client-web/offline-player/` (entry
-  point + `vite.offline-player.config.ts`) and `client-web/scripts/
-  embed-bundle.mjs` (the per-export "embed and rebuild" step `§4` below
-  describes) now exist; `OfflineBundleViewer.vue`/`BitemporalPlaybackControl.vue`
+  **Corrected, 2026-08-11: built.** `client-web/packages/reference-app/
+  offline-player/` (entry point + `vite.offline-player.config.ts`) and
+  `client-web/packages/reference-app/scripts/embed-bundle.mjs` (the
+  per-export "embed and rebuild" step `§4` below describes) now exist —
+  paths corrected here, a design-compliance audit this session found
+  they'd drifted one level: nested under the `reference-app` package,
+  not directly under top-level `client-web/`; `OfflineBundleViewer.vue`/`BitemporalPlaybackControl.vue`
   under `client-web/packages/reference-app/src/components/playback/` are the shared Vue
   component this bullet anticipated, mounted from both build targets.
   One honest scope narrowing found while building, not anticipated by

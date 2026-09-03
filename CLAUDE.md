@@ -65,6 +65,12 @@ re-derive the process from scratch:
 ## Layout
 
 - `README.md` — entry point: what the system is, doc index, open decisions.
+- `docs/architecture-design-guidelines.md` — cross-cutting compliance/
+  consistency reference: the conventions established below, reorganized
+  for checking a piece of work against rather than narrated as history.
+  Check this before/while reviewing an ADR, pattern, domain doc, or code
+  change; read the specific `.claude/protocols/*.md` file when actually
+  *doing* the matching recurring task.
 - `.claude/context.md` — **read this first when resuming cold** (a new
   session, a lost/unresumable conversation, a handoff to someone else):
   a snapshot of current state, what's actively in flight, and working
@@ -329,7 +335,7 @@ re-derive the process from scratch:
 
 ## Decision index
 
-All 95 ADRs (`ADR-001`–`ADR-095`) are Accepted. For what each one
+All 103 ADRs (`ADR-001`–`ADR-103`) are Accepted. For what each one
 decides, read `docs/07-adrs.md`'s index (one-line description per row)
 or the ADR file itself — not this section, which no longer narrates
 individual decisions. For the forks weighed before a decision, see

@@ -1,0 +1,9 @@
+; Phase 5 (docs/architecture-design-guidelines.md) -- ADR-041's own
+; "no AutoMapper, no Newtonsoft.Json" decision, enforced as a real
+; analyzer rule (Microsoft.CodeAnalysis.BannedApiAnalyzers, RS0030)
+; rather than only a documentation convention. Neither package is
+; actually referenced anywhere in this repo today (confirmed) -- this
+; is a guardrail against a future accidental re-introduction, not a
+; fix for an existing violation.
+N:AutoMapper;This repo standardized on explicit mapping (ADR-041) -- no AutoMapper anywhere.
+N:Newtonsoft.Json;This repo standardized on System.Text.Json (ADR-041) -- no Newtonsoft.Json anywhere.

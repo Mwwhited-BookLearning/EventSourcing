@@ -51,9 +51,15 @@ Decision:
   querying, so there's no provider-specific translation layer to isolate
   in the first place). One EF Core provider (SQLite, for the example) is
   enough.
-- Runs as its own deployable (`EventStore.Projections.Host`,
-  `06-solution-structure.md`) — not in-process inside any
-  `EventStore.Host.<Provider>` — so the write/read split is real at the
+- ~~Runs as its own deployable (`EventStore.Projections.Host`,
+  `06-solution-structure.md`)~~ **corrected, `ADR-026`'s own later
+  finding, found un-propagated back here by a design-compliance audit
+  this session**: `EventStore.Projections.Host` is a plain class library
+  with no `Program.cs` — it cannot run as its own deployable. The real,
+  worked-example deployable is `Samples.Orders.Projections` (has its own
+  `Program.cs`, references `EventStore.Projections.Host`). The
+  substance of this bullet is otherwise unaffected — not in-process
+  inside any `EventStore.Host.<Provider>` — so the write/read split is real at the
   deployment level, not just conceptual.
 
 Consequences:

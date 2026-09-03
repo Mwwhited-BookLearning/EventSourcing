@@ -85,12 +85,29 @@ author might not have thought to write by hand.
 ### Option B — In-process fault injection (`Polly` + `Simmy`)
 
 **In plain terms**: your code already calls a database, an HTTP
-endpoint, or another service. `Simmy` (now built into `Polly` v8,
-`ADR-055`'s ecosystem doesn't currently include `Polly` but nothing
-conflicts with adding it) wraps those calls and, some percentage of the
-time, injects a fake failure — a timeout, an exception, a fake slow
-response — so you can test "does my code handle this dependency being
-flaky" without actually breaking the real dependency.
+endpoint, or another service. `Simmy` (built into `Polly` v8) wraps those
+calls and, some percentage of the time, injects a fake failure — a
+timeout, an exception, a fake slow response — so you can test "does my
+code handle this dependency being flaky" without actually breaking the
+real dependency.
+
+**Implementation note, added per direct request — this comparison had
+gone stale relative to what actually happened, the same correction
+`docs/patterns/fault-injection-chaos-engineering.md` already carries**:
+`ADR-063` did adopt `Polly`+`Polly.Contrib.Simmy` for exactly this, for
+real — but it was later **removed**, direct request, once `Polly`
+announced a per-organization Open Source Maintenance Fee
+([thepollyproject.org, 2026-07-14](https://thepollyproject.org/2026/07/14/polly-osmf-announcement.html))
+that would apply to this reference framework's own test suite if an
+adopter ever commercialized it. What this project ever actually used
+`Simmy` for — inject a fake exception before a real call, at a
+configurable `[0,1]` rate — turned out small enough not to need a
+third-party dependency at all: a ~10-line hand-rolled `FaultInjector`
+(`tests/EventStore.UnitTests/FaultInjector.cs`) replaced it, same tests,
+same coverage, same rate convention. The comparison below is left as
+originally written (a real option, correctly evaluated at the time) —
+only this note reflects that the actual mechanism in place today is the
+hand-rolled one, not `Simmy` itself.
 
 **Concrete example for this design** — does the durable Peer Sync
 Outbox/Inbox (`ADR-033`) actually resume correctly after a simulated
@@ -112,7 +129,7 @@ var chaosPolicy = MonkeyPolicy.InjectException(with =>
 | **What it's good at** | Testing *this process's own* resilience to a dependency failing — a real, useful check that `ADR-033`'s "durable table, not memory" claim actually survives a simulated abend at the code level. Cheaper and faster than standing up real multiple nodes. |
 | **What it's not good at** | It only simulates failure *inside one process's own calls* — it can't represent "two independent server processes, a real network between them, and a real partition splitting them for 30 seconds." That's a fundamentally multi-process concern `Simmy` doesn't reach. |
 | **Cost to adopt** | Low-to-moderate. A library, runs in-process, no new test infrastructure — but writing *meaningful* chaos scenarios (not just "throw sometimes") takes real thought about which failure at which point actually matters. |
-| **Fits this design's stack?** | Yes — `Polly` is already the de facto standard .NET resilience library (not currently adopted here, but nothing in `ADR-041` argues against it; it's first-party-adjacent and extremely widely used). Runs inside `EventStore.IntegrationTests` or a new dedicated suite, no new infrastructure beyond what's already there. |
+| **Fits this design's stack?** | Yes in principle — `Polly` is the de facto standard .NET resilience library, first-party-adjacent and extremely widely used. **Adopted, then removed** (see the implementation note above) — the actual mechanism today is a hand-rolled `FaultInjector`, not `Polly`/`Simmy`. Runs inside `EventStore.UnitTests`, no new infrastructure beyond what's already there. |
 
 ### Option C — Network-level fault injection (`Testcontainers` + `Toxiproxy`)
 
@@ -201,10 +218,13 @@ this exists:
    already-decided `MSTest`-based unit tests — this alone closes the
    least-defensible gap (an *unbounded* correctness claim currently
    checked only by hand-picked examples).
-2. **Add `Simmy` (Option B) for the specific, narrower question of
-   "does our own crash-recovery code actually work"** — the durable
-   outbox/inbox resumption logic `ADR-033`/`ADR-039` already require.
-   Cheap, in-process, and answers a real question A can't.
+2. **Add in-process fault injection (Option B) for the specific,
+   narrower question of "does our own crash-recovery code actually
+   work"** — the durable outbox/inbox resumption logic `ADR-033`/
+   `ADR-039` already require. Cheap, in-process, and answers a real
+   question A can't. Adopted as `Simmy` originally, replaced by a
+   hand-rolled `FaultInjector` once `Polly` announced its Open Source
+   Maintenance Fee — see the implementation note under Option B above.
 3. **Treat `Toxiproxy` (Option C) as the practical ceiling for
    replication-convergence testing** unless this system is headed
    somewhere the cost of a subtle consistency bug is severe enough to

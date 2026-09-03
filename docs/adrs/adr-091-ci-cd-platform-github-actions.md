@@ -59,4 +59,18 @@ Consequences:
   CI platform. This doesn't touch this ADR's own Decision (GitHub
   Actions is still the CI/CD platform, when one is used) — only how
   much of item 39's *scope* currently runs through it.
-- Resolves `docs/10-open-questions.md` row 5.
+  **Corrected again — found stale by a design-compliance audit this
+  session**: `.github/workflows/ci.yml` and `.github/dependabot.yml` no
+  longer exist. Both were deleted 2026-08-27, per direct request,
+  logged in `docs/changes/2026-08-28.md` — but this ADR (and
+  `08-build-plan.md`'s item 39, still marked Done) were never updated
+  afterward to say so.
+  **Confirmed, direct request**: the deletion is the deliberate,
+  accepted state for this POC — "I don't care about `ci.yml`/
+  `dependabot.yml` for a POC; if/when I care I will ask for it to be
+  added back, as well as the CI/CD pipeline." Not a gap awaiting a
+  decision; `08-build-plan.md` item 39 updated to match. This ADR's own
+  Decision (GitHub Actions as the platform, when one is used) is
+  unaffected — only *whether one currently runs* changed, and that was
+  always this ADR's own stated scope boundary, not a reversal of it.
+- Resolves `docs/10-open-questions.md` row 3 (formerly row 5).

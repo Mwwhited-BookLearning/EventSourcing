@@ -41,7 +41,11 @@ Consequences:
 - `EventParents.ParentEventId` cannot carry a real database foreign-key
   constraint (it must tolerate dangling references for Permissive event
   types), so Strict-mode existence checks are enforced in the application
-  layer (`ParentLinkService`) at publish time, not the database schema.
+  layer at publish time, not the database schema — ~~`ParentLinkService`~~
+  **correction, a design-compliance audit this session found no such
+  class exists**: the check lives inline in
+  `PublishService.PublishAsyncCore` (`src/EventStore.Inbox/
+  PublishService.cs`), never split into its own named service.
 - Ancestors/descendants require provider-specific raw SQL (recursive CTEs);
   EF Core's LINQ provider has no recursive-query translation, so this is the
   one query path in the store that can't be a pure `IQueryable` like the

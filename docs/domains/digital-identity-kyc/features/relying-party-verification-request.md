@@ -60,6 +60,21 @@ This doc deliberately does **not** re-derive:
 
 ## Sequence diagram — customer delegates a time-boxed, entity-scoped grant to a relying party
 
+**Illustrative narrative, not the built shape — cross-referenced here
+per a Phase 2 domain-completeness audit**: the `accessGrant`/
+`accessGrantRevoked` published-as-events mechanism and the generic
+`QUERY { entity(id) {...} }` GraphQL field below have no real
+counterpart — delegation is a client-signed `UcanDelegation` token,
+never a `StoredEvent`, and the only real claims-gated, entity-scoped
+read this framework built is `revealField` (masked-field reveal,
+`ADR-009`/`043`). No live revocation-before-expiry mechanism exists
+either — only expiry is tested (a deliberately-past `exp`, not a live
+wait); see `docs/10-open-questions.md` row 2, which tracks this exact
+gap as a genuine, still-open design fork. See `docs/domains/README.md`'s
+sixth run-and-found divergence for the full explanation; the delegation/
+authorization *logic* below (capped attenuation, entity scope, expiry)
+is otherwise accurate to what's built.
+
 ![Sequence diagram — customer delegates a time-boxed, entity-scoped grant to a relying party](../../../diagrams/domains/digital-identity-kyc/features/relying-party-verification-request/01-sequence-diagram-customer-delegates-a-time-boxed-e.svg)
 
 ```plantuml

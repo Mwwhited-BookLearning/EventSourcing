@@ -75,3 +75,13 @@ assumed to fall out of the topology choice alone. This comparison's
 closing flag — that "gossip topology chosen" and "replication factor
 guaranteed" are related but distinct decisions — is exactly what
 `ADR-033` resolved, not something still open.
+
+**Added, found missing by a design-compliance audit this session**:
+`ADR-102`'s own Consequences section claimed this file would get a short
+additive note pointing at it — that edit was never actually made. This
+gossip topology has since been proven genuinely cross-provider for the
+first time (`ADR-102`, a real multi-provider Aspire topology and live
+verification) and extended with cross-peer schema-registry replication
+(`ADR-103`) — see both for the concrete mechanism; neither changes this
+comparison's own conclusion, both just confirm it holds across providers,
+not only within one.

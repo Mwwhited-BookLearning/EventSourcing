@@ -60,9 +60,13 @@ Decision:
   presuming any particular deployment's scale.
 
 Consequences:
-- `docs/libraries/dotnet/` gains entries for BenchmarkDotNet (adopted
+- ~~`docs/libraries/dotnet/` gains entries for BenchmarkDotNet (adopted
   now) and NBomber (named future escalation) — propagation work, not
-  done in this pass.
+  done in this pass.~~ **Done — found stale by a design-compliance
+  audit this session**: `docs/libraries/dotnet/benchmarkdotnet.md`
+  exists; `src/EventStore.Benchmarks/` (referencing BenchmarkDotNet
+  0.15.8) is real. NBomber correctly remains un-adopted, as decided
+  above — no premature adoption, not an oversight.
 - A deployment wanting real throughput/latency SLAs still needs its own
   capacity-planning exercise once real usage data exists — explicitly
   out of this ADR's scope, not silently assumed solved.

@@ -40,7 +40,10 @@ Decision:
   they were patching. Omitted: no concurrency check, applied unconditionally
   (matches today's behavior for any event type that doesn't care about
   entity versioning). Supplied: used by `ADR-024`'s conflict detection.
-- Entity Store row shape (see `02-data-model.md` for the full column list):
+- Entity Store row shape (see ~~`02-data-model.md`~~ **corrected, that
+  file is classification-overview-and-index only, per its own stated
+  layout convention** — `docs/data/entity-store.md`, for the full column
+  list):
   `EntityId` (PK), `EntityType`, `Version` (monotonic — ~~bumped on
   every fold~~ **precise definition per `ADR-029`, not restated
   identically here until a design review caught the mismatch this
