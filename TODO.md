@@ -171,17 +171,6 @@ left.)
   structure) and a row in `docs/domains/README.md`'s catalog and
   `docs/comparisons/proving-ground-domain.md`'s coverage matrix.
 
-- [ ] **Recover a lost item: reconcile `06-solution-structure.md`'s
-  project list against what was actually built.** `docs/06-solution-
-  structure.md:42-44` states "reconciling this entire file's project
-  list against what was actually built, item by item... tracked in
-  `TODO.md`, not attempted here" — but no such item exists in `TODO.md`
-  (confirmed via grep). Found during a vision-completeness audit this
-  session; exactly the "flagged in passing, never actually added"
-  failure mode `CLAUDE.md` already names as having happened once before
-  (`ChannelOrigin.Origin`/`OriginId`). Walk `06-solution-structure.md`'s
-  project sketch against the real `src/` tree and correct any drift.
-
 - [ ] **Exercise the SDK codegen story end to end — nothing has ever
   actually been published or consumed.** `ADR-054` (Kiota for OpenAPI,
   GraphQL Code Generator for TypeScript, Strawberry Shake for .NET
@@ -196,21 +185,6 @@ left.)
   local) registry, generate a client against it with the tool `ADR-054`
   names, and confirm it actually works — the entire "genuinely reusable
   by an outside team" story currently rests on an unverified assumption.
-
-- [ ] **Write a getting-started/quickstart doc.** No file anywhere in
-  this repo walks a new team through standing up a `EventStore.Host.*`
-  project and registering their first event type end to end —
-  `06-solution-structure.md`/`08-build-plan.md` are architecture/
-  dependency references, not an onboarding doc, and `ADR-062` calls the
-  three Host projects "reference implementations/quickstart templates"
-  but that's code, not a walkthrough. Found during a vision-completeness
-  audit: `README.md`/`docs/naming.md` explicitly want this framework to
-  read as "a plausible real infra-product... in the company of things
-  like Kafka, Temporal" — every one of those has a real quickstart doc.
-  While writing it, also state the framework's language/platform scope
-  explicitly (today only inferable from `ADR-054`/`062` naming .NET +
-  TypeScript as the only built client targets) — no doc anywhere
-  currently says this is a deliberate boundary rather than an oversight.
 
 ## Design-phase program, per direct request — run in this order
 
@@ -234,14 +208,16 @@ question — either a `docs/10-open-questions.md` row (if it's a real
 design fork) or a direct question back to the user (if it's really "was
 this on purpose") — never a silent correction.
 
-- [ ] **Phase 0 — missing-documents sweep.** The `docs/patterns/
-  README.md` backlog (41 rows that were "Catalog only") is **done** —
-  all 41 written via 8 parallel batches + 1 caught by a follow-up manual
-  pass (`docs/changes/2026-09-02.md` has the full narrative). What's
-  left in this phase: the two doc gaps already found this session and
-  tracked as their own items above (getting-started/quickstart doc; the
-  `06-solution-structure.md` project-list reconciliation) — do those,
-  then this item closes.
+Phase 0 (missing-documents sweep) is **done** — all three parts closed:
+the `docs/patterns/README.md` 41-row backlog, `docs/getting-started.md`
+(new, linked from `README.md`'s document index, including the
+language/platform scope statement it was asked to state explicitly), and
+`06-solution-structure.md`'s project-list reconciliation (12 real
+projects that had zero mention anywhere in that file — `EventStore.Flows`,
+`.WorkerWakeSignal`, `.SqlClr.SqlServer`, `.Benchmarks`, and all eight
+`Samples.Vitals*`/`Samples.Meridian*` projects — added in place). Full
+narrative in `docs/changes/2026-09-02.md`. **Phase 1 (the full ADR
+review) is next.**
 
 - [ ] **Phase 1 — full ADR review: find and resolve missing, duplicate,
   and conflicting ADRs.** 103 ADRs exist (`docs/adrs/adr-001-*.md`

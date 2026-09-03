@@ -180,6 +180,7 @@ source, not a link to a file that still exists.
 
 | File | Contents |
 |---|---|
+| `getting-started.md` | From-scratch walkthrough: stand up a local deployment, register an event type, publish and confirm it — start here if you're new |
 | `01-c4-architecture.md` | C4 context, container, and component diagrams (PlantUML) |
 | `02-data-model.md` | EF Core entities, DbContext, provider-specific notes |
 | `03-api-contracts.md` | OpenAPI generation (publish, lineage) and AsyncAPI generation (follow) |
