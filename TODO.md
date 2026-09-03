@@ -191,7 +191,9 @@ review, proving-ground domain review, cross-domain-to-framework review,
 architecture/design compliance guideline) plus Phase 5 (linting/static-
 analysis tooling) are all **done** — per this file's own workflow,
 deleted from here rather than kept as completion narratives; the full
-account of each is in `docs/changes/2026-09-02.md`.
+account of each is in `docs/changes/2026-09-02.md` (Phase 0) and
+`docs/changes/2026-09-03.md` (Phase 1 onward — split across the two
+files since work crossed a real midnight boundary mid-session).
 
 - [ ] **One-line code-comment fix, deferred only because this session is
   design-phase-only (no `src/` changes).** `src/EventStore.Domain/
