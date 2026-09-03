@@ -1,0 +1,22 @@
+@startuml
+[*] --> Raised
+
+state "Raised\n(AuthorityStatus: accepted --\nhigh-confidence detector publish, ADR-042 default)" as Raised
+state "PendingReview\n(AuthorityStatus: pending_review --\nlow-confidence detector publish,\nreview-pending marker set, ADR-042)" as PendingReview
+state "Accepted\n(authoritative Entity Store updated,\nADR-042 catch-up; webhook fires, ADR-060)" as Accepted
+state "Dismissed\n(AuthorityStatus: rejected --\nauthorityDecision event, ADR-035)" as Dismissed
+state "RepairCertified\n(mechanic's own ADR-066 sign-off\non the linked DVIR defect)" as RepairCertified
+
+Raised --> Accepted : detector publish already at\nAuthorityStatus accepted (default)
+PendingReview --> Accepted : technician/mechanic review\nconfirms (authorityDecision: accepted)
+PendingReview --> Dismissed : technician/mechanic review\nrejects (authorityDecision: rejected)
+Accepted --> RepairCertified : mechanic signs off on\nrepair against a linked DVIR defect
+Dismissed --> [*]
+RepairCertified --> [*]
+
+note right of PendingReview
+  Never blocks the Event Log write (ADR-023) --
+  this state only gates the AUTHORITATIVE Entity
+  Store fold and the webhook match (ADR-042/ADR-060).
+end note
+@enduml

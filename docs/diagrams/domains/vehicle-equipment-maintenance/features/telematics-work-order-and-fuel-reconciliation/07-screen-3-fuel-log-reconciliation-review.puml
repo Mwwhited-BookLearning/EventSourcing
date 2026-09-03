@@ -1,0 +1,13 @@
+@startsalt
+{
+  { "truck-118 -- Fuel Log Reconciliation  (Jurisdiction: TX)" }
+  ..
+  { "GallonsPurchased"            | "82.4"   }
+  { "TelematicsEstimatedGallons"  | "80.9"   }
+  { "VarianceWithinTolerance"     | "true"   }
+  ..
+  [ View fuel receipt attachment ]
+  ..
+  { "IFTA quarterly filing status:" | "Included -- variance within tolerance" }
+}
+@endsalt

@@ -56,6 +56,7 @@ docs/domains/{domain-slug}/
 | [Government case management](government-case-management/README.md) | Considered, not chosen |
 | [Digital forensics / evidence custody](digital-forensics-evidence-custody/README.md) | Considered, not chosen — near-total coverage, several ADRs already shaped around it unnamed |
 | [DSCSA pharma supply chain](dscsa-pharma-supply-chain/README.md) | Considered, not chosen |
+| [Vehicle/equipment maintenance & fuel logs](vehicle-equipment-maintenance/README.md) | Considered, not chosen — structural twin of industrial IoT, but with a real regulatory recordkeeping driver (FMCSA/IFTA) and the strongest digital-sign-off (`ADR-066`) fit found |
 
 See [`docs/comparisons/proving-ground-domain.md`](../comparisons/proving-ground-domain.md)
 for the full coverage matrix, regulatory mapping table, and the decision

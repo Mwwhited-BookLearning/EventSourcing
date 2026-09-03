@@ -55,25 +55,6 @@ left.)
   domain's STS/middleware expansion actually built before this can
   close — tracked here until then, not a design decision anymore.
 
-- [ ] **Add "vehicle/equipment maintenance & fuel logs" as a candidate
-  domain.** Real standards to ground it in: VMRS (ATA/TMC's hierarchical
-  maintenance/repair coding system — industry-standard, no formal SDO)
-  and ISO 15143-3/AEMP 2.0 (JSON/XML telematics data exchange covering
-  position/hours/fuel/machine status — check whether this can reuse the
-  existing `ADR-031` streaming/telemetry channel mechanism rather than
-  needing a new one). ISO 14224's reliability/maintenance data categories
-  are oil-and-gas-specific but may transfer conceptually. SAE J1939
-  (verified, real) is the underlying heavy-vehicle CAN-bus wire protocol
-  telematics data ultimately traces back to (SPNs like Fuel Level 1,
-  Engine Speed) — the wrong layer for a fuel-log *event schema* itself,
-  worth at most a one-line "traces back to" mention, not a driving
-  citation; VMRS/ISO 15143-3 remain the right fit for the schema layer.
-  Add at minimum
-  a "considered" domain doc (`docs/domains/vehicle-equipment-maintenance/
-  README.md`, one feature doc, per the existing 13-considered/2-chosen
-  structure) and a row in `docs/domains/README.md`'s catalog and
-  `docs/comparisons/proving-ground-domain.md`'s coverage matrix.
-
 - [ ] **Exercise the SDK codegen story end to end — nothing has ever
   actually been published or consumed.** `ADR-054` (Kiota for OpenAPI,
   GraphQL Code Generator for TypeScript, Strawberry Shake for .NET
