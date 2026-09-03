@@ -59,21 +59,6 @@ left.)
   (`useOutboxStore.flush`'s new `permanentFailure` handling,
   `docs/changes/2026-09-02.md`).
 
-- [ ] **Decide the authorization model**, now that the comparison doc is
-  written: [`docs/comparisons/authorization-model.md`](docs/comparisons/authorization-model.md)
-  surveys RBAC-extended, ABAC/policy-based (XACML/NGAC), ReBAC/
-  relationship-tuple (Zanzibar-style), a named Hybrid, DACL, and
-  Classification-based (Mandatory Access Control), each worked through
-  one shared scenario (a Vitals PI resolving one assigned
-  `AdverseEventReported` task) with a concrete schema+pseudocode sketch,
-  per direct request, so a later real spike can start from this analysis
-  instead of redoing it. Its Recommendation leans Hybrid (RBAC for
-  coarse entity-type × access-level grants, a Zanzibar-shaped tuple table
-  for per-task grants) but leaves the actual pick to the user. Once
-  decided: write the deciding ADR (cites the comparison, doesn't
-  re-derive it), add a row to `docs/comparisons/README.md`'s catalog, and
-  only then close this item.
-
 - [ ] **Decide scope for full OIDC/OAuth2 identity-provider support —
   now including an application-owned local authorization STS layer.**
   Today `EventStore.DevIdp` only implements `client_credentials` +

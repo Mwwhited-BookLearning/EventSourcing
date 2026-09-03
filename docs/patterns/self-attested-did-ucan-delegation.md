@@ -80,7 +80,13 @@ Self-verification means there's no live revocation check unless the
 verifier deliberately builds one in — a delegation is valid until its
 own `exp` claim says otherwise, full stop, unless something else (an
 online check against a revocation list, a short enough expiry) is
-layered on top. The root-of-trust question — *which* key a verifier
+layered on top. **This project now does layer one on top, direct
+request**: `ADR-104` adds a live revocation check (CRL/OCSP's own real-
+world "offline-verifiable plus a live status check" shape, RFC 5280/
+6960) at the same choke point every delegation already validates
+through, backed by a `UcanDelegationRevoked` reserved event — offline
+self-verification stays exactly as fast for everything else, only
+revocation status needs a live query now. The root-of-trust question — *which* key a verifier
 should treat as authoritative in the first place — is explicitly left
 out of both specs (DID proves identity control; UCAN proves attenuation
 once a root is known) and has to be resolved by the adopting system

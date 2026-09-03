@@ -32,6 +32,23 @@ non-authoritative-capture mechanism, that has no real implementation.
 This was honestly narrated as a gap in `docs/08-build-plan.md`'s own
 text already, but never carried this correction note here until now.
 
+**Resolved, direct request — stated as an interpretation, not assumed
+silently**: asked whether the original server-initiated bridge above
+should be built for real, or this ADR corrected to adopt `ADR-043`/
+`044`'s mechanism as the real decision, the answer given was "DID/UCAN
+would be nice" in the context of a broader authorization-architecture
+direction (see the queued authorization-model ADR) that did not ask for
+the specific, more complex server-initiated exchange scenario above.
+Read as: keep DID/UCAN as the delegation mechanism (already true, via
+`ADR-043`/`044`), without the added complexity of this ADR's original
+bridge. **If this reading is wrong** — if the original server-initiated,
+raw-UCAN-alongside-a-captured-event scenario is still wanted — say so
+and this note gets corrected again; nothing below was changed to force
+this interpretation. On this reading: `ADR-043`/`044`'s client-signed,
+self-verified `UcanDelegation` is the adopted, permanent mechanism this
+ADR's own DID/UCAN adoption resolves to — not a stand-in awaiting the
+original scenario's construction.
+
 Decision:
 - **DID (Decentralized Identifier)** proves cryptographic control of an
   identifier — "the holder of this key says they are `did:key:z6Mk...`"

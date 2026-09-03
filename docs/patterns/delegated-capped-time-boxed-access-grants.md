@@ -85,12 +85,16 @@ The delegated capability is only as safe as the granter's own judgment
 at the moment of delegation — nothing stops an authorized-but-careless
 or -malicious granter from delegating to the wrong person, since the
 cap only bounds *how much* can be delegated, not *whether* delegating it
-at all was a good idea. In this project's own implementation, the cost
+at all was a good idea. ~~In this project's own implementation, the cost
 is sharper still: a grant, once issued, is valid until its own
 expiration passes with **no revocation-before-expiry mechanism at
 all** — a granter who changes their mind, or an operator who needs to
 pull a grant early, currently has no way to do so; the only lever is
-keeping the time-box short.
+keeping the time-box short.~~ **Resolved by `ADR-104`, direct request**:
+a live revocation check (a `UcanDelegationRevoked` reserved event,
+consulted at validation time alongside the existing offline checks) is
+now the accepted design — a granter or operator can revoke before
+natural expiry once that mechanism is actually built.
 
 ## How this application uses it
 
