@@ -32,6 +32,8 @@ without a shared arbitrating store, and against reaching for a
 third-party coordination service (Apache ZooKeeper) instead of
 implementing a lease directly.
 
+![The pattern diagram](../diagrams/patterns/leader-election-database-lease/01-the-pattern.svg)
+
 ```plantuml
 @startuml LeaderLease_Sequence
 autonumber

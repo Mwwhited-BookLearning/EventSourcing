@@ -25,6 +25,8 @@ required. **Source:** [spiffe.io](https://spiffe.io/) — SPIFFE and
 SPIRE are both graduated projects of the Cloud Native Computing
 Foundation (CNCF).
 
+![The pattern diagram](../diagrams/patterns/spiffe-spire-workload-identity/01-the-pattern.svg)
+
 ```plantuml
 @startuml Spiffe_Sequence
 autonumber

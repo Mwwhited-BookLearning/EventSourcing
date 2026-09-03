@@ -1,0 +1,19 @@
+@startuml
+start
+:Caller presents a claims-bearing token;
+:Coarse check -- does the caller hold\nthe operation/type-level required claim?;
+if (required claim present?) then (no)
+  :Reject the whole operation\n(403 / not visible at all);
+  stop
+else (yes)
+  :Proceed to build the response;
+endif
+:For each property flagged\nfor property-level masking;
+if (caller holds THAT property's\nown required claim?) then (yes)
+  :Emit the real value\n(wrapped: {"value": ...});
+else (no)
+  :Emit a masked representation\n(wrapped: {"masked": ...},\nvia a configured strategy);
+endif
+:Return one uniformly-shaped response\n-- every caller sees the same\nwrapper shape, only which\nbranch is populated differs;
+stop
+@enduml

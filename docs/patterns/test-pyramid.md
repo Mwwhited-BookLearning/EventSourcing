@@ -29,6 +29,8 @@ Crispin as early as 2003–4 and described it at a Scrum gathering in
 is the most widely cited restatement and is largely responsible for how
 far the term spread beyond Cohn's own book.
 
+![The pattern diagram](../diagrams/patterns/test-pyramid/01-the-pattern.svg)
+
 ```plantuml
 @startuml TestPyramid_Structure
 skinparam backgroundColor transparent

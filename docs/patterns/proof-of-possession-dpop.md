@@ -24,6 +24,8 @@ alone is no longer sufficient to use it.
 application-layer proof (no TLS-layer dependency), sent as a self-signed
 JWT alongside the token on every request.
 
+![The pattern diagram](../diagrams/patterns/proof-of-possession-dpop/01-the-pattern.svg)
+
 ```plantuml
 @startuml ProofOfPossession_Sequence
 autonumber

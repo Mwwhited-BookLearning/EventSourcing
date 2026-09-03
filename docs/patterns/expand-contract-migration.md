@@ -28,6 +28,8 @@ migrations and API evolution; **Expand/Contract** is the equally common
 name for the same three-phase structure, used interchangeably with
 Parallel Change in most later write-ups of it.
 
+![The pattern diagram](../diagrams/patterns/expand-contract-migration/01-the-pattern.svg)
+
 ```plantuml
 @startuml ExpandContract_Phases
 title Parallel Change / Expand-Contract

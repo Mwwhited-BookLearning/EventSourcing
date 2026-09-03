@@ -79,6 +79,25 @@ account of each is in `docs/changes/2026-09-02.md` (Phase 0) and
 `docs/changes/2026-09-03.md` (Phase 1 onward — split across the two
 files since work crossed a real midnight boundary mid-session).
 
+- [ ] **A full plan already exists for a multi-provider Aspire topology +
+  real cross-provider peer sync — not started, deferred because this
+  session is design-phase-only.** Plan file: `.claude/plans/glowing-
+  mixing-bumblebee.md` (outside this repo, in the user's Claude Code
+  config directory). Summary: extend `EventStore.AppHost` with two more
+  peer nodes (`EventStore.Host.Sqlite`, `EventStore.Host.SqlServer`
+  alongside the existing Postgres one) in a config-gated 3-node mesh,
+  add a real Sqlite↔SqlServer cross-provider integration test, and run a
+  live `aspire run` verification proving `ADR-033`'s existing peer-sync
+  mechanism (already provider-agnostic by construction, confirmed by
+  the plan's own research — nothing new needs building, just exercised
+  and configured for the first time across differing providers) works
+  bidirectionally across all three. Also queues an additive `ADR-001`
+  note (orchestration topology is a separate, legitimately-configurable
+  concern from the per-process provider choice `ADR-001` itself
+  decides) and a new ADR recording the cross-provider proof once run.
+  Read the plan file itself for full detail before starting — do not
+  re-derive it from this summary alone.
+
 - [ ] **One-line code-comment fix, deferred only because this session is
   design-phase-only (no `src/` changes).** `src/EventStore.Domain/
   LeaderElection/LeaderLease.cs`'s own header comment still lists

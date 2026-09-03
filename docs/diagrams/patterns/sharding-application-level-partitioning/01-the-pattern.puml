@@ -1,0 +1,36 @@
+@startuml
+skinparam componentStyle rectangle
+
+component "Router / resolver" as router
+
+database "Shard 1\n(e.g. type A)" as shard1
+database "Shard 2\n(e.g. type B)" as shard2
+database "Shard 3\n(e.g. type C)" as shard3
+
+actor "Caller" as caller
+
+caller --> router : read/write(EntityId)
+router --> shard1 : ShardKey(EntityId) selects this shard
+router ..> shard2 : (not selected for this write)
+router ..> shard3 : (not selected for this write)
+
+note right of router
+  ShardKey is a pure function of
+  the entity's own identity -- no
+  lookup table needed if the
+  function is a fixed rule (e.g.
+  "shard by type"), a real lookup
+  table if it's a mapping that can
+  change over time (e.g. hash ring
+  rebalancing).
+end note
+
+note bottom of router
+  A query spanning more than one
+  shard ("all entities of type X
+  across shards") must fan out to
+  every relevant shard and merge
+  results -- there is no single
+  index that already spans shards.
+end note
+@enduml

@@ -36,6 +36,8 @@ principle, and financial recordkeeping rules all lean on the same
 underlying mechanism even where they don't name it "audit controls"
 specifically.
 
+![The pattern diagram](../diagrams/patterns/read-access-audit-logging/01-the-pattern.svg)
+
 ```plantuml
 @startuml ReadAccessAuditLogging_Sequence
 autonumber

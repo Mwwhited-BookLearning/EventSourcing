@@ -25,6 +25,8 @@ a classification to the `Redactor` registered for it, and a documented
 default — an unregistered classification falls back to the
 `ErasingRedactor`, i.e. redact-by-default rather than leak-by-default.
 
+![The pattern diagram](../diagrams/patterns/data-classification-and-redaction/01-the-pattern.svg)
+
 ```plantuml
 @startuml DataClassificationRedaction_Sequence
 autonumber

@@ -32,6 +32,8 @@ system-versioned tables (transaction time) and application-time period
 tables (valid time), and into concrete shipped implementations such as
 [SQL Server's `FOR SYSTEM_TIME AS OF`](https://learn.microsoft.com/en-us/sql/relational-databases/tables/temporal-tables?view=sql-server-ver17).
 
+![The pattern diagram](../diagrams/patterns/bitemporal-modeling/01-the-pattern.svg)
+
 ```plantuml
 @startuml Bitemporal_Axes
 title Two independent time axes over one fact
@@ -55,8 +57,8 @@ VT -> TT : fact starts existing
 @6
 TT -> TT : system learns "A" (as of VT=5)
 @10
-TT -> TT : system learns "B" (as of VT=9) -- arrives late in transaction time
-note top: A query "as system showed at TT=8" still correctly returns A --\nnot smoothed away, not silently corrected in place.
+TT -> TT : system learns "B" (as of VT=9) — arrives late in transaction time
+note top of TT: A query "as system showed at TT=8" still correctly returns A —\nnot smoothed away, not silently corrected in place.
 @enduml
 ```
 

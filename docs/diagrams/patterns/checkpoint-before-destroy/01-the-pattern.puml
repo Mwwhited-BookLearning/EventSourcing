@@ -1,0 +1,25 @@
+@startuml
+autonumber
+participant "Cleanup process" as proc
+participant "Original store" as orig
+participant "Independent verifier" as verify
+participant "External durable store" as ext
+participant "Checkpoint record\n(in the primary store)" as chk
+
+proc -> verify: verify original segment is intact
+verify --> proc: verified
+
+proc -> ext: write serialized copy\n(durably, e.g. blob storage)
+ext --> proc: write confirmed
+
+proc -> chk: commit checkpoint\n{range, hash, external ref}
+chk --> proc: checkpoint committed
+
+proc -> orig: ONLY NOW: detach/delete\nthe original segment
+note right of proc
+  A crash at any point before
+  this last step leaves the
+  original fully intact --
+  nothing is ever lost.
+end note
+@enduml

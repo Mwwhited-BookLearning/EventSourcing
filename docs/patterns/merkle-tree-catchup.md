@@ -36,6 +36,8 @@ Store"](https://www.cs.cornell.edu/courses/cs5414/2017fa/papers/dynamo.pdf),
 SOSP 2007, §4.7 ("Replica Synchronization") for the specific
 anti-entropy application this pattern doc describes.
 
+![The pattern diagram](../diagrams/patterns/merkle-tree-catchup/01-the-pattern.svg)
+
 ```plantuml
 @startuml MerkleCatchup_Sequence
 autonumber

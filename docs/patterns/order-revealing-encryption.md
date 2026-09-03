@@ -33,6 +33,8 @@ Bounds," CCS 2016](https://eprint.iacr.org/2016/612.pdf) — together the
 CLWW/Lewi-Wu left/right-ciphertext scheme, the specific, named
 construction this pattern's real-world implementations are built from.
 
+![The pattern diagram](../diagrams/patterns/order-revealing-encryption/01-the-pattern.svg)
+
 ```plantuml
 @startuml OrderRevealingEncryption_Sequence
 autonumber

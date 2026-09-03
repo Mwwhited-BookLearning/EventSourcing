@@ -1,0 +1,34 @@
+@startuml
+autonumber
+participant "Rejoining replica" as a
+participant "Up-to-date replica" as b
+
+a -> b: root hash for range [0, N)
+b --> a: its own root hash for [0, N)
+note over a, b
+  Root hashes differ -- SOME
+  range within [0, N) has diverged.
+  Compare children next.
+end note
+
+a -> b: child hashes for [0, N/2) and [N/2, N)
+b --> a: its own child hashes for the same two ranges
+note over a, b
+  [0, N/2) hashes MATCH -- that half
+  is provably identical, skip it
+  entirely. [N/2, N) hashes DIFFER --
+  recurse into it.
+end note
+
+a -> b: child hashes for [N/2, 3N/4) and [3N/4, N)
+b --> a: its own child hashes
+note over a, b
+  Recursion continues until the
+  divergent range is narrowed down
+  to individual leaves -- only THOSE
+  leaves' actual data is transferred,
+  not the whole [0, N) range.
+end note
+a -> b: request actual data for the\nnarrow divergent leaf range only
+b --> a: the missing/differing records
+@enduml

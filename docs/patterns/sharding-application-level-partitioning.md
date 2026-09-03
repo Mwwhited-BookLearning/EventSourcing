@@ -24,6 +24,8 @@ hash), and their tradeoffs; this project's own comparison doc
 strategy (partition by a well-known attribute, here entity type) is one
 of the same three named there.
 
+![The pattern diagram](../diagrams/patterns/sharding-application-level-partitioning/01-the-pattern.svg)
+
 ```plantuml
 @startuml Sharding_Component
 skinparam componentStyle rectangle

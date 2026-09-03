@@ -36,6 +36,8 @@ speed-layer/batch-layer split; see also
 for the telemetry-specific framing this pattern doc borrows most
 directly.
 
+![The pattern diagram](../diagrams/patterns/streaming-ingestion-fast-path/01-the-pattern.svg)
+
 ```plantuml
 @startuml StreamingFastPath_Sequence
 autonumber

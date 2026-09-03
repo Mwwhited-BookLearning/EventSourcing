@@ -1,0 +1,20 @@
+@startuml
+autonumber
+participant "Application" as app
+participant "KMS / HSM\n(holds the KEK)" as kms
+database "Data store" as store
+
+== Encrypt ==
+app -> app: Generate a fresh DEK locally
+app -> app: Encrypt the real data with the DEK
+app -> kms: Wrap(DEK) using the KEK
+kms --> app: wrapped (encrypted) DEK\n(KEK itself never leaves the KMS)
+app -> store: Save ciphertext + wrapped DEK together
+app -> app: Discard the plaintext DEK from memory
+
+== Decrypt ==
+store --> app: ciphertext + wrapped DEK
+app -> kms: Unwrap(wrapped DEK) using the KEK
+kms --> app: plaintext DEK\n(only in memory, briefly)
+app -> app: Decrypt the real data with the DEK
+@enduml

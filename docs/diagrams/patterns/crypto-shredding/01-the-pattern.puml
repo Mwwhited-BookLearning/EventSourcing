@@ -1,0 +1,28 @@
+@startuml
+autonumber
+participant "Publisher" as pub
+participant "Encryption layer" as enc
+participant "Key store\n(separate from the data)" as keys
+database "Append-only log\n(never deleted, never mutated)" as log
+
+pub -> enc: publish personal-data field for Subject S
+enc -> keys: get (or create) DEK for Subject S
+keys --> enc: DEK
+enc -> log: append ciphertext(field, DEK)
+note right of log
+  Ciphertext is permanent,
+  like everything else here.
+end note
+
+... time passes ...
+
+pub -> keys: erase Subject S
+keys -> keys: irreversibly destroy DEK for S
+keys --> pub: erasure recorded
+note right of log
+  Ciphertext for S is still
+  sitting right there --
+  and now permanently
+  unrecoverable by anyone.
+end note
+@enduml

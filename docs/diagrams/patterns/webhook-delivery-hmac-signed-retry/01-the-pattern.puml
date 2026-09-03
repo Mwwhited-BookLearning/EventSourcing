@@ -1,0 +1,22 @@
+@startuml
+autonumber
+participant "Source system" as Source
+participant "Durable outbox" as Outbox
+participant "Receiver's\nregistered URL" as Receiver
+
+Source -> Outbox: matching event happens ->\nenqueue a durable delivery row\n(never only in memory)
+loop until delivered or retries exhausted
+  Outbox -> Receiver: POST payload +\nwebhook-id / webhook-timestamp /\nwebhook-signature (HMAC over id.timestamp.payload)
+  Receiver -> Receiver: recompute HMAC with its\nown copy of the shared secret;\ncheck it matches
+  alt signature valid, receiver processes it (idempotently,\n     keyed on webhook-id)
+    Receiver --> Outbox: 2xx
+    Outbox -> Outbox: mark delivered, advance cursor
+  else receiver down/slow/5xx, or unreachable
+    Receiver --> Outbox: failure or timeout
+    Outbox -> Outbox: schedule retry after\nexponential backoff + jitter
+  end
+end
+alt retries exhausted, never delivered
+  Outbox -> Source: dead-letter as an\ninspectable record,\nnot a silent drop
+end
+@enduml

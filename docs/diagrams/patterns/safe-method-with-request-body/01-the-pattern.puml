@@ -1,0 +1,34 @@
+@startuml
+skinparam object {
+  BackgroundColor<<Method>> #EEEEEE
+}
+
+object "GET" as GET <<Method>>
+object "POST" as POST <<Method>>
+object "QUERY (RFC 10008)" as QUERYM <<Method>>
+
+GET : Safe: yes
+GET : Idempotent: yes
+GET : Cacheable: yes
+GET : Request body: undefined/unreliable
+GET : — query must live in the URL —
+
+POST : Safe: no
+POST : Idempotent: no
+POST : Cacheable: no (by default)
+POST : Request body: yes, well-defined
+POST : — side effects assumed possible —
+
+QUERYM : Safe: yes
+QUERYM : Idempotent: yes
+QUERYM : Cacheable: yes
+QUERYM : Request body: yes, well-defined
+QUERYM : — complex query, no URL/log/cache exposure —
+
+note bottom of QUERYM
+  Combines GET's safety guarantee
+  with POST's ability to carry a
+  real request body — the specific
+  gap neither existing method fills.
+end note
+@enduml

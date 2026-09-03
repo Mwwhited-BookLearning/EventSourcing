@@ -35,6 +35,8 @@ platform can import them with provenance intact — is the real-world
 precedent for the same shape applied to litigation-review record
 transfer rather than source-control history.
 
+![The pattern diagram](../diagrams/patterns/event-chain-lineage-export/01-the-pattern.svg)
+
 ```plantuml
 @startuml EventChainLineageExport_Sequence
 autonumber

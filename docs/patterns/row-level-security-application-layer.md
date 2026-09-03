@@ -28,6 +28,8 @@ project's own name generalizes from is exactly that idea — "restrict by
 row, not just by table" — reimplemented one layer up, in application
 code, instead of via either engine's native feature.
 
+![The pattern diagram](../diagrams/patterns/row-level-security-application-layer/01-the-pattern.svg)
+
 ```plantuml
 @startuml RowLevelSecurity_Sequence
 autonumber

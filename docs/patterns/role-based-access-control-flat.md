@@ -28,6 +28,8 @@ role is a named, unstructured bundle of permissions, roles don't
 inherit from other roles, and there is no separation-of-duty
 constraint machinery.
 
+![The pattern diagram](../diagrams/patterns/role-based-access-control-flat/01-the-pattern.svg)
+
 ```plantuml
 @startuml RBAC_Flat_Object
 skinparam packageStyle rectangle

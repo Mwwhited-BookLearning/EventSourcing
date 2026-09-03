@@ -1,0 +1,22 @@
+@startuml
+skinparam backgroundColor transparent
+
+rectangle "UI / E2E tests\n(fewest, slowest,\nmost realistic, most brittle)" as e2e #FFD6A5
+rectangle "Integration / service tests\n(fewer, slower,\nreal dependencies)" as integration #FDFFB6
+rectangle "Unit tests\n(many, fast, cheap,\nisolated)" as unit #CAFFBF
+
+e2e -[hidden]down-> integration
+integration -[hidden]down-> unit
+
+note right of e2e
+  Exercises the real system the
+  way a user/client actually would.
+  Catches what nothing lower down can.
+end note
+
+note right of unit
+  Runs in milliseconds. Fails for
+  ONE specific reason. Most of the
+  suite should live here.
+end note
+@enduml

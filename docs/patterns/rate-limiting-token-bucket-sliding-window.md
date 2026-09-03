@@ -48,6 +48,8 @@ algorithms — Fixed Window, Sliding Window, Token Bucket, Concurrency
 Limiter — as partitionable, keyed limiters with built-in `429`
 rejection.
 
+![The pattern diagram](../diagrams/patterns/rate-limiting-token-bucket-sliding-window/01-the-pattern.svg)
+
 ```plantuml
 @startuml RateLimiting_Sequence
 autonumber

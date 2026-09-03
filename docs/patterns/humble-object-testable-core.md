@@ -26,6 +26,8 @@ Meszaros's own telling credits Michael Feathers' earlier "Humble Dialog
 Box" write-up as the specific antecedent for GUI dialogs; Meszaros
 generalized the same move beyond dialogs to any hard-to-test element.
 
+![The pattern diagram](../diagrams/patterns/humble-object-testable-core/01-the-pattern.svg)
+
 ```plantuml
 @startuml HumbleObject_Structure
 skinparam componentStyle rectangle

@@ -1,0 +1,28 @@
+@startuml
+autonumber
+participant "Caller A" as a
+participant "Caller B" as b
+participant "Content store" as store
+
+a -> a: hash = SHA256(bytesA)
+a -> store: put(hash, bytesA)
+store --> a: stored (or already existed)
+
+b -> b: hash' = SHA256(bytesB)
+alt bytesB is byte-for-byte identical to bytesA
+  note over a, b
+    hash' == hash --
+    no coordination between
+    A and B was needed for this.
+  end note
+  b -> store: put(hash', bytesB)
+  store --> b: already have this content --\nnothing new written
+else bytesB differs
+  b -> store: put(hash', bytesB)
+  store --> b: stored as a distinct object
+end if
+
+b -> store: get(hash)
+store --> b: bytesA
+b -> b: verify SHA256(bytesA) == hash\n(tamper-evidence, for free)
+@enduml

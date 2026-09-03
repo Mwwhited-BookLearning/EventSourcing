@@ -1,0 +1,25 @@
+@startuml
+title Two independent time axes over one fact
+
+concise "Valid time (reality)" as VT
+concise "Transaction time (system knowledge)" as TT
+
+@VT
+0 is "unknown"
+5 is "Address = A"
+9 is "Address = B"
+
+@TT
+0 is "unknown"
+6 is "recorded: Address = A"
+10 is "recorded: Address = B (late — should have arrived at t=9)"
+12 is "correction: back-record Address = B, valid from t=9"
+
+@0
+VT -> TT : fact starts existing
+@6
+TT -> TT : system learns "A" (as of VT=5)
+@10
+TT -> TT : system learns "B" (as of VT=9) — arrives late in transaction time
+note top of TT: A query "as system showed at TT=8" still correctly returns A —\nnot smoothed away, not silently corrected in place.
+@enduml

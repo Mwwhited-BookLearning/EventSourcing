@@ -39,6 +39,8 @@ versions of the same logical record) and in Avro's shared principle that
 the writer's schema must always travel with the data so any reader can
 resolve against it, not in an identical mechanism.
 
+![The pattern diagram](../diagrams/patterns/upcast-downcast-schema-mapping/01-the-pattern.svg)
+
 ```plantuml
 @startuml UpcastDowncast_Chains
 title Two chains, opposite directions, different persistence policy

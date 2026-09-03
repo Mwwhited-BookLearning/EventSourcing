@@ -37,6 +37,8 @@ paper is the standard citation for the gossip/anti-entropy convergence
 mechanism specifically, and the one later systems (Amazon Dynamo among
 them) cite directly.
 
+![The pattern diagram](../diagrams/patterns/multi-origin-replication-gossip/01-the-pattern.svg)
+
 ```plantuml
 @startuml Gossip_Sequence
 autonumber

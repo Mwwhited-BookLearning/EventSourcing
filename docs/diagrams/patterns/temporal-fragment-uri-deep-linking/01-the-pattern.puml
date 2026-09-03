@@ -1,0 +1,20 @@
+@startuml
+autonumber
+participant "Sharer / detector" as sharer
+participant "Media resource\n(video, audio, or signal channel)" as media
+participant "URI = base + #t=fragment" as uri
+participant "Recipient's player" as player
+
+sharer -> media: identifies a moment/interval of interest
+sharer -> uri: constructs base URI + "#t=<begin>,<end>"
+note right of sharer
+  #t=10,20            -- seconds, NPT default
+  #t=npt:0:01:30,121.5 -- mm:ss / decimal seconds mixed
+  #t=,20              -- start through second 20
+  #t=10               -- second 10 through the end
+end note
+sharer -> player: shares the single URI (link, chat, ticket, event field)
+player -> uri: dereferences base URI
+player -> media: GET (byte-range request, RFC 7233,\nseeking to the fragment's begin offset)
+media --> player: plays back starting at the named point
+@enduml

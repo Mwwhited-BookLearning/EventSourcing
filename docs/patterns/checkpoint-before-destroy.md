@@ -35,6 +35,8 @@ discipline, but driven by an elapsed-retention policy rather than by an
 explicit verify-then-externalize-then-checkpoint sequence the way WAL
 checkpointing and this pattern are.
 
+![The pattern diagram](../diagrams/patterns/checkpoint-before-destroy/01-the-pattern.svg)
+
 ```plantuml
 @startuml CheckpointBeforeDestroy_Sequence
 autonumber

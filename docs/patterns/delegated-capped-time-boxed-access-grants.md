@@ -22,6 +22,8 @@ see [Self-attested, offline-verifiable delegation
 delegation mechanism this pattern applies to a specific access-grant use
 case.
 
+![The pattern diagram](../diagrams/patterns/delegated-capped-time-boxed-access-grants/01-the-pattern.svg)
+
 ```plantuml
 @startuml DelegatedCappedGrant_Sequence
 autonumber

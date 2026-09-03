@@ -1,0 +1,23 @@
+@startuml
+autonumber
+participant "Caller (tenant A)" as a
+participant "Caller (tenant B)" as b
+participant "Rate limiter\n(partitioned per tenant)" as limiter
+participant "Protected resource" as resource
+
+a -> limiter: request (partition key = tenant A)
+limiter -> limiter: check tenant A's own\nbucket/window/slot count
+alt within limit
+  limiter -> resource: forward request
+  resource --> limiter: response
+  limiter --> a: response
+else limit exceeded
+  limiter --> a: 429 Too Many Requests\n(Retry-After, if the\nalgorithm attaches it)
+end
+
+b -> limiter: request (partition key = tenant B)
+limiter -> limiter: check tenant B's OWN\nbucket/window/slot count\n(independent of tenant A's)
+limiter -> resource: forward request\n(tenant A being throttled\nnever affects tenant B)
+resource --> limiter: response
+limiter --> b: response
+@enduml

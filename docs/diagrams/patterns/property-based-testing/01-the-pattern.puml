@@ -1,0 +1,23 @@
+@startuml
+autonumber
+participant "Test" as test
+participant "PBT library\n(FsCheck)" as pbt
+participant "Generator" as gen
+participant "Property\n(for all x, P(x))" as prop
+participant "Function under test" as fn
+
+test -> pbt: check(property, iterations = N)
+loop N times (default: 100)
+  pbt -> gen: generate random x
+  gen --> pbt: x
+  pbt -> prop: evaluate P(x)
+  prop -> fn: f(x)
+  fn --> prop: result
+  prop --> pbt: holds / violated
+  alt property violated
+    pbt -> pbt: shrink x toward the\nsmallest failing case
+    pbt --> test: FAIL -- minimal counter-example
+  end
+end
+pbt --> test: PASS -- property held\nfor all N generated cases
+@enduml
