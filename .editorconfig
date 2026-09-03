@@ -1,0 +1,70 @@
+root = true
+
+# Phase 5 (docs/architecture-design-guidelines.md) -- a general .NET
+# code-quality baseline plus this repo's own bespoke rules, all at
+# "warning" severity per direct request (not error -- a first pass,
+# easy to promote later once confirmed there are no false positives).
+
+[*]
+charset = utf-8
+end_of_line = crlf
+insert_final_newline = true
+trim_trailing_whitespace = true
+
+[*.{cs}]
+indent_style = space
+indent_size = 4
+
+[*.{json,js,mjs,ts,vue,yml,yaml}]
+indent_style = space
+indent_size = 2
+
+[*.cs]
+# --- General .NET analyzer baseline (built-in CAxxxx rules) ---
+# EnableNETAnalyzers/AnalysisMode are set in Directory.Build.props;
+# severities below only need to override the handful this repo
+# deliberately treats differently from the "Recommended" analysis-mode
+# default.
+
+# CA1014 (mark assemblies with CLSCompliant) -- not relevant, this is a
+# server-side framework, never consumed from non-CLS-compliant languages.
+dotnet_diagnostic.CA1014.severity = none
+
+# --- StyleCop.Analyzers (SAxxxx) ---
+# Severity: warning throughout, per direct request. A handful of rules
+# actively conflict with conventions this repo has already established
+# on purpose (see each rule's own comment) -- disabled, not silenced by
+# accident.
+dotnet_diagnostic.SA1600.severity = none # "Elements should be documented" -- this repo defaults to NO comments (CLAUDE.md: "only add one when the WHY is non-obvious"); XML doc headers on every member would fight that convention directly.
+dotnet_diagnostic.SA1633.severity = none # File header requirement -- no file-header convention exists or is wanted here.
+dotnet_diagnostic.SA1101.severity = none # "Prefix local calls with this." -- not this repo's existing style anywhere.
+dotnet_diagnostic.SA1309.severity = none # "Field names should not begin with underscore" -- this repo's own convention IS the underscore-prefixed private field (e.g. `_originId`, seen throughout src/).
+dotnet_diagnostic.SA1200.severity = none # "Using directives should be placed inside namespace" -- this repo uses file-scoped namespaces with outside-namespace usings throughout; enforcing the opposite would touch nearly every file for no behavior change.
+dotnet_diagnostic.SA0001.severity = none # "XML comment analysis is disabled due to project configuration" -- purely a side effect of SA1600 being disabled above; not a real signal to act on.
+# Verified via two real, clean full-solution rebuilds: StyleCop.Analyzers
+# 1.1.118 (the latest stable, 2019) throws an internal exception evaluating
+# each of these five rules against a record declaration -- confirmed, not
+# guessed, one real crash message per rule. This repo uses records
+# pervasively; none of these five can run reliably here until a newer
+# stable StyleCop.Analyzers release exists (only a 1.2.0 beta is available
+# as of this writing). Severity=none does stop each rule's OWN diagnostic
+# from being reported, but does NOT stop Roslyn from invoking the rule (so
+# the crash itself, and the compiler's own content-free AD0001 wrapper
+# diagnostic, still fire regardless) -- AD0001 itself is suppressed via
+# NoWarn in Directory.Build.props instead, since AD0001 does not respond
+# to a dotnet_diagnostic severity override the way an ordinary analyzer
+# diagnostic does.
+dotnet_diagnostic.SA1201.severity = none # SA1201ElementsMustAppearInTheCorrectOrder -- KeyNotFoundException on RecordDeclaration
+dotnet_diagnostic.SA1500.severity = none # SA1500BracesForMultiLineStatementsMustNotShareLine -- NullReferenceException
+dotnet_diagnostic.SA1502.severity = none # SA1502ElementMustNotBeOnASingleLine -- NullReferenceException
+dotnet_diagnostic.SA1508.severity = none # SA1508ClosingBracesMustNotBePrecededByBlankLine -- NullReferenceException
+dotnet_diagnostic.SA1649.severity = none # SA1649FileNameMustMatchTypeName -- ArgumentException, "Unhandled declaration kind: RecordDeclaration"
+
+# All other SAxxxx rules default to warning via StyleCop.Analyzers' own
+# ruleset, not silenced here.
+
+# --- Bespoke rule: banned APIs (no AutoMapper, no Newtonsoft.Json) ---
+# Enforced via Microsoft.CodeAnalysis.BannedApiAnalyzers + BannedSymbols.txt,
+# not an .editorconfig severity -- BannedApiAnalyzers' own diagnostic (RS0030)
+# severity is set here:
+dotnet_diagnostic.RS0030.severity = warning

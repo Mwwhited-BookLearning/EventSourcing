@@ -48,18 +48,29 @@ function Invoke-Step {
 
 Push-Location $repoRoot
 try {
+    # --- Phase 5 conventions check (docs/architecture-design-guidelines.md) -
+    # bash required (WSL/Git Bash) -- this repo already assumes bash is
+    # available for its own scripts/*.sh tooling elsewhere.
+    Invoke-Step "check-conventions.sh" { bash scripts/check-conventions.sh }
+
     # --- build-and-test job -------------------------------------------------
     Invoke-Step "dotnet restore" { dotnet restore EventStore.slnx }
     Invoke-Step "dotnet build"   { dotnet build EventStore.slnx --no-restore -c $Configuration }
     Invoke-Step "dotnet test (EventStore.IntegrationTests)" {
+        # verbosity=detailed, not normal -- this repo's own standing convention
+        # (CLAUDE.md): a terser run can silently eat a test's own Standard
+        # Output Messages (container lifecycle logs, an inner exception's own
+        # detail) that have explained a real bug before. Found stale here
+        # during Phase 5 tooling setup.
         dotnet test tests/EventStore.IntegrationTests/EventStore.IntegrationTests.csproj `
-            --no-build -c $Configuration --logger "console;verbosity=normal"
+            --no-build -c $Configuration --logger "console;verbosity=detailed"
     }
 
     if (-not $SkipClientWeb) {
         Push-Location (Join-Path $repoRoot "client-web")
         try {
             Invoke-Step "npm ci"   { npm ci }
+            Invoke-Step "npm run lint" { npm run lint } # Phase 5 -- warning severity only, ESLint's own exit code doesn't fail on warnings
             Invoke-Step "npm test" { npm test }
         }
         finally {

@@ -186,48 +186,12 @@ left.)
   names, and confirm it actually works — the entire "genuinely reusable
   by an outside team" story currently rests on an unverified assumption.
 
-## Design-phase program, per direct request — run in this order
-
-Five sequenced phases; each depends on the previous one's completion.
-Don't start a later phase until the one before it is actually done, per
-direct instruction ("once that is completed... once the designs are
-improved..."). **This entire program is design-phase work — docs and
-ADRs only, no implementation/code changes** (direct instruction: "we are
-currently still just working on a secondary design phase and not actual
-implementations at this time").
-
-**Standing rule for every phase below, per direct instruction: a found
-gap/duplicate/conflict is not automatically a mistake to silently fix.**
-Something that looks missing may have been intentionally descoped or
-removed earlier — ask rather than assume when it's genuinely ambiguous
-which is true. Only resolve unilaterally what's objectively, verifiably
-a drift/error (the same bar the `08-build-plan.md` row 40 fix and the
-`06-solution-structure.md` recovered item already met — each had direct
-textual evidence, not judgment calls). Everything else surfaces as a
-question — either a `docs/10-open-questions.md` row (if it's a real
-design fork) or a direct question back to the user (if it's really "was
-this on purpose") — never a silent correction.
-
-Phases 0-3 (missing-documents sweep, full ADR review, proving-ground
-domain review, cross-domain-to-framework review) are all **done** — per
-this file's own workflow, deleted from here rather than kept as
-completion narratives; the full account of each is in `docs/changes/
-2026-09-02.md`.
-
-- [ ] **Phase 5 — configure linting/static-analysis tooling to enforce
-  the guideline.** `docs/architecture-design-guidelines.md` (Phase 4,
-  done) already scopes this: its closing "Summary: what Phase 5's
-  tooling can realistically enforce" section names the genuinely
-  🔧-mechanical rules worth real lint/analyzer configuration (no
-  `!include` in PlantUML, no AutoMapper/Newtonsoft references, no `--`
-  in `.csproj` XML comments, a `dotnet test --logger` invocation check,
-  a constructor-injection-only Roslyn analyzer) and explicitly says the
-  rest is a review checklist, not a lint target — don't try to force
-  everything in the guideline into a linter. Wire up real tooling (.NET
-  analyzers/`.editorconfig`/Roslyn analyzers for `src/`, ESLint/similar
-  for `client-web/`) for that 🔧 list — ask the user for their specific
-  preferred rules/severities before configuring, rather than guessing a
-  generic ruleset.
+The five-phase design-review program (missing-documents sweep, full ADR
+review, proving-ground domain review, cross-domain-to-framework review,
+architecture/design compliance guideline) plus Phase 5 (linting/static-
+analysis tooling) are all **done** — per this file's own workflow,
+deleted from here rather than kept as completion narratives; the full
+account of each is in `docs/changes/2026-09-02.md`.
 
 - [ ] **One-line code-comment fix, deferred only because this session is
   design-phase-only (no `src/` changes).** `src/EventStore.Domain/
