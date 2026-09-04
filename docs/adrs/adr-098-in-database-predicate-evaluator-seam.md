@@ -131,6 +131,21 @@ confidence levels, stated plainly rather than glossed over.
   named here as real, separate, not-yet-done infrastructure work rather
   than silently assumed working by analogy to the verified SQL Server
   side.
+
+  **Verified, `2026-09-04`.** A one-off custom image (`postgres:18`, the
+  Debian-based tag — Alpine has no packaged `postgresql-plpython3-18` —
+  plus `apt-get install postgresql-plpython3-18` and `pip install
+  cryptography`) was built and run directly, the "real, separate
+  infrastructure work" this note named. The deploy script, unmodified,
+  cross-verified correctly against the exact same golden `EnvelopeAesGcm`
+  ciphertext fixture the SQL Server side already uses (`tests/
+  EventStore.SqlClr.SqlServer.Tests/EncryptedPredicateFunctionsTests.cs`)
+  — all 8 assertions matched, including a wrong-key case returning
+  `false` rather than raising. Full detail in `08-build-plan.md`, item
+  56 (now `Done`). The custom image itself was not kept as a permanent,
+  CI-integrated fixture — folding real, ongoing `plpython3u` coverage
+  into the Testcontainers-based suite remains real, separate work if
+  ever wanted, not done by this verification pass.
 - Both remain scoped to the `Local` `IErasureKeyStore`/
   `ISearchIndexKeyStore` backend only, per this ADR's own Decision — a
   Shared/`PerEntity` field backed by a real KMS/Vault cannot use either

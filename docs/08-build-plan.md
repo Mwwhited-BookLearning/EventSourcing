@@ -114,7 +114,7 @@ provider they apply to — not "code written."
 | 53 | [Push-Notification Wake-Up Layer](#push-notification-wake-up-layer) | Publish API, Entity-Centric Core Rebuild | Done (all 6 background workers) |
 | 54 | [Searchable Blind-Index & Bucketed-Range Encrypted-Field Indexes](#searchable-blind-index--bucketed-range-encrypted-field-indexes) | GDPR/CCPA Erasure, Property-Level Masking, Follow API + Filter Pushdown | Done |
 | 55 | [Order-Revealing Encryption Range Index (opt-in)](#order-revealing-encryption-range-index-opt-in) | Searchable Blind-Index & Bucketed-Range Encrypted-Field Indexes | Built, pending required security review (not Done) |
-| 56 | [In-Database Native Predicate Evaluator Seam](#in-database-native-predicate-evaluator-seam) | Searchable Blind-Index & Bucketed-Range Encrypted-Field Indexes | SQL Server built and verified; PostgreSQL written, not verified (not Done) |
+| 56 | [In-Database Native Predicate Evaluator Seam](#in-database-native-predicate-evaluator-seam) | Searchable Blind-Index & Bucketed-Range Encrypted-Field Indexes | Done |
 | 57 | [PlantUML-Native User-Flow Engine & Pending-Task Read Model](#plantuml-native-user-flow-engine--pending-task-read-model) | CQRS Read-Model Projections (worked example) | Done |
 
 Two groups worth naming up front, since they explain most of the
@@ -249,7 +249,7 @@ state "Local Services" as tierLocal {
   state "Expected-Response\nTracking" as a26 #palegreen
   state "Searchable Blind-Index &\nBucketed-Range Indexes" as a31 #palegreen
   state "Order-Revealing\nEncryption Range Index" as a32 #palegoldenrod
-  state "In-Database Native\nPredicate Evaluator Seam" as a33 #palegoldenrod
+  state "In-Database Native\nPredicate Evaluator Seam" as a33 #palegreen
   state "PlantUML-Native Flow Engine &\nPending-Task Read Model" as a34 #palegreen
 }
 state "UI" as tierUi {
@@ -5424,24 +5424,46 @@ same candidate set; the database engine process's own new dependency
 backend) is documented as a real, accepted operational change, not
 silently introduced.
 
-**Status: SQL Server built and verified; PostgreSQL written, not
-verified (not Done).** 2026-08-27, `ADR-098`'s own "Implementation note"
-has the full detail. `src/EventStore.SqlClr.SqlServer/` (net48, the one
-deliberate break from this solution's net10.0 targeting — confirmed
-required, since SQL Server's CLR host never loads .NET Core/.NET 5+
-assemblies) + `scripts/sql-clr/deploy-sql-server-encrypted-predicate-
-function.sql`. Cross-verified against real `EnvelopeAesGcm`-produced
-ciphertext (a golden fixture generated from the actual net10.0
-production code, not invented) via `tests/EventStore.SqlClr.SqlServer.
-Tests`, all passing. `scripts/sql-clr/deploy-postgres-encrypted-
-predicate-function.sql` (a `plpython3u` function, since `pgcrypto` has no
-GCM support at all — confirmed against current PostgreSQL docs) is
-written but explicitly **not** verified: neither `plpython3u` nor
-Python's `cryptography` package exists in the standard Testcontainers
-`postgres` image this project's other tests already use, and building/
-maintaining a custom Postgres image for this one function is real,
-separate infrastructure work, not done this pass. Both evaluators remain
-scoped to the `Local` backend only, per `ADR-098`'s own Decision.
+**Status: Done — both providers built and verified.** SQL Server:
+2026-08-27, `ADR-098`'s own "Implementation note" has the full detail.
+`src/EventStore.SqlClr.SqlServer/` (net48, the one deliberate break from
+this solution's net10.0 targeting — confirmed required, since SQL
+Server's CLR host never loads .NET Core/.NET 5+ assemblies) +
+`scripts/sql-clr/deploy-sql-server-encrypted-predicate-function.sql`.
+Cross-verified against real `EnvelopeAesGcm`-produced ciphertext (a
+golden fixture generated from the actual net10.0 production code, not
+invented) via `tests/EventStore.SqlClr.SqlServer.Tests`, all passing.
+
+PostgreSQL: verified for real, `2026-09-04`, closing the gap named
+above — neither `plpython3u` nor Python's `cryptography` package exists
+in the standard Testcontainers `postgres` image this project's other
+tests use, so a one-off custom image (`FROM postgres:18` — the Debian-
+based tag, not the project's usual `postgres:18-alpine`, since Alpine
+has no packaged `postgresql-plpython3-18`; `apt-get install
+postgresql-plpython3-18`, `pip install cryptography`) was built and run
+directly (not added to the Testcontainers-based test suite — a real,
+separate piece of infrastructure this pass still didn't fold in, see
+below). `scripts/sql-clr/deploy-postgres-encrypted-predicate-function.sql`
+deployed against it unmodified and cross-verified against the **exact
+same golden ciphertext fixture** the SQL Server side uses (`tests/
+EventStore.SqlClr.SqlServer.Tests/EncryptedPredicateFunctionsTests.cs`'s
+own `Key`/`NumberCiphertext`/`DateCiphertext` constants) — proving
+genuine cross-runtime interoperability with the real, production
+`EnvelopeAesGcm.Encrypt` output, not merely self-consistency, the same
+bar the SQL Server side already met. All 8 assertions (5 numeric
+comparisons, 3 date comparisons) matched expected results exactly; a
+wrong decryption key returned `false` rather than raising, matching the
+SQL Server side's own "unreadable row can never satisfy a comparison"
+posture. Custom image and container discarded after verification —
+**not** committed as a permanent test fixture (worth doing properly in
+a later pass if this function needs to be exercised by CI on an ongoing
+basis, rather than folded in under this item's own scope). Both
+evaluators remain scoped to the `Local` backend only, per `ADR-098`'s
+own Decision — confirmed for Postgres too: `decrypt_and_compare` reads
+its key argument from the calling query (ultimately
+`local_erasure_key_materials`/`local_search_index_key_materials`,
+ordinary tables in the same database), never reaching out to a network
+KMS/Vault itself.
 
 ## PlantUML-Native User-Flow Engine & Pending-Task Read Model
 
