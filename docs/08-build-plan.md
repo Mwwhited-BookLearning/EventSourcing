@@ -114,7 +114,7 @@ provider they apply to — not "code written."
 | 53 | [Push-Notification Wake-Up Layer](#push-notification-wake-up-layer) | Publish API, Entity-Centric Core Rebuild | Done (all 6 background workers) |
 | 54 | [Searchable Blind-Index & Bucketed-Range Encrypted-Field Indexes](#searchable-blind-index--bucketed-range-encrypted-field-indexes) | GDPR/CCPA Erasure, Property-Level Masking, Follow API + Filter Pushdown | Done |
 | 55 | [Order-Revealing Encryption Range Index (opt-in)](#order-revealing-encryption-range-index-opt-in) | Searchable Blind-Index & Bucketed-Range Encrypted-Field Indexes | AI-assisted code-level security review completed 2026-09-04, found and fixed 2 real bugs; independent human cryptographic review still recommended before Done |
-| 56 | [In-Database Native Predicate Evaluator Seam](#in-database-native-predicate-evaluator-seam) | Searchable Blind-Index & Bucketed-Range Encrypted-Field Indexes | Done |
+| 56 | [In-Database Native Predicate Evaluator Seam](#in-database-native-predicate-evaluator-seam) | Searchable Blind-Index & Bucketed-Range Encrypted-Field Indexes | PostgreSQL Done (2 implementations, benchmarked); SQL Server blocked by a real platform limitation, not Done |
 | 57 | [PlantUML-Native User-Flow Engine & Pending-Task Read Model](#plantuml-native-user-flow-engine--pending-task-read-model) | CQRS Read-Model Projections (worked example) | Done |
 
 Two groups worth naming up front, since they explain most of the
@@ -249,7 +249,7 @@ state "Local Services" as tierLocal {
   state "Expected-Response\nTracking" as a26 #palegreen
   state "Searchable Blind-Index &\nBucketed-Range Indexes" as a31 #palegreen
   state "Order-Revealing\nEncryption Range Index" as a32 #palegoldenrod
-  state "In-Database Native\nPredicate Evaluator Seam" as a33 #palegreen
+  state "In-Database Native\nPredicate Evaluator Seam" as a33 #palegoldenrod
   state "PlantUML-Native Flow Engine &\nPending-Task Read Model" as a34 #palegreen
 }
 state "UI" as tierUi {
@@ -5464,7 +5464,20 @@ same candidate set; the database engine process's own new dependency
 backend) is documented as a real, accepted operational change, not
 silently introduced.
 
-**Status: Done — both providers built and verified.** SQL Server:
+~~**Status: Done — both providers built and verified.**~~ **Corrected,
+2026-09-04 — see this item's own addendum below**: PostgreSQL is
+genuinely Done (two independently-verified native implementations now).
+SQL Server's own "verified" claim below was based on a plain net48
+unit-test host process, never a live SQL Server CLR deployment — actually
+attempting one this pass found a real, structural platform blocker
+(SQL Server on Linux categorically refuses the `UNSAFE` permission set
+`Microsoft.Bcl.Cryptography`'s own dependency chain requires), so the SQL
+Server half is **not** Done in the sense this item's own exit criteria
+require (a working native evaluator, not merely correct decrypt logic in
+isolation). Overall item status: **PostgreSQL Done; SQL Server blocked,
+real fix scoped below, not yet built.**
+
+SQL Server:
 2026-08-27, `ADR-098`'s own "Implementation note" has the full detail.
 `src/EventStore.SqlClr.SqlServer/` (net48, the one deliberate break from
 this solution's net10.0 targeting — confirmed required, since SQL
@@ -5504,6 +5517,76 @@ its key argument from the calling query (ultimately
 `local_erasure_key_materials`/`local_search_index_key_materials`,
 ordinary tables in the same database), never reaching out to a network
 KMS/Vault itself.
+
+**Real performance benchmark, plus a real SQL Server deployment
+correction, `2026-09-04`** — direct request ("let's try these extensions
+out to see how they perform" / "I would like to see the in database
+performance" / "I would like the performance test against both mssql
+and postgresql"):
+
+**PostgreSQL — a third implementation added and measured for real.**
+Built `scripts/sql-clr/postgres-c-extension/` — a genuinely native
+C/PGXS extension (`decrypt_and_compare_c`), linking OpenSSL's EVP API
+directly for real AES-256-GCM (the same wire format as the other two
+implementations), verified against the identical golden ciphertext
+fixture (all 9 assertions match `plpython3u` and the SQL Server side
+byte-for-byte). Real, measured `EXPLAIN (ANALYZE, TIMING)` results on
+one `postgres:18` container (real `EnvelopeAesGcm`-encrypted data, one
+shared key, `Number gt 500`):
+
+| Rows | C extension | `plpython3u` | App-tier (fetch + decrypt in .NET) |
+|---|---|---|---|
+| 50,000 | ~33 ms | ~175 ms | ~82 ms (39 ms fetch + 44 ms decrypt) |
+| 1,000,000 | ~238 ms | ~3,133 ms | ~1,239 ms (422 ms fetch + 816 ms decrypt) |
+
+**Genuinely surprising result, not assumed going in: `plpython3u` is
+slower than the app-tier default at both scales** — its own interpreter/
+SPI-marshalling overhead outweighs whatever bandwidth it saves by not
+shipping ciphertext over the wire, at least for this shape of workload.
+The C extension is the clear winner at both scales (5.2× faster than
+app-tier, 13.2× faster than `plpython3u` at 1M rows) and its advantage
+widens with row count, exactly matching the theoretical case for
+in-database filtering: only a `COUNT`/small result set crosses the wire,
+never the full candidate set's ciphertext. **Recommendation: prefer the
+new C extension over `plpython3u` for PostgreSQL** — same correctness,
+meaningfully faster, and no interpreter dependency to install. Neither
+is wired into a real `IEncryptedPredicateEvaluator` C# implementation
+yet (both are proven at the raw-SQL-function level only) — that wiring,
+and folding a real benchmark into the permanent test suite, remain real,
+separate follow-up work, not done by this pass.
+
+**SQL Server — a real, previously-unknown deployment blocker found, the
+earlier "Built and verified" claim above needs a correction.** That
+claim was based entirely on `tests/EventStore.SqlClr.SqlServer.Tests`,
+a plain net48 **unit-test host process** — never an actual live SQL
+Server CLR deployment. Actually attempting one this pass (Docker,
+`mcr.microsoft.com/mssql/server:2022-latest`, both default and Developer
+edition) found: `Microsoft.Bcl.Cryptography`'s own dependency chain
+(`System.Buffers`/`System.Memory`/`System.Numerics.Vectors`/`System.
+Runtime.CompilerServices.Unsafe`) **fails SQL Server's CLR verifier
+under `PERMISSION_SET = SAFE`**, for real, structural reasons (unsafe
+pointer operations, unverifiable IL these packages use by design for
+performance) — confirmed across every available package version back to
+`Microsoft.Bcl.Cryptography 8.0.0`, not just the currently-pinned
+`10.0.2`, so this is not a version-pinning fix. `PERMISSION_SET =
+UNSAFE` would bypass verification, but **SQL Server on Linux refuses
+`EXTERNAL_ACCESS`/`UNSAFE` assemblies categorically, regardless of
+edition** (a real, documented platform limitation, confirmed via
+Microsoft's own Q&A — not fixable by trusted-assembly registration,
+certificates, or edition choice). Since every realistic deployment
+target for this project's own tests (Testcontainers) runs SQL Server on
+Linux, **the SQLCLR native evaluator as currently built cannot actually
+be deployed or exercised anywhere in this project's own real
+infrastructure** — it could still work on a real Windows-hosted SQL
+Server (outside this project's Docker-based workflow), but that was not,
+and could not be, verified this pass. Fixing this for real would mean a
+from-scratch, SAFE-verifiable AES-GCM implementation using only
+.NET Framework 4.8's built-in `System.Security.Cryptography.Aes` (no
+`System.Buffers`-style low-level polyfills) — real, substantial,
+security-sensitive work, not attempted this pass; named here as the
+concrete follow-up rather than left as a vague "investigate later."
+No SQL Server performance numbers could be obtained this pass as a
+direct consequence — there was nothing live to measure.
 
 ## PlantUML-Native User-Flow Engine & Pending-Task Read Model
 

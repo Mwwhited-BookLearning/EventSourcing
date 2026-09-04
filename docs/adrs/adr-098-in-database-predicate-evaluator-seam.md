@@ -142,7 +142,9 @@ confidence levels, stated plainly rather than glossed over.
   EventStore.SqlClr.SqlServer.Tests/EncryptedPredicateFunctionsTests.cs`)
   — all 8 assertions matched, including a wrong-key case returning
   `false` rather than raising. Full detail in `08-build-plan.md`, item
-  56 (now `Done`). The custom image itself was not kept as a permanent,
+  56 (PostgreSQL half — see this ADR's own later additive note for why
+  the item as a whole is not fully Done). The custom image itself was
+  not kept as a permanent,
   CI-integrated fixture — folding real, ongoing `plpython3u` coverage
   into the Testcontainers-based suite remains real, separate work if
   ever wanted, not done by this verification pass.
@@ -150,3 +152,43 @@ confidence levels, stated plainly rather than glossed over.
   `ISearchIndexKeyStore` backend only, per this ADR's own Decision — a
   Shared/`PerEntity` field backed by a real KMS/Vault cannot use either
   native evaluator without a different mechanism this ADR does not build.
+
+**Additive note, 2026-09-04 — a third PostgreSQL implementation, real
+performance numbers, and a real SQL Server deployment correction**
+(direct request: "let's try these extensions out to see how they
+perform"):
+
+- **PostgreSQL**: added `scripts/sql-clr/postgres-c-extension/`, a
+  genuinely native C/PGXS extension (OpenSSL EVP directly, no
+  interpreter), verified against the same golden fixture. Real, measured
+  `EXPLAIN ANALYZE` numbers (50,000 / 1,000,000 real `EnvelopeAesGcm`
+  rows, one shared key): the C extension took ~33ms/~238ms, `plpython3u`
+  took ~175ms/~3,133ms, and the app-tier default (fetch all candidates +
+  decrypt in .NET) took ~82ms/~1,239ms. **`plpython3u` is slower than the
+  app-tier default at both scales** — its own interpreter overhead
+  outweighs the bandwidth it saves. The C extension is the clear winner
+  and its advantage widens with scale (5.2×/13.2× at 1M rows), matching
+  the theoretical case for in-database filtering. Recommendation: prefer
+  the C extension over `plpython3u` going forward. Full numbers and
+  reasoning in `08-build-plan.md`, item 56.
+- **SQL Server — the "verified" claim above needs a real correction, not
+  an addition.** That claim rested on `tests/EventStore.SqlClr.SqlServer.
+  Tests`, a plain net48 unit-test host process — never a live SQL Server
+  CLR deployment. Actually attempting one (Docker, both default and
+  Developer edition) found a genuine, structural platform blocker:
+  `Microsoft.Bcl.Cryptography`'s own dependency chain fails SQL Server's
+  CLR verifier under `SAFE` (confirmed across every available package
+  version back to 8.0.0, not a version-pinning fix — these packages use
+  unsafe/unverifiable IL by design), and SQL Server on Linux categorically
+  refuses `UNSAFE`/`EXTERNAL_ACCESS` regardless of edition (a real,
+  documented platform limitation). Since this project's own real
+  infrastructure (Testcontainers) only ever runs SQL Server on Linux,
+  **the SQLCLR evaluator as currently built cannot be deployed or
+  exercised anywhere this project actually tests** — it may still work
+  on a real Windows-hosted SQL Server, which was not and could not be
+  checked this pass. A real fix would mean a from-scratch, SAFE-
+  verifiable AES-GCM implementation using only .NET Framework 4.8's
+  built-in `System.Security.Cryptography.Aes` (avoiding `System.Buffers`-
+  style low-level polyfills entirely) — real, security-sensitive work,
+  scoped here as the concrete follow-up, not attempted this pass. No SQL
+  Server performance numbers exist as a direct consequence.
