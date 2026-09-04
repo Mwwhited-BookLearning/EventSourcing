@@ -83,13 +83,28 @@ public class OpenApiDocumentBuilder(EventStoreContext db, EventSchemaConverter c
             document.Paths[$"/publish/{type.Name}"] = pathItem;
         }
 
+        // `Encoding.UTF8` (the static property) writes a UTF-8 BOM preamble
+        // via StreamWriter -- harmless for a byte stream, but GetString below
+        // decodes those bytes right back into a literal U+FEFF BOM CHARACTER
+        // at the start of the returned .NET string, which is what actually
+        // becomes this endpoint's real HTTP response body. Found for real:
+        // System.Text.Json's stream-based JsonNode.Parse(Stream) silently
+        // skips a BOM, but its string-based JsonNode.Parse(string) does not
+        // -- a genuine "0xEF is an invalid start of a value" crash the first
+        // time anything actually re-parsed this builder's own string output
+        // as JSON (a new regression test added alongside this fix, in
+        // tests/EventStore.IntegrationTests/OpenApiScenarioAssertions.cs).
+        // A BOM-less UTF8Encoding instance avoids emitting it in the first
+        // place, rather than relying on every future consumer to know to
+        // strip it.
         using var stream = new MemoryStream();
-        await using (var streamWriter = new StreamWriter(stream, Encoding.UTF8, leaveOpen: true))
+        var utf8NoBom = new UTF8Encoding(encoderShouldEmitUTF8Identifier: false);
+        await using (var streamWriter = new StreamWriter(stream, utf8NoBom, leaveOpen: true))
         {
             var writer = new OpenApiJsonWriter(streamWriter);
             document.SerializeAsV31(writer);
         }
-        return Encoding.UTF8.GetString(stream.ToArray());
+        return utf8NoBom.GetString(stream.ToArray());
     }
 
     // ADR-050 -- "x-required-claims at the schema/operation level," the
@@ -119,13 +134,42 @@ public class OpenApiDocumentBuilder(EventStoreContext db, EventSchemaConverter c
         // same converter EventSchemaConverter uses, rather than constructing
         // OpenApiSchema property-by-property -- one proven code path for
         // "arbitrary schema-shaped JSON text in, OpenApiSchema out."
+        //
+        // `payload` is `type: string`, NOT the event type's own JSON Schema
+        // inlined as a nested object -- src/EventStore.Inbox/
+        // PublishEventRequest.cs's real model binder deserializes it as raw
+        // JSON TEXT (PublishService.EncryptAndIndexClassifiedFieldsAsync's
+        // own `JsonNode.Parse(request.Payload)` is the proof: it re-parses
+        // an already-bound string, which only compiles/works if Payload is
+        // itself a string). Describing it as a nested object here used to
+        // match `docs/03-api-contracts.md`'s own OpenAPI example, but that
+        // was the wrong side of the contract to trust: this class generates
+        // the SAME spec any OpenAPI-driven codegen tool (Kiota included)
+        // consumes, and a typed nested-object property here produces a
+        // client whose generated request body doesn't match what the real
+        // endpoint accepts -- a genuine `500` every time, found and root-
+        // caused for real (raw HTTP with `payload` as a JSON string --
+        // real `202`; Kiota's generated object-typed call -- real `500`)
+        // while proving the SDK-codegen story end to end
+        // (`docs/changes/2026-09-04.md`). The real per-event-type schema
+        // is kept fully visible to a spec reader (Scalar, ADR-025) via the
+        // `x-payload-schema` extension and a human-readable `description`
+        // instead of the JSON Schema `type` itself -- `docs/03-api-
+        // contracts.md`'s own documented contract is corrected to match,
+        // same pass.
+        var payloadSchema = JsonNode.Parse(payloadSchemaText);
         var envelope = new JsonObject
         {
             ["type"] = "object",
             ["properties"] = new JsonObject
             {
                 ["schemaVersion"] = new JsonObject { ["type"] = "integer" },
-                ["payload"] = JsonNode.Parse(payloadSchemaText),
+                ["payload"] = new JsonObject
+                {
+                    ["type"] = "string",
+                    ["description"] = "Raw JSON text (not a nested object) shaped per this event type's own registered schema -- see the x-payload-schema extension on this property for that schema.",
+                    ["x-payload-schema"] = payloadSchema,
+                },
                 ["parentEventIds"] = new JsonObject
                 {
                     ["type"] = "array",

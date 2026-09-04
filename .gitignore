@@ -454,7 +454,13 @@ client-web/packages/*/*.tsbuildinfo
 # ADR-076 -- scripts/generate-migration-bundle.sh's own output: a real,
 # large (tens of MB), self-contained executable per provider, regenerated
 # on demand from the committed migrations, never itself a source artifact.
-scripts/bundles/
+# Narrowed to each provider SUBDIRECTORY (not scripts/bundles/ itself) so
+# scripts/bundles/README.md (added 2026-09-04, warning these binaries go
+# stale silently) can stay tracked -- a `scripts/bundles/` pattern instead
+# would exclude the whole tree, and a `!scripts/bundles/README.md`
+# negation cannot re-include a file whose parent directory is itself
+# excluded (git's own documented gitignore limitation).
+scripts/bundles/*/
 
 # Local SQLite data files -- EventStore.Host.Sqlite's own eventstore.db,
 # the flow engine's shared pending-tasks.db (ADR-101), and the
