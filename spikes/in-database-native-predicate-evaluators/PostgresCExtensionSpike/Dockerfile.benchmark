@@ -1,0 +1,24 @@
+# ADR-098 -- one custom Postgres 18 image carrying all three in-database
+# decrypt_and_compare implementations (plpython3u, the new C/PGXS
+# extension) plus the build tools needed to compile the latter, so a
+# single container can be benchmarked across all of them for a real,
+# apples-to-apples comparison (direct request: "let's try these
+# extensions out to see how they perform" / "I would like to see the
+# in database performance").
+#
+# postgres:18 (Debian), not this project's usual postgres:18-alpine --
+# Alpine has no packaged postgresql-plpython3-18, confirmed while
+# building the plpython3u function earlier this session.
+FROM postgres:18
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    postgresql-plpython3-18 \
+    postgresql-server-dev-18 \
+    build-essential \
+    libssl-dev \
+    python3-pip \
+    && pip3 install --break-system-packages cryptography \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY decrypt_and_compare.c decrypt_and_compare_c.control decrypt_and_compare_c--1.0.sql Makefile /tmp/decrypt_and_compare_c/
+RUN cd /tmp/decrypt_and_compare_c && make && make install

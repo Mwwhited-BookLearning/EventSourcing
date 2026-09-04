@@ -250,9 +250,11 @@ EventStore.sln
                                       -- file tree, TODO.md). Holds tests with no real database/service wiring
                                       -- to exercise: FsCheck property tests (hash-chain/conflict-resolution
                                       -- invariants, ADR-063), Polly+Simmy fault injection (same ADR), and
-                                      -- ordinary pure-logic unit tests added since (OrderRevealingEncryption's
-                                      -- own correctness, CloudSearchIndexKeyStoreAdapter's provider-agnostic
-                                      -- derivation logic) -- the dividing line from IntegrationTests below is
+                                      -- ordinary pure-logic unit tests added since (CloudSearchIndexKeyStoreAdapter's
+                                      -- provider-agnostic derivation logic; OrderRevealingEncryption's own
+                                      -- correctness tests moved to spikes/order-revealing-encryption/ when ORE
+                                      -- was removed as an adopted feature, ADR-097, 2026-09-04) -- the dividing
+                                      -- line from IntegrationTests below is
                                       -- "needs a real service/database in the loop" (IntegrationTests) vs.
                                       -- "a pure function or a small in-memory object graph is enough"
                                       -- (UnitTests), not "unit" vs. "integration" in the abstract.

@@ -1,0 +1,41 @@
+[package]
+name = "decrypt_and_compare_rust"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib", "lib"]
+
+[[bin]]
+name = "pgrx_embed_decrypt_and_compare_rust"
+path = "src/bin/pgrx_embed.rs"
+
+[features]
+default = ["pg18"]
+pg13 = ["pgrx/pg13"]
+pg14 = ["pgrx/pg14"]
+pg15 = ["pgrx/pg15"]
+pg16 = ["pgrx/pg16"]
+pg17 = ["pgrx/pg17"]
+pg18 = ["pgrx/pg18"]
+pg_test = []
+
+[dependencies]
+pgrx = "0.19.2"
+# ADR-098 -- real, NCC-Group-audited pure-Rust AES-GCM (verified this
+# session before adopting), matching EnvelopeAesGcm's own AES-256-GCM
+# algorithm exactly, unlike plpython3u's Python `cryptography` package
+# equivalent -- same crypto, compiled native code instead of interpreted.
+aes-gcm = "0.10"
+base64 = "0.22"
+# Real, well-established date parsing (RFC 3339/ISO 8601) instead of a
+# second hand-rolled parser -- the C extension's own manual sscanf-based
+# parser was accepted there only because C has no equivalent off-the-
+# shelf option this crate-based build doesn't also have available.
+chrono = { version = "0.4", default-features = false, features = ["std"] }
+
+[profile.release]
+panic = "unwind"
+opt-level = 3
+lto = "fat"
+codegen-units = 1

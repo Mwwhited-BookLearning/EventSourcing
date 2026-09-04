@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Spike only, ADR-097 (reversed — see the ADR's own additive note).
+       Not part of EventStore.slnx on purpose: this is the real, working,
+       correctness-tested Order-Revealing Encryption construction moved out
+       of src/EventStore.Erasure/ when ORE was removed as an adopted
+       framework feature, kept here as a working reference implementation
+       rather than deleted outright. Deliberately zero ProjectReferences
+       into the main solution — FilterableFieldType is a small local copy
+       of EventStore.Domain.SchemaRegistry's own enum, not a shared
+       reference, so this spike stays fully standalone. -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+</Project>

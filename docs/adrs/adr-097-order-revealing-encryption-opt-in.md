@@ -98,20 +98,22 @@ verified byte-for-byte implementation of either paper). Order-preservation
 correctness is verified by `EventStore.UnitTests.
 OrderRevealingEncryptionTests` across many Number/DateTimeOffset pairs;
 the no-override guardrail is verified by
-`SearchableEncryptionSqliteTests`. **One real, named scope limit found
+`SearchableEncryptionSqliteTests`. ~~**One real, named scope limit found
 while building the query side**: the default app-tier evaluator
 (`GraphQlFilterPredicateBuilder.ResolveOrderRevealingMatchesAsync`)
 compares ciphertext **in application memory** across a field's own
 indexed rows, not via a native SQL comparison operator — `Compare` is a
 custom byte-array function no provider's query engine understands
-natively. This is still a genuine win over the bucketed approach (only
-small ciphertext tokens are read, never `Payload`, and nothing is ever
-decrypted to filter), but it is not yet "the database evaluates the
-predicate" in the fullest sense this ADR's own Decision describes — that
-requires `ADR-098`'s native evaluator seam, not yet built for any
-provider. **This item is built but not marked Done in `08-build-plan.md`**
-— its own exit criteria require a dedicated security review this pass
-did not perform, named explicitly rather than implied by tests passing.
+natively.~~ **Corrected, 2026-09-04** — see this ADR's own additive note
+below: this had actually regressed further than described (a full
+in-memory scan, not merely "app-tier compare"), and the "no query engine
+understands it natively" framing was itself wrong — fixed for real, not
+merely reframed. This is still a genuine win over the bucketed approach
+(only small ciphertext tokens are read, never `Payload`, and nothing is
+ever decrypted to filter). **This item is built but not marked Done in
+`08-build-plan.md`** — its own exit criteria require a dedicated
+security review this pass did not perform, named explicitly rather than
+implied by tests passing.
 
 **Compliance note**: the no-override guardrail is a direct, deliberate
 answer to the same HIPAA Safe Harbor exposure `ADR-096`'s compliance note
@@ -119,3 +121,73 @@ names — this ADR judges the exact-recovery risk on a regulated
 low-cardinality field too severe for a schema author's own risk
 acceptance to responsibly gate, unlike `ADR-096`'s coarser bucket
 leakage.
+
+**Additive note, 2026-09-04 — the dedicated review this ADR's own build-
+plan item requires happened, plus a real query-side fix**: an AI-assisted
+code-level review found and fixed two real correctness bugs (NaN/±Infinity
+silently accepted with an undefined ordering; `+0.0`/`-0.0` encoding to
+different, orderable ciphertext despite `double.CompareTo` treating them
+as equal) — see `docs/08-build-plan.md`'s own item for the full account
+and the explicit, non-overclaimed judgment that a solo AI review does not
+substitute for an independent human cryptographer's review of a novel
+construction, still genuinely recommended before production use.
+
+Separately, this pass also corrected the "no provider's query engine
+understands natively" framing two paragraphs above — that undersold what
+this construction actually allows. `OrderRevealingEncryption.Compare` is
+empirically a **pure lexicographic byte-array comparison** (0/40,000
+mismatches against a raw `memcmp`-style check across random pairs), which
+means an ordinary database string/binary comparison operator already
+computes the identical result, given ciphertext bytes are encoded as a
+value whose own character order agrees with byte order. Base64 (the
+original `EncryptedFieldIndexEntry.Token` encoding) does NOT have this
+property (532/40,000 mismatches); fixed-width uppercase hex does (0/40,000
+mismatches) — switched to hex, and `GraphQlFilterPredicateBuilder.
+ResolveOrderRevealingMatchesAsync` now pushes a real `.Where` clause down
+to native SQL instead of pulling every row into application memory.
+Verified for real against SQLite, PostgreSQL, and SQL Server (Testcontainers
+for the latter two) — SQL Server's own default collation was a genuine
+risk worth checking, not assuming, given it's case-insensitive and
+linguistically aware rather than purely byte-ordinal; it agreed with the
+real ordering in practice. This closes the query-side gap named above
+**without needing `ADR-098`'s native-function machinery at all** — that
+seam exists for a different comparison shape (decrypt-then-compare
+against a plaintext bound), while ORE's own design was always meant to be
+compared as opaque, already-ordered bytes.
+
+**Final additive note, 2026-09-04 — ORE removed as an adopted feature,
+direct request** ("the ORE feature can be removed... the inapp version
+can be moved to a spike"): despite the query-side gap above being closed
+for real (not blocked on performance, unlike `ADR-098`'s native
+evaluators — a genuinely different reason, worth stating plainly since
+the two removals happened the same day and are easy to conflate), a
+separate decision was made not to keep ORE as an adopted, selectable
+framework feature. **This ADR's own Decision above is superseded, not
+deleted, per this project's additive-history convention**:
+- `"OrderRevealing"` is no longer a valid `x-masking-searchable.indexKind`
+  value — registration now rejects it with the same generic "must be one
+  of Equality, Range" error any unrecognized value gets, not the
+  ORE-specific no-override guardrail described above (which is now dead
+  code, removed along with everything else this note names).
+  `SearchableIndexKind`/`FilterableFieldIndexKind` both dropped their
+  `OrderRevealing` enum member.
+- `OrderRevealingEncryption.cs` (the from-scratch CLWW/Lewi-Wu-inspired
+  construction, including the two real correctness fixes and the
+  hex-encoding query-pushdown fix, all described above) moved to
+  `spikes/order-revealing-encryption/OrderRevealingEncryptionSpike/` —
+  real, working, still-passing code (8/8 tests, moved alongside it to
+  `OrderRevealingEncryptionSpike.Tests/`), kept as a reference
+  implementation rather than deleted outright, matching how the native
+  predicate evaluators were handled in `ADR-098`. Deliberately
+  self-contained (a local copy of `FilterableFieldType`, zero
+  `ProjectReference`s into the main solution) — not wired into
+  `EventStore.slnx`.
+- `PayloadIndexer`'s `OrderRevealing` case and
+  `GraphQlFilterPredicateBuilder.ResolveOrderRevealingMatchesAsync` (the
+  query-side native-SQL-pushdown fix from the note above) were framework
+  glue code, not standalone — removed outright rather than moved, since
+  they depend directly on `EventStoreContext`/`EncryptedFieldIndexEntry`/
+  `SearchIndexKeyService` and could not be a real standalone spike. Their
+  full history remains in git; nothing here is unrecoverable.
+- `08-build-plan.md` item #55 is corrected the same pass to record this
+  as the item's own real, final outcome, not merely a not-yet-Done status.

@@ -5,7 +5,7 @@ using EventStore.Domain.SchemaRegistry;
 
 namespace EventStore.Erasure;
 
-// ADR-096/ADR-097 -- the publish-time half of searchable encryption. Walks
+// ADR-096 -- the publish-time half of searchable encryption. Walks
 // the payload against its declared schema (the same shape PayloadEncryptor's
 // own walk uses -- no shared walker exists to extend, per this codebase's
 // established "each x-masking consumer walks independently" pattern), and
@@ -123,19 +123,6 @@ public class PayloadIndexer(SearchIndexKeyService searchIndexKeyService, Erasure
                 }
                 break;
             }
-            case SearchableIndexKind.OrderRevealing:
-            {
-                // ADR-097 -- computed by OrderRevealingEncryption, not the HMAC
-                // path above; the ciphertext itself is the indexed, comparable
-                // value, so no separate token derivation is needed here.
-                var ciphertext = OrderRevealingEncryption.Encrypt(await ResolveOreKeyAsync(appId, eventTypeName, field.JsonPath, entityId, keyScope, ct), rawValueText, field.DataType);
-                entries.Add(new EncryptedFieldIndexEntry
-                {
-                    AppId = appId, EntityId = entityId, EventTypeName = eventTypeName, FieldJsonPath = field.JsonPath,
-                    IndexKind = SearchableIndexKind.OrderRevealing, Granularity = null, Token = Convert.ToBase64String(ciphertext), StoredEventSequenceNumber = sequenceNumber,
-                });
-                break;
-            }
         }
     }
 
@@ -167,22 +154,4 @@ public class PayloadIndexer(SearchIndexKeyService searchIndexKeyService, Erasure
         return SHA256.HashData(derivationCiphertext);
     }
 
-    private async Task<byte[]> ResolveOreKeyAsync(string appId, string eventTypeName, string fieldJsonPath, string entityId, SearchIndexKeyScope keyScope, CancellationToken ct) =>
-        keyScope == SearchIndexKeyScope.PerEntity
-            ? await DerivePerEntityKeyAsync(appId, entityId, ct)
-            : await ResolveSharedOreKeyAsync(appId, eventTypeName, fieldJsonPath, ct);
-
-    private async Task<byte[]> ResolveSharedOreKeyAsync(string appId, string eventTypeName, string fieldJsonPath, CancellationToken ct)
-    {
-        // ORE needs the raw key bytes to run its own compare-function
-        // construction (unlike the HMAC path, which only ever needs a
-        // compute-under-key oracle) -- ISearchIndexKeyStore's ComputeHmacAsync
-        // is repurposed here as that oracle: hashing a fixed label under the
-        // field's own managed key yields a deterministic, key-dependent seed
-        // exactly the same way DerivePerEntityKeyAsync repurposes
-        // IErasureKeyStore.EncryptAsync above, without needing a second
-        // interface method or ever exposing the store's own raw key material.
-        var (keyReference, backend) = await searchIndexKeyService.GetOrCreateAsync(appId, eventTypeName, fieldJsonPath, ct);
-        return await backend.ComputeHmacAsync(keyReference, "ore-key-seed-v1"u8.ToArray(), ct);
-    }
 }

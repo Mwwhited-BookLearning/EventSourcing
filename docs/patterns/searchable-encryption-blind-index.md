@@ -94,5 +94,5 @@ equivalent of.
 
 See `docs/comparisons/searchable-encryption-for-crypto-shredded-fields.md`
 for how this pattern was weighed against real Order-Revealing Encryption
-(`ADR-097`) and why the blind index is the safe default rather than the
-only option.
+(`ADR-097` — built, then removed as an adopted feature 2026-09-04) and
+why the blind index is the safe default rather than the only option.

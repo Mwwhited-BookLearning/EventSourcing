@@ -238,12 +238,14 @@ the Pipeline above entirely for such a field and instead compare against
 lookup; a range clause against an `EncryptedRangeBucket` field narrows
 via the coarsest useful `Granularity`, then an exact decrypt-and-compare
 step over the small remaining candidate set (`IEncryptedPredicateEvaluator`,
-`ADR-098`); a range clause against an `OrderRevealing` field (`ADR-097`)
-compiles to a native comparison over the stored ORE ciphertext column
-directly, no extraction or decryption needed to evaluate the predicate
-at all. `IndexKind = PlaintextExpression` (the default, and every
+`ADR-098`). `IndexKind = PlaintextExpression` (the default, and every
 `FilterableField` registered before this ADR) is the pipeline exactly as
-described above, completely unchanged.
+described above, completely unchanged. A third `IndexKind`,
+`OrderRevealing` (`ADR-097`), once compiled a range clause to a native
+comparison over a stored ORE ciphertext column directly — removed as an
+adopted feature, 2026-09-04 (a scope decision, not a technical failure;
+see `ADR-097`'s own final additive note), so `IndexKind` no longer has a
+third value at all.
 
 ## Explicitly out of scope
 

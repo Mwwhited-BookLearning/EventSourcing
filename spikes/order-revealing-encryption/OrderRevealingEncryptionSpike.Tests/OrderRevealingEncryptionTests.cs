@@ -1,10 +1,12 @@
 using System.Globalization;
 using System.Security.Cryptography;
-using EventStore.Domain.SchemaRegistry;
-using EventStore.Erasure;
+using OrderRevealingEncryptionSpike;
 
-namespace EventStore.UnitTests;
+namespace OrderRevealingEncryptionSpike.Tests;
 
+// Moved here from tests/EventStore.UnitTests/OrderRevealingEncryptionTests.cs
+// when ORE was removed as an adopted framework feature (ADR-097, reversed).
+//
 // ADR-097 -- correctness tests for the from-scratch ORE construction (see
 // OrderRevealingEncryption's own header comment on why this is NOT a
 // verified implementation of the published CLWW/Lewi-Wu papers). These

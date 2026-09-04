@@ -6,10 +6,35 @@
 -- which would blanket-disable that protection for every assembly, not
 -- just this one.
 --
--- Prerequisite: build EventStore.SqlClr.SqlServer.csproj (net48) and copy
--- EventStore.SqlClr.SqlServer.dll, plus its Microsoft.Bcl.Cryptography.dll
--- and System.Formats.Asn1.dll dependencies (see the project's own build
--- output), to a path this SQL Server instance can read.
+-- Corrected, 2026-09-04, direct request ("build the sqlclr version with
+-- .net 4.8 with no net standard extensions") -- this used to also
+-- reference Microsoft.Bcl.Cryptography.dll/System.Formats.Asn1.dll as
+-- real, required dependencies. Both are REMOVED: their own transitive
+-- dependency chain (System.Buffers/System.Memory/System.Numerics.
+-- Vectors/System.Runtime.CompilerServices.Unsafe) was found, by actually
+-- attempting a live deployment, to fail SQL Server's CLR verifier under
+-- PERMISSION_SET = SAFE in every available version (docs/adrs/adr-098-
+-- *.md's own 2026-09-04 additive note has the full investigation).
+-- PureNet48AesGcm.cs now implements AES-256-GCM from scratch using only
+-- System.Security.Cryptography.Aes's ECB single-block primitive -- this
+-- deploys ONE assembly, with ZERO dependencies to trust or install
+-- alongside it.
+--
+-- Live-verified for real this same pass (Docker, mcr.microsoft.com/
+-- mssql/server:2022-latest, default edition -- Developer/Enterprise is
+-- NOT required, PERMISSION_SET = SAFE alone is genuinely sufficient now)
+-- against the exact golden EnvelopeAesGcm ciphertext fixture tests/
+-- EventStore.SqlClr.SqlServer.Tests/EncryptedPredicateFunctionsTests.cs
+-- already uses -- all 8 assertions matched.
+--
+-- Prerequisite: build EventStore.SqlClr.SqlServer.csproj (net48; the
+-- output is exactly one DLL, no others to copy) and copy EventStore.
+-- SqlClr.SqlServer.dll to a path this SQL Server instance can read.
+-- The path below uses a Linux-container-style path (this project's own
+-- real Testcontainers/Docker deployment target, e.g.
+-- /var/opt/mssql/EventStoreSqlClr/EventStore.SqlClr.SqlServer.dll) --
+-- substitute a Windows path (e.g. C:\EventStoreSqlClr\...) if deploying
+-- to a real Windows-hosted instance instead.
 --
 -- Scope, stated plainly (ADR-098): this function only ever decrypts
 -- ciphertext produced by the "Local" IErasureKeyStore/ISearchIndexKeyStore
@@ -22,33 +47,20 @@
 
 EXEC sp_configure 'clr enabled', 1;
 RECONFIGURE;
+GO
 
-DECLARE @AssemblyPath NVARCHAR(4000) = N'C:\EventStoreSqlClr\EventStore.SqlClr.SqlServer.dll';
+DECLARE @AssemblyPath NVARCHAR(4000) = N'/var/opt/mssql/EventStoreSqlClr/EventStore.SqlClr.SqlServer.dll';
 DECLARE @AssemblyHash VARBINARY(64) = HASHBYTES('SHA2_512', (
-    SELECT BulkColumn FROM OPENROWSET(BULK 'C:\EventStoreSqlClr\EventStore.SqlClr.SqlServer.dll', SINGLE_BLOB) AS x
+    SELECT BulkColumn FROM OPENROWSET(BULK '/var/opt/mssql/EventStoreSqlClr/EventStore.SqlClr.SqlServer.dll', SINGLE_BLOB) AS x
 ));
 
 -- Trust this exact assembly by its own hash -- narrower and more
--- auditable than disabling CLR strict security deployment-wide.
-EXEC sys.sp_add_trusted_assembly @hash = @AssemblyHash, @description = N'EventStore.SqlClr.SqlServer (ADR-098)';
+-- auditable than disabling CLR strict security deployment-wide. No
+-- other assembly needs trusting: zero dependencies, by design.
+EXEC sys.sp_add_trusted_assembly @hash = @AssemblyHash, @description = N'EventStore.SqlClr.SqlServer (ADR-098, pure net48)';
+GO
 
--- Microsoft.Bcl.Cryptography (and its own transitive System.Formats.Asn1)
--- must be trusted the same way -- CREATE ASSEMBLY resolves dependencies
--- from the same directory as the main assembly by default; each still
--- needs its own trusted-assembly entry under CLR strict security.
-DECLARE @BclCryptoHash VARBINARY(64) = HASHBYTES('SHA2_512', (
-    SELECT BulkColumn FROM OPENROWSET(BULK 'C:\EventStoreSqlClr\Microsoft.Bcl.Cryptography.dll', SINGLE_BLOB) AS x
-));
-EXEC sys.sp_add_trusted_assembly @hash = @BclCryptoHash, @description = N'Microsoft.Bcl.Cryptography (ADR-098 dependency)';
-
-DECLARE @Asn1Hash VARBINARY(64) = HASHBYTES('SHA2_512', (
-    SELECT BulkColumn FROM OPENROWSET(BULK 'C:\EventStoreSqlClr\System.Formats.Asn1.dll', SINGLE_BLOB) AS x
-));
-EXEC sys.sp_add_trusted_assembly @hash = @Asn1Hash, @description = N'System.Formats.Asn1 (ADR-098 transitive dependency)';
-
-CREATE ASSEMBLY [Microsoft.Bcl.Cryptography] FROM 'C:\EventStoreSqlClr\Microsoft.Bcl.Cryptography.dll' WITH PERMISSION_SET = SAFE;
-CREATE ASSEMBLY [System.Formats.Asn1] FROM 'C:\EventStoreSqlClr\System.Formats.Asn1.dll' WITH PERMISSION_SET = SAFE;
-CREATE ASSEMBLY [EventStore.SqlClr.SqlServer] FROM 'C:\EventStoreSqlClr\EventStore.SqlClr.SqlServer.dll' WITH PERMISSION_SET = SAFE;
+CREATE ASSEMBLY [EventStore.SqlClr.SqlServer] FROM '/var/opt/mssql/EventStoreSqlClr/EventStore.SqlClr.SqlServer.dll' WITH PERMISSION_SET = SAFE;
 GO
 
 -- Pure computation, no I/O -- PERMISSION_SET = SAFE is genuinely enough;

@@ -96,3 +96,14 @@ carrying `x-masking.regulatoryClassification`, not merely warning. A+B's
 own guardrail is cardinality-aware rather than a blanket classification
 rule, since the attack's power is concentrated in low-cardinality value
 domains specifically, not classification alone.
+
+**Update, 2026-09-04**: Option C (ORE) was built, correctness-tested,
+security-reviewed, and had its query-side native-comparison gap closed
+for real — then removed as an adopted feature by direct decision, a
+scope call rather than a technical failure (see `ADR-097`'s own final
+additive note). This Recommendation's own reasoning above is left as-is,
+since it accurately reflects the trade-off as weighed *and as built* —
+what changed afterward was a decision not to keep the feature adopted,
+not a reassessment of the trade-off itself. A+B (`ADR-096`) remains the
+sole adopted mechanism; ORE's real implementation lives on as a
+reference in `spikes/order-revealing-encryption/`.

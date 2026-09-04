@@ -117,30 +117,43 @@ ciphertext-order comparison leaks strictly more per query than a
 bucket-membership check does. An unclassified, high-cardinality field
 remains free to use it.
 
-The construction itself
-(`src/EventStore.Erasure/OrderRevealingEncryption.cs`) is explicit in its
-own header that it is **not** a verified, byte-for-byte implementation of
-either paper's formal construction — a from-scratch, testable realization
-of the same high-level idea (per-prefix-keyed, block-level order-
-preserving encryption), correctness-tested for order-preservation across
-many `Number`/`DateTimeOffset` pairs
-(`EventStore.UnitTests.OrderRevealingEncryptionTests`) and for the
-no-override guardrail (`SearchableEncryptionSqliteTests`), but explicitly
-gated behind a **required dedicated security review that has not yet
-happened**. This is a live, currently-unresolved caution, not a settled
-detail: `ADR-097` itself states the bespoke implementation needs its own
-correctness/security review before it ships in `08-build-plan.md`'s
-matching item, and that item is built but deliberately **not** marked
-Done for exactly that reason — the same standing caveat `ADR-055`
-(Testing Strategy) already applies generally ("built, pending required
-security review, not Done"). One further, named scope limit found while
-building the query side: the default app-tier evaluator
-(`GraphQlFilterPredicateBuilder.ResolveOrderRevealingMatchesAsync`)
-currently compares ciphertext in application memory across a field's own
-indexed rows, not via a native SQL comparison operator, since no
-provider's query engine understands the custom `Compare` byte-array
-function natively — a real win over the bucketed approach (only small
-ciphertext tokens are read, never `Payload`, nothing is ever decrypted to
-filter) but not yet "the database evaluates the predicate" in the full
-sense this pattern's own mechanism describes; that requires `ADR-098`'s
-native evaluator seam, not yet built for any provider.
+The construction itself was explicit in its own header that it is **not**
+a verified, byte-for-byte implementation of either paper's formal
+construction — a from-scratch, testable realization of the same
+high-level idea (per-prefix-keyed, block-level order-preserving
+encryption), correctness-tested for order-preservation across many
+`Number`/`DateTimeOffset` pairs and for the no-override guardrail. An
+AI-assisted code-level security review (2026-09-04) found and fixed two
+real correctness bugs (NaN/±Infinity silently accepted with an undefined
+ordering; `+0.0`/`-0.0` encoding to different, orderable ciphertext
+despite `double.CompareTo` treating them as equal) — genuinely
+recommended an independent human cryptographer's review before any
+production use, a bar this solo review did not claim to meet.
+
+A further, real gap was found and fixed the same day: the default
+app-tier evaluator originally pulled every row for the field into
+application memory and compared in a C# LINQ-to-Objects loop — no
+predicate pushdown at all, worse than the "app-tier compare, not native"
+framing this section used to give it. Root cause: `EncryptedFieldIndexEntry
+.Token` stored the ORE ciphertext as base64, whose alphabet order does
+not track the underlying ciphertext's real order (empirically verified:
+532/40,000 mismatches on random pairs). Switching to fixed-width
+uppercase hex (0/40,000 mismatches) let an ordinary database string
+comparison operator push the predicate down as a real `WHERE` clause —
+**"the database evaluates the predicate" in the full sense this
+pattern's own mechanism describes, achieved with zero custom native
+function**, unlike `ADR-098`'s SQLCLR/`plpython3u` machinery (built for
+a different comparison shape). Verified for real against all three
+providers.
+
+**Removed as an adopted feature, 2026-09-04, direct request** — despite
+the above closing every real gap this pattern had, a separate decision
+was made not to keep ORE adopted in this design at all (a scope
+decision, not a technical failure; contrast `ADR-098`'s own native
+predicate evaluators, rejected on measured performance the same day).
+`"OrderRevealing"` is no longer a valid `x-masking-searchable.indexKind`
+value. The real, working, correctness-tested implementation (construction
++ its unit tests) is kept as a reference rather than deleted, at
+`spikes/order-revealing-encryption/OrderRevealingEncryptionSpike/` (+
+`.Tests/`) — not wired into `EventStore.slnx`. Full detail in `ADR-097`'s
+own final additive note and `08-build-plan.md` item #55.

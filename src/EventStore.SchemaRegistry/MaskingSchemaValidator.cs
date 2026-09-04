@@ -15,7 +15,7 @@ namespace EventStore.SchemaRegistry;
 internal static class MaskingSchemaValidator
 {
     private static readonly string[] ValidStrategies = ["FixedValue", "PartialReveal", "Hash"];
-    private static readonly string[] ValidIndexKinds = ["Equality", "Range", "OrderRevealing"];
+    private static readonly string[] ValidIndexKinds = ["Equality", "Range"];
     private static readonly string[] ValidKeyScopes = ["Shared", "PerEntity"];
 
     public static void Validate(JsonObject? node, List<string> errors)
@@ -106,18 +106,6 @@ internal static class MaskingSchemaValidator
 
             if (indexKind == "Range" && searchable["bucketGranularities"] is not JsonArray { Count: > 0 })
                 errors.Add("x-masking-searchable.bucketGranularities must be a non-empty array for Range indexKind");
-        }
-
-        // ADR-097 -- stricter, no-override guardrail than Range's above: the
-        // exact-recovery risk on a low-entropy classified field is judged
-        // too severe for an acknowledgeLeakageRisk-style override to
-        // responsibly gate, given ORE's own dedicated leakage-abuse break
-        // (Grubbs/Sekniqi/Bindschaedler/Naveed/Ristenpart, 2016) on top of
-        // the general property-preserving-encryption one.
-        if (indexKind == "OrderRevealing" && masking?["regulatoryClassification"] is not null)
-        {
-            errors.Add("x-masking-searchable.indexKind \"OrderRevealing\" can never be registered on a field that " +
-                "also carries x-masking.regulatoryClassification -- see ADR-097 (no override accepted, unlike Range's acknowledgeLeakageRisk)");
         }
     }
 

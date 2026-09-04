@@ -16,5 +16,5 @@ public class SearchableIndexConfig
     public SearchIndexKeyScope KeyScope { get; set; }
     public List<string>? BucketGranularities { get; set; } // Range only -- e.g. ["Year","Month","Day"] or numeric bucket widths ["10","100"]
     public FieldCardinality? Cardinality { get; set; }      // required for Range -- drives the ADR-096 registration guardrail
-    public bool AcknowledgeLeakageRisk { get; set; }        // Range + Low cardinality + regulatoryClassification present: required to register at all. Never accepted for OrderRevealing (ADR-097) -- that combination is refused outright, no override.
+    public bool AcknowledgeLeakageRisk { get; set; }        // Range + Low cardinality + regulatoryClassification present: required to register at all.
 }

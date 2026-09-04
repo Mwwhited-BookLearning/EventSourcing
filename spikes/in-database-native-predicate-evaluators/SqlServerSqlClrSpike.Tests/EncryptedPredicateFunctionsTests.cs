@@ -43,8 +43,13 @@ namespace EventStore.SqlClr.SqlServer.Tests
         [TestMethod]
         public void AWrongKeyFailsToDecryptRatherThanSilentlyProducingGarbage()
         {
+            // System.Security.Cryptography.CryptographicException, not
+            // AuthenticationTagMismatchException (a .NET Standard 2.1+/
+            // AesGcm-specific type) -- PureNet48AesGcm (2026-09-04, direct
+            // request: pure net48, no NET-Standard extensions) throws the
+            // classic, always-available net48 BCL exception type instead.
             var wrongKey = new byte[32]; // all zeros -- deliberately not Key
-            Assert.ThrowsExactly<System.Security.Cryptography.AuthenticationTagMismatchException>(() =>
+            Assert.ThrowsExactly<System.Security.Cryptography.CryptographicException>(() =>
                 EncryptedPredicateFunctions.DecryptAndCompareCore(NumberCiphertext, wrongKey, "Number", "gt", "0"));
         }
 

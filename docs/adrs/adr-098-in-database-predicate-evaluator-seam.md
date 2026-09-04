@@ -142,7 +142,9 @@ confidence levels, stated plainly rather than glossed over.
   EventStore.SqlClr.SqlServer.Tests/EncryptedPredicateFunctionsTests.cs`)
   — all 8 assertions matched, including a wrong-key case returning
   `false` rather than raising. Full detail in `08-build-plan.md`, item
-  56 (now `Done`). The custom image itself was not kept as a permanent,
+  56 (PostgreSQL half — see this ADR's own later additive note for why
+  the item as a whole is not fully Done). The custom image itself was
+  not kept as a permanent,
   CI-integrated fixture — folding real, ongoing `plpython3u` coverage
   into the Testcontainers-based suite remains real, separate work if
   ever wanted, not done by this verification pass.
@@ -150,3 +152,131 @@ confidence levels, stated plainly rather than glossed over.
   `ISearchIndexKeyStore` backend only, per this ADR's own Decision — a
   Shared/`PerEntity` field backed by a real KMS/Vault cannot use either
   native evaluator without a different mechanism this ADR does not build.
+
+**Additive note, 2026-09-04 — a third PostgreSQL implementation, real
+performance numbers, and a real SQL Server deployment correction**
+(direct request: "let's try these extensions out to see how they
+perform"):
+
+- **PostgreSQL**: added `scripts/sql-clr/postgres-c-extension/`, a
+  genuinely native C/PGXS extension (OpenSSL EVP directly, no
+  interpreter), verified against the same golden fixture. Real, measured
+  `EXPLAIN ANALYZE` numbers (50,000 / 1,000,000 real `EnvelopeAesGcm`
+  rows, one shared key): the C extension took ~33ms/~238ms, `plpython3u`
+  took ~175ms/~3,133ms, and the app-tier default (fetch all candidates +
+  decrypt in .NET) took ~82ms/~1,239ms. **`plpython3u` is slower than the
+  app-tier default at both scales** — its own interpreter overhead
+  outweighs the bandwidth it saves. The C extension is the clear winner
+  and its advantage widens with scale (5.2×/13.2× at 1M rows), matching
+  the theoretical case for in-database filtering. Recommendation: prefer
+  the C extension over `plpython3u` going forward. Full numbers and
+  reasoning in `08-build-plan.md`, item 56.
+- **SQL Server — the "verified" claim above needed a real correction,
+  which is now itself superseded: the real fix was built and verified
+  the same session, direct request ("You need to build the sqlclr
+  version with .net 4.8 with no net standard extensions").** The original
+  claim rested on `tests/EventStore.SqlClr.SqlServer.Tests`, a plain
+  net48 unit-test host process — never a live SQL Server CLR deployment.
+  Actually attempting one (Docker, both default and Developer edition)
+  found a genuine, structural platform blocker: `Microsoft.Bcl.
+  Cryptography`'s own dependency chain fails SQL Server's CLR verifier
+  under `SAFE` (confirmed across every available package version back to
+  8.0.0, not a version-pinning fix — these packages use unsafe/
+  unverifiable IL by design). Fixed by removing the package entirely:
+  `src/EventStore.SqlClr.SqlServer/PureNet48AesGcm.cs` implements
+  AES-256-GCM (NIST SP 800-38D) from scratch using only `System.
+  Security.Cryptography.Aes`'s ECB single-block primitive — zero NuGet
+  packages, zero .NET-Standard-only types.
+
+  **A second, independent real deployment blocker was found and fixed
+  the same pass**: with the polyfill chain gone, the assembly still threw
+  a live `System.Security.HostProtectionException` — `Aes.Create()`
+  returns a CAPI-backed `AesCryptoServiceProvider` under classic .NET
+  Framework, carrying a `[HostProtection(Synchronization = true)]`
+  attribute (it wraps a native OS crypto handle) that SQL Server's CLR
+  host forbids even under `SAFE` — a different SQLCLR restriction class
+  than the CLR-verifier failure the dependency removal fixed. Switched to
+  `new AesManaged()` (fully managed, no native handle, no such
+  restriction), and the real, live golden-fixture verification then
+  passed completely — all 8 assertions correct against real
+  `EnvelopeAesGcm`-produced ciphertext, on a real `mcr.microsoft.com/
+  mssql/server:2022-latest` container, **default edition** (the earlier
+  Linux/`UNSAFE` finding is now moot: `SAFE` alone is sufficient, nothing
+  needs `UNSAFE` anymore). Both correctness bugs were verified the same
+  way every cryptographic implementation in this design has been —
+  successfully decrypting real, independently-produced ciphertext, not
+  merely internal self-consistency; this has NOT had a dedicated
+  cryptographic security review, the same genuine recommendation `ADR-097`
+  already states for its own hand-built construction.
+
+  Real, measured performance (same 50K/1M-row methodology as PostgreSQL
+  above): SQLCLR took ~720ms/~780ms; the app-tier default took ~102ms/
+  ~1,640ms. **A genuine crossover, not predicted going in**: SQLCLR is
+  slower than app-tier at 50,000 rows (the same surprising pattern
+  `plpython3u` showed on PostgreSQL — real per-call SQLCLR host overhead),
+  but its own elapsed time barely grows from 50K to 1M rows while
+  app-tier's scales with volume, because SQL Server's query engine
+  parallelizes the larger scan across cores (`CPU time` ~22s vs.
+  `elapsed time` ~780ms at 1M rows makes this directly visible). Full
+  numbers and reasoning in `08-build-plan.md`, item 56.
+
+**Final additive note, 2026-09-04 — a batch table-valued function
+variant, the final verdict, and the spike-folder move** (direct
+request: "what about a version that would use a sqlclr table function or
+stored procedure so they are processed in blocks? ive done vector
+processing in the database and has better performance", followed by
+"I dont think the performance of this feature is worth the effort... I
+would like this branch left behind as a POC"):
+
+- **Batch table-valued function, built and measured for real.** A
+  `[SqlFunction(FillRowMethodName = ..., TableDefinition = ...,
+  DataAccess = DataAccessKind.Read)]` TVF
+  (`DecryptAndCompareBatchBench`) querying its own candidate rows via
+  `"context connection=true"` and decrypting+comparing all of them in one
+  managed loop, avoiding the scalar function's per-row SQLOS↔CLR crossing
+  entirely. Confirmed first, via research rather than assumption, that
+  SQL Server cannot accept a table-valued parameter as CLR routine input
+  — the batch function reads its own candidate set instead of receiving
+  one. Real, measured numbers: 50,000 rows — batch ~418ms vs. scalar
+  ~720ms (batching genuinely wins, confirming the user's own prior
+  experience with in-database vector processing); 1,000,000 rows — batch
+  ~9,300ms vs. scalar ~780ms (batching loses badly). Root cause,
+  confirmed against Microsoft's own docs before writing anything up: SQL
+  Server forces CLR table-valued functions that declare real data access
+  to run **serially** — the scalar function's crossover win at 1M rows
+  (above) came entirely from the query engine parallelizing the plan
+  across cores, an option the batch TVF's own architecture forecloses.
+  Batching helps at equal parallelism; it does not help once it trades
+  away parallelism to get there. Full numbers and reasoning in
+  `08-build-plan.md`, item 56.
+- **Final verdict: not adopted.** No implementation tried — `plpython3u`,
+  the SQL Server scalar function, the SQL Server batch TVF — beat the
+  already-built, already-simple app-tier default consistently across
+  scale; the PostgreSQL C extension is a clear, consistent win but was
+  never wired into a real `IEncryptedPredicateEvaluator`, and adopting a
+  C extension carries its own ongoing toolchain cost this investigation
+  didn't weigh against "the app-tier default already works." Direct
+  request: treat this branch as a proof-of-concept, not headed for
+  adoption or merge. A possible future direction, named honestly rather
+  than pursued: `unsafe` pointer arithmetic in `PureNet48AesGcm`'s hot
+  `GHASH` loop could plausibly close some of the SQLCLR gap, but would
+  very likely need `PERMISSION_SET = UNSAFE` to load at all, reopening
+  the SQL Server Linux/Testcontainers deployability question
+  `PureNet48AesGcm.cs` was built specifically to close — not attempted.
+- **All native-evaluator code moved to
+  `spikes/in-database-native-predicate-evaluators/`** (direct request:
+  "actaully put these implmetnation in the spkie folder"), out of
+  `src/`/`tests/`/`scripts/sql-clr/` and out of `EventStore.slnx` —
+  matching this repo's existing `spikes/` convention (real, working,
+  independently-buildable code, not wired into the main solution). The
+  paths cited earlier in this ADR (`src/EventStore.SqlClr.SqlServer/`,
+  `tests/EventStore.SqlClr.SqlServer.Tests`, `scripts/sql-clr/deploy-*.
+  sql`) are historical — as of this move they resolve under
+  `spikes/in-database-native-predicate-evaluators/SqlServerSqlClrSpike/`,
+  `.../SqlServerSqlClrSpike.Tests/`, and `.../deploy-*.sql` respectively;
+  see that folder's own `README.md` for the current at-a-glance summary
+  of every implementation and its real, measured result. The
+  already-adopted app-tier default (`AppTierEncryptedPredicateEvaluator`)
+  is unaffected and remains in `src/EventStore.Erasure/` — this move and
+  verdict only concern the native alternatives this ADR itself scoped as
+  optional.

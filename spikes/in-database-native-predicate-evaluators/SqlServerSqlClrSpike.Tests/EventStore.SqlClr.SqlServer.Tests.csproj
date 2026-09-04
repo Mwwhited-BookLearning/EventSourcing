@@ -20,7 +20,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\..\src\EventStore.SqlClr.SqlServer\EventStore.SqlClr.SqlServer.csproj" />
+    <ProjectReference Include="..\SqlServerSqlClrSpike\EventStore.SqlClr.SqlServer.csproj" />
   </ItemGroup>
 
 </Project>

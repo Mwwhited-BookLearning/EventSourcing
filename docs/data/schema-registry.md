@@ -91,9 +91,15 @@ public enum FilterableFieldIndexKind
     PlaintextExpression, // default -- today's json_extract/->>/JSON_VALUE mechanism, unchanged
     EncryptedBlindIndex,   // ADR-096 -- eq comparisons route to EncryptedFieldIndexEntry.Token
     EncryptedRangeBucket,  // ADR-096 -- gt/gte/lt/lte comparisons narrow via EncryptedFieldIndexEntry.Token at the coarsest useful Granularity, then an exact decrypt-and-compare step (IEncryptedPredicateEvaluator, ADR-098)
-    OrderRevealing,        // ADR-097 -- gt/gte/lt/lte comparisons compile to a native ciphertext comparison, no decryption needed to evaluate the predicate
 }
 ```
+
+A third kind, `OrderRevealing` (`ADR-097`), compiled `gt`/`gte`/`lt`/`lte`
+comparisons to a native ciphertext comparison with no decryption needed —
+**removed as an adopted feature, 2026-09-04** (a scope decision, not a
+technical failure; see `ADR-097`'s own final additive note). The real,
+working implementation is kept as a reference in
+`spikes/order-revealing-encryption/`, no longer wired into this enum.
 
 ## Application-defined permission trust roots (`ADR-044`)
 
@@ -413,8 +419,8 @@ issues a provider-specific migration to add a computed/expression index:
 | PostgreSQL | Expression index: `CREATE INDEX ... ON "Events" ((("Payload"::jsonb) ->> 'Amount'))` |
 | SQL Server | Computed column + index: `ALTER TABLE Events ADD Amount AS JSON_VALUE(Payload, '$.Amount'); CREATE INDEX ... ON Events(Amount)` |
 
-**`FilterableFieldIndexKind.EncryptedBlindIndex`/`EncryptedRangeBucket`/
-`OrderRevealing` (`ADR-096`/`ADR-097`) index a different column entirely** —
+**`FilterableFieldIndexKind.EncryptedBlindIndex`/`EncryptedRangeBucket`
+(`ADR-096`) index a different column entirely** —
 `EncryptedFieldIndexEntry.Token` (below), never `Payload` itself, since a
 classified field's `Payload` value is ciphertext. The index/expression
 mechanism on that separate table is the same ordinary technique as any
@@ -677,14 +683,14 @@ without decrypting to search:
 ```csharp
 public class SearchableIndexConfig
 {
-    public SearchableIndexKind IndexKind { get; set; }        // Equality | Range | OrderRevealing
+    public SearchableIndexKind IndexKind { get; set; }        // Equality | Range
     public SearchIndexKeyScope KeyScope { get; set; }          // Shared | PerEntity
     public List<string>? BucketGranularities { get; set; }     // Range only -- e.g. ["Year","Month","Day"] or numeric bucket widths
     public FieldCardinality? Cardinality { get; set; }          // required for Equality AND Range (corrected this pass -- originally Range-only; a blind Equality index is deterministic encryption, the same frequency-analysis-vulnerable shape the guardrail exists for) -- Low | High, drives the ADR-096 registration guardrail
-    public bool AcknowledgeLeakageRisk { get; set; }            // Equality/Range + Low cardinality + regulatoryClassification present: required to register at all (ADR-096). Never accepted for OrderRevealing (ADR-097) -- that combination is refused outright, no override.
+    public bool AcknowledgeLeakageRisk { get; set; }            // Equality/Range + Low cardinality + regulatoryClassification present: required to register at all (ADR-096).
 }
 
-public enum SearchableIndexKind { Equality, Range, OrderRevealing }
+public enum SearchableIndexKind { Equality, Range }
 public enum SearchIndexKeyScope { Shared, PerEntity }
 public enum FieldCardinality { Low, High }
 ```
@@ -704,9 +710,9 @@ public class EncryptedFieldIndexEntry
     public string EntityId { get; set; } = default!;            // the entity this token belongs to -- deleted wholesale on that entity's erasure, Shared scope only (see below)
     public string EventTypeName { get; set; } = default!;
     public string FieldJsonPath { get; set; } = default!;
-    public SearchableIndexKind IndexKind { get; set; }           // Equality | Range | OrderRevealing
-    public string? Granularity { get; set; }                     // Range only -- which bucketGranularities entry this row's Token is computed at; null for Equality/OrderRevealing
-    public string Token { get; set; } = default!;                 // base64 HMAC token (Equality/Range) or base64 ORE ciphertext (OrderRevealing) -- indexed, compared, never decrypted to search. Corrected from an earlier byte[] sketch once actually built: a string column matches this codebase's existing base64-ciphertext convention (PayloadEncryptor already stores ciphertext as base64 text) and is portable across all three providers as an ordinary indexed text column.
+    public SearchableIndexKind IndexKind { get; set; }           // Equality | Range
+    public string? Granularity { get; set; }                     // Range only -- which bucketGranularities entry this row's Token is computed at; null for Equality
+    public string Token { get; set; } = default!;                 // base64 HMAC token (Equality/Range) -- indexed, compared, never decrypted to search. Corrected from an earlier byte[] sketch once actually built: a string column matches this codebase's existing base64-ciphertext convention (PayloadEncryptor already stores ciphertext as base64 text) and is portable across all three providers as an ordinary indexed text column.
     public long StoredEventSequenceNumber { get; set; }           // FK -> StoredEvent.SequenceNumber, the event this token was computed from
 }
 ```

@@ -1,0 +1,3 @@
+comment = 'ADR-098 native C decrypt_and_compare, built to measure real in-database performance against the plpython3u equivalent'
+default_version = '1.0'
+relocatable = true
