@@ -16,6 +16,24 @@ namespace EventStore.Erasure;
 // use. Treat this as a working example of the mechanism and its real
 // trade-offs, not an audited cryptographic library.
 //
+// **Leakage this construction is deterministic about, spelled out plainly**
+// (build-plan item #55's own dedicated review, 2026-09-04 -- ADR-097 already
+// names the general property-preserving-encryption/ORE-specific attacks
+// this is weighed against, this states the mechanical consequence in one
+// place): `Encrypt` has no randomness or per-call salt -- two rows storing
+// the IDENTICAL plaintext value under the SAME key produce BYTE-IDENTICAL
+// ciphertext, always. Anyone who can read the stored ciphertext column (not
+// just someone who can query through it) can therefore identify every group
+// of rows sharing an equal value, with zero decryption -- exact frequency
+// analysis, not merely order. This is inherent to any non-interactive
+// compare-two-ciphertexts ORE scheme (ciphertexts for equal values under
+// the same key MUST compare equal, which requires them to be derived
+// identically), not a defect specific to this implementation -- but it's a
+// materially different, stronger leakage than "reveals order," worth an
+// operator actually reading before opting a field in, which is why it's
+// named here explicitly rather than left implicit in "reveals comparison
+// results."
+//
 // Mechanism: encode the plaintext as a fixed-width, order-preserving 8-byte
 // sequence (EncodeOrderPreserving), then encrypt block-by-block (1 byte per
 // block, MSB first). Block i's own small order-preserving mapping (a keyed
@@ -114,8 +132,32 @@ public static class OrderRevealingEncryption
     // integer, sorts in the same order as the double's own numeric value:
     // flip the sign bit for a non-negative value, flip every bit for a
     // negative one.
+    //
+    // Found while reviewing this file for real (build-plan item #55's own
+    // required dedicated review, 2026-09-04) -- two real, previously-
+    // unknown correctness gaps, both now fixed:
+    // 1. NaN and +/-Infinity were accepted silently (double.Parse allows
+    //    the literal text "NaN"/"Infinity"/"-Infinity"), producing SOME
+    //    deterministic bit pattern with no defined relationship to .NET's
+    //    own NaN-handling CompareTo semantics. Rejected explicitly instead
+    //    of silently mis-ordering.
+    // 2. The bit-flip trick alone gives +0.0 and -0.0 DIFFERENT encodings
+    //    (their sign bits differ), which this file's OWN regression test
+    //    caught comparing as ordered (-0.0 "before" +0.0) -- but .NET's own
+    //    `double.CompareTo` (the correctness oracle every other test in
+    //    this file is defined against) treats them as EQUAL, matching
+    //    `==`, not IEEE 754-2008's totalOrder predicate. Canonicalizing
+    //    -0.0 to +0.0 before the bit-flip (the `value == 0.0` check below
+    //    is true for both; assigning the literal `0.0` produces the
+    //    positive-zero bit pattern) fixes this to actually agree with the
+    //    stated `Compare(Encrypt(a), Encrypt(b))` <-> `a.CompareTo(b)`
+    //    invariant, rather than a subtly different, undocumented one.
     private static ulong DoubleToOrderPreservingULong(double value)
     {
+        if (double.IsNaN(value) || double.IsInfinity(value))
+            throw new NotSupportedException($"Order-Revealing Encryption does not support NaN or +/-Infinity (got: {value}) -- no bit-pattern encoding of these reproduces .NET's own Double.CompareTo ordering for them.");
+        if (value == 0.0) value = 0.0; // canonicalize -0.0 to +0.0
+
         var bits = BitConverter.DoubleToInt64Bits(value);
         var ubits = unchecked((ulong)bits);
         var mask = (ubits & 0x8000000000000000UL) != 0 ? 0xFFFFFFFFFFFFFFFFUL : 0x8000000000000000UL;

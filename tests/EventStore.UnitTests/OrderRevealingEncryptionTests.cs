@@ -70,4 +70,40 @@ public class OrderRevealingEncryptionTests
         var cB = OrderRevealingEncryption.Encrypt(keyB, "42.5", FilterableFieldType.Number);
         CollectionAssert.AreNotEqual(cA, cB);
     }
+
+    // build-plan item #55's own dedicated review, 2026-09-04 -- found NaN/
+    // +-Infinity were previously accepted silently (double.Parse allows the
+    // literal text "NaN"/"Infinity"/"-Infinity"), producing a bit pattern
+    // with no defined relationship to .NET's own NaN-handling CompareTo
+    // semantics. Now rejected explicitly (OrderRevealingEncryption.cs's own
+    // DoubleToOrderPreservingULong) rather than silently mis-ordered.
+    [DataTestMethod]
+    [DataRow("NaN")]
+    [DataRow("Infinity")]
+    [DataRow("-Infinity")]
+    public void EncryptingANonFiniteNumberThrowsInsteadOfSilentlyMisOrdering(string nonFiniteText)
+    {
+        var key = RandomNumberGenerator.GetBytes(32);
+        Assert.ThrowsExactly<NotSupportedException>(() =>
+            OrderRevealingEncryption.Encrypt(key, nonFiniteText, FilterableFieldType.Number));
+    }
+
+    // Same review pass -- a real, previously-unknown bug this test itself
+    // caught: the bit-flip trick alone gives +0.0/-0.0 DIFFERENT
+    // ciphertext (their sign bits differ), comparing as ordered. But
+    // .NET's own `double.CompareTo` (the correctness oracle every other
+    // test in this file is defined against) treats -0.0 and +0.0 as
+    // EQUAL, matching `==` -- confirmed here as 0, not assumed. Fixed by
+    // canonicalizing -0.0 to +0.0 before encoding
+    // (OrderRevealingEncryption.cs's own DoubleToOrderPreservingULong).
+    [TestMethod]
+    public void NegativeZeroComparesEqualToPositiveZeroMatchingDoubleCompareTo()
+    {
+        var key = RandomNumberGenerator.GetBytes(32);
+        var cNegativeZero = OrderRevealingEncryption.Encrypt(key, (-0.0).ToString(CultureInfo.InvariantCulture), FilterableFieldType.Number);
+        var cPositiveZero = OrderRevealingEncryption.Encrypt(key, (0.0).ToString(CultureInfo.InvariantCulture), FilterableFieldType.Number);
+
+        Assert.AreEqual(0, (-0.0).CompareTo(0.0), "sanity check on the .NET oracle this test is defined against");
+        Assert.AreEqual(0, OrderRevealingEncryption.Compare(cNegativeZero, cPositiveZero));
+    }
 }

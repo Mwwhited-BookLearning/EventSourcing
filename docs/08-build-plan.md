@@ -113,7 +113,7 @@ provider they apply to — not "code written."
 | 52 | [Generic Entity/Live-View Query](#generic-entitylive-view-query) | GraphQL-Only Query Layer, Non-Authoritative Capture, Property-Level Masking, Delegated Grants/RBAC/Read Audit Logging | Done |
 | 53 | [Push-Notification Wake-Up Layer](#push-notification-wake-up-layer) | Publish API, Entity-Centric Core Rebuild | Done (all 6 background workers) |
 | 54 | [Searchable Blind-Index & Bucketed-Range Encrypted-Field Indexes](#searchable-blind-index--bucketed-range-encrypted-field-indexes) | GDPR/CCPA Erasure, Property-Level Masking, Follow API + Filter Pushdown | Done |
-| 55 | [Order-Revealing Encryption Range Index (opt-in)](#order-revealing-encryption-range-index-opt-in) | Searchable Blind-Index & Bucketed-Range Encrypted-Field Indexes | Built, pending required security review (not Done) |
+| 55 | [Order-Revealing Encryption Range Index (opt-in)](#order-revealing-encryption-range-index-opt-in) | Searchable Blind-Index & Bucketed-Range Encrypted-Field Indexes | AI-assisted code-level security review completed 2026-09-04, found and fixed 2 real bugs; independent human cryptographic review still recommended before Done |
 | 56 | [In-Database Native Predicate Evaluator Seam](#in-database-native-predicate-evaluator-seam) | Searchable Blind-Index & Bucketed-Range Encrypted-Field Indexes | Done |
 | 57 | [PlantUML-Native User-Flow Engine & Pending-Task Read Model](#plantuml-native-user-flow-engine--pending-task-read-model) | CQRS Read-Model Projections (worked example) | Done |
 
@@ -5385,21 +5385,61 @@ unconditionally (no override accepted, unlike the sibling item above);
 the dedicated security review (above) has actually happened and is
 recorded, not merely implied by tests passing.
 
-**Status: Built, pending required security review (not Done).**
+**Status: Built, security-reviewed 2026-09-04, still not marked Done.**
 2026-08-27. `src/EventStore.Erasure/OrderRevealingEncryption.cs` — see
 its own header for the honest scope statement (a from-scratch, tested
 realization of the same high-level CLWW/Lewi-Wu idea, not a verified
 byte-for-byte implementation of either paper). Order-preservation
 correctness verified across many Number/DateTimeOffset pairs
 (`EventStore.UnitTests.OrderRevealingEncryptionTests`); the no-override
-guardrail verified (`SearchableEncryptionSqliteTests`). **Not marked
-Done**, matching this item's own exit criteria literally: no dedicated
-security review has happened, and — found while building the query
-side, see `ADR-097`'s own "Implementation note" — the default app-tier
-evaluator compares ciphertext in application memory across a field's own
-indexed rows, not yet via a true native SQL comparison operator (that
-needs `ADR-098`'s own native evaluator seam, item 56 below, not yet
-built for any provider).
+guardrail verified (`SearchableEncryptionSqliteTests`).
+
+**The dedicated review this item's own exit criteria require happened
+for real, 2026-09-04** — an AI-assisted, code-level correctness/security
+review (not a substitute for an independent human cryptographer's
+review of a novel construction, stated plainly rather than overclaimed):
+read the implementation, its tests, `ADR-097`, and the two attack papers
+`ADR-097` already cites (Naveed/Kamara/Wright CCS 2015; Grubbs/Sekniqi/
+Bindschaedler/Naveed/Ristenpart, verified for real via WebSearch as IEEE
+S&P 2017 / IACR ePrint 2016/895 — both citations checked out accurate).
+Found and fixed **two real, previously-unknown correctness bugs**,
+each with a new regression test:
+1. `double.Parse` silently accepted the literal text `"NaN"`/`"Infinity"`/
+   `"-Infinity"` for a `Number` field, producing a bit pattern with no
+   defined relationship to .NET's own NaN-handling `CompareTo` ordering.
+   Now rejected explicitly (`NotSupportedException`) instead of silently
+   mis-ordering.
+2. **+0.0 and -0.0 encoded to DIFFERENT ciphertext and compared as
+   ordered** (their sign bits differ) — but .NET's own `double.CompareTo`
+   (the correctness oracle every existing test in this file is defined
+   against) treats them as EQUAL. A new regression test caught this for
+   real (asserted the wrong thing first, based on an incorrect assumption
+   about .NET's own `CompareTo` semantics for signed zero — corrected
+   after actually running it, not after re-reasoning from documentation
+   alone). Fixed by canonicalizing -0.0 to +0.0 before encoding.
+
+Also added explicit documentation (the file's own header) of a leakage
+property inherent to any non-interactive compare-ciphertexts ORE scheme,
+not previously spelled out in one place: identical plaintext values under
+the same key produce byte-identical ciphertext, so anyone who can read
+the stored column (not just query through it) can identify every group
+of equal-valued rows with zero decryption — exact frequency analysis, on
+top of the order leakage `ADR-097` already discusses.
+
+**Still not marked Done**, by this review's own explicit judgment call,
+not because the exit criteria's literal text demands it: a review
+happened and is recorded (satisfying that criterion's letter), but a
+solo AI code review of a bespoke, from-scratch cryptographic primitive —
+even one that found and fixed two real bugs — does not, in this
+reviewer's own honest assessment, meet the bar a "dedicated correctness/
+security review" of something this specialized implies. **Genuine
+recommendation: get an independent human cryptographic review before
+enabling this on any real production data**, not merely a hedge. Also
+separately, still not Done for the reason already named before this
+review: the default app-tier evaluator compares ciphertext in
+application memory across a field's own indexed rows, not yet via a true
+native SQL comparison operator (`ADR-098`'s own native evaluator seam,
+item 56 below).
 
 ## In-Database Native Predicate Evaluator Seam
 
