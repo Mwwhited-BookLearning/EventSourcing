@@ -37,22 +37,6 @@ above: deleted from this file, full narrative in
 here — a genuinely undecided fork, not decided work with only the doing
 left.)
 
-- [ ] **The local, gitignored `scripts/bundles/{provider}/efbundle` EF
-  Core migration bundle binaries can silently go stale with no warning.**
-  Found `2026-09-04` (same pass as above): the committed-to-disk-but-
-  gitignored Sqlite bundle was 17 real days behind
-  `src/EventStore.Persistence.Migrations.Sqlite/Migrations/`'s actual
-  newest migration, and applying it got a Host process partway through
-  startup before crashing on a missing column (`ADR-094`'s
-  `ExpectedResponse`) — a confusing, indirect failure mode for what's
-  really just a stale local build artifact. Since `scripts/bundles/` is
-  gitignored, this can't be caught by anything in version control; worth
-  either a regeneration step in `scripts/run-ci-local.ps1`/`deploy-
-  docker-local.ps1`, or at minimum a comment/README note in
-  `scripts/bundles/` warning that these are build-once artifacts that
-  must be manually regenerated (`dotnet ef migrations bundle
-  --project ... --output ...`) whenever new migrations land.
-
 The five-phase design-review program (missing-documents sweep, full ADR
 review, proving-ground domain review, cross-domain-to-framework review,
 architecture/design compliance guideline) plus Phase 5 (linting/static-
