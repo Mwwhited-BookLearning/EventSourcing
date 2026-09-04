@@ -5,16 +5,16 @@
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="Cel.NET" Version="1.1.0" />
-    <PackageReference Include="Jsonata.Net.Native" Version="3.0.0" />
-    <PackageReference Include="Microsoft.Extensions.Configuration.Abstractions" Version="10.0.11" />
-    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.11" />
+    <PackageReference Include="Cel.NET" />
+    <PackageReference Include="Jsonata.Net.Native" />
+    <PackageReference Include="Microsoft.Extensions.Configuration.Abstractions" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" />
     <!-- ADR-080 (dependency-vulnerability scanning) found Cel.NET's own
          transitive graph pulling System.Drawing.Common 4.7.0 (GHSA-rxg9-
          xrhp-64gj, critical). A direct override bumps NuGet's higher-
          version-wins resolution to a patched release; nothing in this
          project actually uses System.Drawing at all. -->
-    <PackageReference Include="System.Drawing.Common" Version="10.0.11" />
+    <PackageReference Include="System.Drawing.Common" />
   </ItemGroup>
 
   <PropertyGroup>

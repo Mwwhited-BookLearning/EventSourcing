@@ -37,6 +37,16 @@ above: deleted from this file, full narrative in
 here — a genuinely undecided fork, not decided work with only the doing
 left.)
 
+- `docs/06-solution-structure.md`'s "Project layout" ASCII tree (line
+  ~77) still shows `EventStore.SqlClr.SqlServer/` under `src/`, and
+  "ADDED, this reconciliation pass" stale phrasing — that project moved
+  to `spikes/in-database-native-predicate-evaluators/SqlServerSqlClrSpike/`
+  2026-09-04 (`ADR-098`'s final additive note, native evaluators not
+  adopted). Found in passing while adding a `Directory.Packages.props`
+  pointer to this same tree for `ADR-108` — not fixed this pass, since
+  the whole tree looked broadly stale beyond just this one line and a
+  full re-sweep is its own separate task.
+
 The five-phase design-review program (missing-documents sweep, full ADR
 review, proving-ground domain review, cross-domain-to-framework review,
 architecture/design compliance guideline) plus Phase 5 (linting/static-

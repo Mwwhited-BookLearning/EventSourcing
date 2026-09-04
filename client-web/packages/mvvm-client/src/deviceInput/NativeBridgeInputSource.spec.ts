@@ -1,3 +1,18 @@
+// @vitest-environment node
+//
+// Real per-file environment override, not a global config change: this
+// spec talks to Node's own real global WebSocket (see the comment below)
+// and touches no DOM at all (NativeBridgeInputSource.ts itself has zero
+// document/window references). Needed as of the jsdom 25->30 update --
+// jsdom's environment now patches globalThis.Event/EventTarget more
+// aggressively, and Node's native WebSocket (built on undici) dispatches
+// events using ITS OWN internal Event class against whatever Event jsdom
+// left on globalThis, producing a real
+// "TypeError: The 'event' argument must be an instance of Event.
+// Received an instance of Event" cross-realm mismatch under jsdom's
+// environment specifically -- confirmed by running this test both ways,
+// not guessed. Running this one file under Node's own environment
+// sidesteps the realm collision entirely rather than papering over it.
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { WebSocketServer } from 'ws'
 import { NativeBridgeInputSource, DeviceCaptureUnavailableError } from './NativeBridgeInputSource'

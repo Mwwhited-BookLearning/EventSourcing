@@ -29,9 +29,9 @@
        version avoids the conflict; Assertions.Expect is part of the core
        package, not exclusive to the MSTest adapter. -->
   <ItemGroup>
-    <PackageReference Include="Aspire.Hosting.Testing" Version="13.4.6" />
-    <PackageReference Include="Microsoft.Playwright" Version="1.61.0" />
-    <PackageReference Include="MSTest" Version="4.3.3" />
+    <PackageReference Include="Aspire.Hosting.Testing" />
+    <PackageReference Include="Microsoft.Playwright" />
+    <PackageReference Include="MSTest" />
   </ItemGroup>
 
   <ItemGroup>

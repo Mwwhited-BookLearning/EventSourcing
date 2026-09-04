@@ -8,12 +8,12 @@
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="VaultSharp" Version="1.17.5.1" />
-    <PackageReference Include="Microsoft.Extensions.Configuration.Binder" Version="10.0.11" />
-    <PackageReference Include="Azure.Security.KeyVault.Keys" Version="4.7.0" />
-    <PackageReference Include="Azure.Identity" Version="1.13.1" />
-    <PackageReference Include="AWSSDK.KeyManagementService" Version="3.7.400" />
-    <PackageReference Include="Google.Cloud.Kms.V1" Version="3.5.0" />
+    <PackageReference Include="VaultSharp" />
+    <PackageReference Include="Microsoft.Extensions.Configuration.Binder" />
+    <PackageReference Include="Azure.Security.KeyVault.Keys" />
+    <PackageReference Include="Azure.Identity" />
+    <PackageReference Include="AWSSDK.KeyManagementService" />
+    <PackageReference Include="Google.Cloud.Kms.V1" />
   </ItemGroup>
 
   <PropertyGroup>
