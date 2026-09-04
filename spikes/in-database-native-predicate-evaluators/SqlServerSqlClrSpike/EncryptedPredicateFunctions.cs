@@ -1,7 +1,10 @@
 using System;
+using System.Collections;
+using System.Collections.Generic;
+using System.Data;
+using System.Data.SqlClient;
 using System.Data.SqlTypes;
 using System.Globalization;
-using System.Security.Cryptography;
 using System.Text;
 using Microsoft.SqlServer.Server;
 
@@ -69,9 +72,16 @@ namespace EventStore.SqlClr.SqlServer
             var ciphertext = new byte[blob.Length - nonceSize - tagSize];
             Array.Copy(blob, nonceSize + tagSize, ciphertext, 0, ciphertext.Length);
 
-            var plaintextBytes = new byte[ciphertext.Length];
-            using (var aes = new AesGcm(key, tagSize))
-                aes.Decrypt(nonce, ciphertext, tag, plaintextBytes);
+            // PureNet48AesGcm, not System.Security.Cryptography.AesGcm --
+            // direct request, 2026-09-04: build the SQLCLR side with pure
+            // net48, no NuGet/.NET-Standard extension packages at all. The
+            // BCL's own AesGcm needs Microsoft.Bcl.Cryptography under net48
+            // (AesGcm itself is .NET Standard 2.1+ only), and that
+            // package's own transitive dependency chain is what failed SQL
+            // Server's CLR verifier under SAFE -- see this project's own
+            // PureNet48AesGcm.cs header for the full investigation and the
+            // from-scratch GCM construction this now uses instead.
+            var plaintextBytes = PureNet48AesGcm.Decrypt(key, nonce, ciphertext, tag);
 
             // PayloadEncryptor.EncryptLeafAsync encrypts the leaf's canonical
             // JSON text (realValue.ToJsonString()), e.g. `"42.5"` for a
@@ -105,6 +115,77 @@ namespace EventStore.SqlClr.SqlServer
                 case "lte": return comparison <= 0;
                 default: throw new ArgumentOutOfRangeException(nameof(comparisonOperator), comparisonOperator, "expected gt/gte/lt/lte");
             }
+        }
+
+        // Real, previously-unknown finding, 2026-09-04, direct request
+        // ("what about a version that would use a sqlclr table function or
+        // stored procedure so they are processed in blocks? I've done
+        // vector processing in the database and has better performance"):
+        // DecryptAndCompare above is a SCALAR function -- SQL Server calls
+        // it once PER ROW inside the query engine's own row-processing
+        // loop, each call crossing from SQLOS's own cooperative scheduler
+        // into the CLR host, a real, measured cost (see docs/08-build-
+        // plan.md item 56's own benchmark section: SQLCLR was SLOWER than
+        // the plain app-tier default at 50,000 rows, for exactly this
+        // reason). A genuine batch/table-valued function pays that
+        // crossing cost ONCE for the whole candidate set, not once per
+        // row -- true vector processing, not 50,000 individual calls.
+        //
+        // Table-valued PARAMETERS cannot be passed as CLR routine INPUT
+        // at all (a real, confirmed SQL Server limitation, verified via
+        // Microsoft's own Q&A before building this -- CREATE FUNCTION/
+        // PROCEDURE with a TVP-typed CLR parameter fails with a type
+        // mismatch error). So this function does its OWN candidate-set
+        // query via the "context connection" (the same in-process
+        // connection the calling batch is already running under -- no
+        // network hop, still SAFE-permission-set-compatible) rather than
+        // receiving pre-fetched candidate rows -- the identical, cheap,
+        // already-indexed equality lookup ADR-096's own bucket-narrowing
+        // step already performs, just run once, inside this one call,
+        // instead of by the caller beforehand.
+        //
+        // DELIBERATELY SCOPED TO THIS SESSION'S OWN BENCHMARK TABLE
+        // (dbo.bench_rows), not the real EncryptedFieldIndexEntries
+        // schema -- proving the batching mechanism's real performance
+        // effect first, honestly, rather than half-adapting the real
+        // schema without measuring whether it's worth doing at all.
+        // Generalizing to the real (AppId, EventTypeName, FieldJsonPath,
+        // IndexKind) filter this project's own production schema uses is
+        // named as real, separate follow-up work, not done by this pass.
+        [SqlFunction(FillRowMethodName = "FillSequenceNumberRow", TableDefinition = "SequenceNumber BIGINT", DataAccess = DataAccessKind.Read)]
+        public static IEnumerable DecryptAndCompareBatchBench(SqlBytes key, SqlString dataType, SqlString comparisonOperator, SqlString comparisonValue)
+        {
+            var matches = new List<long>();
+            using (var connection = new SqlConnection("context connection=true"))
+            {
+                connection.Open();
+                using (var command = new SqlCommand("SELECT id, token FROM dbo.bench_rows", connection))
+                using (var reader = command.ExecuteReader())
+                {
+                    while (reader.Read())
+                    {
+                        var id = reader.GetInt32(0);
+                        var token = reader.GetString(1);
+                        bool isMatch;
+                        try
+                        {
+                            isMatch = DecryptAndCompareCore(token, key.Value, dataType.Value, comparisonOperator.Value, comparisonValue.Value);
+                        }
+                        catch
+                        {
+                            isMatch = false; // same "unreadable row never satisfies" posture as the scalar function above
+                        }
+                        if (isMatch)
+                            matches.Add(id);
+                    }
+                }
+            }
+            return matches;
+        }
+
+        private static void FillSequenceNumberRow(object rowObject, out long sequenceNumber)
+        {
+            sequenceNumber = (long)rowObject;
         }
     }
 }

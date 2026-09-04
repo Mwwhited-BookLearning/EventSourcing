@@ -1,0 +1,35 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- ADR-098: SQL Server's CLR host only ever loads .NET Framework
+       assemblies (never .NET Core/.NET 5+, confirmed this session against
+       Microsoft's own docs), which is why this one project deliberately
+       breaks from the rest of the solution's net10.0 targeting; not an
+       oversight, a hard platform constraint.
+
+       Corrected, 2026-09-04, direct request ("build the sqlclr version
+       with .net 4.8 with no net standard extensions") — Microsoft.Bcl.
+       Cryptography (previously referenced here to backport AesGcm, .NET
+       Standard 2.1+ only and unavailable in classic .NET Framework) is
+       REMOVED: its own transitive dependency chain (System.Buffers/
+       System.Memory/System.Numerics.Vectors/System.Runtime.
+       CompilerServices.Unsafe) was found, by actually attempting a live
+       SQL Server deployment, to fail SQL Server's CLR verifier under
+       PERMISSION_SET = SAFE in every available version — confirmed not a
+       version-pinning fix (docs/adrs/adr-098-*.md's own 2026-09-04
+       additive note has the full investigation). PureNet48AesGcm.cs now
+       implements AES-256-GCM from scratch using ONLY
+       System.Security.Cryptography.Aes's ECB single-block primitive,
+       already in the classic net48 BCL — zero NuGet packages, zero
+       .NET-Standard-only types, nothing left that could fail SAFE
+       verification the way the polyfill chain did. -->
+  <PropertyGroup>
+    <TargetFramework>net48</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <Nullable>disable</Nullable> <!-- SQLCLR's Microsoft.SqlServer.Server attribute types predate nullable annotations -->
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Reference Include="System.Data" />
+  </ItemGroup>
+
+</Project>
