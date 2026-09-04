@@ -292,4 +292,23 @@ public class SearchableEncryptionSqliteTests
         var failure = (RegisterEventTypeResult.ValidationFailed)result;
         Assert.IsTrue(failure.Errors.Any(e => e.Contains("OrderRevealing") && e.Contains("never")));
     }
+
+    // The real end-to-end range-query proof for OrderRevealing (build-plan
+    // item #55's own exit criterion) lives in OrderRevealingRangeQuery
+    // ScenarioAssertions/*Tests.cs instead -- run against all three
+    // providers, not just SQLite, since it exercises a genuinely new native-
+    // SQL-translation mechanism (ordinal string comparison on the Token
+    // column), not one already proven elsewhere.
+    [TestMethod]
+    public async Task RangeQueryAgainstAnOrderRevealingIndexedFieldMatchesViaANativeSqlComparisonNeverDecryptingToCompare()
+    {
+        using var db = CreateContext();
+        var registry = new SchemaRegistryService(db, new SqliteFilterableFieldIndexDdlGenerator(), new MemoryCache(new MemoryCacheOptions()), UpcastingTestSupport.CreateEvaluator());
+        var (encryptor, _, _) = ErasureTestSupport.CreateErasureStack(db, registry);
+        var (indexer, searchIndexKeyService, predicateEvaluator) = ErasureTestSupport.CreateSearchIndexStack(db, registry);
+        var publish = new PublishService(db, registry, new SqliteUniqueConstraintViolationDetector(), encryptor, indexer);
+
+        await OrderRevealingRangeQueryScenarioAssertions.RangeQueryMatchesViaANativeSqlComparisonNeverDecryptingToCompare(
+            db, registry, publish, searchIndexKeyService, predicateEvaluator);
+    }
 }

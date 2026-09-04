@@ -113,7 +113,7 @@ provider they apply to — not "code written."
 | 52 | [Generic Entity/Live-View Query](#generic-entitylive-view-query) | GraphQL-Only Query Layer, Non-Authoritative Capture, Property-Level Masking, Delegated Grants/RBAC/Read Audit Logging | Done |
 | 53 | [Push-Notification Wake-Up Layer](#push-notification-wake-up-layer) | Publish API, Entity-Centric Core Rebuild | Done (all 6 background workers) |
 | 54 | [Searchable Blind-Index & Bucketed-Range Encrypted-Field Indexes](#searchable-blind-index--bucketed-range-encrypted-field-indexes) | GDPR/CCPA Erasure, Property-Level Masking, Follow API + Filter Pushdown | Done |
-| 55 | [Order-Revealing Encryption Range Index (opt-in)](#order-revealing-encryption-range-index-opt-in) | Searchable Blind-Index & Bucketed-Range Encrypted-Field Indexes | AI-assisted code-level security review completed 2026-09-04, found and fixed 2 real bugs; independent human cryptographic review still recommended before Done |
+| 55 | [Order-Revealing Encryption Range Index (opt-in)](#order-revealing-encryption-range-index-opt-in) | Searchable Blind-Index & Bucketed-Range Encrypted-Field Indexes | AI-assisted code-level security review completed 2026-09-04 (found/fixed 2 real bugs); query-side native-comparison gap also found and closed for real, verified on all 3 providers; independent human cryptographic review still recommended before Done |
 | 56 | [In-Database Native Predicate Evaluator Seam](#in-database-native-predicate-evaluator-seam) | Searchable Blind-Index & Bucketed-Range Encrypted-Field Indexes | Done |
 | 57 | [PlantUML-Native User-Flow Engine & Pending-Task Read Model](#plantuml-native-user-flow-engine--pending-task-read-model) | CQRS Read-Model Projections (worked example) | Done |
 
@@ -5426,20 +5426,45 @@ the stored column (not just query through it) can identify every group
 of equal-valued rows with zero decryption — exact frequency analysis, on
 top of the order leakage `ADR-097` already discusses.
 
+**The query-side gap named above is now closed, 2026-09-04** — real
+further hardening work, on branch `dev/ore-hardening-and-review-prep`,
+found this item's own literal exit criterion ("compiles to a native
+ciphertext comparison with no decryption performed") was not actually
+met at all: `GraphQlFilterPredicateBuilder.ResolveOrderRevealingMatchesAsync`
+pulled EVERY row for the field into application memory and compared in
+a C# LINQ-to-Objects loop — not "app-tier compare instead of native"
+(the prior framing above), but no predicate pushdown whatsoever. Root
+cause: `EncryptedFieldIndexEntry.Token` stored the ORE ciphertext as
+base64, and base64's own alphabet order does not agree with the
+underlying ciphertext's real order (empirically verified: 532/40,000
+mismatches on random pairs) — so no native comparison on that column
+could ever have been correct. Fixed by switching to fixed-width
+UPPERCASE HEX instead (empirically verified: 0/40,000 mismatches — hex
+digit characters happen to fall in ascending ASCII order matching
+ascending nibble value, base64's characters do not), then pushing the
+comparison down as a real `.Where` clause. This needed **no new native
+function at all** (unlike item 56's own SQLCLR/`plpython3u` machinery,
+built for a genuinely different comparison shape — decrypt-then-compare
+against a plaintext bound) — an ordinary database string comparison
+operator is already exactly what ORE's own design intends to be
+compared with. Verified for real against all three providers via a new
+`OrderRevealingRangeQueryScenarioAssertions`/`*Tests.cs` (Sqlite/
+Postgres/SqlServer, Testcontainers for the latter two) — SQL Server's
+own default collation was a genuine, non-hypothetical risk here (case-
+insensitive, linguistically aware, not purely byte-value-ordinal), not
+assumed safe.
+
 **Still not marked Done**, by this review's own explicit judgment call,
-not because the exit criteria's literal text demands it: a review
-happened and is recorded (satisfying that criterion's letter), but a
-solo AI code review of a bespoke, from-scratch cryptographic primitive —
-even one that found and fixed two real bugs — does not, in this
-reviewer's own honest assessment, meet the bar a "dedicated correctness/
-security review" of something this specialized implies. **Genuine
-recommendation: get an independent human cryptographic review before
-enabling this on any real production data**, not merely a hedge. Also
-separately, still not Done for the reason already named before this
-review: the default app-tier evaluator compares ciphertext in
-application memory across a field's own indexed rows, not yet via a true
-native SQL comparison operator (`ADR-098`'s own native evaluator seam,
-item 56 below).
+not because the exit criteria's literal text demands it: both a review
+and now a real, verified native-comparison query path exist (satisfying
+that criterion's letter), but a solo AI code review of a bespoke,
+from-scratch cryptographic primitive — even one that found and fixed
+two real correctness bugs plus this query-pushdown gap — does not, in
+this reviewer's own honest assessment, meet the bar a "dedicated
+correctness/security review" of something this specialized implies.
+**Genuine recommendation, unchanged: get an independent human
+cryptographic review before enabling this on any real production
+data.**
 
 ## In-Database Native Predicate Evaluator Seam
 
