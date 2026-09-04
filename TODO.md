@@ -37,20 +37,40 @@ above: deleted from this file, full narrative in
 here — a genuinely undecided fork, not decided work with only the doing
 left.)
 
-- [ ] **Exercise the SDK codegen story end to end — nothing has ever
-  actually been published or consumed.** `ADR-054` (Kiota for OpenAPI,
-  GraphQL Code Generator for TypeScript, Strawberry Shake for .NET
-  GraphQL clients) and `ADR-062` (SemVer 2.0.0 for every `EventStore.*`
-  package) are both real, Accepted designs — but `ADR-062`'s own
-  "Implementation note, added 2026-08-12" says plainly that no package
-  has ever actually been published to a real registry, and `ADR-080`
-  independently confirms npm/NuGet provenance signing is unbuilt for the
-  identical reason (nothing exists yet to sign). Per this repo's own
-  standing rule that a build succeeding isn't the same bar as actually
-  running the thing: publish one real package to a real (or realistic
-  local) registry, generate a client against it with the tool `ADR-054`
-  names, and confirm it actually works — the entire "genuinely reusable
-  by an outside team" story currently rests on an unverified assumption.
+- [ ] **`OpenApiDocumentBuilder` publishes `payload` as a nested JSON
+  Schema object, but `PublishEventRequest.Payload` is really a `string`
+  (raw JSON text) — a Kiota-generated client can't actually call
+  `/publish/{eventType}` out of the box.** Found `2026-09-04` while
+  proving the SDK-codegen story end to end for real (`docs/changes/
+  2026-09-04.md` has the full trace, including the exact exception and
+  the raw-HTTP confirmation of root cause): `src/EventStore.
+  SpecGeneration/OpenApiDocumentBuilder.cs`'s `BuildEnvelopeSchema`
+  describes `payload` using the target event type's own JSON Schema (a
+  structured object) instead of an opaque `string`, so any OpenAPI-
+  driven codegen tool (Kiota included) generates a client whose typed
+  request body doesn't match what `src/EventStore.Inbox/
+  PublishEventRequest.cs`'s real model binder expects — a real `500`
+  every time. Needs a real design pass, not a guess: `type: string`
+  with the real schema moved to a `description`/`x-` extension is the
+  obvious fix, but check first whether anything else (Scalar's own
+  rendering of `/openapi.json`, `ADR-002`'s documented contract) relies
+  on the current richer shape before changing it.
+
+- [ ] **The local, gitignored `scripts/bundles/{provider}/efbundle` EF
+  Core migration bundle binaries can silently go stale with no warning.**
+  Found `2026-09-04` (same pass as above): the committed-to-disk-but-
+  gitignored Sqlite bundle was 17 real days behind
+  `src/EventStore.Persistence.Migrations.Sqlite/Migrations/`'s actual
+  newest migration, and applying it got a Host process partway through
+  startup before crashing on a missing column (`ADR-094`'s
+  `ExpectedResponse`) — a confusing, indirect failure mode for what's
+  really just a stale local build artifact. Since `scripts/bundles/` is
+  gitignored, this can't be caught by anything in version control; worth
+  either a regeneration step in `scripts/run-ci-local.ps1`/`deploy-
+  docker-local.ps1`, or at minimum a comment/README note in
+  `scripts/bundles/` warning that these are build-once artifacts that
+  must be manually regenerated (`dotnet ef migrations bundle
+  --project ... --output ...`) whenever new migrations land.
 
 The five-phase design-review program (missing-documents sweep, full ADR
 review, proving-ground domain review, cross-domain-to-framework review,

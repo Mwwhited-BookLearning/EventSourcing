@@ -103,6 +103,21 @@ would need an actual build step first (the library's own `build` script,
 `vue-tsc --emitDeclarationOnly`, already exists and was verified to emit
 real `.d.ts` files, but nothing consumes that `dist/` output yet).
 
+**Verified end to end on the NuGet side, `2026-09-04`**: `dotnet pack
+EventStore.Abstractions` to a real local feed folder, then `dotnet add
+package`/`dotnet build` from a throwaway external consumer project
+implementing a real interface from it — genuinely proves the "every
+project becomes a package, an external consumer references it" story
+for the first time. Found a real gap along the way: packing only
+`EventStore.Abstractions` and not its own `ProjectReference` target
+(`EventStore.Domain`) fails the external consumer's restore with
+`NU1101` — `ProjectReference` is auto-translated into a package
+dependency at pack time, so **every** `EventStore.*` package a
+downstream project transitively depends on must actually be packed and
+available on the same feed, not just the one the consumer directly asks
+for. Not previously stated or checked anywhere in this ADR. Full trace
+in `docs/changes/2026-09-04.md`.
+
 **A real bug found while restructuring, not assumed from the original
 single-app layout**: `outbox/bundle.ts` and `playback/bundle.ts` both
 declare a `parseNdjson` function with different signatures — under the
