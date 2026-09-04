@@ -15,12 +15,17 @@ code edits: internal consistency across files matters more here than
 almost anywhere else, because a design decision left inconsistent
 propagates into real code, not just prose.
 
-Note: the folder/repo name itself is a typo (`EventSouring` → should be
-`EventSourcing`). Known, deliberately not yet fixed — renaming the directory
-this session's tools are actively running against was judged too risky
-mid-task. Confirm with the user before doing it, and do it as an isolated
-step (rename, then verify the shell's cwd survived) — don't fold it into a
-larger batch of unrelated changes.
+Note: the local checkout directory was originally named with a typo
+(`EventSouring` → `EventSourcing`) — this was a filesystem-level name only
+(git itself never tracked a directory name, only file paths, none of
+which carried the typo), fixed since, confirmed `2026-09-04` (the working
+directory is `EventSourcing`). No action needed. Three ADRs
+(`ADR-021`/`023`/`028`) still say "EventSouring" in their own Context
+prose — deliberately left as-is, not a residual typo to clean up: at the
+time those were written, that genuinely was this project's own name for
+itself, and changing it now would be revisionist history, not a
+correction, the same additive-history principle this file applies to
+ADRs generally.
 
 **This file is an index and a standing-conventions reference, not a
 changelog.** It used to also narrate the full reasoning behind every
