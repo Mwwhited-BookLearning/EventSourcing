@@ -37,24 +37,6 @@ above: deleted from this file, full narrative in
 here — a genuinely undecided fork, not decided work with only the doing
 left.)
 
-- [ ] **A generic demo identity still can't publish a real Vitals/Meridian
-  business event over HTTP** — the narrower, still-genuinely-open half of
-  the "Dispatch a command" demo-panel gap (`docs/changes/2026-09-02.md`
-  closed the OTHER half, the field-casing gap, for real). **Decided by
-  `ADR-105`, code still pending (design-phase-only)**: neither of the
-  original two options (a shared claim weakening "one identity per real
-  capability need," or retiring the generic panel) — the demo identity
-  instead gets a generalized `"demo"` role as a JWT claim, and each
-  domain's own local STS/middleware (`ADR-105`'s per-application
-  expansion step) maps `"demo"` into that domain's actual
-  `RequiredClaims` (`patient:enroll`, etc.) the same way a real
-  `"clinician"` role would. The demo identity itself never holds a
-  domain-specific claim directly — it only ever sees the generalized
-  role, exactly matching `ADR-105`'s own model, not a special case built
-  for this gap alone. Needs the generalized-role layer and at least one
-  domain's STS/middleware expansion actually built before this can
-  close — tracked here until then, not a design decision anymore.
-
 - [ ] **Exercise the SDK codegen story end to end — nothing has ever
   actually been published or consumed.** `ADR-054` (Kiota for OpenAPI,
   GraphQL Code Generator for TypeScript, Strawberry Shake for .NET

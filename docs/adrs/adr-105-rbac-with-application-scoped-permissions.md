@@ -111,3 +111,40 @@ Consequences:
   item and the OpenID Federation item remain separately open — this
   decision doesn't resolve either, it only decides the *permission
   model* the generalized-role token would eventually carry.
+
+**Implementation note, added 2026-09-03**: the per-application expansion
+step named above ("EITHER an RFC 8693 Token Exchange OR a client-side/
+Gateway middleware expansion") is now built for real, for the demo
+identity, closing `TODO.md`'s own "a generic demo identity still can't
+publish a real Vitals/Meridian business event over HTTP" item — via a
+**third variant neither bullet above named explicitly, found by actually
+checking for reuse before building anything new**
+(`.claude/protocols/verify-before-citing.md`): `EventStore.DevIdp`'s
+existing `RoleService`/`Role`/`RoleAssignment` (`ADR-046`) already bundle
+an AppId-scoped `RoleName` into a permission set, and `/connect/token`'s
+existing, already-shipped `app_id` opt-in form parameter (built for
+`ADR-046`'s own delegated-grant scenarios, unrelated to this decision at
+the time) already expands whatever role(s) the caller holds for that
+`AppId` into real claims **on the same token, in one round trip** — no
+new middleware or a second exchange hop was needed. This is functionally
+the per-application expansion this decision calls for (a generalized
+role, scoped per `AppId` into real permissions), just already wired into
+the primary token call rather than built as a distinct STS-exchange step
+or Gateway middleware — the generalized part is the `RoleName` string
+itself (`"demo"`), which can be independently defined under a different
+`AppId` for a different application's own meaning, the same "one role
+name, many per-application permission bundles" shape this ADR describes.
+Proven for real, over genuine HTTP (`WebApplicationFactory`-hosted
+`EventStore.DevIdp` + `EventStore.Host.Sqlite`, real OpenIddict token
+issuance, real `RequiredClaims` enforcement, real hash-chained
+`RoleGranted` event folded through the real `RbacProjectionWorker`, not
+a stand-in call): `tests/EventStore.IntegrationTests/
+DemoIdentityRoleExpansionHttpSqliteTests.cs` — `demo-dispatcher-client`
+is genuinely `Forbidden` publishing a real `PatientScreened` event
+before the generalized `"demo"` role is granted for `trial1`, and
+genuinely `Accepted` after, with the token's own decoded claims showing
+`patient:enroll` only appears post-grant. Vitals only, per `TODO.md`'s
+own "at least one domain" bar — Meridian is structurally identical
+(define the same `"demo"` `RoleName` under Meridian's own `AppId` with
+its own permission bundle) and left to a future pass if/when actually
+needed, not assumed required by this note.
