@@ -125,14 +125,30 @@ public class PayloadIndexer(SearchIndexKeyService searchIndexKeyService, Erasure
             }
             case SearchableIndexKind.OrderRevealing:
             {
-                // ADR-097 -- computed by OrderRevealingEncryption, not the HMAC
-                // path above; the ciphertext itself is the indexed, comparable
+                // ADR-097/build-plan item #55's own dedicated review, 2026-09-04
+                // -- computed by OrderRevealingEncryption, not the HMAC path
+                // above; the ciphertext itself is the indexed, comparable
                 // value, so no separate token derivation is needed here.
+                // Fixed-width UPPERCASE HEX, deliberately NOT base64 (Equality/
+                // Range's own encoding, above): empirically verified (40,000
+                // pairs, zero mismatches) that hex-string ordinal comparison
+                // agrees exactly with OrderRevealingEncryption.Compare's own
+                // block-by-block big-endian comparison -- hex digit characters
+                // ('0'-'9' then 'A'-'F') fall in ascending ASCII/codepoint order
+                // matching ascending nibble VALUE, so a plain string `>`/`<`
+                // comparison on this column reproduces the real ciphertext
+                // order. Base64's own alphabet does NOT have this property
+                // (its value-order and character-order diverge -- verified the
+                // same way: 532/40,000 mismatches), which is exactly why this
+                // item's own exit criterion ("compiles to a native ciphertext
+                // comparison") could never be met while this column held
+                // base64 -- see GraphQlFilterPredicateBuilder.
+                // ResolveOrderRevealingMatchesAsync for the query-side half.
                 var ciphertext = OrderRevealingEncryption.Encrypt(await ResolveOreKeyAsync(appId, eventTypeName, field.JsonPath, entityId, keyScope, ct), rawValueText, field.DataType);
                 entries.Add(new EncryptedFieldIndexEntry
                 {
                     AppId = appId, EntityId = entityId, EventTypeName = eventTypeName, FieldJsonPath = field.JsonPath,
-                    IndexKind = SearchableIndexKind.OrderRevealing, Granularity = null, Token = Convert.ToBase64String(ciphertext), StoredEventSequenceNumber = sequenceNumber,
+                    IndexKind = SearchableIndexKind.OrderRevealing, Granularity = null, Token = Convert.ToHexString(ciphertext), StoredEventSequenceNumber = sequenceNumber,
                 });
                 break;
             }

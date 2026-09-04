@@ -20,6 +20,6 @@ public class EncryptedFieldIndexEntry
     public string FieldJsonPath { get; set; } = default!;
     public SearchableIndexKind IndexKind { get; set; }
     public string? Granularity { get; set; } // Range only -- which bucketGranularities entry this row's Token is computed at; null for Equality/OrderRevealing
-    public string Token { get; set; } = default!; // base64 HMAC (Equality/Range) or base64 ORE ciphertext (OrderRevealing) -- a string column, not byte[] (matches this codebase's existing base64-ciphertext convention, portable across all three providers as an ordinary indexed text column)
+    public string Token { get; set; } = default!; // base64 HMAC (Equality/Range) or UPPERCASE HEX ORE ciphertext (OrderRevealing, deliberately NOT base64 -- see PayloadIndexer's own OrderRevealing case comment for why: hex-string ordinal order agrees with the real ciphertext order, base64's does not) -- a string column, not byte[] (portable across all three providers as an ordinary indexed text column)
     public long StoredEventSequenceNumber { get; set; } // FK -> StoredEvent.SequenceNumber, the event this token was computed from
 }
