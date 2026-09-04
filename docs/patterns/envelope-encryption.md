@@ -38,6 +38,8 @@ encryption](https://docs.cloud.google.com/kms/docs/envelope-encryption)
 DEK, then store the encrypted data and the wrapped DEK... the KEK never
 leaves Cloud KMS").
 
+![The pattern diagram](../diagrams/patterns/envelope-encryption/01-the-pattern.svg)
+
 ```plantuml
 @startuml EnvelopeEncryption_Sequence
 autonumber

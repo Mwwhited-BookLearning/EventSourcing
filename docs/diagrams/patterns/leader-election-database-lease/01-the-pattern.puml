@@ -1,0 +1,32 @@
+@startuml
+autonumber
+participant "Instance 1" as i1
+participant "Instance 2" as i2
+participant "Lease store\n(shared, durable)" as store
+
+i1 -> store: TryAcquireOrRenew("Role", "i1", expiry=+5s)
+store --> i1: granted (no existing holder) -- i1 is leader
+
+i2 -> store: TryAcquireOrRenew("Role", "i2", expiry=+5s)
+store --> i2: denied -- i1 already holds an unexpired lease
+
+loop every renewal interval, well inside the lease duration
+  i1 -> store: TryAcquireOrRenew("Role", "i1", expiry=+5s)
+  store --> i1: renewed -- i1 remains leader
+end
+
+note over i1
+  i1 crashes -- stops renewing.
+  No graceful handoff needed.
+end note
+
+i2 -> store: TryAcquireOrRenew("Role", "i2", expiry=+5s)
+store --> i2: granted -- i1's lease expired,\ni2 is now leader
+
+note over i2
+  i2 resumes work from the role's own
+  durable checkpoint -- work i1 had
+  in flight when it lost the lease is
+  safely re-derived, not handed off.
+end note
+@enduml

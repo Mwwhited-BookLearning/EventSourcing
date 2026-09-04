@@ -36,6 +36,8 @@ they see instead of it when they don't — is what lets one caller
 receive a full record and another receive the same record shape with
 some fields obscured, from one query, with no second code path.
 
+![The pattern diagram](../diagrams/patterns/claims-based-authz-property-masking/01-the-pattern.svg)
+
 ```plantuml
 @startuml ClaimsAuthzMasking_Activity
 start

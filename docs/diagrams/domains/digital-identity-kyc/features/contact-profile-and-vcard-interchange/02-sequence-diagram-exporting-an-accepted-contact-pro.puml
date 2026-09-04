@@ -1,0 +1,29 @@
+@startuml
+autonumber
+participant "AuthorityDecisionResolver\n(reused, ADR-042)" as resolver
+participant "WebhookEnqueueResolver" as enqueue
+participant "VCardAdapter\n(IInterchangeFormatAdapter, ADR-072,\n outbound half)" as adapter
+participant "WebhookDispatcher\n(ADR-060)" as webhook
+database "Entity Store\n(EntityStoreRow, authoritative)" as entityStore
+participant "Relying party\nwebhook receiver" as relyingParty
+
+resolver -> entityStore: fold accepted ContactProfileUpdated\ninto EntityType "ApplicantIdentity" (ADR-042)
+resolver -> enqueue: enqueue WebhookOutbox entry\n(matches "acme-bank"'s WebhookSubscription.EventTypes\nincluding "ContactProfileUpdated")
+webhook -> webhook: mask payload against subscription's\nFixedClaimsSnapshot first (ADR-009, ADR-060 -- unchanged order)
+webhook -> adapter: FormatOutboundAsync(appId: "kyc",\n  eventType: "ContactProfileUpdated", payload: <masked JSON>)
+adapter -> adapter: compose jCard JSON from the (already-masked)\nfields -- masked strings pass through as ordinary\njCard text values, same as any other outbound transform
+adapter --> webhook: <jCard JSON string>
+note right of adapter
+  This is the FIRST genuinely bidirectional adapter in this
+  design -- Hl7V2Adapter/FhirAdapter are inbound-only,
+  IchE2bR3Adapter/Gs1EpcisAdapter outbound-only (each throws
+  NotSupportedException on its unsupported direction, per
+  ADR-072's own text). VCardAdapter implements both because
+  vCard's own use case genuinely needs both: importing an
+  applicant- or relying-party-supplied contact record, and
+  exporting a verified one back out -- ADR-072's interface was
+  already shaped to allow this, just not yet exercised by one.
+end note
+webhook -> relyingParty: POST { webhook-id, webhook-timestamp,\n  webhook-signature }, jCard-formatted contact profile\n(Standard Webhooks, ADR-060)
+relyingParty --> webhook: 200 OK
+@enduml

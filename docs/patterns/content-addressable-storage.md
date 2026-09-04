@@ -29,6 +29,8 @@ the same book notes this is precisely why an unchanged file across many
 commits, or two identical files anywhere in the repository, is stored
 only once.
 
+![The pattern diagram](../diagrams/patterns/content-addressable-storage/01-the-pattern.svg)
+
 ```plantuml
 @startuml ContentAddressableStorage_Sequence
 autonumber

@@ -1,0 +1,27 @@
+@startuml
+skinparam rectangle {
+  BackgroundColor #EEEEEE
+}
+
+rectangle "Endpoint A\nfails" as A
+rectangle "Endpoint B\nfails" as B
+rectangle "Endpoint C\nfails" as C
+
+rectangle "application/problem+json\n{ type, title, status, detail, instance,\n  ...extensions }" as Shape
+
+A --> Shape
+B --> Shape
+C --> Shape
+
+note bottom of Shape
+  One shape, every endpoint, every
+  status code. Extensions carry what's
+  genuinely problem-specific (a field
+  name, a conflicting id, a reason
+  code) without inventing a new
+  top-level response format.
+end note
+
+actor "Caller" as Caller
+Shape --> Caller : always parseable the same way:\ncheck status/type first,\nfall back to detail for a human
+@enduml

@@ -1,0 +1,57 @@
+@startuml
+autonumber
+actor "Driver" as driver
+actor "Mechanic" as mech
+participant "Inbox / PublishEndpoint" as inbox
+participant "AuthorityDecisionResolver" as resolver
+database "Event Log" as eventLog
+participant "EventStore.Fold\n(authoritative catch-up, ADR-042)" as fold
+database "Entity Store" as entityStore
+participant "Fuel-Reconciliation Worker\n(app-specific)" as reconciler
+database "Telemetry Channel Store" as tstore
+
+driver -> inbox: POST /publish/DvirRecorded\n{ payload: { AssetId: "truck-118", InspectionType: "PreTrip",\n  DefectsFound: ["Engine overspeed warning light"] },\n  signature: { actorId: "driver-42", signedAt: "2026-09-03T06:05:00Z",\n  method: "typed-name-attestation" } }
+inbox -> eventLog: INSERT StoredEvent (DvirRecorded, ADR-066 Signature captured)
+inbox --> driver: 202 { correlationId, status: "received" }
+
+note over driver, inbox
+  49 CFR 396.11/396.13: a defect-carrying DVIR requires the vehicle
+  be repaired (or certified as not affecting safe operation) before
+  its next dispatch -- ADR-066's Signature field captures the driver's
+  own dated attestation as the first of two distinct sign-offs.
+end note
+
+mech -> inbox: POST /publish/authorityDecision\n{ payload: { targetEventId: "<DvirRecorded eventId>",\n  decision: "accepted", decidingActorId: "mech-9",\n  reason: "engine sensor harness replaced, verified clear" } }
+inbox -> eventLog: INSERT StoredEvent (authorityDecision)\n-- mechanic's OWN Signature carried in this event's envelope too
+inbox --> mech: 202 { correlationId, status: "received" }
+resolver -> eventLog: UPDATE target StoredEvent\nSET AuthorityStatus = "accepted", AuthorityDecisionRef = <this eventId>
+resolver -> fold: apply target event to the authoritative Entity Store now
+fold -> entityStore: UPDATE authoritative EntityStoreRow, Version++
+
+note over mech, entityStore
+  Two distinct ADR-066 sign-offs on related records: the driver's
+  own DVIR attestation, and the mechanic's separate certification-
+  of-repair signature -- never merged into one signature field.
+end note
+
+== separately: fuel-log reconciliation ==
+driver -> inbox: POST /publish/FuelPurchaseRecorded\n{ payload: { AssetId: "truck-118", GallonsPurchased: 82.4,\n  Jurisdiction: "TX", OdometerReading: 214088 },\n  attachmentRef: [{ kind: "FuelReceipt", mimeType: "image/jpeg" }] }
+inbox -> eventLog: INSERT StoredEvent (FuelPurchaseRecorded, ADR-032 AttachmentRef)
+reconciler -> tstore: GET /telemetry/truck-118-engine/samples?mode=replay\n&from=<last reconciliation>&to=<now>
+tstore --> reconciler: TelemetrySample rows (FuelLevel deltas per ISO 15143-3/AEMP 2.0)
+reconciler -> reconciler: compare telematics-estimated fuel-level delta\nto driver-entered GallonsPurchased (IFTA reconciliation)
+alt within tolerance
+  reconciler -> inbox: POST /publish/FuelLogReconciled\n{ payload: { AssetId: "truck-118", Jurisdiction: "TX",\n  GallonsPurchased: 82.4, TelematicsEstimatedGallons: 80.9,\n  VarianceWithinTolerance: true },\n  parentEventIds: ["<FuelPurchaseRecorded eventId>"] }
+  inbox -> eventLog: INSERT StoredEvent (FuelLogReconciled, AuthorityStatus: accepted)
+else variance exceeds tolerance
+  reconciler -> inbox: POST /publish/FuelLogReconciled\n{ payload: { ..., VarianceWithinTolerance: false },\n  attestedClaims: { type: "reconciliation-variance", reviewPending: true } }
+  inbox -> eventLog: INSERT StoredEvent (FuelLogReconciled, AuthorityStatus: pending_review)
+  note right of eventLog
+    A large variance (possible fuel-card fraud, a meter-calibration
+    drift, or a telematics gap) is flagged for a fleet manager's own
+    authorityDecision review before it feeds an IFTA quarterly filing --
+    never silently accepted (this framework's "never lose or corrupt
+    data" principle applied to a real compliance-reporting input).
+  end note
+end
+@enduml

@@ -27,6 +27,8 @@ cryptographic practice more broadly, but Verraes' article is the specific,
 widely-cited source for applying it to an append-only event log, which is
 exactly this pattern's fit here.
 
+![The pattern diagram](../diagrams/patterns/crypto-shredding/01-the-pattern.svg)
+
 ```plantuml
 @startuml CryptoShredding_Sequence
 autonumber

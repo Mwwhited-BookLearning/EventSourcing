@@ -1,0 +1,91 @@
+@startuml
+hide circle
+skinparam linetype ortho
+
+entity "TelemetryChannel" as channel {
+  * ChannelId : string <<PK>>
+  --
+  AppId : string
+  EntityId : string
+  ContentKind : enum {RawScalar}
+  SampleType : enum {Float64}
+  SampleIntervalMicros : bigint
+  Origin : enum {Origin}
+}
+
+entity "TelemetrySample" as sample {
+  * ChannelId : string <<PK, FK>>
+  * Timestamp : datetimeoffset <<PK>>
+  --
+  Value : bytes
+  LateArrivalFlag : bool
+}
+
+entity "StoredEvent (MaintenanceWorkOrderRaised)" as workorder {
+  * SequenceNumber : bigint <<PK>>
+  --
+  EventId : uuid <<unique>>
+  EntityId : string
+  Payload : text
+  TelemetryPointer : string?
+  AuthorityStatus : string {unattested|pending_review|accepted|rejected}
+  AttestedClaims : text?
+}
+
+entity "StoredEvent (DvirRecorded)" as dvir {
+  * SequenceNumber : bigint <<PK>>
+  --
+  EventId : uuid <<unique>>
+  EntityId : string
+  Payload : text
+  Signature : text
+  AuthorityStatus : string
+}
+
+entity "StoredEvent (FuelPurchaseRecorded)" as fuel {
+  * SequenceNumber : bigint <<PK>>
+  --
+  EventId : uuid <<unique>>
+  EntityId : string
+  Payload : text
+  AttachmentRef : string?
+}
+
+entity "StoredEvent (FuelLogReconciled)" as reconciled {
+  * SequenceNumber : bigint <<PK>>
+  --
+  EventId : uuid <<unique>>
+  EntityId : string
+  Payload : text
+  AuthorityStatus : string
+}
+
+entity "EntityStoreRow (MaintenanceWorkOrder)" as entityStore {
+  * EntityId : string <<PK>>
+  --
+  EntityType : string
+  Version : bigint
+  Data : text
+  AuthorityStatus : string
+}
+
+entity "EventParent" as parent {
+  * ChildEventId : uuid <<PK>>
+  * ParentEventId : uuid <<PK>>
+}
+
+channel ||--o{ sample : "ChannelId -- real FK (ADR-031)"
+workorder ..> channel : "TelemetryPointer.ChannelId -- logical\nonly, NOT a DB FK (ADR-031)"
+workorder ..> workorder : "parentEventIds via EventParent --\ncausal DAG (ADR-005)"
+reconciled ..> fuel : "parentEventIds via EventParent --\nreconciliation traces to its purchase"
+workorder "*" --> "1" entityStore : "folds into, once AuthorityStatus\nreaches accepted (ADR-042)"
+
+note right of workorder
+  This entity is this doc's own illustrative sketch of the
+  MaintenanceWorkOrderRaised payload shape -- not a copy of an
+  existing docs/data/*.md class, the same posture industrial IoT's
+  own sensor-driven-maintenance-alert.md ER diagram takes.
+  TelemetryChannel/TelemetrySample are likewise sketched here from
+  ADR-031's prose description.
+end note
+@enduml

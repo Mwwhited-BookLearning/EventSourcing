@@ -1,0 +1,20 @@
+@startuml
+participant "Author" as author
+participant ".puml file" as puml
+participant "ANTLR4 grammar + Listener" as parser
+participant "AST" as ast
+participant "Interpreter" as interp
+participant "Read-model projection" as model
+
+author -> puml: writes/reviews the diagram directly
+puml -> parser: parsed on every relevant read-model event
+parser -> ast: builds the same AST every time (deterministic)
+ast -> interp: evaluated statelessly against current snapshot
+interp -> model: merges next task state
+note right of puml
+  No generation step, no
+  translation artifact --
+  this file is the only
+  source of truth.
+end note
+@enduml

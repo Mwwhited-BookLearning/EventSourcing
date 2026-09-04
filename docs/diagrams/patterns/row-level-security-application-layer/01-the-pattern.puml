@@ -1,0 +1,26 @@
+@startuml
+autonumber
+participant "Caller\n(holds claim C, scoped to entity E1 only)" as caller
+participant "Application authorization check" as appcheck
+participant "Data store\n(no native RLS feature used)" as store
+
+caller -> appcheck: request entity E1 (presents claim C)
+appcheck -> appcheck: HasClaim(C) AND\nEntityScope(C) contains E1?
+appcheck --> caller: allowed
+appcheck -> store: ordinary, unfiltered query for E1
+
+caller -> appcheck: request entity E2 (presents claim C)
+appcheck -> appcheck: HasClaim(C) AND\nEntityScope(C) contains E2?
+appcheck --> caller: denied
+note right of appcheck
+  The row-scope check runs in
+  application code against the
+  claim's own entity-scope list.
+  The query issued to the store,
+  when allowed, is ordinary SQL --
+  no provider-native row-security
+  feature is in play, so behavior
+  is identical across every
+  supported provider.
+end note
+@enduml

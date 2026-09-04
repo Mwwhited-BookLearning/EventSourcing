@@ -1,0 +1,18 @@
+@startuml
+autonumber
+participant "Client\n(video/audio element, scrub bar)" as client
+participant "Server" as server
+
+client -> server: GET /resource\n(no Range header -- probing support)
+server --> client: 200 OK\nAccept-Ranges: bytes
+note right of client
+  User drags the scrub bar to a
+  later point in playback.
+end note
+client -> server: GET /resource\nRange: bytes=500000-999999
+alt requested range is valid
+  server --> client: 206 Partial Content\nContent-Range: bytes 500000-999999/2000000\n[the requested bytes only]
+else requested range is beyond the resource's end
+  server --> client: 416 Range Not Satisfiable\nContent-Range: bytes */2000000
+end
+@enduml

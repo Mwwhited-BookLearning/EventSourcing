@@ -30,6 +30,8 @@ Problem Details spec, same core member set) — the two are not
 independent specs to choose between; 9457 is the current, superseding
 text.
 
+![The pattern diagram](../diagrams/patterns/problem-details-error-shape/01-the-pattern.svg)
+
 ```plantuml
 @startuml ProblemDetails_Shape
 skinparam rectangle {

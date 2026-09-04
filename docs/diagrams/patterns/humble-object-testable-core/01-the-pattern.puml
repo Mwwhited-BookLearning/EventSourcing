@@ -1,0 +1,35 @@
+@startuml
+skinparam componentStyle rectangle
+
+package "Hard-to-test shell (humble)" {
+  [Hosted service / UI control / DB gateway] as Shell
+}
+package "Plain code (the real logic)" {
+  [Extracted core: explicit\nparameters, no container needed] as Core
+}
+
+actor "Production host\n(DI container, real lifecycle)" as Host
+actor "Unit test\n(no container, no host)" as Test
+
+Host --> Shell : starts, owns lifecycle
+Shell --> Core : delegates every call,\nresolved collaborators passed\nas explicit parameters
+Test --> Core : calls directly,\nhand-built fakes/stubs,\nno container involved
+
+note right of Shell
+  Contains only what genuinely
+  can't be extracted: start/stop
+  plumbing, a polling loop,
+  resolving collaborators from DI,
+  catching/logging the unexpected.
+  No branching business logic here.
+end note
+
+note right of Core
+  Contains the real decision logic.
+  Every dependency is an explicit
+  (often nullable/optional) parameter,
+  never resolved internally -- so a
+  test substitutes exactly what it
+  needs and nothing else.
+end note
+@enduml

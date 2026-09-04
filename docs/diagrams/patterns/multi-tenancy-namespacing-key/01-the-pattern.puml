@@ -1,0 +1,24 @@
+@startuml
+skinparam componentStyle rectangle
+
+database "Shared store\n(one schema)" as store {
+  [Rows: TenantId="A", ...] as rowsA
+  [Rows: TenantId="B", ...] as rowsB
+  [Rows: TenantId="C", ...] as rowsC
+}
+
+actor "Caller (Tenant A)" as callerA
+actor "Caller (Tenant B)" as callerB
+
+callerA --> store : query/write, TenantId="A" implied\nfrom caller's own identity/token
+callerB --> store : query/write, TenantId="B" implied
+
+note bottom of store
+  Every read and write is scoped by the
+  namespacing key. Tenant A's own query
+  can never see Tenant B's rows -- not
+  because they live somewhere else, but
+  because the key excludes them by
+  construction, at every access path.
+end note
+@enduml

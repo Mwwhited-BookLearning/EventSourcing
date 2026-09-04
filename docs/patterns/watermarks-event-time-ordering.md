@@ -32,6 +32,8 @@ directly in
 [Apache Flink's own "Timely Stream Processing" docs](https://nightlies.apache.org/flink/flink-docs-stable/docs/concepts/time/)
 and underpins Google Cloud Dataflow/Apache Beam's windowing model.
 
+![The pattern diagram](../diagrams/patterns/watermarks-event-time-ordering/01-the-pattern.svg)
+
 ```plantuml
 @startuml Watermarks_EventTime
 title Event time vs. processing time, with a late arrival
@@ -51,11 +53,11 @@ robust "Event time (when it actually happened)" as ET
 0 is "A (t=0)"
 2 is "B (t=2)"
 2 is "C (t=5)"
-6 is "D (t=1) -- arrives at PT=6, but its event time (1) is\nolder than B/C's, which already folded/won at their properties"
+6 is "D (t=1) — arrives at PT=6, but its event time (1) is\nolder than B/C's, which already folded/won at their properties"
 
-note bottom
+note bottom of ET
   A watermark advancing past event-time=1 before D arrives is the
-  "guess turned out wrong" case this pattern names explicitly --
+  "guess turned out wrong" case this pattern names explicitly —
   D is flagged as a late arrival rather than silently overwriting
   whatever already folded on top of it.
 end note

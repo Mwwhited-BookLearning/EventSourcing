@@ -83,3 +83,18 @@ Consequences:
   something this framework's own CI enforces — consistent with the spec
   documents themselves being generated on-demand (`ADR-002`), never
   materialized/cached server-side.
+
+**Verified end to end, `2026-09-04`**: Kiota (already the globally
+installed `1.35.0`, no fresh install needed) generates a real C# client
+from a real, populated `/openapi.json` (a real registered event type,
+not a schema fixture) — mechanically, the pack → generate → compile
+pipeline is sound. But calling the generated client against the real
+Host failed with a real `500`: `OpenApiDocumentBuilder` (`ADR-002`)
+describes `payload` as a nested JSON Schema object, while
+`PublishEventRequest.Payload` is really a `string` — the generated
+client's typed request body doesn't match the real wire contract.
+Root cause confirmed precisely (a raw HTTP call with `payload` as a
+JSON-encoded string, otherwise identical, got a real `202`). Not fixed
+here — tracked as a new `TODO.md` item, since the right fix needs its
+own design pass, not a guess made while proving an unrelated ADR. Full
+trace in `docs/changes/2026-09-04.md`.

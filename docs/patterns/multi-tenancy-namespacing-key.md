@@ -27,6 +27,8 @@ selectively retrieved"); [EclipseLink `@TenantDiscriminatorColumn`
 reference](https://eclipse.dev/eclipselink/documentation/2.5/jpa/extensions/a_tenantdiscriminatorcolumn.htm)
 for the discriminator-column naming specifically.
 
+![The pattern diagram](../diagrams/patterns/multi-tenancy-namespacing-key/01-the-pattern.svg)
+
 ```plantuml
 @startuml NamespacingKey_Component
 skinparam componentStyle rectangle

@@ -1,0 +1,22 @@
+@startuml
+autonumber
+actor "User" as user
+participant "Web page (secure context)" as page
+participant "Browser hardware API\n(WebUSB / WebHID / Web Serial / Web Bluetooth)" as api
+participant "Physical device" as device
+participant "Native bridge\n(companion app, localhost server)" as bridge
+
+user -> page: explicit gesture (e.g. "Connect device" click)
+page -> api: requestDevice() -- REQUIRES the user gesture above
+api -> user: native OS device-picker dialog
+user -> api: selects the device, grants permission
+api -> device: direct connection (no network)
+device --> page: raw data, delivered straight to the page's JS
+
+alt browser/interface unsupported (e.g. Firefox, Safari, or WebHID's own gaps)
+  page -> bridge: connect to localhost WebSocket/HTTP server
+  bridge -> device: native OS-level driver access
+  device --> bridge: raw data
+  bridge --> page: same data, relayed over the local socket
+end
+@enduml

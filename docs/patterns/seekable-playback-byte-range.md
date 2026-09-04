@@ -24,6 +24,8 @@ everything before it first.
 
 **Source:** [RFC 7233, *Hypertext Transfer Protocol (HTTP/1.1): Range Requests*](https://www.rfc-editor.org/rfc/rfc7233) (June 2014; now folded into [RFC 9110](https://www.rfc-editor.org/rfc/rfc9110), *HTTP Semantics*) — verified directly against the published RFC text.
 
+![The pattern diagram](../diagrams/patterns/seekable-playback-byte-range/01-the-pattern.svg)
+
 ```plantuml
 @startuml ByteRangeRequest_Sequence
 autonumber

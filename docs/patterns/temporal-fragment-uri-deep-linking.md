@@ -24,6 +24,8 @@ resource — temporal addressing is only one of the four.
 
 **Source:** [W3C Recommendation, *Media Fragments URI 1.0 (basic)*, 25 September 2012](https://www.w3.org/TR/media-frags/) — verified directly against the published spec text.
 
+![The pattern diagram](../diagrams/patterns/temporal-fragment-uri-deep-linking/01-the-pattern.svg)
+
 ```plantuml
 @startuml TemporalFragment_Sequence
 autonumber

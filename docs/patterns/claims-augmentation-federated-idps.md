@@ -31,6 +31,8 @@ via an optional `actor_token`); claims augmentation is one common use
 of it, not the only one. **Source:** RFC 8693 (OAuth 2.0 Token
 Exchange).
 
+![The pattern diagram](../diagrams/patterns/claims-augmentation-federated-idps/01-the-pattern.svg)
+
 ```plantuml
 @startuml ClaimsAugmentation_Sequence
 autonumber

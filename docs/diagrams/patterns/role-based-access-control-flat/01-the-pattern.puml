@@ -1,0 +1,28 @@
+@startuml
+skinparam packageStyle rectangle
+
+object "User" as user1
+object "User" as user2
+object "Role: Records Clerk" as roleA
+object "Role: Attending Physician" as roleB
+object "Permission: read:records" as permA
+object "Permission: write:records" as permB
+object "Permission: prescribe:medication" as permC
+
+user1 --> roleA : assigned
+user2 --> roleB : assigned
+roleA --> permA : bundles
+roleA --> permB : bundles
+roleB --> permA : bundles
+roleB --> permC : bundles
+
+note bottom of roleA
+  A permission is granted to
+  a ROLE, never directly to a
+  user in this tier -- the two
+  relations (user-role,
+  role-permission) are kept
+  independent, per the standard's
+  own Reference Model.
+end note
+@enduml

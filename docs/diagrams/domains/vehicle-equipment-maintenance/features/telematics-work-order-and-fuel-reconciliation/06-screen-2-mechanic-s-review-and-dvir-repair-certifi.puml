@@ -1,0 +1,16 @@
+@startsalt
+{
+  { "wo-19 -- Review  (Live View, isAuthoritative: false)" }
+  ..
+  { "Asset"              | "truck-118"                }
+  { "VmrsSystemCode"     | "043 (Engine)"             }
+  { "ComplaintCode"      | "Possible sensor drift"    }
+  { "DetectorConfidence" | "0.38"                     }
+  ..
+  [ View raw telemetry window (t3-t4) ]
+  ..
+  { "Linked DVIR defect:" | "Engine overspeed warning light (driver-42, 2026-09-03 06:05)" }
+  { "Certification reason:" | "[                              ]" }
+  [ Certify repair (accept) ] | [ Dismiss (reject) ]
+}
+@endsalt

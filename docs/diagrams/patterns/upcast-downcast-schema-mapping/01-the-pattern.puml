@@ -1,0 +1,23 @@
+@startuml
+title Two chains, opposite directions, different persistence policy
+
+participant "Old-version event\n(v1 payload)" as v1
+participant "v2 mapping\n(upcastFromPrevious)" as u2
+participant "v3 mapping\n(upcastFromPrevious)" as u3
+participant "Current (v3) payload" as cur
+participant "v3->v2 mapping\n(downcastToPrevious)" as d2
+participant "Legacy consumer\npinned to v1" as legacy
+
+v1 -> u2 : hop 1
+u2 -> u3 : hop 2
+u3 -> cur : forward result
+note right of cur
+  Upcast result MAY be
+  persisted once (materialized) --
+  one legitimate target, so
+  caching it is a real win.
+end note
+
+cur -> d2 : requested version = v1 (explicit)
+d2 -> legacy : hop back, computed fresh\n(never persisted --\nunbounded number of\npossible targets)
+@enduml

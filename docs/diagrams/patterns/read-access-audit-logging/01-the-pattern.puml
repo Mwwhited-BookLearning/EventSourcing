@@ -1,0 +1,27 @@
+@startuml
+autonumber
+actor "Reader" as reader
+participant "Read endpoint" as endpoint
+participant "Business data store" as data
+participant "Access Log\n(separate, append-only,\nhash-chained)" as log
+
+reader -> endpoint: request a read (query, download, stream)
+endpoint -> data: fetch the requested record(s)
+data --> endpoint: result
+endpoint --> reader: result (returned first / concurrently)
+endpoint -> log: append AccessLogEntry\n(ReaderId, TrustBasis, Resource, Action, Timestamp)
+note right of log
+  Own hash chain, independent of the
+  business data's own tamper-evidence
+  (if any) -- a different volume/
+  performance profile, a different
+  reader (an auditor), never mixed
+  into the data it describes.
+end note
+log --> endpoint: appended (fire-and-forget relative\nto the read's own response)
+
+... later ...
+actor "Auditor / compliance officer" as auditor
+auditor -> log: "who has read record X, ever?"
+log --> auditor: every AccessLogEntry naming that resource,\nprovably unaltered since written
+@enduml

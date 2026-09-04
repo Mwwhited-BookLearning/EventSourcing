@@ -1,0 +1,22 @@
+@startuml
+autonumber
+participant "Caller" as caller
+participant "Batch endpoint" as endpoint
+participant "Ordinary single-item\nprocessing path" as single
+
+caller -> endpoint: POST /batch\n[item1, item2, item3, ...]
+loop for each item, in submission order
+  endpoint -> single: process item exactly as if\nsubmitted alone
+  alt item succeeds
+    single --> endpoint: success envelope
+  else item fails\n(validation, conflict, ...)
+    single --> endpoint: failure envelope\n(item's own status/detail)
+  end
+end
+endpoint --> caller: array of per-item envelopes,\nsame order as submission --\nno single "batch status"
+note right of caller
+  One malformed or conflicting item
+  never blocks or rolls back any
+  other item in the same batch.
+end note
+@enduml

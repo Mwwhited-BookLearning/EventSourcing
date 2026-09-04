@@ -1,0 +1,20 @@
+@startuml
+autonumber
+participant "Detector / capture path\n(non-authoritative capture, ADR-035)" as capture
+participant "Claim-holding reviewer\n(RBAC-granted claim, ADR-046)" as reviewer
+participant "PublishEndpoint\n(RequiredClaims gate, ADR-008/050)" as inbox
+participant "Step-up challenge\n(RFC 9470, ADR-066)" as stepup
+participant "Event Log" as log
+participant "Authoritative Entity Store\n(gated fold, ADR-042)" as auth
+
+capture -> log: capture now, AuthorityStatus: pending_review\n(no claim needed to CAPTURE)
+reviewer -> inbox: POST authorityDecision\n{ targetEventId, decision: "accepted" }
+inbox -> inbox: RequiredClaims OR-check --\nreject 403 if reviewer lacks the claim
+alt decision is "accepted" and type requires RequiredSignature
+  inbox -> stepup: acr/max_age not satisfied by current token
+  stepup --> reviewer: 401 step-up challenge
+  reviewer -> inbox: retry with a fresh, stepped-up token
+end
+inbox -> log: INSERT authorityDecision\n(Signature captured if step-up required)
+log -> auth: fold on accepted (ADR-042's own gate)
+@enduml

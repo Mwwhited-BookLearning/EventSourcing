@@ -1,0 +1,25 @@
+@startuml
+autonumber
+participant "Tenant A admin" as tenantA
+participant "Tenant B admin" as tenantB
+participant "Trust root registry" as registry
+participant "Verifier" as verifier
+
+tenantA -> registry: register key K_A as trust root\nfor namespace "tenantA"
+tenantB -> registry: register key K_B as trust root\nfor namespace "tenantB"
+
+verifier -> registry: is K_A trusted for "tenantA"?
+registry --> verifier: yes
+verifier -> registry: is K_A trusted for "tenantB"?
+registry --> verifier: no
+note right of registry
+  Each namespace's root(s) of
+  trust are independently
+  registered and scoped -- no
+  cross-namespace authority, and
+  the central registry never has
+  to understand what any given
+  namespace's permission strings
+  actually mean.
+end note
+@enduml

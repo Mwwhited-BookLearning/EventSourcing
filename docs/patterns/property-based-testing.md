@@ -28,6 +28,8 @@ Schelfthout, is the real, verified .NET port used here — an F#/C#/VB
 library providing the same generator/property/shrinking combinators
 QuickCheck itself defined.
 
+![The pattern diagram](../diagrams/patterns/property-based-testing/01-the-pattern.svg)
+
 ```plantuml
 @startuml PropertyBasedTesting_Sequence
 autonumber

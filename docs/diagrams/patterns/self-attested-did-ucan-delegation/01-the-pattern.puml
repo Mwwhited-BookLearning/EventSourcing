@@ -1,0 +1,16 @@
+@startuml
+autonumber
+participant "Delegator\n(controls a keypair -- a DID)" as delegator
+participant "Delegate" as delegate
+participant "Verifier\n(no network call needed)" as verifier
+
+delegator -> delegator: hold private key;\nthe public key IS the identity claim
+delegator -> delegate: issue signed delegation\n(capability subset, expiration,\ndelegate's own DID)
+delegate -> verifier: present delegation\n(+ chain of prior proofs, if any)
+verifier -> verifier: verify each signature in the chain;\nconfirm each link only narrows\nthe one before it;\nconfirm the chain roots in a\nkey the verifier already trusts
+alt chain verifies end-to-end
+  verifier --> delegate: authorized for the delegated capability
+else
+  verifier --> delegate: rejected
+end
+@enduml

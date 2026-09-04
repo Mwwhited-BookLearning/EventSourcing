@@ -1,0 +1,44 @@
+@startuml
+autonumber
+participant "ELD / Telematics Gateway" as gateway
+participant "Telemetry Ingest API" as ingest
+database "Telemetry Channel Store\n(TelemetryChannel/TelemetrySample, ADR-031)" as tstore
+participant "Fault-Detection Worker\n(app-specific, ADR-031: out of framework scope)" as detector
+participant "Inbox / PublishEndpoint" as inbox
+participant "Router" as router
+participant "EventStore.Fold" as fold
+database "Event Log" as eventLog
+database "Entity Store\n(authoritative + Live View, ADR-042)" as entityStore
+participant "Webhook Dispatcher\n(ADR-060)" as webhook
+participant "Fleet CMMS / TMS\n(downstream)" as cmms
+
+gateway -> ingest: POST /telemetry/truck-118-engine/samples\n{ startTimestamp, sampleIntervalMicros, values: [...] }\n(EngineHours, FuelLevel, ActiveDtcCode per ISO 15143-3/AEMP 2.0)
+ingest -> tstore: INSERT TelemetrySample rows\n(no schema check, no ChainHash, no fold -- ADR-031)
+ingest --> gateway: 202 { channelId, samplesWritten, lateArrivalCount }
+
+detector -> tstore: GET /telemetry/truck-118-engine/samples?mode=tail
+tstore --> detector: streamed TelemetrySample rows
+detector -> detector: apply VMRS fault-mapping rule\n(DTC SPN 190 sustained overspeed -> System 043 Engine, ADR-031 takes no position)
+
+alt high-confidence VMRS fault mapping
+  detector -> inbox: POST /publish/MaintenanceWorkOrderRaised\n{ payload: { AssetId: "truck-118", VmrsSystemCode: "043",\n  VmrsAssemblyCode: "004", ComplaintCode: "Sustained overspeed fault",\n  DetectorConfidence: 0.92 },\n  telemetryPointer: [{ channelId: "truck-118-engine",\n    fromTimestamp: t1, toTimestamp: t2 }] }
+  inbox -> eventLog: INSERT StoredEvent\n(AuthorityStatus: "accepted" -- default, ADR-042 --\nno review-pending marker set)
+  inbox --> detector: 202 { correlationId, status: "received",\n  authorityStatus: "accepted" }
+  router -> fold: fold(StoredEvent)
+  fold -> entityStore: UPDATE authoritative EntityStoreRow\n"vem:MaintenanceWorkOrder:truck-118-<eventId>" (Version++)
+  fold -> webhook: enqueue WebhookOutbox entry\n(matching WebhookSubscription for MaintenanceWorkOrderRaised)
+  webhook -> cmms: POST <subscriber URL>\nwebhook-id/webhook-timestamp/webhook-signature (ADR-060)
+  cmms --> webhook: 200 OK
+else low-confidence VMRS fault mapping
+  detector -> inbox: POST /publish/MaintenanceWorkOrderRaised\n{ payload: { AssetId: "truck-118", VmrsSystemCode: "043",\n  VmrsAssemblyCode: "004", ComplaintCode: "Possible sensor drift",\n  DetectorConfidence: 0.38 },\n  telemetryPointer: [{ channelId: "truck-118-engine",\n    fromTimestamp: t3, toTimestamp: t4 }],\n  attestedClaims: { type: "detector-confidence", reviewPending: true,\n    confidence: 0.38, rule: "spn190-overspeed-v2" } }
+  note right of inbox
+    An explicit review-pending marker, per ADR-042: the same
+    "automated detector, unvalidated result" trigger industrial
+    IoT's own sensor-driven-maintenance-alert.md already uses.
+  end note
+  inbox -> eventLog: INSERT StoredEvent\n(AuthorityStatus: "pending_review")
+  inbox --> detector: 202 { correlationId, status: "received",\n  authorityStatus: "pending_review" }
+  router -> fold: fold(StoredEvent) -- Live View only (ADR-042)
+  fold -> entityStore: UPDATE LiveEntityStoreRow\n(isAuthoritative: false), authoritative row NOT yet updated
+end
+@enduml

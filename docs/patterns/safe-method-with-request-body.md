@@ -26,38 +26,40 @@ requests are idempotent; they can be retried or repeated when needed"),
 cacheable like `GET`, but carrying the query itself as request content
 rather than URI query parameters.
 
+![The pattern diagram](../diagrams/patterns/safe-method-with-request-body/01-the-pattern.svg)
+
 ```plantuml
 @startuml SafeMethodWithBody_Comparison
-skinparam rectangle {
+skinparam object {
   BackgroundColor<<Method>> #EEEEEE
 }
 
-rectangle "GET" <<Method>> as GET
-rectangle "POST" <<Method>> as POST
-rectangle "QUERY (RFC 10008)" <<Method>> as QUERYM
+object "GET" as GET <<Method>>
+object "POST" as POST <<Method>>
+object "QUERY (RFC 10008)" as QUERYM <<Method>>
 
 GET : Safe: yes
 GET : Idempotent: yes
 GET : Cacheable: yes
 GET : Request body: undefined/unreliable
-GET : -- query must live in the URL --
+GET : — query must live in the URL —
 
 POST : Safe: no
 POST : Idempotent: no
 POST : Cacheable: no (by default)
 POST : Request body: yes, well-defined
-POST : -- side effects assumed possible --
+POST : — side effects assumed possible —
 
 QUERYM : Safe: yes
 QUERYM : Idempotent: yes
 QUERYM : Cacheable: yes
 QUERYM : Request body: yes, well-defined
-QUERYM : -- complex query, no URL/log/cache exposure --
+QUERYM : — complex query, no URL/log/cache exposure —
 
 note bottom of QUERYM
   Combines GET's safety guarantee
   with POST's ability to carry a
-  real request body -- the specific
+  real request body — the specific
   gap neither existing method fills.
 end note
 @enduml

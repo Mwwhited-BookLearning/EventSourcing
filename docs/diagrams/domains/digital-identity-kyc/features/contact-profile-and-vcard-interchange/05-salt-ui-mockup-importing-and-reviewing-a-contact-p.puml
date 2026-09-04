@@ -1,0 +1,11 @@
+@startsalt
+{
+  { "Contact Profile -- Import from vCard" }
+  ..
+  { "Upload a .vcf file, or paste vCard/jCard text below:" }
+  { "^Choose file^" | "or paste jCard JSON" }
+  { "  [ ....................................... ]  " }
+  ..
+  [ Import ]
+}
+@endsalt

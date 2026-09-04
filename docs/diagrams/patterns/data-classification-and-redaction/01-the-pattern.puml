@@ -1,0 +1,21 @@
+@startuml
+autonumber
+participant "Schema/type author" as author
+participant "Sink\n(log call, API response, metric)" as sink
+participant "IRedactorProvider" as provider
+participant "Redactor\n(Hmac / Erasing / custom)" as redactor
+
+author -> author: Declare classification once\n(attribute, or metadata on the field)
+sink -> sink: About to emit a classified value
+sink -> provider: GetRedactor(classification)
+provider --> sink: the Redactor registered\nfor this classification
+sink -> redactor: Redact(realValue)
+redactor --> sink: redacted representation
+sink -> sink: emit the redacted value,\nnever the real one
+note right of provider
+  No Redactor registered for this
+  classification? Falls back to
+  ErasingRedactor -- redact by
+  default, not leak by default.
+end note
+@enduml

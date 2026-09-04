@@ -26,7 +26,7 @@ entity "EntityStoreRow\n(trial1:IonmAlert:alert-77)" as entityStore {
   --
   Version : bigint
   Data : text
-  ' Finding, Severity, AckedBy -- accumulated via\n' Full (IonmAlertRaised) + Partial (IonmAlertAcknowledged) folds
+  ' Finding, Severity, AckedBy -- accumulated via\n' Partial (IonmAlertRaised) + Partial (IonmAlertAcknowledged) folds\n' -- corrected, Phase 2 domain-completeness audit: IonmAlertRaised is\n' Partial, not Full, in the built sample (see Background below and\n' docs/domains/README.md's fourth run-and-found divergence) -- a Full\n' fold here would silently erase AckedBy depending on fold order
   AuthorityStatus : string
 }
 

@@ -33,6 +33,8 @@ reach Safari/iOS, where the direct browser APIs don't exist at all.
 
 **Source:** [WICG WebUSB API specification](https://wicg.github.io/webusb/), [WICG/serial](https://github.com/WICG/serial), and the WebHID/Web Bluetooth Community Group specifications — verified directly: as of 2026 all four remain Draft Community Group Reports maintained by WICG, not W3C Recommendations and not on the W3C standards track.
 
+![The pattern diagram](../diagrams/patterns/device-input-web-hardware-apis/01-the-pattern.svg)
+
 ```plantuml
 @startuml WebHardwareAPI_Sequence
 autonumber

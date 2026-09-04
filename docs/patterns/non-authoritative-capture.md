@@ -33,6 +33,8 @@ This combines two independently real, independently named ideas:
   "non-repudiation"](https://csrc.nist.gov/glossary/term/non_repudiation),
   drawn from NIST SP 800-59/CNSSI 4009).
 
+![The pattern diagram](../diagrams/patterns/non-authoritative-capture/01-the-pattern.svg)
+
 ```plantuml
 @startuml NonAuthoritativeCapture_Sequence
 autonumber

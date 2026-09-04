@@ -1,0 +1,25 @@
+@startuml
+autonumber
+participant "Submitter\n(authority not yet verifiable)" as submitter
+participant "Capture endpoint" as capture
+participant "Durable, non-repudiable store" as store
+participant "Reviewer / adjudicator" as reviewer
+
+submitter -> capture: submit claim
+capture -> store: persist immediately\n(trust status = provisional)
+store --> capture: committed -- who, what, when\nis now unforgeable
+capture --> submitter: accepted for review
+
+... time passes; connectivity/authority resolves ...
+
+reviewer -> store: read provisional claims
+reviewer -> store: record decision\n(accepted | rejected)
+note right of store
+  The decision is a NEW record,
+  never a mutation of the original
+  claim. Whichever way the decision
+  goes, the original submission and
+  its non-repudiable provenance are
+  completely unaffected.
+end note
+@enduml

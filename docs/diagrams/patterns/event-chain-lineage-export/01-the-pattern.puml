@@ -1,0 +1,26 @@
+@startuml
+autonumber
+actor "Exporting actor" as actor
+participant "Lineage query\n(existing DAG traversal)" as lineage
+participant "Read-path enforcement\n(claims, masking, audit)" as guard
+participant "Bundle builder" as builder
+participant "Portable bundle\n(records + manifest + digest)" as bundle
+participant "Importing environment" as importer
+
+actor -> lineage: export(anchorId[s])
+lineage -> lineage: follow parent/derivation links\n(ancestors + descendants)
+lineage --> guard: candidate record set
+guard -> guard: apply the SAME read authorization\nas any other query -- no bypass
+guard --> builder: authorized, possibly-redacted records
+builder -> builder: order records deterministically
+builder -> builder: attach schema/version metadata\nfor every referenced shape
+builder -> builder: compute a digest over the\nordered records + export metadata
+builder --> bundle: portable file
+actor -> importer: transfer bundle (network, media, "sneakernet")
+importer -> importer: recompute the digest,\ncompare to the manifest's
+alt digest matches
+  importer -> importer: import each record with a FRESH\nposition in its own history,\nplus provenance fields recording\nwhere it actually came from
+else digest mismatch
+  importer -> actor: reject -- incomplete or altered bundle
+end
+@enduml

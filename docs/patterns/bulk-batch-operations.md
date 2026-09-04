@@ -31,6 +31,8 @@ and Google's older bulk HTTP batching convention document the same
 transport-efficiency motivation independently, converging on the same
 shape from different platforms.
 
+![The pattern diagram](../diagrams/patterns/bulk-batch-operations/01-the-pattern.svg)
+
 ```plantuml
 @startuml BulkBatchOperations_Sequence
 autonumber

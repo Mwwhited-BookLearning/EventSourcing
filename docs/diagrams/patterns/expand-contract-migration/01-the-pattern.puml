@@ -1,0 +1,28 @@
+@startuml
+title Parallel Change / Expand-Contract
+
+state "Before" as before
+state "Expand" as expand
+state "Migrate" as migrate
+state "Contract (optional, later)" as contract
+
+before --> expand : add new column/table/field\n(old shape untouched, fully\nbackward-compatible)
+expand --> migrate : writers/readers cut over\none at a time; may write\nboth shapes during transition
+migrate --> contract : remove old shape\nONLY once nothing\ndepends on it -- may\nnever happen
+
+note right of expand
+  Old code paths still work.
+  A rollback to old code is
+  just redeploying the old
+  binary -- it still fully
+  understands this shape.
+end note
+
+note right of contract
+  This step is where the
+  binary-rollback safety
+  net finally goes away --
+  deferred as long as
+  possible, by design.
+end note
+@enduml

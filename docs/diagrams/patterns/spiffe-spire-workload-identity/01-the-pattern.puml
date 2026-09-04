@@ -1,0 +1,17 @@
+@startuml
+autonumber
+participant "Workload A\n(trust domain X)" as workloadA
+participant "SPIRE Agent" as agent
+participant "SPIRE Server" as server
+participant "Workload B\n(trust domain Y,\nfederated)" as workloadB
+
+workloadA -> agent: request my identity
+agent -> agent: attest (verify workload's\nreal-world properties --\nno secret presented)
+agent -> server: attested, issue an SVID
+server --> agent: short-lived X.509-SVID\n(spiffe://X/workload-a)
+agent --> workloadA: SVID delivered,\nauto-rotated before expiry
+
+workloadA -> workloadB: mTLS handshake,\npresents its SVID
+workloadB -> workloadB: validate: SAN URI is a\nwell-formed, allowed SPIFFE ID;\nchains to a root in MY trust bundle\nfor trust domain X (federated)
+workloadB --> workloadA: accepted -- mutually\nauthenticated, no shared\ncentral CA needed
+@enduml

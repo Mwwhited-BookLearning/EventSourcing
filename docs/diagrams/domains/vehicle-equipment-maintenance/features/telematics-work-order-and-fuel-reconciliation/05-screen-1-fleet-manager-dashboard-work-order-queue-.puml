@@ -1,0 +1,10 @@
+@startsalt
+{
+  { "Fleet Manager Dashboard -- Work Orders  (mixed isAuthoritative)" }
+  ..
+  | Work Order | Asset     | VmrsSystem | DetectorConfidence | AuthorityStatus | isAuthoritative |
+  | wo-21      | truck-118 | 043 Engine | 0.92               | accepted        | true            |
+  | wo-19      | truck-118 | 043 Engine | 0.38               | pending_review  | false           |
+  | wo-20      | truck-206 | 018 Brakes | 0.95               | accepted        | true            |
+}
+@endsalt

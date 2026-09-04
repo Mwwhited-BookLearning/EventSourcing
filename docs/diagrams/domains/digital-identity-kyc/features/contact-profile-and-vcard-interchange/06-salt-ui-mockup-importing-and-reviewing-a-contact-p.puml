@@ -1,0 +1,19 @@
+@startsalt
+{
+  { "Verification Analyst -- Review Queue   (role: IdentityVerificationAnalyst, claim: identity:review)" }
+  ..
+  | Applicant       | Item                          | Submitted   | Status                                       |
+  | applicant-1001  | Identity claim                | 2026-07-28  | [ isAuthoritative: false ]  pending_review    |
+  | applicant-1001  | Imported contact profile       | 2026-09-03  | [ isAuthoritative: false ]  pending_review    |
+  ..
+  { "Selected: applicant-1001 -- Imported contact profile" }
+  | Field           | Imported value                       |
+  | FormattedName   | "J*** R. S****"  ( masked, ADR-009 ) |
+  | Email           | "j***@e***.com"  ( masked )           |
+  | PhoneNumber     | "+1-555-****"    ( masked )           |
+  | OrganizationName| "Acme Bank"      ( not masked )        |
+  ..
+  [ Accept ] | [ Reject ] | "Reason (required for reject):"
+  { "____________________________________" }
+}
+@endsalt

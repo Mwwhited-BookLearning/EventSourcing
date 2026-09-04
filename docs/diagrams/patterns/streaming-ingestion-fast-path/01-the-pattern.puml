@@ -1,0 +1,26 @@
+@startuml
+autonumber
+participant "High-frequency producer\n(sensor, camera, mic)" as producer
+participant "Fast path\n(batch append, no per-item validation)" as fastpath
+participant "Fast-path store" as store
+participant "Detector\n(reads the fast path)" as detector
+participant "Main pipeline\n(schema-validated, integrity-checked)" as mainpipeline
+
+producer -> fastpath: batch of raw samples/chunks
+fastpath -> store: append (cheap: no schema check,\nno per-item hash chain)
+note right of fastpath
+  This is the entire cost of ingestion.
+  No fold, no business-rule evaluation,
+  no integrity linkage per item.
+end note
+
+detector -> store: tail or replay
+store --> detector: raw samples
+
+alt detector notices something worth recording
+  detector -> mainpipeline: publish ONE ordinary, fully-validated\nrecord, pointing back at the\nspecific range in the fast-path store
+  mainpipeline -> mainpipeline: full validation, full guarantees,\nnormal integrity/audit posture
+else nothing noticed
+  ...no bridge back — the vast majority of\nraw samples never enter the main pipeline...
+end
+@enduml

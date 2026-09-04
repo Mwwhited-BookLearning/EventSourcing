@@ -397,8 +397,21 @@ format is being generated.
   part of the registered JSON Schema itself; each is validated against
   its own rule, advisory or blocking as stated — never against
   `payload`'s schema.
-- `payload`'s schema per event type is a `$ref` into a `components/schemas`
-  section built directly from each `EventTypeDefinition.JsonSchema`.
+- `payload` itself is `type: string` — raw JSON text, not a nested object.
+  `PublishEventRequest.Payload`'s real model binder deserializes it that
+  way (its own shape is whatever the registered schema for `schemaVersion`
+  says it is, parsed internally, not by ASP.NET's own model binding). The
+  real per-event-type schema is still fully visible to a spec reader —
+  carried on the `x-payload-schema` extension, not the JSON Schema `type`
+  itself. **Corrected, 2026-09-04**: this section previously documented
+  `payload` as a `$ref`-typed nested object, matching what `OpenApiDocumentBuilder`
+  used to generate — found to be the wrong side of the contract while
+  proving the SDK-codegen story end to end for real (`docs/changes/
+  2026-09-04.md`): a Kiota-generated client built against that shape sent
+  a typed object body and got a genuine `500` every time, since the real
+  endpoint only ever accepted a string. Fixed in the generator, not here —
+  this doc follows the real, running code (this project's own standing
+  rule for anything outside the `docs/data/*.md` shape-authority group).
 
 ```yaml
 openapi: 3.1.0
@@ -437,9 +450,17 @@ paths:
                     live as an advisory check only, reflected in the
                     response's SchemaStatus, never a 400.
                 payload:
-                  oneOf:
-                    - $ref: '#/components/schemas/OrderPlaced'
-                    - $ref: '#/components/schemas/OrderCancelled'
+                  type: string
+                  description: >
+                    Raw JSON text (not a nested object) shaped per this
+                    event type's own registered schema -- see the
+                    x-payload-schema extension on this property for that
+                    schema. Corrected 2026-09-04 -- see this section's
+                    own prose note above.
+                  x-payload-schema:
+                    oneOf:
+                      - $ref: '#/components/schemas/OrderPlaced'
+                      - $ref: '#/components/schemas/OrderCancelled'
                 parentEventIds:
                   type: array
                   items: { type: string, format: uuid }

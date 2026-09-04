@@ -19,6 +19,8 @@ executed directly by engines such as Camunda/Zeebe) — same idea, a
 different diagram grammar and a heavier, generation-oriented runtime
 than this pattern uses.
 
+![The pattern diagram](../diagrams/patterns/plantuml-native-executable-flow/01-the-pattern.svg)
+
 ```plantuml
 @startuml
 participant "Author" as author

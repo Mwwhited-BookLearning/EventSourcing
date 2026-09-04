@@ -22,6 +22,8 @@ even when a system doesn't (yet) need it.
 
 **Source:** [Chris Richardson, microservices.io — "API Gateway / Backends for Frontends" pattern](https://microservices.io/patterns/apigateway.html), part of his broader microservices pattern catalog (also published as *Microservices Patterns*, Manning, 2018).
 
+![The pattern diagram](../diagrams/patterns/api-gateway/01-the-pattern.svg)
+
 ```plantuml
 @startuml APIGateway_Component
 skinparam componentStyle rectangle

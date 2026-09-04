@@ -21,7 +21,7 @@ before this decision, kept as the reasoning that led to it).
 
 **See `docs/domains/README.md` for the per-domain reference generated
 from this comparison's coverage matrix and regulatory mapping table**
-below — one file per domain considered here (all 15), covering which
+below — one file per domain considered here (all 16), covering which
 ADRs apply and why, governing regulations, and special concerns; this
 doc is where the *choice* was made, those files are the per-domain
 reference for afterward.
@@ -115,7 +115,7 @@ where signature-heavy domains actually differentiate) ·
 `ADR-067` (control-plane actions as reserved events — every domain
 benefits equally from an administrative audit trail).
 
-## Full coverage matrix — every domain-differentiating ADR (26), all 15 domains
+## Full coverage matrix — every domain-differentiating ADR (26), all 16 domains
 
 **H** = the domain's real-world workflow makes this ADR load-bearing.
 **M** = fits and would get exercised, but isn't the domain's defining
@@ -127,37 +127,45 @@ education/credentials, **UTIL** utilities/smart metering, **PV**
 pharmacovigilance, **BIO** biobanking, **PH** public health surveillance,
 **ITAR** export-controlled defense data, **GOV** government case
 management, **FOR** digital forensics/evidence custody, **DSCSA** pharma
-supply chain. **Bold** = the single strongest fit found for that ADR
-across all 15.
+supply chain, **VEM** vehicle/equipment maintenance & fuel logs. **Bold**
+= the single strongest fit found for that ADR across all 16.
 
-| ADR | CT | KYC | IoT | INS | LOG | BRK | EDU | UTIL | PV | BIO | PH | ITAR | GOV | FOR | DSCSA |
-|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| `005` Event lineage/DAG | H | M | H | M | **H** | H | L | M | H | H | M | H | M | H | H |
-| `007` Derived/materialized events (deferred) | M | L | **H** | M | M | H | L | M | H | M | M | M | L–M | M | L |
-| `009` Property-level masking | H | H | L | H | L | H | H | L | H | **H** | H | M | H | H | L |
-| `019` Hash-chained tamper evidence | H | M | M | M | M | H | M | M | H | H | M | **H** | H | H | H |
-| `030` Multi-tenancy | H | H | H | H | H | H | **H** | H | H | H | H | M | H | H | H |
-| `031` Streaming channels/telemetry | H | — | **H** | H | M | M | — | H | L–M | L | L | L | L | L–M | L |
-| `032` Binary attachments | H | M | M | H | H | L | H | L | M | **H** | M | H | H | H | M |
-| `033` Multi-origin replication | H | M | H | M | H | H | L | H | M | M | H | M | M | M | **H** |
-| `034` Application-level sharding | H | M | H | M | H | H | L | H | M | M | H | M | M | M | **H** |
-| `035` Non-authoritative capture | H | H | H | H | M | M | L | H | H | M | H | L | **H** | M | M |
-| `036` DID/UCAN self-attestation | M | **H** | M | L | L | L | M | L | L | M | L | L | M | L | L–M |
-| `042` Gated authoritative publish/Live View | H | H | M | H | M | M | L | M | **H** | M | H | L | H | M | M |
-| `043` Delegated/"secondary opinion" access | **H** | M | L | M | L | H | M | L | M | H | M | M | H | H | L |
-| `045` Read access audit log | H | H | L | M | M | H | M | M | H | H | H | H | H | **H** | H |
-| `046` RBAC + row-level security | H | M | M | M | M | H | H | M | M | H | M | **H** | H | H | M |
-| `057` GDPR/CCPA erasure | H* | H | L | H | L | L* | **H*** | L | M | H* | M | L | H* | M | L |
-| `058` Tenant rate limiting | M | H | M | M | **H** | H | M | M | M | L–M | L | L | M | L | M |
-| `060` Outbound webhooks | M | H | H | H | H | H | M | M | H | M | H | L | M | M | **H** |
-| `061` Data residency/region-pinning | M | H | M | M | M | H | L–M | M | M | M | H | **H** | M | M | L |
-| `065` Local active-scope caching + erasure invalidation | **H** | L | M | M | M | L | L | M | L–M | M | L | M | M | H | M |
-| `066` Digital sign-off | H | M | L | M | L–M | H | L | L | H | M | L–M | H | H | **H** | M |
-| `068` Bitemporal export/playback | H | M | M | H | M | H | L | M | **H** | L–M | M | M | M | H | L–M |
-| `069` Pluggable outbox flush triggers | H | L | M | M | M | L | L | M | L | M | L | **H** | M | M | M |
-| `070` Device input integration | H | L | H | H | M | L | L | H | L–M | M | L | L | L | H | **H** |
-| `071` PCI-DSS SAD registration boundary | — | M | — | M | L | **H** | L | L | — | — | — | — | L | — | — |
-| `072` Bulk ingestion + interchange-format adapters | H | M | M | M | H | M | L | M | H | M | **H** | M | M | M | H |
+| ADR | CT | KYC | IoT | INS | LOG | BRK | EDU | UTIL | PV | BIO | PH | ITAR | GOV | FOR | DSCSA | VEM |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| `005` Event lineage/DAG | H | M | H | M | **H** | H | L | M | H | H | M | H | M | H | H | H |
+| `007` Derived/materialized events (deferred) | M | L | **H** | M | M | H | L | M | H | M | M | M | L–M | M | L | M |
+| `009` Property-level masking | H | H | L | H | L | H | H | L | H | **H** | H | M | H | H | L | L |
+| `019` Hash-chained tamper evidence | H | M | M | M | M | H | M | M | H | H | M | **H** | H | H | H | H |
+| `030` Multi-tenancy | H | H | H | H | H | H | **H** | H | H | H | H | M | H | H | H | H |
+| `031` Streaming channels/telemetry | H | — | **H** | H | M | M | — | H | L–M | L | L | L | L | L–M | L | H |
+| `032` Binary attachments | H | M | M | H | H | L | H | L | M | **H** | M | H | H | H | M | M |
+| `033` Multi-origin replication | H | M | H | M | H | H | L | H | M | M | H | M | M | M | **H** | H |
+| `034` Application-level sharding | H | M | H | M | H | H | L | H | M | M | H | M | M | M | **H** | H |
+| `035` Non-authoritative capture | H | H | H | H | M | M | L | H | H | M | H | L | **H** | M | M | H |
+| `036` DID/UCAN self-attestation | M | **H** | M | L | L | L | M | L | L | M | L | L | M | L | L–M | M |
+| `042` Gated authoritative publish/Live View | H | H | M | H | M | M | L | M | **H** | M | H | L | H | M | M | M |
+| `043` Delegated/"secondary opinion" access | **H** | M | L | M | L | H | M | L | M | H | M | M | H | H | L | L |
+| `045` Read access audit log | H | H | L | M | M | H | M | M | H | H | H | H | H | **H** | H | M |
+| `046` RBAC + row-level security | H | M | M | M | M | H | H | M | M | H | M | **H** | H | H | M | M |
+| `057` GDPR/CCPA erasure | H* | H | L | H | L | L* | **H*** | L | M | H* | M | L | H* | M | L | L |
+| `058` Tenant rate limiting | M | H | M | M | **H** | H | M | M | M | L–M | L | L | M | L | M | M |
+| `060` Outbound webhooks | M | H | H | H | H | H | M | M | H | M | H | L | M | M | **H** | H |
+| `061` Data residency/region-pinning | M | H | M | M | M | H | L–M | M | M | M | H | **H** | M | M | L | M |
+| `065` Local active-scope caching + erasure invalidation | **H** | L | M | M | M | L | L | M | L–M | M | L | M | M | H | M | M |
+| `066` Digital sign-off | H | M | L | M | L–M | H | L | L | H | M | L–M | H | H | **H** | M | H |
+| `068` Bitemporal export/playback | H | M | M | H | M | H | L | M | **H** | L–M | M | M | M | H | L–M | H |
+| `069` Pluggable outbox flush triggers | H | L | M | M | M | L | L | M | L | M | L | **H** | M | M | M | M |
+| `070` Device input integration | H | L | H | H | M | L | L | H | L–M | M | L | L | L | H | **H** | H |
+| `071` PCI-DSS SAD registration boundary | — | M | — | M | L | **H** | L | L | — | — | — | — | L | — | — | — |
+| `072` Bulk ingestion + interchange-format adapters | H | M | M | M | H | M | L | M | H | M | **H** | M | M | M | H | H |
+
+\*\* **`ADR-066`/`ADR-068` real second data points, not a new bold winner**
+— vehicle/equipment maintenance scores H on both alongside digital
+forensics (`066`) and pharmacovigilance (`068`), on the strength of a
+real, verified regulatory driver (FMCSA `49 CFR Part 396`'s driver/
+mechanic DVIR sign-offs; FMCSA/IFTA's own audit-reconstruction need) —
+genuine, but not judged stronger than the domains already holding each
+row's bold mark, so neither bold moves.
 
 \* **Real, useful tension, not just a checkbox** — clinical trials (ICH
 GCP retention), brokerage (FINRA/SEC/MiFID record-keeping), education
@@ -194,7 +202,7 @@ practice, not just asserts it.
   fit at all) across most of the 15 domains — narrowly scoped to
   payment-card handling, strongest in brokerage specifically.
 
-## Regulatory/compliance framework mapping (all 15 domains)
+## Regulatory/compliance framework mapping (all 16 domains)
 
 The axis explicitly requested as distinct from technical fit — which
 real law/standard governs each domain, checked against the actual
@@ -265,6 +273,11 @@ stated once instead of repeated in every row.
 - **DSCSA pharma supply chain** — [DSCSA §582(g)(1), 21 U.S.C.
   §360eee-1(g)(1)](https://uscode.house.gov/view.xhtml?req=granuleid%3AUSC-prelim-title21-section360eee-1)
   — enhanced drug distribution security, effective Nov. 2023.
+- **Vehicle/equipment maintenance & fuel logs** — [49 CFR Part
+  396](https://www.ecfr.gov/current/title-49/subtitle-B/chapter-III/subchapter-B/part-396)
+  (FMCSA inspection/repair/maintenance, incl. the driver/mechanic DVIR
+  sign-off requirement), the International Fuel Tax Agreement (IFTA,
+  interstate fuel-tax recordkeeping), ISO 55000 (asset management).
 
 ## Recommendation (superseded by the decision at the top of this doc)
 

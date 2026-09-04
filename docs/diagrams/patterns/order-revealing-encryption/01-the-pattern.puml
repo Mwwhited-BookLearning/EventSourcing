@@ -1,0 +1,23 @@
+@startuml
+autonumber
+participant "Application" as app
+database "Database\n(stores only ciphertext)" as db
+
+app -> app: ciphertextA = ORE.Encrypt(key, a)
+app -> app: ciphertextB = ORE.Encrypt(key, b)
+app -> db: store ciphertextA, ciphertextB
+
+app -> db: WHERE field > ciphertextX\n(a native comparison, no decryption)
+db -> db: Compare(storedCiphertext, ciphertextX)\nfor every indexed row
+db --> app: matching rows only\n(still ciphertext)
+
+app -> app: for each matched row the caller\nholds the claim for: decrypt
+note right of db
+  The comparison itself never
+  touches plaintext. Only rows
+  that actually match are ever
+  decrypted, and only for a
+  caller who holds the field's
+  claim.
+end note
+@enduml

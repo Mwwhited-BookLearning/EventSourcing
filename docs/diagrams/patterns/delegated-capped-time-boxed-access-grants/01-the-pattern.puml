@@ -1,0 +1,23 @@
+@startuml
+autonumber
+participant "Granter\n(holds capability C, no entity scope)" as granter
+participant "Grantee\n(a specific named colleague)" as grantee
+participant "Verifier" as verifier
+
+granter -> grantee: delegate {C, scope: entity E, exp: +24h}
+note right of granter
+  Attenuation invariant: the
+  delegated capability can never
+  be broader than what the
+  granter itself holds -- proven
+  by the signature chain, not
+  policed separately.
+end note
+grantee -> verifier: present delegation, request entity E
+verifier -> verifier: check signature chain,\ncapability subset,\nentity scope, expiration
+alt within cap, scope, and time window
+  verifier --> grantee: access to entity E only, until expiry
+else
+  verifier --> grantee: denied
+end
+@enduml

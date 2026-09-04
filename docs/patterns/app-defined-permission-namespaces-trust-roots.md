@@ -22,6 +22,8 @@ trusted for *this* namespace" — never a single, global root the whole
 system shares, and never something the central authority has to
 pre-approve the meaning of.
 
+![The pattern diagram](../diagrams/patterns/app-defined-permission-namespaces-trust-roots/01-the-pattern.svg)
+
 ```plantuml
 @startuml TrustRootNamespaces_Sequence
 autonumber

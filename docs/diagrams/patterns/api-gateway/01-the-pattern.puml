@@ -1,0 +1,28 @@
+@startuml
+skinparam componentStyle rectangle
+
+actor "Client" as client
+
+package "Single external entry point" {
+  [API Gateway] as gateway
+}
+
+package "Backend services (not individually externally reachable)" {
+  [Service A] as svcA
+  [Service B] as svcB
+  [Service C] as svcC
+}
+
+client --> gateway : one address,\none authenticated session
+gateway --> svcA : routes by path/host
+gateway --> svcB : routes by path/host
+gateway --> svcC : routes by path/host
+
+note right of gateway
+  TLS termination
+  Authentication
+  Rate limiting
+  Routing
+  Hides internal topology
+end note
+@enduml

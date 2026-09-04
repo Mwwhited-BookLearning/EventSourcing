@@ -1,0 +1,29 @@
+@startuml
+autonumber
+participant "Site A" as a
+participant "Site B" as b
+participant "Site C" as c
+
+note over a, c
+  Each site accepts writes locally,
+  independent of the others -- no
+  coordination at write time.
+end note
+
+a -> a: local write W1
+b -> b: local write W2 (concurrent, unrelated to W1)
+
+== Later: gossip round ==
+a -> b: exchange state since last contact
+b --> a: A now has W2; B now has W1
+b -> c: exchange state since last contact
+c --> b: C now has W1+W2; B unaffected (already had them)
+
+note over a, c
+  No round trip required at write time.
+  A site that's briefly unreachable
+  just falls behind -- it catches up
+  on its next successful gossip round,
+  with nothing lost in the meantime.
+end note
+@enduml

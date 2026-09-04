@@ -1,0 +1,19 @@
+@startuml
+autonumber
+actor Client
+participant "Authorization\nServer" as AS
+participant "Resource\nServer" as RS
+
+Client -> Client: generate asymmetric keypair\n(kept for this token's lifetime)
+Client -> AS: token request +\nproof of holding the private key\n(signed, binds htm/htu of THIS request)
+AS -> AS: verify proof; embed a reference\nto the public key inside the\nissued token (cnf claim, RFC 7800)
+AS --> Client: access token (bound to the key)
+
+Client -> RS: request + token +\na FRESH proof for THIS request\n(binds htm/htu/timestamp,\nand a hash of the token itself)
+RS -> RS: verify proof signature against\nits own embedded public key;\nconfirm that key matches the\ntoken's cnf reference
+alt proof valid and matches
+  RS --> Client: 200 -- token accepted only\nfrom the key it's bound to
+else stolen token, wrong/missing key
+  RS --> Client: 401 -- possession not demonstrated
+end
+@enduml

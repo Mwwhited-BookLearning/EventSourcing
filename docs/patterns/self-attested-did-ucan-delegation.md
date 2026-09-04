@@ -34,6 +34,8 @@ what came before it, and the chain terminates at a root the verifier
 already trusts. No round trip to an issuing authority is needed at
 verification time — the proof is self-contained.
 
+![The pattern diagram](../diagrams/patterns/self-attested-did-ucan-delegation/01-the-pattern.svg)
+
 ```plantuml
 @startuml DidUcanDelegation_Sequence
 autonumber

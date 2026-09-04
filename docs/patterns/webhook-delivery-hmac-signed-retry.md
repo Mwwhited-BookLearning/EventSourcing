@@ -34,6 +34,8 @@ above: `webhook-id`/`webhook-timestamp`/`webhook-signature` headers,
 HMAC-SHA256 over `{id}.{timestamp}.{payload}`, and a recommended
 exponential-backoff-with-jitter retry schedule.
 
+![The pattern diagram](../diagrams/patterns/webhook-delivery-hmac-signed-retry/01-the-pattern.svg)
+
 ```plantuml
 @startuml Webhook_Delivery_Sequence
 autonumber

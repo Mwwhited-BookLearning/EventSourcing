@@ -1,0 +1,26 @@
+@startuml
+autonumber
+actor "Client" as client
+participant "External, already-\nauthoritative IdP" as external
+participant "This system's own\nToken Exchange endpoint" as sts
+participant "Local claims store\n(roles/permissions)" as local
+
+client -> external: authenticate
+external --> client: externally-issued token\n(sub, email, name, ...)
+
+client -> sts: POST /token\ngrant_type=token-exchange\nsubject_token=<external token>
+sts -> sts: verify external token\n(signature against registered issuer's JWKS)
+sts -> local: look up this subject's\nlocal roles/permissions
+local --> sts: local claims
+sts -> sts: build new token:\nexternal identity claims (unchanged)\n+ local claims (added)
+sts --> client: newly-issued, augmented token
+
+client -> "Application" as app: call with augmented token
+note right of app
+  Every downstream authorization
+  check is unaware whether a claim
+  arrived via a local IdP directly
+  or via this exchange -- same
+  shape either way.
+end note
+@enduml
