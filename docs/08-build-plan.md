@@ -113,7 +113,7 @@ provider they apply to — not "code written."
 | 52 | [Generic Entity/Live-View Query](#generic-entitylive-view-query) | GraphQL-Only Query Layer, Non-Authoritative Capture, Property-Level Masking, Delegated Grants/RBAC/Read Audit Logging | Done |
 | 53 | [Push-Notification Wake-Up Layer](#push-notification-wake-up-layer) | Publish API, Entity-Centric Core Rebuild | Done (all 6 background workers) |
 | 54 | [Searchable Blind-Index & Bucketed-Range Encrypted-Field Indexes](#searchable-blind-index--bucketed-range-encrypted-field-indexes) | GDPR/CCPA Erasure, Property-Level Masking, Follow API + Filter Pushdown | Done |
-| 55 | [Order-Revealing Encryption Range Index (opt-in)](#order-revealing-encryption-range-index-opt-in) | Searchable Blind-Index & Bucketed-Range Encrypted-Field Indexes | AI-assisted code-level security review completed 2026-09-04 (found/fixed 2 real bugs); query-side native-comparison gap also found and closed for real, verified on all 3 providers; independent human cryptographic review still recommended before Done |
+| 55 | [Order-Revealing Encryption Range Index (opt-in)](#order-revealing-encryption-range-index-opt-in) | Searchable Blind-Index & Bucketed-Range Encrypted-Field Indexes | ~~AI-assisted code-level security review completed 2026-09-04 (found/fixed 2 real bugs); query-side native-comparison gap also found and closed for real, verified on all 3 providers; independent human cryptographic review still recommended before Done~~ **Final correction, 2026-09-04, direct request**: despite the query-side gap being closed for real, ORE was **removed as an adopted feature** (unrelated to item 56's performance verdict) — implementation moved to `spikes/order-revealing-encryption/`. **Status: Removed** |
 | 56 | [In-Database Native Predicate Evaluator Seam](#in-database-native-predicate-evaluator-seam) | Searchable Blind-Index & Bucketed-Range Encrypted-Field Indexes | ~~Done — both providers built, live-deployed, and benchmarked for real (PostgreSQL: 2 implementations; SQL Server: fixed twice over — see item's own detail)~~ **Final correction, 2026-09-04, direct request**: real benchmarking found no consistent win over the already-adopted app-tier default; native evaluators **not adopted**, moved to `spikes/in-database-native-predicate-evaluators/`. **Status: Done** — for the seam and its app-tier default, which this item's scope always centered on (see item's own detail) |
 | 57 | [PlantUML-Native User-Flow Engine & Pending-Task Read Model](#plantuml-native-user-flow-engine--pending-task-read-model) | CQRS Read-Model Projections (worked example) | Done |
 
@@ -248,7 +248,11 @@ state "Local Services" as tierLocal {
   state "Mechanism-Level\nOTel Instrumentation" as a23 #palegreen
   state "Expected-Response\nTracking" as a26 #palegreen
   state "Searchable Blind-Index &\nBucketed-Range Indexes" as a31 #palegreen
-  state "Order-Revealing\nEncryption Range Index" as a32 #palegoldenrod
+  state "Order-Revealing\nEncryption Range Index" as a32
+  ' no fill: this convention has only Not-started/In-progress/Done -- a32
+  ' was built, reviewed, and then removed as an adopted feature 2026-09-04
+  ' (see ADR-097's final additive note); no-fill most honestly represents
+  ' "not part of the current build" here, closer to Not-started than Done.
   state "In-Database Native\nPredicate Evaluator Seam" as a33 #palegreen
   state "PlantUML-Native Flow Engine &\nPending-Task Read Model" as a34 #palegreen
 }
@@ -5454,7 +5458,7 @@ own default collation was a genuine, non-hypothetical risk here (case-
 insensitive, linguistically aware, not purely byte-value-ordinal), not
 assumed safe.
 
-**Still not marked Done**, by this review's own explicit judgment call,
+~~**Still not marked Done**, by this review's own explicit judgment call,
 not because the exit criteria's literal text demands it: both a review
 and now a real, verified native-comparison query path exist (satisfying
 that criterion's letter), but a solo AI code review of a bespoke,
@@ -5464,7 +5468,31 @@ this reviewer's own honest assessment, meet the bar a "dedicated
 correctness/security review" of something this specialized implies.
 **Genuine recommendation, unchanged: get an independent human
 cryptographic review before enabling this on any real production
-data.**
+data.**~~
+
+**Final correction, 2026-09-04, direct request** ("the ORE feature can
+be removed... the inapp version can be moved to a spike"): despite the
+query-side gap above being closed for real — a genuinely different,
+unrelated outcome from item 56's own performance-driven "not adopted"
+verdict, worth stating plainly since the two happened the same day — a
+separate decision was made not to keep ORE as an adopted, selectable
+framework feature at all. **Removed, not merely left un-Done**:
+`"OrderRevealing"` is no longer a valid `x-masking-searchable.indexKind`
+value (registration now rejects it with the same generic error any
+unrecognized value gets); `SearchableIndexKind`/`FilterableFieldIndexKind`
+both dropped the enum member; `PayloadIndexer`'s `OrderRevealing` case
+and `GraphQlFilterPredicateBuilder.ResolveOrderRevealingMatchesAsync`
+(framework glue code, not standalone — removed outright, full history in
+git) are gone. `OrderRevealingEncryption.cs` itself — the real, working,
+correctness-tested construction, including every fix described above —
+moved to `spikes/order-revealing-encryption/OrderRevealingEncryptionSpike/`
+(+ `.Tests/`, 8/8 passing standalone, zero `ProjectReference`s into the
+main solution), kept as a reference implementation rather than deleted,
+matching how item 56's native evaluators were handled. Full detail in
+`ADR-097`'s own final additive note. **Status: Removed** — the
+independent-human-cryptographic-review recommendation above no longer
+applies to anything currently adopted; it would only matter again if ORE
+were ever revived from the spike.
 
 ## In-Database Native Predicate Evaluator Seam
 

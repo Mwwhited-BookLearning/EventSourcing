@@ -1,9 +1,15 @@
 using System.Globalization;
 using System.Security.Cryptography;
-using EventStore.Domain.SchemaRegistry;
 
-namespace EventStore.Erasure;
+namespace OrderRevealingEncryptionSpike;
 
+// Moved here from src/EventStore.Erasure/OrderRevealingEncryption.cs when
+// ORE was removed as an adopted framework feature (ADR-097, reversed --
+// see that ADR's own additive note, and docs/08-build-plan.md item #55).
+// Real, working, correctness-tested code, kept as a reference
+// implementation rather than deleted outright -- not wired into
+// EventStore.slnx, matching this repo's other spikes/ folders.
+//
 // ADR-097 -- a from-scratch realization of the same high-level idea CLWW
 // (Chenette/Lewi/Weis/Wu, FSE 2016) and Lewi-Wu (CCS 2016) popularized:
 // per-prefix-keyed, block-level order-preserving encryption, revealing only
@@ -44,6 +50,12 @@ namespace EventStore.Erasure;
 // ciphertext blocks directly is meaningful, since both sides derived the
 // same sorted table), and completely unrelated mappings after it (where no
 // further comparison is meaningful or attempted).
+// A local copy of EventStore.Domain.SchemaRegistry.FilterableFieldType --
+// duplicated rather than referenced so this spike carries zero
+// ProjectReferences into the main solution, matching every other spikes/
+// folder's own standalone convention.
+public enum FilterableFieldType { String, Number, Boolean, DateTimeOffset }
+
 public static class OrderRevealingEncryption
 {
     private const int BlockCount = 8; // one block per byte of the 8-byte order-preserving encoding

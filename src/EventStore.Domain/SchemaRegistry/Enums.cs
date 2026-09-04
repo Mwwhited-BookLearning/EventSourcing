@@ -20,23 +20,26 @@ public enum RejectionBehavior
 
 public enum FilterableFieldType { String, Number, Boolean, DateTimeOffset }
 
-// ADR-096/ADR-097 -- which mechanism a filter predicate against this field
-// compiles to. PlaintextExpression is the default and every FilterableField
-// registered before these ADRs -- completely unchanged json_extract/->>/
-// JSON_VALUE behavior. The other three only ever apply to a field whose
-// schema also declares x-masking-searchable.
+// ADR-096 -- which mechanism a filter predicate against this field compiles
+// to. PlaintextExpression is the default and every FilterableField
+// registered before this ADR -- completely unchanged json_extract/->>/
+// JSON_VALUE behavior. The other two only ever apply to a field whose
+// schema also declares x-masking-searchable. A third kind, OrderRevealing
+// (ADR-097), was built, benchmarked, and removed as an adopted feature,
+// 2026-09-04 -- see ADR-097's own additive note; the real, working
+// implementation lives on as a reference in
+// spikes/order-revealing-encryption/, not wired into this enum anymore.
 public enum FilterableFieldIndexKind
 {
     PlaintextExpression,   // default -- today's json_extract/->>/JSON_VALUE mechanism, unchanged
     EncryptedBlindIndex,   // ADR-096 -- eq comparisons route to EncryptedFieldIndexEntry.Token
     EncryptedRangeBucket,  // ADR-096 -- gt/gte/lt/lte comparisons narrow via EncryptedFieldIndexEntry.Token bucket lookups, then an exact decrypt-and-compare step (IEncryptedPredicateEvaluator, ADR-098)
-    OrderRevealing,        // ADR-097 -- gt/gte/lt/lte comparisons compile to a native ciphertext comparison, no decryption needed to evaluate the predicate
 }
 
 // ADR-096 -- x-masking-searchable's own indexKind value, distinct from
 // FilterableFieldIndexKind: this is what a schema author declares; that
 // enum is what SchemaRegistryService derives it into for query routing.
-public enum SearchableIndexKind { Equality, Range, OrderRevealing }
+public enum SearchableIndexKind { Equality, Range }
 
 // ADR-096 -- Shared: one HMAC key per (AppId, EventTypeName, FieldJsonPath),
 // enables real cross-entity search, cleaned up by deleting index rows on

@@ -5,7 +5,7 @@ using EventStore.Domain.SchemaRegistry;
 
 namespace EventStore.Erasure;
 
-// ADR-096/ADR-097 -- the publish-time half of searchable encryption. Walks
+// ADR-096 -- the publish-time half of searchable encryption. Walks
 // the payload against its declared schema (the same shape PayloadEncryptor's
 // own walk uses -- no shared walker exists to extend, per this codebase's
 // established "each x-masking consumer walks independently" pattern), and
@@ -123,35 +123,6 @@ public class PayloadIndexer(SearchIndexKeyService searchIndexKeyService, Erasure
                 }
                 break;
             }
-            case SearchableIndexKind.OrderRevealing:
-            {
-                // ADR-097/build-plan item #55's own dedicated review, 2026-09-04
-                // -- computed by OrderRevealingEncryption, not the HMAC path
-                // above; the ciphertext itself is the indexed, comparable
-                // value, so no separate token derivation is needed here.
-                // Fixed-width UPPERCASE HEX, deliberately NOT base64 (Equality/
-                // Range's own encoding, above): empirically verified (40,000
-                // pairs, zero mismatches) that hex-string ordinal comparison
-                // agrees exactly with OrderRevealingEncryption.Compare's own
-                // block-by-block big-endian comparison -- hex digit characters
-                // ('0'-'9' then 'A'-'F') fall in ascending ASCII/codepoint order
-                // matching ascending nibble VALUE, so a plain string `>`/`<`
-                // comparison on this column reproduces the real ciphertext
-                // order. Base64's own alphabet does NOT have this property
-                // (its value-order and character-order diverge -- verified the
-                // same way: 532/40,000 mismatches), which is exactly why this
-                // item's own exit criterion ("compiles to a native ciphertext
-                // comparison") could never be met while this column held
-                // base64 -- see GraphQlFilterPredicateBuilder.
-                // ResolveOrderRevealingMatchesAsync for the query-side half.
-                var ciphertext = OrderRevealingEncryption.Encrypt(await ResolveOreKeyAsync(appId, eventTypeName, field.JsonPath, entityId, keyScope, ct), rawValueText, field.DataType);
-                entries.Add(new EncryptedFieldIndexEntry
-                {
-                    AppId = appId, EntityId = entityId, EventTypeName = eventTypeName, FieldJsonPath = field.JsonPath,
-                    IndexKind = SearchableIndexKind.OrderRevealing, Granularity = null, Token = Convert.ToHexString(ciphertext), StoredEventSequenceNumber = sequenceNumber,
-                });
-                break;
-            }
         }
     }
 
@@ -183,22 +154,4 @@ public class PayloadIndexer(SearchIndexKeyService searchIndexKeyService, Erasure
         return SHA256.HashData(derivationCiphertext);
     }
 
-    private async Task<byte[]> ResolveOreKeyAsync(string appId, string eventTypeName, string fieldJsonPath, string entityId, SearchIndexKeyScope keyScope, CancellationToken ct) =>
-        keyScope == SearchIndexKeyScope.PerEntity
-            ? await DerivePerEntityKeyAsync(appId, entityId, ct)
-            : await ResolveSharedOreKeyAsync(appId, eventTypeName, fieldJsonPath, ct);
-
-    private async Task<byte[]> ResolveSharedOreKeyAsync(string appId, string eventTypeName, string fieldJsonPath, CancellationToken ct)
-    {
-        // ORE needs the raw key bytes to run its own compare-function
-        // construction (unlike the HMAC path, which only ever needs a
-        // compute-under-key oracle) -- ISearchIndexKeyStore's ComputeHmacAsync
-        // is repurposed here as that oracle: hashing a fixed label under the
-        // field's own managed key yields a deterministic, key-dependent seed
-        // exactly the same way DerivePerEntityKeyAsync repurposes
-        // IErasureKeyStore.EncryptAsync above, without needing a second
-        // interface method or ever exposing the store's own raw key material.
-        var (keyReference, backend) = await searchIndexKeyService.GetOrCreateAsync(appId, eventTypeName, fieldJsonPath, ct);
-        return await backend.ComputeHmacAsync(keyReference, "ore-key-seed-v1"u8.ToArray(), ct);
-    }
 }

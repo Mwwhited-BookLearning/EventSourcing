@@ -76,18 +76,17 @@ public static class GraphQlFilterPredicateBuilder
         return body ?? throw new GraphQLException($"where: \"{clause.Field}\" named no operator (eq/neq/gt/gte/lt/lte/contains).");
     }
 
-    // ADR-096/097 -- resolves matching SequenceNumbers against
-    // EncryptedFieldIndexEntry (or, for OrderRevealing, a native ciphertext
-    // compare over the same table's rows), then folds the result in as an
-    // ordinary Contains expression -- the same materialized-ID-list
-    // technique EventTailReader already uses for lineage/parent filtering.
+    // ADR-096 -- resolves matching SequenceNumbers against
+    // EncryptedFieldIndexEntry, then folds the result in as an ordinary
+    // Contains expression -- the same materialized-ID-list technique
+    // EventTailReader already uses for lineage/parent filtering.
     private static async Task<Expression> BuildEncryptedClauseExpressionAsync(
         EventStoreContext db, string appId, string eventTypeName, SearchIndexKeyService searchIndexKeyService,
         IEncryptedPredicateEvaluator predicateEvaluator, FilterableField field, EventFilterInput clause,
         ParameterExpression eventParam, CancellationToken ct)
     {
         if (clause.Contains is not null)
-            throw new GraphQLException($"where: \"{clause.Field}\" is an encrypted field -- contains is never supported against any encrypted IndexKind (ADR-096/097).");
+            throw new GraphQLException($"where: \"{clause.Field}\" is an encrypted field -- contains is never supported against any encrypted IndexKind (ADR-096).");
 
         // ADR-096's own named limitation: a PerEntity-scope token is derived
         // from one specific entity's own DEK, so there is no key a
@@ -102,7 +101,6 @@ public static class GraphQlFilterPredicateBuilder
         {
             FilterableFieldIndexKind.EncryptedBlindIndex => await ResolveBlindIndexMatchesAsync(db, appId, eventTypeName, searchIndexKeyService, field, clause, ct),
             FilterableFieldIndexKind.EncryptedRangeBucket => await ResolveRangeBucketMatchesAsync(db, appId, eventTypeName, searchIndexKeyService, predicateEvaluator, field, clause, ct),
-            FilterableFieldIndexKind.OrderRevealing => await ResolveOrderRevealingMatchesAsync(db, appId, eventTypeName, searchIndexKeyService, field, clause, ct),
             _ => throw new InvalidOperationException($"Unexpected encrypted IndexKind: {field.IndexKind}"),
         };
 
@@ -187,80 +185,6 @@ public static class GraphQlFilterPredicateBuilder
         var upperOp = clause.Lte is not null ? "lte" : "lt";
         var afterLower = await predicateEvaluator.EvaluateAsync(candidateSequenceNumbers, field.JsonPath, field.DataType.ToString(), lowerOp, lower, ct);
         return await predicateEvaluator.EvaluateAsync(afterLower, field.JsonPath, field.DataType.ToString(), upperOp, upper, ct);
-    }
-
-    // build-plan item #55's own literal exit criterion ("a range query
-    // against an OrderRevealing field compiles to a native ciphertext
-    // comparison with no decryption performed to evaluate the predicate")
-    // was NOT actually met until this pass, 2026-09-04 -- found while doing
-    // this item's own further review/hardening work: the prior version of
-    // this method pulled EVERY row for the field into application memory
-    // (`ToListAsync` with no filter beyond field identity) and ran
-    // OrderRevealingEncryption.Compare in a C# LINQ-to-Objects `Where`, a
-    // full scan, never pushed to the database at all -- not "app-tier
-    // compare instead of native" (which the build-plan's own prior text
-    // already disclosed), but no predicate pushdown whatsoever. Fixed by
-    // pushing an ordinary string `>`/`<`/`==` comparison down as a real SQL
-    // WHERE clause against the Token column -- this works with ZERO custom
-    // native function (unlike ADR-098's item #56, built for a genuinely
-    // different comparison shape: decrypt-then-compare-against-plaintext)
-    // because of PayloadIndexer's own hex-not-base64 encoding choice
-    // (empirically verified, see that class's own OrderRevealing case
-    // comment): a plain ordinal string comparison on hex-encoded ciphertext
-    // agrees exactly with OrderRevealingEncryption.Compare's real ordering.
-    private static async Task<IReadOnlyList<long>> ResolveOrderRevealingMatchesAsync(
-        EventStoreContext db, string appId, string eventTypeName, SearchIndexKeyService searchIndexKeyService, FilterableField field, EventFilterInput clause, CancellationToken ct)
-    {
-        var resolved = await searchIndexKeyService.ResolveAsync(appId, eventTypeName, field.JsonPath, ct);
-        if (resolved is null)
-            return [];
-        var (keyReference, backend) = resolved.Value;
-
-        // ORE needs the raw key bytes for its own compare-function
-        // construction (unlike the HMAC path above, which only ever needs a
-        // compute-under-key oracle) -- ComputeHmacAsync over a fixed label is
-        // repurposed as that key-derivation oracle here, the same trick
-        // PayloadIndexer.ResolveSharedOreKeyAsync uses at publish time, so
-        // both sides derive the identical key without ISearchIndexKeyStore
-        // ever exposing its own managed key material directly.
-        var oreKey = await backend.ComputeHmacAsync(keyReference, "ore-key-seed-v1"u8.ToArray(), ct);
-
-        IQueryable<EncryptedFieldIndexEntry> baseQuery = db.EncryptedFieldIndexEntries
-            .Where(e => e.AppId == appId && e.EventTypeName == eventTypeName && e.FieldJsonPath == field.JsonPath && e.IndexKind == SearchableIndexKind.OrderRevealing);
-
-        IQueryable<EncryptedFieldIndexEntry>? query = null;
-        void Narrow(string op, string comparisonValue)
-        {
-            var comparisonHex = Convert.ToHexString(OrderRevealingEncryption.Encrypt(oreKey, comparisonValue, field.DataType));
-            var scoped = op switch
-            {
-                "eq" => baseQuery.Where(e => e.Token == comparisonHex),
-                "neq" => baseQuery.Where(e => e.Token != comparisonHex),
-                // string.CompareTo on a mapped column translates to a native
-                // ordinal `>`/`<` comparison for all three providers this
-                // design targets (Sqlite/Npgsql/SqlServer) -- verified for
-                // real against a live instance of each, not assumed; see
-                // this item's own real-database verification test.
-                "gt" => baseQuery.Where(e => e.Token.CompareTo(comparisonHex) > 0),
-                "gte" => baseQuery.Where(e => e.Token.CompareTo(comparisonHex) >= 0),
-                "lt" => baseQuery.Where(e => e.Token.CompareTo(comparisonHex) < 0),
-                "lte" => baseQuery.Where(e => e.Token.CompareTo(comparisonHex) <= 0),
-                _ => baseQuery.Where(_ => false),
-            };
-            query = query is null ? scoped : query.Intersect(scoped);
-        }
-
-        if (clause.Eq is { } eq) Narrow("eq", eq);
-        if (clause.Neq is { } neq) Narrow("neq", neq);
-        if (clause.Gt is { } gt) Narrow("gt", gt);
-        if (clause.Gte is { } gte) Narrow("gte", gte);
-        if (clause.Lt is { } lt) Narrow("lt", lt);
-        if (clause.Lte is { } lte) Narrow("lte", lte);
-
-        if (query is null)
-            throw new GraphQLException($"where: \"{clause.Field}\" named no operator (eq/neq/gt/gte/lt/lte).");
-
-        return await query.Select(e => e.StoredEventSequenceNumber).Distinct().ToListAsync(ct);
     }
 
     private static Expression Combine(Expression? left, Expression right) => left is null ? right : Expression.AndAlso(left, right);

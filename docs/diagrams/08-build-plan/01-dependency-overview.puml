@@ -50,7 +50,7 @@ state "Local Services" as tierLocal {
   state "Mechanism-Level\nOTel Instrumentation" as a23 #palegreen
   state "Expected-Response\nTracking" as a26 #palegreen
   state "Searchable Blind-Index &\nBucketed-Range Indexes" as a31 #palegreen
-  state "Order-Revealing\nEncryption Range Index" as a32 #palegoldenrod
+  state "Order-Revealing\nEncryption Range Index" as a32
   state "In-Database Native\nPredicate Evaluator Seam" as a33 #palegoldenrod
   state "PlantUML-Native Flow Engine &\nPending-Task Read Model" as a34 #palegreen
 }

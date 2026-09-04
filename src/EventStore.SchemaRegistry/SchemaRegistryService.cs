@@ -769,7 +769,6 @@ public class SchemaRegistryService(
         {
             SearchableIndexKind.Equality => FilterableFieldIndexKind.EncryptedBlindIndex,
             SearchableIndexKind.Range => FilterableFieldIndexKind.EncryptedRangeBucket,
-            SearchableIndexKind.OrderRevealing => FilterableFieldIndexKind.OrderRevealing,
             _ => FilterableFieldIndexKind.PlaintextExpression,
         };
         return (indexKind, config);

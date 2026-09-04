@@ -11,12 +11,11 @@ using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace EventStore.IntegrationTests;
 
-// ADR-096/097 -- the two scenarios docs/features/filter-pushdown.md's own
+// ADR-096 -- the two scenarios docs/features/filter-pushdown.md's own
 // Gherkin already named for this feature: an equality query against a
 // blind-indexed encrypted field never extracts Payload as plaintext, and
 // entity erasure removes that entity's own Shared-scope index rows without
-// touching ChainHash. Plus the registration-time cardinality guardrail
-// (ADR-096) and the OrderRevealing no-override guardrail (ADR-097).
+// touching ChainHash. Plus the registration-time cardinality guardrail.
 [TestClass]
 public class SearchableEncryptionSqliteTests
 {
@@ -262,8 +261,13 @@ public class SearchableEncryptionSqliteTests
         Assert.IsTrue(failure.Errors.Any(e => e.Contains("cardinality is required")));
     }
 
+    // ADR-097 was reversed, 2026-09-04 (removed as an adopted feature --
+    // see that ADR's own additive note and docs/08-build-plan.md item #55).
+    // "OrderRevealing" is no longer a recognized indexKind at all, so this
+    // now fails the same generic check any unrecognized value would, rather
+    // than the ORE-specific no-override guardrail this test used to name.
     [TestMethod]
-    public async Task RegisteringOrderRevealingOnAClassifiedFieldIsAlwaysRejectedNoOverrideAccepted()
+    public async Task RegisteringOrderRevealingIsRejectedAsAnUnrecognizedIndexKindNowThatOreIsRemoved()
     {
         using var db = CreateContext();
         var registry = new SchemaRegistryService(db, new SqliteFilterableFieldIndexDdlGenerator(), new MemoryCache(new MemoryCacheOptions()), UpcastingTestSupport.CreateEvaluator());
@@ -275,8 +279,7 @@ public class SearchableEncryptionSqliteTests
                 "PatientId": { "type": "string" },
                 "BirthDate": {
                   "type": "string",
-                  "x-masking": { "requiredClaim": "phi:view", "strategy": "FixedValue", "regulatoryClassification": "PHI" },
-                  "x-masking-searchable": { "indexKind": "OrderRevealing", "keyScope": "Shared", "acknowledgeLeakageRisk": true }
+                  "x-masking-searchable": { "indexKind": "OrderRevealing", "keyScope": "Shared" }
                 }
               },
               "required": ["PatientId", "BirthDate"]
@@ -290,25 +293,6 @@ public class SearchableEncryptionSqliteTests
             ParentValidationMode: null, RequiredClaims: null, UpcastFromPrevious: null, DowncastToPrevious: null));
 
         var failure = (RegisterEventTypeResult.ValidationFailed)result;
-        Assert.IsTrue(failure.Errors.Any(e => e.Contains("OrderRevealing") && e.Contains("never")));
-    }
-
-    // The real end-to-end range-query proof for OrderRevealing (build-plan
-    // item #55's own exit criterion) lives in OrderRevealingRangeQuery
-    // ScenarioAssertions/*Tests.cs instead -- run against all three
-    // providers, not just SQLite, since it exercises a genuinely new native-
-    // SQL-translation mechanism (ordinal string comparison on the Token
-    // column), not one already proven elsewhere.
-    [TestMethod]
-    public async Task RangeQueryAgainstAnOrderRevealingIndexedFieldMatchesViaANativeSqlComparisonNeverDecryptingToCompare()
-    {
-        using var db = CreateContext();
-        var registry = new SchemaRegistryService(db, new SqliteFilterableFieldIndexDdlGenerator(), new MemoryCache(new MemoryCacheOptions()), UpcastingTestSupport.CreateEvaluator());
-        var (encryptor, _, _) = ErasureTestSupport.CreateErasureStack(db, registry);
-        var (indexer, searchIndexKeyService, predicateEvaluator) = ErasureTestSupport.CreateSearchIndexStack(db, registry);
-        var publish = new PublishService(db, registry, new SqliteUniqueConstraintViolationDetector(), encryptor, indexer);
-
-        await OrderRevealingRangeQueryScenarioAssertions.RangeQueryMatchesViaANativeSqlComparisonNeverDecryptingToCompare(
-            db, registry, publish, searchIndexKeyService, predicateEvaluator);
+        Assert.IsTrue(failure.Errors.Any(e => e.Contains("indexKind must be one of") && e.Contains("OrderRevealing")));
     }
 }

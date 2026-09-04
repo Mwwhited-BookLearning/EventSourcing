@@ -154,3 +154,40 @@ real ordering in practice. This closes the query-side gap named above
 seam exists for a different comparison shape (decrypt-then-compare
 against a plaintext bound), while ORE's own design was always meant to be
 compared as opaque, already-ordered bytes.
+
+**Final additive note, 2026-09-04 — ORE removed as an adopted feature,
+direct request** ("the ORE feature can be removed... the inapp version
+can be moved to a spike"): despite the query-side gap above being closed
+for real (not blocked on performance, unlike `ADR-098`'s native
+evaluators — a genuinely different reason, worth stating plainly since
+the two removals happened the same day and are easy to conflate), a
+separate decision was made not to keep ORE as an adopted, selectable
+framework feature. **This ADR's own Decision above is superseded, not
+deleted, per this project's additive-history convention**:
+- `"OrderRevealing"` is no longer a valid `x-masking-searchable.indexKind`
+  value — registration now rejects it with the same generic "must be one
+  of Equality, Range" error any unrecognized value gets, not the
+  ORE-specific no-override guardrail described above (which is now dead
+  code, removed along with everything else this note names).
+  `SearchableIndexKind`/`FilterableFieldIndexKind` both dropped their
+  `OrderRevealing` enum member.
+- `OrderRevealingEncryption.cs` (the from-scratch CLWW/Lewi-Wu-inspired
+  construction, including the two real correctness fixes and the
+  hex-encoding query-pushdown fix, all described above) moved to
+  `spikes/order-revealing-encryption/OrderRevealingEncryptionSpike/` —
+  real, working, still-passing code (8/8 tests, moved alongside it to
+  `OrderRevealingEncryptionSpike.Tests/`), kept as a reference
+  implementation rather than deleted outright, matching how the native
+  predicate evaluators were handled in `ADR-098`. Deliberately
+  self-contained (a local copy of `FilterableFieldType`, zero
+  `ProjectReference`s into the main solution) — not wired into
+  `EventStore.slnx`.
+- `PayloadIndexer`'s `OrderRevealing` case and
+  `GraphQlFilterPredicateBuilder.ResolveOrderRevealingMatchesAsync` (the
+  query-side native-SQL-pushdown fix from the note above) were framework
+  glue code, not standalone — removed outright rather than moved, since
+  they depend directly on `EventStoreContext`/`EncryptedFieldIndexEntry`/
+  `SearchIndexKeyService` and could not be a real standalone spike. Their
+  full history remains in git; nothing here is unrecoverable.
+- `08-build-plan.md` item #55 is corrected the same pass to record this
+  as the item's own real, final outcome, not merely a not-yet-Done status.
