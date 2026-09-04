@@ -143,6 +143,55 @@ public class DelegatedGrantsRbacFederationHttpSqliteTests
         return body.GetProperty("correlationId").GetGuid();
     }
 
+    // ADR-107 -- registers EventStore.Ucan's own UcanDelegationIssuedEventType,
+    // the same "operator-client, registry:admin" shape RegisterPatientEnrolledAsync
+    // above already uses for an ordinary, application-registered type.
+    private static async Task RegisterUcanDelegationIssuedTypeAsync(string appId)
+    {
+        var (token, key) = await AuthScenarioAssertions.GetTokenAsync(_devIdpClient, "operator-client", "operator-client-secret", "registry:admin");
+        using var request = new HttpRequestMessage(HttpMethod.Put, $"/registry/{UcanDelegationIssuedEventType.Name}")
+        {
+            Content = JsonContent.Create(new
+            {
+                appId,
+                jsonSchema = UcanDelegationIssuedEventType.Schema,
+                filterableFields = Array.Empty<object>(),
+                changeKind = "Full",
+                entityIdField = "$.GrantRef",
+            }),
+        };
+        AuthScenarioAssertions.AttachAuth(request, _hostClient, token, key);
+        var response = await _hostClient.SendAsync(request);
+        Assert.AreEqual(HttpStatusCode.Created, response.StatusCode, await response.Content.ReadAsStringAsync());
+    }
+
+    // ADR-107 -- the real, opt-in audit step a granter application calls
+    // AFTER UcanDelegation.Create succeeds, over the ordinary Publish API.
+    // Uses publisher-client (holds events:publish) as the HTTP caller,
+    // not the granter's own identity (clinician-spa-client, used
+    // elsewhere in this file, holds no events:publish scope at all) --
+    // the semantic granter/grantee are recorded in the payload's own
+    // fields, independent of which credential actually POSTs the record,
+    // the same distinction a real service publishing on behalf of a
+    // business workflow would have.
+    private static async Task PublishDelegationIssuedAsync(
+        string appId, string granterActorId, string granteeActorId, IReadOnlyList<string> capabilityClaims, Guid grantRef, DateTimeOffset expiresAt)
+    {
+        var (token, key) = await AuthScenarioAssertions.GetTokenAsync(_devIdpClient, "publisher-client", "publisher-client-secret", "events:publish");
+        using var request = new HttpRequestMessage(HttpMethod.Post, $"/publish/{UcanDelegationIssuedEventType.Name}")
+        {
+            Content = JsonContent.Create(new
+            {
+                appId,
+                schemaVersion = 1,
+                payload = UcanDelegationIssuedEventType.BuildPayload(granterActorId, granteeActorId, capabilityClaims, grantRef, expiresAt),
+            }),
+        };
+        AuthScenarioAssertions.AttachAuth(request, _hostClient, token, key);
+        var response = await _hostClient.SendAsync(request);
+        Assert.AreEqual(HttpStatusCode.Accepted, response.StatusCode, await response.Content.ReadAsStringAsync());
+    }
+
     private static async Task<JsonElement> RevealSsnAsync(string appId, string patientId, Guid eventId, string token, DpopKeyPair key)
     {
         using var request = new HttpRequestMessage(Query, "/graphql")
@@ -227,6 +276,59 @@ public class DelegatedGrantsRbacFederationHttpSqliteTests
 
         var revealP2 = await RevealSsnAsync(appId, "p-2", eventP2, grantedToken, granteeKey);
         Assert.IsTrue(revealP2.TryGetProperty("errors", out _), revealP2.ToString());
+    }
+
+    [TestMethod]
+    public async Task IssuingADelegationCanBeRecordedAsARealQueryableAuditEvent()
+    {
+        // ADR-107 -- resolves docs/10-open-questions.md's last row: issuance
+        // stays fully offline (UcanDelegation.Create needs no network call,
+        // unchanged below) -- this proves the SEPARATE, opt-in audit step a
+        // real granter application calls afterward actually lands in the
+        // Entity Store as a real, queryable event, not merely that the type
+        // registers cleanly.
+        const string appId = "delegated-grant-demo-5";
+        await RegisterUcanDelegationIssuedTypeAsync(appId);
+
+        var (granterToken, _) = await GetSubjectTokenAsync("clinician-spa-client", "clinician-spa-client-secret", "");
+        var granterKey = DevIdpSeeder.GetClientKeyPair("clinician-spa-client");
+        var grantRef = Guid.NewGuid();
+        var expiresAt = DateTimeOffset.UtcNow.AddMinutes(5);
+
+        var delegation = UcanDelegation.Create(
+            granterKey, "clinician-spa-client", "colleague-client", appId,
+            [new DelegatedCapability("clearance:phi", null)], expiresAt - DateTimeOffset.UtcNow, granterToken);
+        Assert.IsFalse(string.IsNullOrEmpty(delegation));
+
+        await PublishDelegationIssuedAsync(appId, "clinician-spa-client", "colleague-client", ["clearance:phi"], grantRef, expiresAt);
+        await Task.Delay(500); // RouterWorker's own 200ms poll -- same real-Host wait every other GraphQL HTTP test already uses
+
+        // `capabilities` (a JSON Schema "array"-typed property) is
+        // deliberately never queried here -- EventTypeSchemaReader.cs's own
+        // documented, pre-existing narrowing (08-build-plan.md): the
+        // dynamic entity/payload GraphQL layer is scalar-only, an
+        // "object"/"array"-typed top-level property is silently skipped,
+        // not exposed as a field at all. Found for real (a genuine `does
+        // not exist on the type` GraphQL error) while writing this test,
+        // not assumed -- the 3 scalar fields below are still real,
+        // independent proof the event landed correctly.
+        var fieldName = $"entity_{appId.Replace('-', '_')}_{UcanDelegationIssuedEventType.Name.ToLowerInvariant()}";
+        using var request = new HttpRequestMessage(Query, "/graphql")
+        {
+            Content = new StringContent(JsonSerializer.Serialize(new
+            {
+                query = $$"""query { {{fieldName}}(id: "{{grantRef}}") { granterActorId granteeActorId grantRef } }""",
+            }), Encoding.UTF8, "application/json"),
+        };
+        var (readerToken, readerKey) = await AuthScenarioAssertions.GetTokenAsync(_devIdpClient, "follower-client", "follower-client-secret", "events:follow");
+        AuthScenarioAssertions.AttachAuth(request, _hostClient, readerToken, readerKey);
+        var response = await _hostClient.SendAsync(request);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.IsFalse(body.TryGetProperty("errors", out _), body.ToString());
+        var entity = body.GetProperty("data").GetProperty(fieldName);
+        Assert.AreEqual("clinician-spa-client", entity.GetProperty("granterActorId").GetString());
+        Assert.AreEqual("colleague-client", entity.GetProperty("granteeActorId").GetString());
+        Assert.AreEqual(grantRef.ToString(), entity.GetProperty("grantRef").GetString());
     }
 
     [TestMethod]

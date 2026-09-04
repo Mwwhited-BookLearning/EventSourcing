@@ -84,6 +84,13 @@ Decision:
   today leaves no record in the Event Log that it was ever issued, and
   cannot be revoked early if a granter changes their mind or a grantee's
   access needs to be pulled before natural expiry.
+  **Issuance half corrected by `ADR-107`**: a `ucanDelegationIssued`
+  event now exists, recorded via a separate, opt-in Publish-API call a
+  real granter application makes after `UcanDelegation.Create` succeeds
+  — `Create` itself stays unchanged, fully offline. The revocation half
+  remains open: `ADR-104`'s own `UcanDelegationRevoked` mechanism was
+  found, while building `ADR-107`, to still be entirely unbuilt (design
+  only) — tracked in `TODO.md`.
 - ~~**Not resolved here, flagged to `docs/10-open-questions.md`**: whether
   every *read* made under a delegated grant should itself be logged as
   an auditable event...~~ **Resolved by `ADR-045`, written directly in
