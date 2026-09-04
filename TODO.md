@@ -37,22 +37,6 @@ above: deleted from this file, full narrative in
 here — a genuinely undecided fork, not decided work with only the doing
 left.)
 
-- [ ] **`ADR-104`'s own live revocation check for delegated UCAN grants was
-  never actually built — design only, discovered while building `ADR-107`
-  (issuance audit event).** `ADR-104`'s Decision text says plainly "this
-  is a design decision only — no code changes this pass," confirmed by a
-  direct code search: no `UcanDelegationRevoked` type exists anywhere in
-  `src/`, and `UcanValidator.ValidateAsync` (`EventStore.Ucan`) has no
-  revocation check of any kind. The "grants should be validated on the
-  server time to check for a revocation" decision from earlier this
-  session is still not running code — a delegation today remains valid
-  until its own `exp` claim passes, full stop, exactly the pre-`ADR-104`
-  behavior. Needs: the `UcanDelegationRevoked` event type (mirroring
-  `ADR-107`'s own `ucanDelegationIssued` shape/conventions), a real
-  revoke endpoint/call path a granter uses, and the actual live query
-  added at `UcanValidator.ValidateAsync`'s own choke point per `ADR-104`'s
-  design.
-
 The five-phase design-review program (missing-documents sweep, full ADR
 review, proving-ground domain review, cross-domain-to-framework review,
 architecture/design compliance guideline) plus Phase 5 (linting/static-

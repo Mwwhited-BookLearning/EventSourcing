@@ -93,3 +93,49 @@ Consequences:
   citations (the general pattern, not adopted mechanisms themselves —
   RFC 7662, already adopted via `ADR-040`, is the actual mechanism
   reused).
+
+**Built, 2026-09-04.** This ADR's own "design decision only" bullet above
+was left unbuilt through the entire 2026-09-02→03 design-phase-only
+window and was only discovered still unbuilt while landing `ADR-107`
+(the sibling issuance-audit ADR) — flagged there honestly, tracked in
+`TODO.md`, and closed here for real:
+- `UcanDelegationRevoked` is a genuinely platform-**reserved** event
+  (`src/EventStore.Rbac/UcanDelegationRevokedEventType.cs`), unlike
+  `ADR-107`'s deliberately-ordinary `ucanDelegationIssued` — matching
+  this ADR's own explicit "reuses `ADR-067`'s... reserved event"
+  framing. `POST /ucan/delegations/{grantRef}/revoke`
+  (`EventStore.Rbac/RbacEndpoints.cs`), gated the same
+  `registry:admin`/`AppIdScopeEvaluator.CanAdminister` tier
+  `RoleRevokedEventType`'s own endpoint already uses, is the real
+  granter-facing revoke call.
+- The fold/query mechanism this ADR left open ("a lightweight,
+  queryable fold of these events... whichever proves simpler") landed
+  as the fold: `RbacProjectionWorker` (already tailing `RoleGranted`/
+  `RoleRevoked`/`PermissionGranted`/`AppTrustRootRegistered` into
+  DevIdp's own local tables) now also tails `UcanDelegationRevoked`
+  into a new local `RevokedDelegations` table
+  (`RevocationService`/`RevokedDelegation.cs`) — the same "DevIdp keeps
+  its own queryable copy, populated by Follow, never a live dependency
+  on any Host's own `EventStoreContext`" posture `TrustRootService`/
+  `AppTrustRoot` already established for `ADR-044`.
+- `UcanValidator.ValidateAsync` gained a new, optional `Func<Guid,
+  Task<bool>> isRevoked` parameter, consulted by `GrantRef` (the
+  delegation's own `jti`) after every existing offline check passes —
+  a delegation found revoked fails with `"delegation has been
+  revoked"`, exactly this ADR's own "still-unexpired-but-revoked must
+  still fail" requirement. Wired into the one real call site,
+  `EventStore.DevIdp/Program.cs`'s `/connect/token` UCAN-exchange
+  branch, backed by the new `RevocationService`.
+- Real verification, not a stand-in call:
+  `tests/EventStore.IntegrationTests/UcanDelegationRevocationHttpSqliteTests.cs`
+  issues a real delegation, exchanges it successfully, revokes it over
+  real HTTP, folds the real event through the real Follow subscription
+  (`RbacProjectionWorker.CatchUpOnceAsync`, the same "drive the fold
+  directly, post-`ClassInit`" pattern `RbacProjectionWorkerHttpSqliteTests.cs`
+  already established), and confirms the identical delegation is then
+  genuinely rejected (`400`, `"delegation has been revoked"`) — plus a
+  second test confirming the check is genuinely keyed by `GrantRef`,
+  not a blanket per-`AppId` check. Both passing; the adjacent
+  `DelegatedGrantsRbacFederationHttpSqliteTests`/
+  `RbacProjectionWorkerHttpSqliteTests` suites (11 tests) confirmed
+  unaffected.

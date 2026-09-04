@@ -87,6 +87,23 @@ public static class RbacEndpoints
             return ToResult(result);
         }).RequireAuthorization("registry:trust-admin");
 
+        // ADR-104 -- the real revoke endpoint a granter application calls,
+        // publishing the reserved UcanDelegationRevoked event. Gated the
+        // same "registry:admin" + AppIdScopeEvaluator.CanAdminister tier
+        // RoleRevokedEventType's own DELETE endpoint above already uses --
+        // architecturally the identical shape (a control-plane revocation
+        // action), no new authorization model invented for this one type.
+        app.MapPost("/ucan/delegations/{grantRef:guid}/revoke", async (Guid grantRef, RevokeUcanDelegationRequest request, ClaimsPrincipal user, SchemaRegistryService schemaRegistry, PublishService publish, CancellationToken ct) =>
+        {
+            if (!AppIdScopeEvaluator.CanAdminister(user, request.AppId))
+                return Results.Forbid();
+
+            await UcanDelegationRevokedEventType.EnsureRegisteredAsync(schemaRegistry, request.AppId, ct);
+            var payload = UcanDelegationRevokedEventType.BuildPayload(grantRef, DateTimeOffset.UtcNow);
+            var result = await publish.PublishAsync(UcanDelegationRevokedEventType.Name, new PublishEventRequest(request.AppId, 1, payload, null, null), user, ct);
+            return ToResult(result);
+        }).RequireAuthorization("registry:admin");
+
         return app;
     }
 
@@ -109,3 +126,4 @@ public static class RbacEndpoints
 public record GrantRoleRequest(string AppId, string ActorId);
 public record GrantPermissionRequest(string AppId, string ActorId, string Permission);
 public record RegisterTrustRootRequest(string AppId, string? Description);
+public record RevokeUcanDelegationRequest(string AppId);

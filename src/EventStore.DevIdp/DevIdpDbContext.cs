@@ -22,6 +22,7 @@ public class DevIdpDbContext(DbContextOptions<DevIdpDbContext> options) : DbCont
     public DbSet<UserPermission> UserPermissions => Set<UserPermission>();
     public DbSet<TrustedFederationIssuer> TrustedFederationIssuers => Set<TrustedFederationIssuer>();
     public DbSet<FederatedIdentityMapping> FederatedIdentityMappings => Set<FederatedIdentityMapping>();
+    public DbSet<RevokedDelegation> RevokedDelegations => Set<RevokedDelegation>(); // ADR-104
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -51,5 +52,6 @@ public class DevIdpDbContext(DbContextOptions<DevIdpDbContext> options) : DbCont
         modelBuilder.Entity<UserPermission>(e => e.HasKey(x => new { x.ActorId, x.AppId, x.Permission }));
         modelBuilder.Entity<TrustedFederationIssuer>(e => e.HasKey(x => new { x.AppId, x.Issuer }));
         modelBuilder.Entity<FederatedIdentityMapping>(e => e.HasKey(x => new { x.AppId, x.Issuer, x.Sub }));
+        modelBuilder.Entity<RevokedDelegation>(e => e.HasKey(x => x.GrantRef));
     }
 }

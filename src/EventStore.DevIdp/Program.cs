@@ -86,6 +86,7 @@ builder.Services.AddSingleton<TicketStore>(); // ADR-040 -- in-process, non-pers
 var clientSecretRotationStore = new ClientSecretRotationStore();
 builder.Services.AddSingleton(clientSecretRotationStore);
 builder.Services.AddScoped<TrustRootService>(); // ADR-044
+builder.Services.AddScoped<RevocationService>(); // ADR-104
 builder.Services.AddScoped<RoleService>(); // ADR-046
 builder.Services.AddScoped<FederationService>(); // ADR-047
 builder.Services.AddHttpClient(); // FederationService's own JWKS fetch
@@ -271,7 +272,8 @@ using (var scope = app.Services.CreateScope())
 app.MapPost("/connect/token", async (
     HttpContext httpContext, IOpenIddictApplicationManager applicationManager, IDpopReplayCache replayCache,
     TicketStore ticketStore, IOptionsMonitor<OpenIddictServerOptions> serverOptions,
-    TrustRootService trustRootService, RoleService roleService, FederationService federationService) =>
+    TrustRootService trustRootService, RoleService roleService, FederationService federationService,
+    RevocationService revocationService) =>
 {
     var request = httpContext.GetOpenIddictServerRequest() ??
         throw new InvalidOperationException("The OpenID Connect request cannot be retrieved.");
@@ -333,7 +335,7 @@ app.MapPost("/connect/token", async (
         // never issued by this IdP); anything else is treated as a
         // federated exchange candidate.
         if (request.RequestedTokenType is "urn:ietf:params:oauth:token-type:access_token" or null)
-            return await ExchangeForAugmentedAccessTokenAsync(request, trustRootService, federationService, roleService, serverOptions, dpopResult.Jkt!);
+            return await ExchangeForAugmentedAccessTokenAsync(request, trustRootService, federationService, roleService, revocationService, serverOptions, dpopResult.Jkt!);
 
         return Results.Json(new { error = "invalid_request", error_description = $"unsupported requested_token_type: {request.RequestedTokenType}" }, statusCode: StatusCodes.Status400BadRequest);
     }
@@ -471,7 +473,7 @@ async Task<IResult> IssueTicketAsync(string? subjectToken, string secretRef, Tic
 // parameter for "which application namespace is this exchange scoped to."
 async Task<IResult> ExchangeForAugmentedAccessTokenAsync(
     OpenIddictRequest request, TrustRootService trustRootService, FederationService federationService, RoleService roleService,
-    IOptionsMonitor<OpenIddictServerOptions> serverOptions, string callerJkt)
+    RevocationService revocationService, IOptionsMonitor<OpenIddictServerOptions> serverOptions, string callerJkt)
 {
     var subjectToken = request.SubjectToken;
     if (string.IsNullOrEmpty(subjectToken))
@@ -483,7 +485,7 @@ async Task<IResult> ExchangeForAugmentedAccessTokenAsync(
 
     var subjectTyp = new JsonWebToken(subjectToken).Typ;
     return subjectTyp == "ucan+jwt"
-        ? await ExchangeUcanDelegationAsync(subjectToken, appId, trustRootService, serverOptions, callerJkt)
+        ? await ExchangeUcanDelegationAsync(subjectToken, appId, trustRootService, revocationService, serverOptions, callerJkt)
         : await ExchangeFederatedTokenAsync(subjectToken, appId, federationService, roleService, callerJkt);
 }
 
@@ -498,12 +500,13 @@ async Task<IResult> ExchangeForAugmentedAccessTokenAsync(
 // the token request's own proof" pattern the client_credentials branch
 // above already uses; omitting it would leave the issued token
 // unusable against any DPoP-protected resource at all.
-async Task<IResult> ExchangeUcanDelegationAsync(string delegationJwt, string appId, TrustRootService trustRootService, IOptionsMonitor<OpenIddictServerOptions> serverOptions, string callerJkt)
+async Task<IResult> ExchangeUcanDelegationAsync(string delegationJwt, string appId, TrustRootService trustRootService, RevocationService revocationService, IOptionsMonitor<OpenIddictServerOptions> serverOptions, string callerJkt)
 {
     var result = await UcanValidator.ValidateAsync(
         delegationJwt,
         () => Task.FromResult<IReadOnlyList<SecurityKey>>(serverOptions.CurrentValue.SigningCredentials.Select(c => c.Key).ToList()),
-        (targetAppId, thumbprint) => trustRootService.IsTrustedAsync(targetAppId, thumbprint));
+        (targetAppId, thumbprint) => trustRootService.IsTrustedAsync(targetAppId, thumbprint),
+        grantRef => revocationService.IsRevokedAsync(grantRef)); // ADR-104
 
     if (!result.IsValid)
         return Results.Json(new { error = "invalid_grant", error_description = result.Error }, statusCode: StatusCodes.Status400BadRequest);

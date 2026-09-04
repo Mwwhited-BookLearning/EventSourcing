@@ -29,10 +29,21 @@ public record UcanValidationResult(
 //     item's own exit criterion.
 public static class UcanValidator
 {
+    // ADR-104 -- isRevoked is the live revocation check added alongside the
+    // pre-existing offline checks below: a delegation that passes every
+    // offline check but is found revoked still fails validation. Consulted
+    // by GrantRef (this delegation's own "jti"), the same identifier
+    // ADR-107's ucanDelegationIssued event and EventStore.Rbac's
+    // UcanDelegationRevokedEventType both key on. A delegation with no
+    // parseable "jti" at all (already tolerated elsewhere in this method,
+    // grantRef stays null) skips this check entirely -- an un-identifiable
+    // delegation can never be looked up for revocation either way, the
+    // same pre-existing tolerance, not a new gap this decision introduces.
     public static async Task<UcanValidationResult> ValidateAsync(
         string delegationJwt,
         Func<Task<IReadOnlyList<SecurityKey>>> getProofSigningKeys,
-        Func<string, string, Task<bool>> isTrustedRootThumbprint)
+        Func<string, string, Task<bool>> isTrustedRootThumbprint,
+        Func<Guid, Task<bool>>? isRevoked = null)
     {
         var selfVerify = await SelfSignedJwtVerifier.VerifyAsync(delegationJwt, "ucan+jwt");
         if (!selfVerify.IsValid)
@@ -94,6 +105,9 @@ public static class UcanValidator
             if (!await isTrustedRootThumbprint(appId!, thumbprint))
                 return UcanValidationResult.Failure("delegation has no proof and its issuer key is not a registered AppTrustRoot for this AppId");
         }
+
+        if (isRevoked is not null && grantRef is { } grantRefValue && await isRevoked(grantRefValue))
+            return UcanValidationResult.Failure("delegation has been revoked");
 
         return new UcanValidationResult(true, null, granterActorId, grantee, appId, requestedCapabilities, grantRef);
     }

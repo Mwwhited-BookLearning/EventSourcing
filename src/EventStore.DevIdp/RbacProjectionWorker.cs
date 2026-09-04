@@ -47,7 +47,11 @@ public class RbacProjectionWorker(
     private const string RoleRevoked = "RoleRevoked";
     private const string PermissionGranted = "PermissionGranted";
     private const string AppTrustRootRegistered = "AppTrustRootRegistered";
-    private static readonly string[] EventTypes = [RoleGranted, RoleRevoked, PermissionGranted, AppTrustRootRegistered];
+    // ADR-104 -- EventStore.Rbac.UcanDelegationRevokedEventType.Name, same
+    // "literal string, not a cross-project reference" precedent this
+    // class's own header comment already established for the other 4.
+    private const string UcanDelegationRevoked = "UcanDelegationRevoked";
+    private static readonly string[] EventTypes = [RoleGranted, RoleRevoked, PermissionGranted, AppTrustRootRegistered, UcanDelegationRevoked];
 
     protected override async Task ExecuteAsync(CancellationToken ct)
     {
@@ -227,5 +231,8 @@ public class RbacProjectionWorker(
         else if (eventType == AppTrustRootRegistered)
             await scope.ServiceProvider.GetRequiredService<TrustRootService>().RegisterAsync(
                 appId, payload["IssuerDid"]!.GetValue<string>(), payload["Description"]?.GetValue<string>(), ct);
+        else if (eventType == UcanDelegationRevoked)
+            await scope.ServiceProvider.GetRequiredService<RevocationService>().RecordRevocationAsync(
+                Guid.Parse(payload["GrantRef"]!.GetValue<string>()), payload["RevokedAt"]!.GetValue<DateTimeOffset>(), ct);
     }
 }
