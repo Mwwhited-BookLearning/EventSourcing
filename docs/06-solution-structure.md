@@ -64,6 +64,8 @@ solution, never a second `AppId` inside the same running instance.
 
 ```
 EventStore.sln
+  Directory.Packages.props        -- ADR-108, Central Package Management: every package's own version, solution-wide (spikes/ excluded, each keeps its own self-pinned versions)
+  Directory.Build.props           -- solution-wide analyzer PackageReferences (StyleCop.Analyzers, Microsoft.CodeAnalysis.BannedApiAnalyzers) and shared build settings, also centrally versioned via the file above
   src/
     EventStore.Gateway/              -- YARP reverse proxy, the single external entry point (ADR-049); external TLS termination + ADR-006/017/040 auth happen here, handing off to ADR-048 SPIFFE/SPIRE workload identity internally; per-AppId rate limiting (Token Bucket for Inbox, Concurrency Limiter for GraphQL Subscriptions/Follow, Sliding Window for everything else, ADR-058) is enforced here first
     EventStore.Spiffe/               -- SpiffeId/SpiffeSvidFactory/SpiffeTrustBundle/SpiffeCertificateValidator + SpiffeKestrelExtensions (mTLS listener wiring), ADR-048 -- the one internal mTLS listener per Host.<Provider> process (SpiffePeerIdentity/SpiffePeerOptions.AllowedInternalCallerPaths) plus the Gateway-to-Host and peer-to-peer sync hops, per the note above

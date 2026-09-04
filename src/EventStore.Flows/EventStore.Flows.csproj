@@ -13,17 +13,17 @@
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="10.0.11" />
-    <PackageReference Include="SQLitePCLRaw.lib.e_sqlite3" Version="3.53.3" />
-    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.11" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" />
+    <PackageReference Include="SQLitePCLRaw.lib.e_sqlite3" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" />
     <!-- Same real, verified versions as spikes/user-flow-dsl/AntlrCustomDslSpike
          (MIT/BSD-3-Clause, checked that session). Antlr4BuildTasks compiles
          Grammar/PlantUmlActivityDiagram.g4 via the real ANTLR4 Java tool as
          an MSBuild step (downloads its own JRE, no local Java/Docker setup
          needed) into a Listener-pattern parser, not Visitor, per direct
          request. -->
-    <PackageReference Include="Antlr4BuildTasks" Version="12.14.0" />
-    <PackageReference Include="Antlr4.Runtime.Standard" Version="4.13.1" />
+    <PackageReference Include="Antlr4BuildTasks" />
+    <PackageReference Include="Antlr4.Runtime.Standard" />
   </ItemGroup>
 
   <ItemGroup>

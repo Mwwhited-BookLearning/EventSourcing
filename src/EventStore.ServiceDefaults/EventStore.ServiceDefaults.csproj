@@ -38,12 +38,12 @@
          real value here, only an unexamined Aspire template default.
          Removed rather than retuned, also given Polly's new Open Source
          Maintenance Fee (thepollyproject.org, 2026-07-14, direct request). -->
-    <PackageReference Include="Microsoft.Extensions.ServiceDiscovery" Version="10.9.0" />
-    <PackageReference Include="OpenTelemetry.Exporter.OpenTelemetryProtocol" Version="1.17.0" />
-    <PackageReference Include="OpenTelemetry.Extensions.Hosting" Version="1.17.0" />
-    <PackageReference Include="OpenTelemetry.Instrumentation.AspNetCore" Version="1.17.0" />
-    <PackageReference Include="OpenTelemetry.Instrumentation.Http" Version="1.17.0" />
-    <PackageReference Include="OpenTelemetry.Instrumentation.Runtime" Version="1.17.0" />
+    <PackageReference Include="Microsoft.Extensions.ServiceDiscovery" />
+    <PackageReference Include="OpenTelemetry.Exporter.OpenTelemetryProtocol" />
+    <PackageReference Include="OpenTelemetry.Extensions.Hosting" />
+    <PackageReference Include="OpenTelemetry.Instrumentation.AspNetCore" />
+    <PackageReference Include="OpenTelemetry.Instrumentation.Http" />
+    <PackageReference Include="OpenTelemetry.Instrumentation.Runtime" />
     <!-- Direct request: process-level metrics (CPU%, working set, thread/
          handle count), a "useful application detail" beyond AspNetCore/Http/
          Runtime above. Verified against nuget.org before adding: this
@@ -53,7 +53,7 @@
          non-prerelease 1.17.0. Added anyway, since there is no stable
          alternative for process metrics and the API surface has been
          release-candidate for a long time. -->
-    <PackageReference Include="OpenTelemetry.Instrumentation.Process" Version="1.17.0-rc.1" />
+    <PackageReference Include="OpenTelemetry.Instrumentation.Process" />
   </ItemGroup>
 
 </Project>
