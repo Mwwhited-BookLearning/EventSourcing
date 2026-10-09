@@ -37,13 +37,23 @@ above: deleted from this file, full narrative in
 here — a genuinely undecided fork, not decided work with only the doing
 left.)
 
-- `docs/06-solution-structure.md`'s "Project layout" tree: the stale
-  `EventStore.SqlClr.SqlServer/` entry was corrected 2026-10-09 (moved to
-  `spikes/`), and every `src/` directory is confirmed mentioned, but the
-  tree still carries stale "ADDED, this reconciliation pass" phrasing and
-  sketch-era names (`PeerSync`, `InterchangeAdapters`, `Fold`, `Sharding`)
-  and lists `EventStore.Benchmarks` under `tests/` though it is in `src/`.
-  A full re-sweep is its own task.
+- **Provider e2e: wake-signal scenarios.** `tests/EventStore.IntegrationTests/
+  ProviderE2EScenarios.cs` has no scenario exercising `IWorkerWakeSignal`
+  through the real hosts. Add: publish → router resolves the entity well
+  inside the poll interval, and an offline-reader case (signal sent while the
+  worker is stopped is still delivered), once per provider (ADR-095).
+- **Run the full AppHost (`aspire run`) under concurrent write load** against
+  the Postgres durable wake queue (ADR-095 revision, 2026-10-09) and the SQL
+  Server `sp_getapplock` append lock. Both were only tested in-process with
+  Testcontainers; past bugs here appeared only under the real orchestration.
+- **Sweep for other Serializable-transaction deadlock risks on SQL Server.**
+  `docs/bugs/framework/database/sqlserver-concurrent-publish-deadlock.md`
+  fixed the Event Log / AccessLog appenders; check other Serializable paths
+  (e.g. `src/EventStore.GraphQL/EntityQueryTypeModule.cs` ~line 463) with a
+  concurrent test per provider.
+- **Document the Postgres durable wake queue as a pattern.** Add a row to
+  `docs/patterns/README.md` and record the pgmq rejection in
+  `docs/references.md` (today it lives only in `ADR-095`'s 2026-10-09 revision).
 
 The five-phase design-review program (missing-documents sweep, full ADR
 review, proving-ground domain review, cross-domain-to-framework review,

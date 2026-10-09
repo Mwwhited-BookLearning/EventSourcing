@@ -97,7 +97,7 @@ EventStore.sln
                                      -- PeerAddressBook/PeerSyncEndpoints/PeerSyncOptions), wired directly into each Host
                                      -- process via AddReplication()/MapPeerSyncEndpoints() -- no Program.cs of its own
     EventStore.LeaderElection/       -- LeaderElectionService/LeaseHolderId, build-plan item 32 -- the lease-gated "internal follower" shape every singleton background worker in this solution needs when more than one Host replica can be running at once (PeerSyncWorker, WebhookOutboxPump, ExpectedResponseWatcher below); a DB-row lease, not a distributed-lock library, since the DB is already the one shared, durable resource every replica already talks to
-    EventStore.WorkerWakeSignal/     -- ADDED, this reconciliation pass -- IWorkerWakeSignal (ADR-095, build-plan item 53, "Push-Notification Wake-Up Layer"): a "wake sooner" layer on top of every background worker's own existing poll loop, never a replacement for it -- one implementation per provider (SqliteWorkerWakeSignal in-process only, PostgresWorkerWakeSignal via LISTEN/NOTIFY, SqlServerWorkerWakeSignal via Service Broker); a missed/lost signal just means a worker waits its full, already-safe poll interval, exactly as if this project didn't exist
+    EventStore.WorkerWakeSignal/     -- IWorkerWakeSignal (ADR-095, build-plan item 53, "Push-Notification Wake-Up Layer"): a "wake sooner" layer on top of every background worker's own existing poll loop, never a replacement for it -- one implementation per provider (SqliteWorkerWakeSignal in-process only, PostgresWorkerWakeSignal via LISTEN/NOTIFY, SqlServerWorkerWakeSignal via Service Broker); a missed/lost signal just means a worker waits its full, already-safe poll interval, exactly as if this project didn't exist
     EventStore.Masking/              -- the real IPayloadMasker implementation (PayloadMasker + FixedValueMaskingStrategy/PartialRevealMaskingStrategy/HashMaskingStrategy), ADR-009/057 -- the data-level half of masking described in the "IPayloadMasker" section below; MaskingSchemaTransformer (the schema-level half) stays in EventStore.SpecGeneration, not here, since it's needed at spec-build time regardless of masking's own build phase
     EventStore.Erasure/              -- ErasureKeyService/ErasureScopeResolver/EntityErasureResolver + LocalErasureKeyStore/HashiCorpVaultErasureKeyStore (IErasureKeyStore, ADR-057/062) + PayloadEncryptor -- crypto-shredding: a masked leaf's "value" branch decrypts against the entity's own EntityErasureKey, and destroying that key (on EntityErasureRequested) makes every field it protected permanently unrecoverable without deleting the event log rows themselves (ADR-009's no-erasure stance, reversed by ADR-057)
     EventStore.Webhooks/            -- outbound webhook dispatcher: drains the durable WebhookOutbox (same fault/abend/restart-tolerant primitive as PeerSync/client outbox, ADR-033/039), Standard Webhooks HMAC signing, masks every payload against its subscription's fixed claim set before sending, exponential-backoff retry, dead-letters as WebhookDeliveryFailed on exhaustion (ADR-060)
@@ -149,7 +149,7 @@ EventStore.sln
                                            -- sketch's own prose elsewhere calling it "a separate deployable". The real running
                                            -- hosts that reference it are Samples.Orders.Projections (below, has a real
                                            -- Program.cs) and EventStore.DevIdp's own RbacProjectionWorker
-    EventStore.Flows/                     -- ADDED, this reconciliation pass -- ADR-101's PlantUML-native executable flow
+    EventStore.Flows/                     -- ADR-101's PlantUML-native executable flow
                                            -- engine: PlantUmlActivityParser/ActivityAstBuilderListener (a real ANTLR4
                                            -- grammar + generated Listener, Antlr4BuildTasks NuGet package, not a hand-rolled
                                            -- parser) builds ActivityAst, FlowInterpreter evaluates it statelessly,
@@ -208,7 +208,7 @@ EventStore.sln
     -- Sample application, explicitly NOT part of the framework (ADR-030):
     Samples.Orders.Projections/           -- worked example: OrderSummaryProjection (features/cqrs-projections.md)
 
-    -- Proving-ground domain applications, ADDED this reconciliation pass --
+    -- Proving-ground domain applications, --
     -- also explicitly NOT part of the framework (ADR-030), same footing as
     -- Samples.Orders.Projections above. Each domain is four projects:
     -- workflow event-type registration + reactors, a Flows host running
@@ -240,12 +240,12 @@ EventStore.sln
     Samples.Meridian.Seed/                -- same shape as Samples.Vitals.Seed above, for Meridian's own seed data
     Samples.Meridian.Simulator/           -- same shape as Samples.Vitals.Simulator above, for Meridian's own
                                            -- ongoing simulated activity
-  tests/
-    EventStore.Benchmarks/           -- ADDED, this reconciliation pass -- a BenchmarkDotNet-style console app
+    EventStore.Benchmarks/           -- a BenchmarkDotNet-style console app
                                       -- (FoldStepBenchmarks.cs, JsonPathTranslationBenchmarks.cs), not an automated
                                       -- test: run manually to measure the Router's own fold-step cost and each
                                       -- provider's JSON-path-translation cost, not executed as part of any test
                                       -- suite or CI gate
+  tests/
     EventStore.UnitTests/            -- Built per ADR-063's own decision ("adopt now, alongside ADR-055's
                                       -- EventStore.UnitTests"), correcting THIS line's own earlier "never built"
                                       -- claim (stale as of this pass -- found while reconciling it against the
