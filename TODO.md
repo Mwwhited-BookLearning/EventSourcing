@@ -37,10 +37,6 @@ above: deleted from this file, full narrative in
 here — a genuinely undecided fork, not decided work with only the doing
 left.)
 
-- **Run the full AppHost (`aspire run`) under concurrent write load** against
-  the Postgres durable wake queue (ADR-095 revision, 2026-10-09) and the SQL
-  Server `sp_getapplock` append lock. Both were only tested in-process with
-  Testcontainers; past bugs here appeared only under the real orchestration.
 
 The five-phase design-review program (missing-documents sweep, full ADR
 review, proving-ground domain review, cross-domain-to-framework review,
