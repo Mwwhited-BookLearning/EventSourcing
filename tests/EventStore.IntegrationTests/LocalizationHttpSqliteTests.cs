@@ -43,8 +43,7 @@ public class LocalizationHttpSqliteTests
         _hostClient.Dispose();
         _hostFactory.Dispose();
         SqliteConnection.ClearAllPools();
-        if (File.Exists(_dbPath))
-            File.Delete(_dbPath);
+        TempDbFile.Delete(_dbPath);
     }
 
     [TestMethod]

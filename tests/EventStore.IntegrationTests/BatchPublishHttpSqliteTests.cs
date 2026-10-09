@@ -87,8 +87,7 @@ public class BatchPublishHttpSqliteTests
         _devIdpClient.Dispose();
         _devIdpFactory.Dispose();
         SqliteConnection.ClearAllPools();
-        if (File.Exists(_dbPath))
-            File.Delete(_dbPath);
+        TempDbFile.Delete(_dbPath);
     }
 
     private static async Task RegisterOrderPlacedAsync(string appId)

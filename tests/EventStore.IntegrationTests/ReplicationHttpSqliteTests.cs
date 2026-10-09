@@ -74,8 +74,7 @@ public class ReplicationHttpSqliteTests
         _devIdpFactory.Dispose();
         SqliteConnection.ClearAllPools();
         foreach (var path in new[] { _dbPathA, _dbPathB })
-            if (File.Exists(path))
-                File.Delete(path);
+            TempDbFile.Delete(path);
     }
 
     private static async Task MigrateAsync(string dbPath)

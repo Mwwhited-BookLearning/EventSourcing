@@ -67,8 +67,7 @@ public class WebhookDeliveryHttpSqliteTests
     public void TestCleanup()
     {
         SqliteConnection.ClearAllPools();
-        if (File.Exists(_dbPath))
-            File.Delete(_dbPath);
+        TempDbFile.Delete(_dbPath);
     }
 
     private EventStoreContext CreateContext()

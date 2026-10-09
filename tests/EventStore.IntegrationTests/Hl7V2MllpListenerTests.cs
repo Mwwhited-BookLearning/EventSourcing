@@ -49,8 +49,7 @@ public class Hl7V2MllpListenerTests
     public void TestCleanup()
     {
         SqliteConnection.ClearAllPools();
-        if (File.Exists(_dbPath))
-            File.Delete(_dbPath);
+        TempDbFile.Delete(_dbPath);
     }
 
     private EventStoreContext CreateContext() => new(

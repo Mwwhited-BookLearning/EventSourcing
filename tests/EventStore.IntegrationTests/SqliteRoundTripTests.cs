@@ -22,8 +22,7 @@ public class SqliteRoundTripTests
     public static void ClassCleanup()
     {
         SqliteConnection.ClearAllPools(); // release the pooled file handle before deleting
-        if (File.Exists(_dbPath))
-            File.Delete(_dbPath);
+        TempDbFile.Delete(_dbPath);
     }
 
     private static EventStoreContext CreateContext()

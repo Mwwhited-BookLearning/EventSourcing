@@ -158,8 +158,7 @@ public class ReplicationCrossProviderHttpTests
         _devIdpClient.Dispose();
         _devIdpFactory.Dispose();
         SqliteConnection.ClearAllPools();
-        if (File.Exists(_dbPathSqlite))
-            File.Delete(_dbPathSqlite);
+        TempDbFile.Delete(_dbPathSqlite);
         await _sqlServerContainer.DisposeAsync();
     }
 

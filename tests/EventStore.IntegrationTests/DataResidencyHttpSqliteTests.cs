@@ -89,8 +89,7 @@ public class DataResidencyHttpSqliteTests
         _devIdpFactory.Dispose();
         SqliteConnection.ClearAllPools();
         foreach (var path in new[] { _dbPathB, _dbPathC })
-            if (File.Exists(path))
-                File.Delete(path);
+            TempDbFile.Delete(path);
     }
 
     [TestInitialize]
@@ -104,8 +103,7 @@ public class DataResidencyHttpSqliteTests
     public void TestCleanup()
     {
         SqliteConnection.ClearAllPools();
-        if (File.Exists(_dbPathA))
-            File.Delete(_dbPathA);
+        TempDbFile.Delete(_dbPathA);
     }
 
     private static async Task MigrateAsync(string dbPath)

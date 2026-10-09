@@ -41,8 +41,7 @@ public class HealthCheckHttpSqliteTests
     public static void ClassCleanup()
     {
         Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
-        if (File.Exists(_dbPath))
-            File.Delete(_dbPath);
+        TempDbFile.Delete(_dbPath);
     }
 
     private static WebApplicationFactory<Program> CreateFactory(string environment, string connectionString) =>

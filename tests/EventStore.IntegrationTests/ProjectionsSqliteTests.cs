@@ -82,10 +82,8 @@ public class ProjectionsSqliteTests
         _devIdpClient.Dispose();
         _devIdpFactory.Dispose();
         SqliteConnection.ClearAllPools();
-        if (File.Exists(_dbPath))
-            File.Delete(_dbPath);
-        if (File.Exists(_projectionsDbPath))
-            File.Delete(_projectionsDbPath);
+        TempDbFile.Delete(_dbPath);
+        TempDbFile.Delete(_projectionsDbPath);
     }
 
     private static OrdersProjectionsDbContext CreateProjectionsDb()
