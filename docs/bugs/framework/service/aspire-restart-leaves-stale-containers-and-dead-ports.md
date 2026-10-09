@@ -15,3 +15,5 @@ After several `aspire stop`/`aspire start` cycles (and killed AppHosts), pinned 
 `scripts/aspire-clean.ps1` performs the workaround above in one step. The underlying Aspire/DCP behaviour is not fixed here; report upstream if it keeps recurring.
 
 Observed later the same day: after `scripts/aspire-clean.ps1` + `aspire start`, the first restart worked, but a later one left `postgres-server` and `sqlserver-server` in `Created` indefinitely (DCP never started them; `docker start` on one succeeded) and the pinned ports 5000-5010 refused connections. So the script is a partial mitigation only. Next step: capture the DCP log (`~/.aspire/logs`) for a failing start to find why DCP stops reconciling, or report upstream.
+
+DCP log from the failing start (`%TEMP%\aspire-dcp*\*_out`): `ContainerReconciler` logged `Added new ContainerNetworkConnection` for both database containers on `aspire-container-network`, then nothing further for them (no start). The stall is after network attach, before container start.
