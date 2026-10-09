@@ -205,3 +205,7 @@ After the Postgres queue revision the two providers still differed: Postgres coa
 ## Revised, 2026-10-09 (resolved open question) — Postgres consumed wake rows are marked, then swept
 
 Direct decision: "mark and sweep." `WaitForWakeAsync`'s drain now sets `"ConsumedAt"` on pending rows instead of deleting them (migration `AddWakeSignalQueueConsumedAt`; partial index on pending rows). Coalescing in `NotifyAsync` considers only unconsumed rows, so a consumed row never suppresses a new signal. `NotifyAsync` deletes rows consumed more than 7 days ago, at most once per hour per process. SQL Server Service Broker has no equivalent: `RECEIVE` removes the message, so the audit trail exists on Postgres only; the wake behavior is otherwise identical on both providers.
+
+## Revised, 2026-10-09 (load run) — `WaitForWakeAsync` never throws
+
+The concurrent AppHost load run showed Postgres `too many clients` escaping `WaitForWakeAsync` out of a worker loop (it runs outside the per-tick try/catch), stopping the whole host. Rule: the wake signal is an optimization, so a database fault in `WaitForWakeAsync` on any provider is logged and swallowed (cancellation excepted), the cached LISTEN connection is dropped, and the call backs off up to 1 s so the poll loop takes over without hot-spinning. Implemented for Postgres and SQL Server; the SQLite channel has no database round trip to fault. Test: `WorkerWakeSignalPostgresTests.WaitForWakeNeverThrowsWhenTheDatabaseIsUnreachable`. See `docs/bugs/framework/service/wake-signal-fault-stops-host.md`.

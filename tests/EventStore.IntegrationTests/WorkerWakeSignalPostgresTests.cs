@@ -35,6 +35,19 @@ public class WorkerWakeSignalPostgresTests
     }
 
     [TestMethod]
+    public async Task WaitForWakeNeverThrowsWhenTheDatabaseIsUnreachable()
+    {
+        // Workers call WaitForWakeAsync outside their per-tick try/catch, so a throw would stop the host
+        // (docs/bugs/framework/service/wake-signal-fault-stops-host.md). Port 1 refuses connections.
+        var options = new DbContextOptionsBuilder<EventStoreContext>()
+            .UseNpgsql("Host=127.0.0.1;Port=1;Database=x;Username=x;Password=x;Timeout=2", x => x.MigrationsAssembly("EventStore.Persistence.Migrations.Postgres"))
+            .Options;
+        using var db = new EventStoreContext(options, new PostgresJsonPathTranslator());
+
+        await new PostgresWorkerWakeSignal(db).WaitForWakeAsync($"topic_{Guid.NewGuid():N}", TimeSpan.FromSeconds(2), CancellationToken.None);
+    }
+
+    [TestMethod]
     public async Task NotifyDuringAWaitWakesItWellBeforeTheTimeoutElapsesOverARealListenNotifyConnection()
     {
         var topic = $"topic_{Guid.NewGuid():N}";
