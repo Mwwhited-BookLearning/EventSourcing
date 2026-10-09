@@ -57,8 +57,8 @@ finished except one open bug:
 projects Running with no process or listener; `scripts/aspire-clean.ps1`
 helps only sometimes; needs an upstream report). Not re-confirmed: entity
 routing on all three providers in a clean AppHost load run (the integration
-provider e2e suite covers Postgres and SQL Server). `TODO.md` has one
-doc-debt item (re-sweep of `docs/06-solution-structure.md`'s project tree).
+provider e2e suite covers all three providers). `TODO.md` has no open
+items (the solution-structure tree was re-swept 2026-10-09).
 Ask the user what is next rather than assume more work exists.
 
 ## How to resume cold
