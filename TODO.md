@@ -47,3 +47,31 @@ account of each is in `docs/changes/2026-09-02.md` (Phase 0) and
 `docs/changes/2026-09-03.md` (Phase 1 onward — split across the two
 files since work crossed a real midnight boundary mid-session).
 
+## Concurrent load run of the real AppHost (all three providers)
+
+Why: both real bugs found this session (SQL Server append deadlock,
+concurrent first-registration PK race) only appeared under concurrent
+load, and the earlier full AppHost run only drove the sample simulators.
+The Postgres wake queue (`ADR-095`, `docs/patterns/durable-wake-queue.md`)
+and the SQL Server `sp_getapplock` append path haven't been pushed hard
+through the real orchestration layer yet. Do these in order; the
+`aspire` CLI is at `~/.aspire/bin` (`aspire start/describe/logs/stop
+--apphost src/EventStore.AppHost --non-interactive --nologo`).
+
+- [ ] 1. Start the AppHost with the Postgres, SQL Server and SQLite hosts
+  all up; confirm via `aspire describe` that every resource is healthy.
+- [ ] 2. Write a reusable load script (committed, e.g. under `scripts/`):
+  for each host, a burst of a few thousand concurrent publishes across
+  several event types, with registrations of new event types mixed in.
+  Auth via DevIdp client_credentials + DPoP as the e2e suite does
+  (`AuthScenarioAssertions`).
+- [ ] 3. Check the results: every publish returns 202 or an expected 409;
+  `/events/verify?throughSequenceNumber=9223372036854775807` reports
+  `verified: true` on each host; every routed entity appears in GraphQL
+  (`entity_{appId}_{entitytype}`) within a bounded time.
+- [ ] 4. Read the real service logs (`aspire logs`, not just pass/fail
+  counts) for deadlocks, retry exhaustion, wake-queue errors, or
+  unexpected 5xx.
+- [ ] 5. File anything real as `docs/bugs/framework/{tier}/...md` and fix
+  it, per `.claude/protocols/bug-report-tracking.md`. If clean, record
+  that in `docs/changes/{date}.md` and keep the script.
