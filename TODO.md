@@ -49,4 +49,4 @@ files since work crossed a real midnight boundary mid-session).
 
 ## Load-run follow-ups
 
-- [ ] SQL Server still routes ~100 events/s vs Postgres' hundreds (every wake-signal send is a Service Broker dialog with a log flush): consider batching/coalescing sends or reusing dialogs, then re-run `dotnet run --project src/EventStore.LoadTest -- http://localhost:5002 3000 64 6 http://localhost:5010 60` until 200/200 route inside 60 s.
+Open bug reports from the load run (each file has its own next step): `docs/bugs/framework/service/sqlserver-prelogin-errors-under-load.md`, `docs/bugs/framework/service/apphost-port-5001-conflicts-with-docker-backend.md`, `docs/bugs/framework/test/sqlserver-wake-signal-fault-untested.md`, `docs/bugs/framework/service/postgres-connection-pool-unbounded-under-load.md`, `docs/bugs/framework/service/aspire-restart-leaves-stale-containers-and-dead-ports.md`.
