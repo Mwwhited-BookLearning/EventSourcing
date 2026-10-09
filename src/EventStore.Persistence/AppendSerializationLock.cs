@@ -78,7 +78,17 @@ public static class AppendSerializationLock
     public const long EventLogTailLockKey = 0x4556454E544C4F47; // "EVENTLOG" (ASCII, folded to a long)
     public const long AccessLogTailLockKey = 0x4143434553534C47; // "ACCESSLG" (ASCII, folded to a long)
 
+    private const string SqlServerProviderName = "Microsoft.EntityFrameworkCore.SqlServer";
+
     public static bool IsPostgres(EventStoreContext db) => db.Database.ProviderName == PostgresProviderName;
+
+    public static bool IsSqlServer(EventStoreContext db) => db.Database.ProviderName == SqlServerProviderName;
+
+    // Providers where a tail lock gives real mutual exclusion, so the
+    // transaction can drop to Read Committed (Serializable on SQL Server
+    // deadlocks on range-lock conversion -- docs/bugs/framework/database/
+    // sqlserver-concurrent-publish-deadlock.md).
+    public static bool UsesTailLock(EventStoreContext db) => IsPostgres(db) || IsSqlServer(db);
 
     // Call as the FIRST statement inside the transaction (before any read
     // of the table this lock protects) -- the whole fix depends on that
@@ -87,7 +97,13 @@ public static class AppendSerializationLock
     // this method only ever runs when that's already Read Committed).
     public static async Task AcquireAsync(EventStoreContext db, long lockKey, CancellationToken ct)
     {
-        if (!IsPostgres(db)) return;
-        await db.Database.ExecuteSqlInterpolatedAsync($"SELECT pg_advisory_xact_lock({lockKey})", ct);
+        if (IsPostgres(db))
+            await db.Database.ExecuteSqlInterpolatedAsync($"SELECT pg_advisory_xact_lock({lockKey})", ct);
+        else if (IsSqlServer(db))
+        {
+            var resource = $"duplex-tail-{lockKey}";
+            // Transaction-owned application lock: released on commit/rollback; wait indefinitely (-1).
+            await db.Database.ExecuteSqlInterpolatedAsync($"DECLARE @r int; EXEC @r = sp_getapplock @Resource = {resource}, @LockMode = 'Exclusive', @LockOwner = 'Transaction', @LockTimeout = -1; IF @r < 0 THROW 51000, 'sp_getapplock failed', 1;", ct);
+        }
     }
 }

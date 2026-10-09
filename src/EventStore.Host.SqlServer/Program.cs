@@ -48,7 +48,7 @@ if (builder.Configuration["FeatureFlags:AppId"] is { } featureFlagsAppId)
 
 builder.Services.AddDbContext<EventStoreContext>(options => options.UseSqlServer(
     builder.Configuration.GetConnectionString("SqlServer"),
-    x => x.MigrationsAssembly("EventStore.Persistence.Migrations.SqlServer")));
+    x => x.MigrationsAssembly("EventStore.Persistence.Migrations.SqlServer").EnableRetryOnFailure()));
 // Read-only here -- the Samples.*.Flows worker hosts own writing/migrating
 // this database. Always SQLite regardless of eventstore's own write-side
 // provider (docs/09-cqrs-read-models.md's own "one EF Core provider is

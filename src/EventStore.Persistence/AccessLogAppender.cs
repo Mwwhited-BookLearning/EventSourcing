@@ -55,7 +55,7 @@ public static class AccessLogAppender
             // reasoning -- Postgres uses Read Committed plus a transaction-
             // scoped advisory lock instead of Serializable alone; SQLite/
             // SQL Server are unchanged.
-            var isolationLevel = AppendSerializationLock.IsPostgres(db) ? IsolationLevel.ReadCommitted : IsolationLevel.Serializable;
+            var isolationLevel = AppendSerializationLock.UsesTailLock(db) ? IsolationLevel.ReadCommitted : IsolationLevel.Serializable;
             await using var transaction = await db.Database.BeginTransactionAsync(isolationLevel, ct);
             try
             {

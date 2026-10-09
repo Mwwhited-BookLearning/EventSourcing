@@ -73,6 +73,7 @@
     <ProjectReference Include="..\..\src\EventStore.DevIdp\EventStore.DevIdp.csproj" Aliases="DevIdpAssembly" />
     <ProjectReference Include="..\..\src\EventStore.Gateway\EventStore.Gateway.csproj" Aliases="GatewayAssembly" />
     <ProjectReference Include="..\..\src\EventStore.Host.SqlServer\EventStore.Host.SqlServer.csproj" Aliases="HostSqlServerAssembly" />
+    <ProjectReference Include="..\..\src\EventStore.Host.Postgres\EventStore.Host.Postgres.csproj" Aliases="HostPostgresAssembly" />
   </ItemGroup>
 
 </Project>
