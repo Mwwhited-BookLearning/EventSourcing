@@ -108,10 +108,13 @@ public class VitalsPrincipalInvestigatorQueuePlaybookTests
         var firstItem = queueList.Locator("tbody tr").First;
         await recorder.RecordStepAsync(_page, "Samples.Vitals.Simulator publishes a fresh IonmAlertRaised with ReviewPending: true roughly every 20 seconds -- this is a real, live pending item, not fixed seed data. The queue subscribes to both the raiser event type and authorityDecision live, so a decision anywhere resolves this list immediately.");
 
-        await firstItem.Locator("[data-testid^='queue-meaning-']").FillAsync("reviewed against the live SSEP trace");
+        var meaningInput = firstItem.Locator("[data-testid^='queue-meaning-']");
+        var itemTestId = await meaningInput.GetAttributeAsync("data-testid"); // pins THIS row: the live subscription removes it once decided, so "first row" re-resolves to a different one
+        await meaningInput.FillAsync("reviewed against the live SSEP trace");
         await firstItem.GetByRole(AriaRole.Button, new() { Name = "Accept" }).ClickAsync();
-        var status = firstItem.Locator("[data-testid^='queue-status-']");
-        await Assertions.Expect(status).ToContainTextAsync("accepted", new() { Timeout = 15_000 });
+        // The decided row leaves the queue as soon as the authorityDecision arrives back (fast Routers do this
+        // before any status text could be polled); a failed publish would leave the row, so this still catches it.
+        await Assertions.Expect(_page.GetByTestId(itemTestId!)).ToHaveCountAsync(0, new() { Timeout = 30_000 });
         await recorder.RecordStepAsync(_page, "Filling in the required sign-off reason (Meaning, ADR-066) and clicking Accept publishes an authorityDecision as vitals-pi-client (claims: review:ionm) -- AuthorityDecisionResolver folds the target IonmAlertRaised into the authoritative Entity Store, and the item disappears from this queue the moment that decision arrives back over the same live subscription.");
 
         const string sequenceDiagram = """

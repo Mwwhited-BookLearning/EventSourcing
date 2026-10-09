@@ -401,6 +401,14 @@ namespace EventStore.Persistence.Migrations.Postgres.Migrations
                     b.HasIndex("EventId")
                         .IsUnique();
 
+                    b.HasIndex("MaterializationOfEventId");
+
+                    b.HasIndex("RespondsToEventId");
+
+                    b.HasIndex("Status", "SequenceNumber");
+
+                    b.HasIndex("AppId", "EventType", "SequenceNumber");
+
                     b.ToTable("Events");
                 });
 

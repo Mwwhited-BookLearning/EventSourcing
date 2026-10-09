@@ -2,6 +2,7 @@ using System.Collections.Concurrent;
 using EventStore.Persistence;
 using EventStore.WorkerWakeSignal;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 using Npgsql;
 
 namespace EventStore.Persistence.Migrations.Postgres;
@@ -21,7 +22,7 @@ namespace EventStore.Persistence.Migrations.Postgres;
 // One dedicated LISTEN connection per topic, held open for this process's
 // lifetime -- LISTEN is session-scoped, so a fresh connection per call
 // would re-subscribe from scratch and could miss a NOTIFY in the gap.
-public class PostgresWorkerWakeSignal(EventStoreContext db) : IWorkerWakeSignal
+public class PostgresWorkerWakeSignal(EventStoreContext db, ILogger<PostgresWorkerWakeSignal>? logger = null) : IWorkerWakeSignal
 {
     private static readonly ConcurrentDictionary<string, Lazy<Task<NpgsqlConnection>>> ListenConnections = new();
 
@@ -40,7 +41,27 @@ public class PostgresWorkerWakeSignal(EventStoreContext db) : IWorkerWakeSignal
             """, ct);
     }
 
+    // The wake signal is an optimization, never the correctness mechanism (every caller polls), so a
+    // database fault here (pool or server connection exhaustion, a restart, a dropped LISTEN connection)
+    // must not escape: the workers call this outside their per-tick try/catch, so a throw would kill the
+    // BackgroundService and, with the default StopHost behaviour, the whole host. Found by the
+    // concurrent AppHost load run (docs/bugs/framework/service/wake-signal-fault-stops-host.md).
     public async Task WaitForWakeAsync(string topic, TimeSpan maxWait, CancellationToken ct = default)
+    {
+        try
+        {
+            await WaitForWakeCoreAsync(topic, maxWait, ct);
+        }
+        catch (Exception ex) when (!ct.IsCancellationRequested)
+        {
+            logger?.LogWarning(ex, "Wake-signal wait for topic {Topic} failed; falling back to the poll loop", topic);
+            EvictListenConnection(topic);
+            // Back off so a database that is down does not turn the worker loop into a hot spin.
+            await Task.Delay(TimeSpan.FromSeconds(1) < maxWait ? TimeSpan.FromSeconds(1) : maxWait, ct);
+        }
+    }
+
+    private async Task WaitForWakeCoreAsync(string topic, TimeSpan maxWait, CancellationToken ct)
     {
         // LISTEN first, so a NOTIFY landing between the drain below and
         // the block is buffered rather than missed.
@@ -101,6 +122,14 @@ public class PostgresWorkerWakeSignal(EventStoreContext db) : IWorkerWakeSignal
                 SELECT "Id" FROM "WakeSignalQueue" WHERE "Topic" = {topic} AND "ConsumedAt" IS NULL FOR UPDATE SKIP LOCKED)
             UPDATE "WakeSignalQueue" q SET "ConsumedAt" = now() FROM pending WHERE q."Id" = pending."Id"
             """, ct) > 0;
+
+    // Drops the cached LISTEN connection (a faulted Lazy would otherwise be cached forever and rethrow on
+    // every later call) and closes it if it had actually opened.
+    private static void EvictListenConnection(string topic)
+    {
+        if (ListenConnections.TryRemove(topic, out var lazy) && lazy.IsValueCreated && lazy.Value.IsCompletedSuccessfully)
+            _ = lazy.Value.Result.DisposeAsync().AsTask().ContinueWith(_ => { }, TaskScheduler.Default);
+    }
 
     private Task<NpgsqlConnection> GetListenConnectionAsync(string topic, CancellationToken ct)
     {

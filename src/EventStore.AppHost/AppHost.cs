@@ -63,7 +63,10 @@ var enableSqlServerPeer = builder.Configuration.GetValue("Topology:EnableSqlServ
 // ADR-062), so a literal is fine -- still marked secret:true so the
 // dashboard masks it either way.
 var pgPassword = builder.AddParameter("postgres-password", builder.Configuration["Postgres:DevPassword"] ?? "duplex-local-dev-only", secret: true);
-var pgServer = builder.AddPostgres("postgres-server").WithPassword(pgPassword).WithDataVolume();
+// max_connections raised from the default 100: every host/worker process pools up to Npgsql's default of
+// 100 connections each against this one container, and advisory-lock waiters hold theirs, so the concurrent
+// load run exhausted the server ("too many clients"; docs/bugs/framework/service/wake-signal-fault-stops-host.md).
+var pgServer = builder.AddPostgres("postgres-server").WithPassword(pgPassword).WithDataVolume().WithArgs("-c", "max_connections=300");
 var db = pgServer.AddDatabase("Postgres");
 // Fixed, documented dev ports rather than Aspire's own dynamically-
 // assigned ones -- the standard convention for this kind of local Aspire

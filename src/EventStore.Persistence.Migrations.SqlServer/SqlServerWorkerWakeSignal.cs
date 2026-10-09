@@ -2,6 +2,7 @@ using EventStore.Persistence;
 using EventStore.WorkerWakeSignal;
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 
 namespace EventStore.Persistence.Migrations.SqlServer;
 
@@ -33,7 +34,7 @@ namespace EventStore.Persistence.Migrations.SqlServer;
 // polling) is the real, different use case Service Broker's own design
 // targets that for -- named honestly as not-yet-needed here, since every
 // consumer in this build is a live, already-running .NET worker.
-public class SqlServerWorkerWakeSignal(EventStoreContext db) : IWorkerWakeSignal
+public class SqlServerWorkerWakeSignal(EventStoreContext db, ILogger<SqlServerWorkerWakeSignal>? logger = null) : IWorkerWakeSignal
 {
     // "router" alone keeps AddWorkerWakeSignal's original, un-suffixed
     // object names; every other topic gets ExtendWorkerWakeSignalPerTopic's
@@ -100,9 +101,26 @@ END CONVERSATION @conversationHandle;", [new SqlParameter("@topic", topic)], ct)
     // (ENDing) any non-WakeSignal control message and continuing to wait
     // out whatever time budget remains, so only a genuine WakeSignal
     // message ever counts as a wake.
+    // The wake signal is an optimization, never the correctness mechanism (every caller polls), so a
+    // database fault here must not escape: the workers call this outside their per-tick try/catch, so a
+    // throw would kill the BackgroundService and, with the default StopHost behaviour, the whole host.
+    // A bad topic name is a programming error and still throws.
     public async Task WaitForWakeAsync(string topic, TimeSpan maxWait, CancellationToken ct = default)
     {
         ValidateTopic(topic);
+        try
+        {
+            await WaitForWakeCoreAsync(topic, maxWait, ct);
+        }
+        catch (Exception ex) when (!ct.IsCancellationRequested)
+        {
+            logger?.LogWarning(ex, "Wake-signal wait for topic {Topic} failed; falling back to the poll loop", topic);
+            await Task.Delay(TimeSpan.FromSeconds(1) < maxWait ? TimeSpan.FromSeconds(1) : maxWait, ct);
+        }
+    }
+
+    private async Task WaitForWakeCoreAsync(string topic, TimeSpan maxWait, CancellationToken ct)
+    {
         var (queue, messageType) = (QueueName(topic), MessageTypeName(topic));
 
         var connection = db.Database.GetDbConnection();

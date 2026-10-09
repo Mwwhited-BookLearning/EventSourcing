@@ -298,7 +298,7 @@ namespace EventStore.Persistence.Migrations.SqlServer.Migrations
 
                     b.Property<string>("AppId")
                         .IsRequired()
-                        .HasColumnType("nvarchar(max)");
+                        .HasColumnType("nvarchar(450)");
 
                     b.Property<DateTimeOffset>("AppendedAt")
                         .HasColumnType("datetimeoffset");
@@ -338,7 +338,7 @@ namespace EventStore.Persistence.Migrations.SqlServer.Migrations
 
                     b.Property<string>("EventType")
                         .IsRequired()
-                        .HasColumnType("nvarchar(max)");
+                        .HasColumnType("nvarchar(450)");
 
                     b.Property<long?>("ExpectedVersion")
                         .HasColumnType("bigint");
@@ -389,7 +389,7 @@ namespace EventStore.Persistence.Migrations.SqlServer.Migrations
 
                     b.Property<string>("Status")
                         .IsRequired()
-                        .HasColumnType("nvarchar(max)");
+                        .HasColumnType("nvarchar(450)");
 
                     b.Property<string>("TelemetryPointer")
                         .HasColumnType("nvarchar(max)");
@@ -400,6 +400,14 @@ namespace EventStore.Persistence.Migrations.SqlServer.Migrations
 
                     b.HasIndex("EventId")
                         .IsUnique();
+
+                    b.HasIndex("MaterializationOfEventId");
+
+                    b.HasIndex("RespondsToEventId");
+
+                    b.HasIndex("Status", "SequenceNumber");
+
+                    b.HasIndex("AppId", "EventType", "SequenceNumber");
 
                     b.ToTable("Events");
                 });
