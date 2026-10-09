@@ -1,6 +1,6 @@
 # Repeated AppHost restarts leave stale containers and dead pinned ports
 
-**Status: open (dev tooling; workaround known).**
+**Status: mitigated 2026-10-09 (cleanup script; upstream cause not fixed).**
 
 ## What was wrong
 
@@ -10,6 +10,6 @@ After several `aspire stop`/`aspire start` cycles (and killed AppHosts), pinned 
 
 `aspire stop`, kill `dcp`/`dcpctrl`/`EventStore.AppHost`, `docker rm -f` the stale containers, `docker network rm` the `aspire-session-*` networks, then `aspire start`.
 
-## Next step
+## Mitigation
 
-Script the cleanup (or report upstream to Aspire) and note it in the load-test usage.
+`scripts/aspire-clean.ps1` performs the workaround above in one step. The underlying Aspire/DCP behaviour is not fixed here; report upstream if it keeps recurring.

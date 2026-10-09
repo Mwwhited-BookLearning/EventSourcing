@@ -47,6 +47,3 @@ account of each is in `docs/changes/2026-09-02.md` (Phase 0) and
 `docs/changes/2026-09-03.md` (Phase 1 onward — split across the two
 files since work crossed a real midnight boundary mid-session).
 
-## Load-run follow-ups
-
-Open bug reports from the load run (each file has its own next step): `docs/bugs/framework/service/aspire-restart-leaves-stale-containers-and-dead-ports.md`.
