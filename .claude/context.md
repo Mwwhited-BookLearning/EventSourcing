@@ -31,7 +31,7 @@ lose or corrupt data.
 
 ## Current state
 
-*(as of 2026-10-09, branch `main`, clean tree, HEAD `3a7a0c5` — update this
+*(as of 2026-10-09, branch `dev/postgres-durable-wake-queue` (pushed, PR pending; adds the durable Postgres wake queue, the pg+mssql API e2e suite, and the SQL Server append-deadlock fix), off `main` at `3a7a0c5` — update this
 whole section, don't just bump the date)*
 
 - **Build plan:** every item in `docs/08-build-plan.md` is Done except
