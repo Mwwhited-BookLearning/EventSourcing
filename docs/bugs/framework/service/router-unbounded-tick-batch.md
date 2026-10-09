@@ -16,4 +16,4 @@ No upper bound on a tick and no incremental commit.
 
 `RouterWorker.RunTickAsync` pages by `SequenceNumber` cursor in batches of `BatchSize` (500), commits and clears the change tracker per page, and stops once `BatchSize` events have been applied. Paging by cursor (not a plain `Take`) keeps events deferred by ADR-038's rollback gate, which stay `received` forever, from starving later events. The worker loops straight into the next tick while batches come back full. Regression tests: `RouterBatchingSqliteTests`. `RunOnceAsync` keeps its signature (returns events processed).
 
-Open follow-up (not fixed here): SQL Server routed only ~9 events/s under concurrent publishing, versus ~230/s on Postgres; tracked in `TODO.md`.
+Follow-up found and fixed separately: SQL Server routed only ~9 events/s because `Events` lacked worker indexes, see `docs/bugs/framework/database/events-table-missing-worker-indexes.md`.

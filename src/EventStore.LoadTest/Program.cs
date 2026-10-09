@@ -10,7 +10,7 @@ using EventStore.DevIdp;
 using EventStore.Dpop;
 
 // Concurrent load against one running EventStore host.
-//   dotnet run --project src/EventStore.LoadTest -- <hostBaseUrl> [publishes=3000] [concurrency=64] [eventTypes=6] [devIdpBaseUrl=http://localhost:5010]
+//   dotnet run --project src/EventStore.LoadTest -- <hostBaseUrl> [publishes=3000] [concurrency=64] [eventTypes=6] [devIdpBaseUrl=http://localhost:5010] [routeTimeoutSeconds=60]
 // Registers event types (also mid-burst), publishes a burst, then checks: every publish 202, the hash
 // chain verifies, and routed entities become queryable. Exit code 1 on any failed check.
 var host = new Uri(args.Length > 0 ? args[0] : throw new ArgumentException("host base URL required"));
@@ -18,6 +18,7 @@ var publishes = args.Length > 1 ? int.Parse(args[1]) : 3000;
 var concurrency = args.Length > 2 ? int.Parse(args[2]) : 64;
 var typeCount = args.Length > 3 ? int.Parse(args[3]) : 6;
 var devIdp = new Uri(args.Length > 4 ? args[4] : "http://localhost:5010");
+var routeTimeoutSeconds = args.Length > 5 ? int.Parse(args[5]) : 60;
 
 using var http = new HttpClient(new SocketsHttpHandler { MaxConnectionsPerServer = concurrency * 2 }) { Timeout = TimeSpan.FromMinutes(10) };
 var tokens = new Dictionary<string, string>();
@@ -142,10 +143,10 @@ Console.WriteLine($"verify: {(verified ? "clean" : "FAILED " + verifyBody)}");
 if (!verified)
     failures.Add($"verify: {verifyBody}");
 
-// Routed entities: sample, polling up to 60s for the RouterWorker to fold them in.
+// Routed entities: sample, polling up to routeTimeoutSeconds for the RouterWorker to fold them in.
 var sample = ids.OrderBy(_ => Random.Shared.Next()).Take(Math.Min(200, ids.Count)).ToArray();
 var pending = new HashSet<string>(sample);
-var deadline = DateTime.UtcNow.AddSeconds(60);
+var deadline = DateTime.UtcNow.AddSeconds(routeTimeoutSeconds);
 string lastBody = "";
 sw.Restart();
 while (pending.Count > 0 && DateTime.UtcNow < deadline)
@@ -169,7 +170,7 @@ while (pending.Count > 0 && DateTime.UtcNow < deadline)
 }
 Console.WriteLine($"entities: {sample.Length - pending.Count}/{sample.Length} sampled routed (last arrival {sw.Elapsed.TotalSeconds:F1}s after publishes ended)");
 if (pending.Count > 0)
-    failures.Add($"{pending.Count} sampled entities never routed within 60s, e.g. {pending.First()}; last GraphQL response: {(lastBody.Length > 600 ? lastBody[..600] : lastBody)}");
+    failures.Add($"{pending.Count} sampled entities never routed within {routeTimeoutSeconds}s, e.g. {pending.First()}; last GraphQL response: {(lastBody.Length > 600 ? lastBody[..600] : lastBody)}");
 
 foreach (var f in failures.Take(20))
     Console.WriteLine("FAIL " + f);

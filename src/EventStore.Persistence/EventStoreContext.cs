@@ -115,6 +115,12 @@ public class EventStoreContext(DbContextOptions<EventStoreContext> options, IJso
             e.HasKey(x => x.SequenceNumber);
             e.HasIndex(x => x.EventId).IsUnique(); // ADR-011 -- publish idempotency relies on this constraint existing
             e.HasIndex(x => x.EntityId); // ADR-021 -- QUERY /entities/{entityId}/events and the fold step's own per-entity lookups
+            // Without these every background worker query full-scanned the log (hundreds of thousands of rows) per tick:
+            // docs/bugs/framework/database/events-table-missing-worker-indexes.md
+            e.HasIndex(x => new { x.Status, x.SequenceNumber }); // RouterWorker's "received, past the cursor" page
+            e.HasIndex(x => x.MaterializationOfEventId); // UpcastMaterializer's "already materialized" anti-join
+            e.HasIndex(x => new { x.AppId, x.EventType, x.SequenceNumber }); // UpcastMaterializer candidates, per-type lookups
+            e.HasIndex(x => x.RespondsToEventId); // ExpectedResponseWatcher's satisfied-by lookup
 
             e.Property(x => x.Payload).IsRequired(); // portable TEXT/nvarchar(max)/text -- never a native JSON column type (ADR-004)
 

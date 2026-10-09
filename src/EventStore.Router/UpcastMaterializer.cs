@@ -22,6 +22,8 @@ namespace EventStore.Router;
 // before a mapping existed).
 public static class UpcastMaterializer
 {
+    private const int ReconcilePageSize = 200;
+
     // Returns true if a materialization was created; false if the upcast
     // failed (a hop didn't parse/evaluate, or the result doesn't validate
     // against the active schema) -- never throws for an ordinary upcast
@@ -90,28 +92,33 @@ public static class UpcastMaterializer
 
         foreach (var activeType in activeMultiVersionTypes)
         {
-            var candidates = await db.Events
-                .Where(e => e.AppId == activeType.AppId && e.EventType == activeType.Name &&
-                            e.EventKind == EventKind.Original && e.SchemaStatus == "conformant" &&
-                            e.SchemaVersion < activeType.Version)
-                .ToListAsync(ct);
-            if (candidates.Count == 0)
-                continue;
-
-            var candidateIds = candidates.Select(c => c.EventId).ToList();
-            var alreadyMaterializedIds = await db.Events
-                .Where(e => e.EventKind == EventKind.UpcastMaterialization && e.MaterializationOfEventId != null &&
-                            candidateIds.Contains(e.MaterializationOfEventId!.Value))
-                .Select(e => e.MaterializationOfEventId!.Value)
-                .ToListAsync(ct);
-            var alreadyMaterializedSet = alreadyMaterializedIds.ToHashSet();
-
             var activeDefinition = await schemaRegistry.GetActiveAsync(activeType.AppId, activeType.Name, ct);
             if (activeDefinition is null)
                 continue;
 
-            foreach (var candidate in candidates.Where(c => !alreadyMaterializedSet.Contains(c.EventId)))
-                await TryMaterializeAsync(db, schemaRegistry, upcastChain, candidate, activeDefinition, ct);
+            // Anti-join in the database, paged by SequenceNumber: the old shape loaded every older-version event
+            // of the type (tracked, full payload) and then ran one "MaterializationOfEventId IN (every id)"
+            // query -- thousands of parameters, rescanned on every Router tick
+            // (docs/bugs/framework/service/router-reconcile-rescans-backlog-every-tick.md).
+            long cursor = 0;
+            while (true)
+            {
+                var candidates = await db.Events
+                    .AsNoTracking()
+                    .Where(e => e.AppId == activeType.AppId && e.EventType == activeType.Name &&
+                                e.EventKind == EventKind.Original && e.SchemaStatus == "conformant" &&
+                                e.SchemaVersion < activeType.Version && e.SequenceNumber > cursor &&
+                                !db.Events.Any(m => m.EventKind == EventKind.UpcastMaterialization && m.MaterializationOfEventId == e.EventId))
+                    .OrderBy(e => e.SequenceNumber)
+                    .Take(ReconcilePageSize)
+                    .ToListAsync(ct);
+                if (candidates.Count == 0)
+                    break;
+
+                foreach (var candidate in candidates)
+                    await TryMaterializeAsync(db, schemaRegistry, upcastChain, candidate, activeDefinition, ct);
+                cursor = candidates[^1].SequenceNumber;
+            }
         }
     }
 }

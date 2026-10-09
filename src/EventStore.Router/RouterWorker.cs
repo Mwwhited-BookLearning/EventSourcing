@@ -68,6 +68,7 @@ public class RouterWorker(IServiceScopeFactory scopeFactory, ILogger<RouterWorke
     {
         var isLeader = false;
         var nextRenewalAt = DateTimeOffset.MinValue; // forces an immediate first acquisition attempt
+        var nextReconcileAt = DateTimeOffset.MinValue;
         while (!stoppingToken.IsCancellationRequested)
         {
             var applied = 0;
@@ -99,7 +100,12 @@ public class RouterWorker(IServiceScopeFactory scopeFactory, ILogger<RouterWorke
                     var erasureKeyService = scope.ServiceProvider.GetRequiredService<ErasureKeyService>();
                     var payloadMasker = scope.ServiceProvider.GetRequiredService<IPayloadMasker>();
                     var tickWakeSignal = scope.ServiceProvider.GetRequiredService<IWorkerWakeSignal>();
-                    applied = (await RunTickAsync(db, schemaRegistry, upcastChain, erasureKeyService, payloadMasker, tickWakeSignal, stoppingToken)).Applied;
+                    // ADR-027 Trigger 2 is a catch-up scan with "no pacing guarantee"; running it on every 200ms tick
+                    // made it dominate the loop, so it runs at most every ReconcileInterval.
+                    var reconcileDue = DateTimeOffset.UtcNow >= nextReconcileAt;
+                    applied = (await RunTickAsync(db, schemaRegistry, upcastChain, erasureKeyService, payloadMasker, tickWakeSignal, stoppingToken, reconcileDue)).Applied;
+                    if (reconcileDue)
+                        nextReconcileAt = DateTimeOffset.UtcNow + ReconcileInterval;
                 }
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
@@ -151,6 +157,8 @@ public class RouterWorker(IServiceScopeFactory scopeFactory, ILogger<RouterWorke
     // worker loops straight back for the next batch while batches come back full.
     public const int BatchSize = 500;
 
+    private static readonly TimeSpan ReconcileInterval = TimeSpan.FromSeconds(30);
+
     // One tick's worth of work, factored out of ExecuteAsync's loop so tests
     // can drive it directly against a provider-backed context, the same
     // pattern DerivationWorker.RunOnceAsync already established. Returns the
@@ -168,7 +176,7 @@ public class RouterWorker(IServiceScopeFactory scopeFactory, ILogger<RouterWorke
     // BatchSize events have actually been applied; each page is committed and the change tracker cleared.
     public static async Task<(int Processed, int Applied)> RunTickAsync(
         EventStoreContext db, SchemaRegistryService schemaRegistry, UpcastChain upcastChain, ErasureKeyService? erasureKeyService = null,
-        IPayloadMasker? payloadMasker = null, IWorkerWakeSignal? wakeSignal = null, CancellationToken ct = default)
+        IPayloadMasker? payloadMasker = null, IWorkerWakeSignal? wakeSignal = null, CancellationToken ct = default, bool reconcileBacklog = true)
     {
         var processed = 0;
         var applied = 0;
@@ -210,7 +218,8 @@ public class RouterWorker(IServiceScopeFactory scopeFactory, ILogger<RouterWorke
 
         // ADR-027 Trigger 2 -- catches up any backlog left by a mapping that
         // didn't exist yet when its events originally folded.
-        await UpcastMaterializer.ReconcileBacklogAsync(db, schemaRegistry, upcastChain, ct);
+        if (reconcileBacklog)
+            await UpcastMaterializer.ReconcileBacklogAsync(db, schemaRegistry, upcastChain, ct);
 
         return (processed, applied);
     }

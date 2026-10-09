@@ -47,9 +47,7 @@ account of each is in `docs/changes/2026-09-02.md` (Phase 0) and
 `docs/changes/2026-09-03.md` (Phase 1 onward — split across the two
 files since work crossed a real midnight boundary mid-session).
 
-## SQL Server Router throughput under concurrent publishing
+## Load-run follow-ups
 
-Why: the concurrent load run (`dotnet run --project src/EventStore.LoadTest -- http://localhost:5002 3000 64 6`, see `docs/changes/2026-10-09.md`) showed the SQL Server host routing only ~9 events/s while publishers were active (Postgres ~230/s), so sampled entities were not queryable within 60s. Verify and publishes are fine. Not yet root-caused: suspects are Router reads/updates blocked behind the append `sp_getapplock` transactions, and each tick rescanning the growing tail of ADR-038-deferred `received` events.
-
-- [ ] Profile one Router tick on SQL Server (waits via `sys.dm_exec_requests`, per-page timings) and fix the cause; re-run the load script on :5002 until 200/200 sampled entities route.
+- [ ] SQL Server still routes ~100 events/s vs Postgres' hundreds (every wake-signal send is a Service Broker dialog with a log flush): consider batching/coalescing sends or reusing dialogs, then re-run `dotnet run --project src/EventStore.LoadTest -- http://localhost:5002 3000 64 6 http://localhost:5010 60` until 200/200 route inside 60 s.
 - [ ] Triage the two Playwright playbook failures from the full test run (`RecordDecidePendingMatchPlaybook`, `RecordDecidePendingAlertPlaybook`): confirm whether they also fail on `main`.
