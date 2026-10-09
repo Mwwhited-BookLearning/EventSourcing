@@ -47,7 +47,7 @@ public class ProjectionsSqliteTests
         await using (var db = new EventStoreContext(options, new SqliteJsonPathTranslator()))
             await db.Database.MigrateAsync();
 
-        _devIdpFactory = new WebApplicationFactory<DevIdpAssembly::Program>();
+        _devIdpFactory = DevIdpTestFactory.Create();
         _devIdpClient = _devIdpFactory.CreateClient();
 
         // Same real cross-TestServer JwtBearer wiring as AuthSqliteTests -- see

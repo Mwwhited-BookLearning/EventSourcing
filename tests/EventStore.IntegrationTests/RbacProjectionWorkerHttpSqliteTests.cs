@@ -77,7 +77,7 @@ public class RbacProjectionWorkerHttpSqliteTests
         await using (var db = new EventStoreContext(options, new SqliteJsonPathTranslator()))
             await db.Database.MigrateAsync();
 
-        _devIdpFactory = new WebApplicationFactory<DevIdpAssembly::Program>().WithWebHostBuilder(builder =>
+        _devIdpFactory = DevIdpTestFactory.Create().WithWebHostBuilder(builder =>
         {
             // FollowClientOptions -- matches devidp-rbac-follower-client's
             // own seeded identity (DevIdpSeeder), the same client

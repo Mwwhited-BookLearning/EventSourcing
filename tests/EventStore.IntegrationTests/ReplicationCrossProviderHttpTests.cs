@@ -95,7 +95,7 @@ public class ReplicationCrossProviderHttpTests
         await using (var db = new EventStoreContext(sqlServerOptions, new SqlServerJsonPathTranslator()))
             await db.Database.MigrateAsync();
 
-        _devIdpFactory = new WebApplicationFactory<DevIdpAssembly::Program>();
+        _devIdpFactory = DevIdpTestFactory.Create();
         _devIdpClient = _devIdpFactory.CreateClient();
 
         var configManager = new ConfigurationManager<OpenIdConnectConfiguration>(

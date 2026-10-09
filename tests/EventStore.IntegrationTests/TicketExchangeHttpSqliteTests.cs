@@ -51,7 +51,7 @@ public class TicketExchangeHttpSqliteTests
         await using (var db = new EventStoreContext(options, new SqliteJsonPathTranslator()))
             await db.Database.MigrateAsync();
 
-        _devIdpFactory = new WebApplicationFactory<DevIdpAssembly::Program>();
+        _devIdpFactory = DevIdpTestFactory.Create();
         _devIdpClient = _devIdpFactory.CreateClient();
 
         var configManager = new ConfigurationManager<OpenIdConnectConfiguration>(

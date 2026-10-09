@@ -149,7 +149,13 @@ END CONVERSATION @conversationHandle;", [new SqlParameter("@topic", topic)], ct)
                 }
 
                 if (messageTypeName == messageType)
+                {
+                    // Coalesce, matching PostgresWorkerWakeSignal: a wake is idempotent, so any
+                    // further signals already queued for this topic are consumed with this one
+                    // instead of each producing its own instant, redundant wake on later waits.
+                    await DrainPendingAsync(connection, queue, ct);
                     return; // a genuine wake
+                }
                 // else: a system control message (EndDialog/Error) from a
                 // DIFFERENT, already-resolved conversation on this SAME
                 // topic's own queue -- not a wake; loop again with whatever
@@ -164,6 +170,32 @@ END CONVERSATION @conversationHandle;", [new SqlParameter("@topic", topic)], ct)
         {
             if (wasClosed)
                 await db.Database.CloseConnectionAsync();
+        }
+    }
+
+    // Non-blocking RECEIVE of everything currently queued (no WAITFOR), ending each conversation.
+    private static async Task DrainPendingAsync(System.Data.Common.DbConnection connection, string queue, CancellationToken ct)
+    {
+        while (true)
+        {
+            var handles = new List<Guid>();
+            await using (var command = connection.CreateCommand())
+            {
+                command.CommandText = $"RECEIVE TOP(100) conversation_handle FROM {queue};";
+                await using var reader = await command.ExecuteReaderAsync(ct);
+                while (await reader.ReadAsync(ct))
+                    handles.Add(reader.GetGuid(0));
+            }
+            if (handles.Count == 0)
+                return;
+            foreach (var handle in handles)
+            {
+                await using var end = connection.CreateCommand();
+                end.CommandText = "END CONVERSATION @handle;";
+                end.Parameters.Add(new SqlParameter("@handle", handle));
+                try { await end.ExecuteNonQueryAsync(ct); }
+                catch (SqlException) { /* already ended from the sender's side */ }
+            }
         }
     }
 }

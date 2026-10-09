@@ -82,6 +82,22 @@ public class WorkerWakeSignalPostgresTests
         Assert.IsTrue(stopwatch.Elapsed < TimeSpan.FromSeconds(2), $"expected the queued signal to be pulled immediately, took {stopwatch.Elapsed}");
     }
 
+
+    [TestMethod]
+    public async Task AConsumedSignalIsMarkedNotDeletedAndANewNotifyAfterwardsEnqueuesAFreshRow()
+    {
+        var topic = $"topic_{Guid.NewGuid():N}";
+        using var db = CreateContext();
+        var signal = new PostgresWorkerWakeSignal(db);
+        await signal.NotifyAsync(topic, CancellationToken.None);
+        await signal.WaitForWakeAsync(topic, TimeSpan.FromSeconds(10), CancellationToken.None); // consumes -> marks ConsumedAt
+        await signal.NotifyAsync(topic, CancellationToken.None); // consumed row must not suppress a new pending one
+
+        var consumed = await db.Database.SqlQuery<int>($"""SELECT count(*)::int AS "Value" FROM "WakeSignalQueue" WHERE "Topic" = {topic} AND "ConsumedAt" IS NOT NULL""").SingleAsync();
+        var pending = await db.Database.SqlQuery<int>($"""SELECT count(*)::int AS "Value" FROM "WakeSignalQueue" WHERE "Topic" = {topic} AND "ConsumedAt" IS NULL""").SingleAsync();
+        Assert.AreEqual(1, consumed);
+        Assert.AreEqual(1, pending);
+    }
     [TestMethod]
     public async Task ASignalIsConsumedOnceAndCoalescesSoASecondWaitBlocksUntilItsTimeout()
     {

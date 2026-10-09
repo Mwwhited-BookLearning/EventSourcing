@@ -23,7 +23,20 @@ public class ProviderE2ESqlServerTests : ProviderE2EScenarios
     private static MsSqlContainer _container = default!;
     private static ProviderE2EHarness _harness = default!;
 
+    private static string _connectionString = default!;
+
     protected override ProviderE2EHarness Harness => _harness;
+
+    // Reseeding the identity jumps SequenceNumber forward, the same visible effect as identity
+    // values consumed by rolled-back inserts.
+    protected override async Task BurnSequenceNumbersAsync(int count)
+    {
+        await using var connection = new SqlConnection(_connectionString);
+        await connection.OpenAsync();
+        await using var command = connection.CreateCommand();
+        command.CommandText = $"DECLARE @m bigint = ISNULL((SELECT MAX(SequenceNumber) FROM Events), 0); DECLARE @n bigint = @m + {count}; DBCC CHECKIDENT ('Events', RESEED, @n) WITH NO_INFOMSGS;";
+        await command.ExecuteNonQueryAsync();
+    }
 
     [ClassInitialize]
     public static async Task ClassInit(TestContext _)
@@ -41,6 +54,7 @@ public class ProviderE2ESqlServerTests : ProviderE2EScenarios
             await command.ExecuteNonQueryAsync();
         }
         var connectionString = new SqlConnectionStringBuilder(_container.GetConnectionString()) { InitialCatalog = databaseName }.ConnectionString;
+        _connectionString = connectionString;
 
         var options = new DbContextOptionsBuilder<EventStoreContext>()
             .UseSqlServer(connectionString, x => x.MigrationsAssembly("EventStore.Persistence.Migrations.SqlServer"))

@@ -63,7 +63,7 @@ public class TimestampingHttpSqliteTests
 
         (_tsaCertificate, _fakeTsaServer) = await TimestampingTestSupport.StartFakeTsaAsync();
 
-        _devIdpFactory = new WebApplicationFactory<DevIdpAssembly::Program>();
+        _devIdpFactory = DevIdpTestFactory.Create();
         _devIdpClient = _devIdpFactory.CreateClient();
 
         var configManager = new ConfigurationManager<OpenIdConnectConfiguration>(

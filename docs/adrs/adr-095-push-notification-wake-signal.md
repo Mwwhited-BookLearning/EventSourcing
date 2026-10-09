@@ -197,3 +197,11 @@ semantics:
 - The worker poll loop (`maxWait`) remains the correctness backstop on every
   provider, unchanged. Tests: `WorkerWakeSignalPostgresTests.cs` adds an
   offline-reader case and a coalescing/consume-once case.
+
+## Revised, 2026-10-09 (later) — SQL Server coalesces like Postgres (direct request: "make both work the same")
+
+After the Postgres queue revision the two providers still differed: Postgres coalesced a burst of signals into one wake, but SQL Server returned one wake per queued Service Broker message, so a burst caused repeated instant wakes on later waits. `SqlServerWorkerWakeSignal.WaitForWakeAsync` now, after a genuine wake, drains every remaining queued message for that topic (non-blocking `RECEIVE`, ending each conversation). Both providers now: persist a signal sent while no reader waits, deliver it on the next wait, and collapse a burst into one wake. Tests: `WorkerWakeSignalSqlServerTests` gains the offline-reader and coalescing scenarios.
+
+## Revised, 2026-10-09 (resolved open question) — Postgres consumed wake rows are marked, then swept
+
+Direct decision: "mark and sweep." `WaitForWakeAsync`'s drain now sets `"ConsumedAt"` on pending rows instead of deleting them (migration `AddWakeSignalQueueConsumedAt`; partial index on pending rows). Coalescing in `NotifyAsync` considers only unconsumed rows, so a consumed row never suppresses a new signal. `NotifyAsync` deletes rows consumed more than 7 days ago, at most once per hour per process. SQL Server Service Broker has no equivalent: `RECEIVE` removes the message, so the audit trail exists on Postgres only; the wake behavior is otherwise identical on both providers.

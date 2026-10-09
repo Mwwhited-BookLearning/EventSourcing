@@ -15,6 +15,9 @@ public abstract class ProviderE2EScenarios
 {
     protected abstract ProviderE2EHarness Harness { get; }
 
+    // Consumes `count` Events.SequenceNumber identity values without inserting rows (what rolled-back appends do).
+    protected abstract Task BurnSequenceNumbersAsync(int count);
+
     private static readonly HttpMethod Query = new("QUERY");
 
     private static string NewAppId() => $"e2e-{Guid.NewGuid():N}"[..16];
@@ -148,6 +151,27 @@ public abstract class ProviderE2EScenarios
         Assert.AreEqual(parent, parents[0].GetProperty("eventId").GetGuid());
     }
 
+
+    [TestMethod]
+    public async Task HashChainStillVerifiesAcrossAGapInSequenceNumbers()
+    {
+        var appId = NewAppId();
+        var eventType = $"E2eGap{appId.Replace("-", "")}";
+        await RegisterAsync(eventType, appId);
+        foreach (var i in Enumerable.Range(0, 3))
+            Assert.AreEqual(HttpStatusCode.Accepted, (await PublishAsync(eventType, appId, $"g-a{i}")).StatusCode);
+
+        await BurnSequenceNumbersAsync(1000); // identity values consumed by rolled-back/retried appends leave exactly this
+
+        foreach (var i in Enumerable.Range(0, 3))
+            Assert.AreEqual(HttpStatusCode.Accepted, (await PublishAsync(eventType, appId, $"g-b{i}")).StatusCode);
+
+        var (token, key) = await AuthScenarioAssertions.GetTokenAsync(Harness.DevIdp, "operator-client", "operator-client-secret", "registry:admin");
+        using var request = new HttpRequestMessage(HttpMethod.Get, $"/events/verify?throughSequenceNumber={long.MaxValue}");
+        AuthScenarioAssertions.AttachAuth(request, Harness.Host, token, key);
+        var body = await (await Harness.Host.SendAsync(request)).Content.ReadFromJsonAsync<JsonElement>();
+        Assert.IsTrue(body.GetProperty("verified").GetBoolean(), body.ToString());
+    }
     [TestMethod]
     public async Task HashChainVerifiesCleanAfterConcurrentPublishes()
     {

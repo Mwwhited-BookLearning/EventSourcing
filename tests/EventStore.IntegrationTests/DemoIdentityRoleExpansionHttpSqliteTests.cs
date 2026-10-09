@@ -84,7 +84,7 @@ public class DemoIdentityRoleExpansionHttpSqliteTests
         // RbacProjectionWorkerHttpSqliteTests.cs -- needed to construct and
         // drive a real RbacProjectionWorker.CatchUpOnceAsync against both
         // TestServers, not a stand-in call to RoleService directly.
-        _devIdpFactory = new WebApplicationFactory<DevIdpAssembly::Program>().WithWebHostBuilder(builder =>
+        _devIdpFactory = DevIdpTestFactory.Create().WithWebHostBuilder(builder =>
         {
             builder.UseSetting("Rbac:Client:ClientId", "devidp-rbac-follower-client");
             builder.UseSetting("Rbac:Client:ClientSecret", "devidp-rbac-follower-client-secret");
