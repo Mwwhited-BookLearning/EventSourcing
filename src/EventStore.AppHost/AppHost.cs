@@ -10,7 +10,7 @@ var builder = DistributedApplication.CreateBuilder(args);
 // deployment target never uses this AppHost at all (ADR-026: dev/POC
 // orchestration only), so this is about local-dev flexibility, not
 // production config management.
-// Fail fast when a pinned port is already taken (docs/bugs/framework/service/
+// Warn when a pinned port is already taken (docs/bugs/framework/service/
 // apphost-port-5001-conflicts-with-docker-backend.md): otherwise DCP's proxy and the other
 // listener (Docker Desktop's backend holds 5001 on some machines, or a previous AppHost's
 // leftover proxy) silently split traffic. Override with Ports:<Key> to move one.
@@ -24,7 +24,7 @@ int Port(string key, int fallback)
     }
     catch (System.Net.Sockets.SocketException ex)
     {
-        throw new InvalidOperationException($"Pinned port {port} (Ports:{key}) is already in use ({ex.SocketErrorCode}). Stop the process holding it (netstat -ano | findstr :{port}) or set Ports:{key} to another port.", ex);
+        Console.Error.WriteLine($"WARNING: pinned port {port} (Ports:{key}) is already in use ({ex.SocketErrorCode}); traffic may reach the other listener. Find it with netstat -ano | findstr :{port}, or set Ports:{key} to another port.");
     }
     return port;
 }
