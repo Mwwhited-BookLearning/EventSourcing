@@ -130,5 +130,18 @@ public class WorkerWakeSignalSqlServerTests
         isolationStopwatch.Stop();
         Assert.IsTrue(isolationStopwatch.Elapsed >= TimeSpan.FromMilliseconds(700),
             $"expected peersync's own wait to run out its full timeout, unaffected by expectedresponse's own notify on a DIFFERENT topic's queue, took only {isolationStopwatch.Elapsed}");
+
+        // Parity with Postgres: a signal sent while no reader is waiting is still delivered, and a
+        // burst of signals coalesces into ONE wake (the next wait then runs out its full timeout).
+        await notifier.NotifyAsync("webhookoutbox", CancellationToken.None);
+        await notifier.NotifyAsync("webhookoutbox", CancellationToken.None);
+        var offlineStopwatch = Stopwatch.StartNew();
+        await waiter.WaitForWakeAsync("webhookoutbox", TimeSpan.FromSeconds(10), CancellationToken.None);
+        offlineStopwatch.Stop();
+        Assert.IsTrue(offlineStopwatch.Elapsed < TimeSpan.FromSeconds(3), $"expected the queued signal to be pulled immediately, took {offlineStopwatch.Elapsed}");
+        var coalesceStopwatch = Stopwatch.StartNew();
+        await waiter.WaitForWakeAsync("webhookoutbox", TimeSpan.FromMilliseconds(600), CancellationToken.None);
+        coalesceStopwatch.Stop();
+        Assert.IsTrue(coalesceStopwatch.Elapsed >= TimeSpan.FromMilliseconds(500), $"expected the burst to coalesce into one wake, but a second wait returned in {coalesceStopwatch.Elapsed}");
     }
 }
