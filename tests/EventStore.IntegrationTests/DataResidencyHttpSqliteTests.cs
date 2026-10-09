@@ -63,7 +63,7 @@ public class DataResidencyHttpSqliteTests
         await MigrateAsync(_dbPathB);
         await MigrateAsync(_dbPathC);
 
-        _devIdpFactory = new WebApplicationFactory<DevIdpAssembly::Program>();
+        _devIdpFactory = DevIdpTestFactory.Create();
         _devIdpClient = _devIdpFactory.CreateClient();
 
         var configManager = new ConfigurationManager<OpenIdConnectConfiguration>(

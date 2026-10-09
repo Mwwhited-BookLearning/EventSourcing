@@ -37,7 +37,7 @@ public class TicketExchangeSecretRotationHttpSqliteTests
     [ClassInitialize]
     public static void ClassInit(TestContext _)
     {
-        _devIdpFactory = new WebApplicationFactory<DevIdpAssembly::Program>();
+        _devIdpFactory = DevIdpTestFactory.Create();
         _devIdpClient = _devIdpFactory.CreateClient();
     }
 

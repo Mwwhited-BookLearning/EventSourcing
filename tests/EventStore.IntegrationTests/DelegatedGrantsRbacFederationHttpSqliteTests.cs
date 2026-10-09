@@ -75,7 +75,7 @@ public class DelegatedGrantsRbacFederationHttpSqliteTests
         await using (var db = new EventStoreContext(options, new SqliteJsonPathTranslator()))
             await db.Database.MigrateAsync();
 
-        _devIdpFactory = new WebApplicationFactory<DevIdpAssembly::Program>().WithWebHostBuilder(builder =>
+        _devIdpFactory = DevIdpTestFactory.Create().WithWebHostBuilder(builder =>
             builder.ConfigureServices(services =>
                 services.AddHttpClient(string.Empty).ConfigurePrimaryHttpMessageHandler(() => new JwksLookupHandler(JwksResponses))));
         _devIdpClient = _devIdpFactory.CreateClient();

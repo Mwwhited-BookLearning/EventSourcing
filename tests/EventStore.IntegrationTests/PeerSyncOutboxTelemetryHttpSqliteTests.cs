@@ -55,7 +55,7 @@ public class PeerSyncOutboxTelemetryHttpSqliteTests
         await MigrateAsync(_dbPathA);
         await MigrateAsync(_dbPathB);
 
-        _devIdpFactory = new WebApplicationFactory<DevIdpAssembly::Program>();
+        _devIdpFactory = DevIdpTestFactory.Create();
         _devIdpClient = _devIdpFactory.CreateClient();
 
         var configManager = new ConfigurationManager<OpenIdConnectConfiguration>(

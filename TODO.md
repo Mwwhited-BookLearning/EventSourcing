@@ -37,10 +37,6 @@ above: deleted from this file, full narrative in
 here — a genuinely undecided fork, not decided work with only the doing
 left.)
 
-- **Apply `DevIdp:EphemeralKeys` to the other DevIdp test factories.** Fixed for
-  `ProviderE2EHarness` (`docs/bugs/framework/test/devidp-shared-signing-key-flake.md`);
-  every other `WebApplicationFactory<DevIdp>` in `tests/` still uses the persisted
-  dev certificate and has the same latent flake.
 
 The five-phase design-review program (missing-documents sweep, full ADR
 review, proving-ground domain review, cross-domain-to-framework review,

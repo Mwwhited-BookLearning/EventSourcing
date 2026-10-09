@@ -58,7 +58,7 @@ public class UcanDelegationRevocationHttpSqliteTests
         await using (var db = new EventStoreContext(options, new SqliteJsonPathTranslator()))
             await db.Database.MigrateAsync();
 
-        _devIdpFactory = new WebApplicationFactory<DevIdpAssembly::Program>().WithWebHostBuilder(builder =>
+        _devIdpFactory = DevIdpTestFactory.Create().WithWebHostBuilder(builder =>
         {
             // Same FollowClientOptions/"DevIdp"+"Follow" HttpClient wiring
             // as RbacProjectionWorkerHttpSqliteTests.cs's own ClassInit --
