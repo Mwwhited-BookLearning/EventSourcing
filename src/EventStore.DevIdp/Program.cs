@@ -247,8 +247,21 @@ builder.Services.AddOpenIddict()
 
         // Dev-only ephemeral certs (ADR-006) -- a real deployment swaps DevIdp
         // for a production IdP entirely, per this item's own config-only story.
-        options.AddDevelopmentEncryptionCertificate();
-        options.AddDevelopmentSigningCertificate();
+        // DevIdp:EphemeralKeys=true -- in-memory keys instead of the cert persisted in the OS user
+        // store. That persisted key is shared by every process/factory on the machine, and
+        // concurrent test hosts intermittently hit CryptographicException "The supplied handle
+        // is invalid" in RSACng.TrySignHash (docs/bugs/framework/test/devidp-shared-signing-key-flake.md).
+        // Off by default: a long-running AppHost wants keys that survive a DevIdp restart.
+        if (builder.Configuration.GetValue<bool>("DevIdp:EphemeralKeys"))
+        {
+            options.AddEphemeralEncryptionKey();
+            options.AddEphemeralSigningKey();
+        }
+        else
+        {
+            options.AddDevelopmentEncryptionCertificate();
+            options.AddDevelopmentSigningCertificate();
+        }
 
         // A validating Host's ordinary JwtBearer middleware reads a plain signed
         // JWT via the discovery document + JWKS -- it has no OpenIddict-specific

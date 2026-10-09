@@ -34,7 +34,7 @@ public sealed class ProviderE2EHarness : IDisposable
     public static async Task<ProviderE2EHarness> StartAsync<THost>(string connectionStringName, string connectionString)
         where THost : class
     {
-        var devIdpFactory = new WebApplicationFactory<DevIdpAssembly::Program>();
+        var devIdpFactory = new WebApplicationFactory<DevIdpAssembly::Program>().WithWebHostBuilder(b => b.UseSetting("DevIdp:EphemeralKeys", "true"));
         var devIdpClient = devIdpFactory.CreateClient();
         var configManager = new ConfigurationManager<OpenIdConnectConfiguration>(
             new Uri(devIdpClient.BaseAddress!, ".well-known/openid-configuration").ToString(),

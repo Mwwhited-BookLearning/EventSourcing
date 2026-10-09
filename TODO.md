@@ -37,14 +37,10 @@ above: deleted from this file, full narrative in
 here — a genuinely undecided fork, not decided work with only the doing
 left.)
 
-- **Intermittent DevIdp token-endpoint 500 in the provider e2e suite.** About
-  one run in two of `ProviderE2EPostgres` alone (not reproducible in later
-  runs) failed 5 of 7 tests with `CryptographicException: The supplied handle
-  is invalid` in `CngHelpers.TrySignHash`, returned as a 500 from `/connect/token`.
-  Reproduced with the wake-queue change stashed, so unrelated to it. Suspect
-  OpenIddict's `AddDevelopmentSigningCertificate()` (`src/EventStore.DevIdp/
-  Program.cs` ~line 251): a store-loaded cert key handle used concurrently by
-  parallel test methods. Capture the server-side stack, then fix or serialize.
+- **Apply `DevIdp:EphemeralKeys` to the other DevIdp test factories.** Fixed for
+  `ProviderE2EHarness` (`docs/bugs/framework/test/devidp-shared-signing-key-flake.md`);
+  every other `WebApplicationFactory<DevIdp>` in `tests/` still uses the persisted
+  dev certificate and has the same latent flake.
 
 The five-phase design-review program (missing-documents sweep, full ADR
 review, proving-ground domain review, cross-domain-to-framework review,
