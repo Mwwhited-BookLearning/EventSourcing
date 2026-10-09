@@ -21,6 +21,8 @@ namespace EventStore.Inbox;
 // to before this ADR -- Genesis, from SequenceNumber 1.
 public class ChainVerificationService(EventStoreContext db)
 {
+    private const int PageSize = 1000;
+
     public async Task<ChainVerificationResult> VerifyAsync(long throughSequenceNumber, CancellationToken ct = default)
     {
         using var activity = DuplexInstrumentation.ActivitySource.StartActivity("duplex.hashchain.verify");
@@ -31,45 +33,59 @@ public class ChainVerificationService(EventStoreContext db)
             .FirstOrDefaultAsync(ct);
         var sinceSequenceNumber = checkpoint?.SequenceNumberRangeEnd ?? 0;
 
-        var events = await db.Events
-            .AsNoTracking()
-            .Where(e => e.SequenceNumber > sinceSequenceNumber && e.SequenceNumber <= throughSequenceNumber)
-            .OrderBy(e => e.SequenceNumber)
-            .Select(e => new { e.EventId, e.SequenceNumber, e.EventType, e.Payload, e.ChainHash, e.Signature })
-            .ToListAsync(ct);
-
-        var eventIds = events.Select(e => e.EventId).ToList();
-        var parentIdsByEvent = await db.EventParents
-            .AsNoTracking()
-            .Where(p => eventIds.Contains(p.ChildEventId))
-            .GroupBy(p => p.ChildEventId)
-            .ToDictionaryAsync(g => g.Key, g => g.Select(p => p.ParentEventId).ToList(), ct);
-
+        // Paged by SequenceNumber: loading the whole log and then one "ChildEventId IN (every id)" exceeds
+        // SQLite's bound-parameter limit (and holds the entire log in memory) once the log is large
+        // (docs/bugs/framework/service/chain-verify-unbounded-in-clause.md).
         var expected = checkpoint?.ChainHashAtRangeEnd ?? EventChainHash.Genesis;
-        foreach (var e in events)
+        var cursor = sinceSequenceNumber;
+        var count = 0;
+        while (true)
         {
-            // Re-derived from this row's own EventType/Payload/parent links, not
-            // read from the stored PayloadHash column -- a direct-database edit
-            // to Payload alone (leaving PayloadHash untouched) must still surface
-            // here as a divergence, matching ADR-019's own tamper-evidence promise.
-            var parentIds = parentIdsByEvent.TryGetValue(e.EventId, out var ids) ? ids : [];
-            var payloadHash = EventPayloadHash.Compute(e.EventType, e.Payload, parentIds);
-            // ADR-066 -- re-derived from this row's own stored Signature (not
-            // just Payload), so tampering SignerId/SignedAt/Meaning/Acr
-            // directly in the database surfaces here too, the same "recompute
-            // from the actual row, don't trust a stored column blindly"
-            // discipline the Payload/PayloadHash re-derivation above already
-            // established.
-            expected = EventChainHash.Compute(expected, payloadHash, e.SequenceNumber, e.Signature);
-            if (expected != e.ChainHash)
+            var events = await db.Events
+                .AsNoTracking()
+                .Where(e => e.SequenceNumber > cursor && e.SequenceNumber <= throughSequenceNumber)
+                .OrderBy(e => e.SequenceNumber)
+                .Take(PageSize)
+                .Select(e => new { e.EventId, e.SequenceNumber, e.EventType, e.Payload, e.ChainHash, e.Signature })
+                .ToListAsync(ct);
+            if (events.Count == 0)
+                break;
+
+            var eventIds = events.Select(e => e.EventId).ToList();
+            var parentIdsByEvent = await db.EventParents
+                .AsNoTracking()
+                .Where(p => eventIds.Contains(p.ChildEventId))
+                .GroupBy(p => p.ChildEventId)
+                .ToDictionaryAsync(g => g.Key, g => g.Select(p => p.ParentEventId).ToList(), ct);
+
+            foreach (var e in events)
             {
-                DuplexInstrumentation.HashChainVerificationOutcomes.Add(1, new KeyValuePair<string, object?>("outcome", "tampered"));
-                return new ChainVerificationResult.Tampered(e.SequenceNumber);
+                // Re-derived from this row's own EventType/Payload/parent links, not
+                // read from the stored PayloadHash column -- a direct-database edit
+                // to Payload alone (leaving PayloadHash untouched) must still surface
+                // here as a divergence, matching ADR-019's own tamper-evidence promise.
+                var parentIds = parentIdsByEvent.TryGetValue(e.EventId, out var ids) ? ids : [];
+                var payloadHash = EventPayloadHash.Compute(e.EventType, e.Payload, parentIds);
+                // ADR-066 -- re-derived from this row's own stored Signature (not
+                // just Payload), so tampering SignerId/SignedAt/Meaning/Acr
+                // directly in the database surfaces here too, the same "recompute
+                // from the actual row, don't trust a stored column blindly"
+                // discipline the Payload/PayloadHash re-derivation above already
+                // established.
+                expected = EventChainHash.Compute(expected, payloadHash, e.SequenceNumber, e.Signature);
+                if (expected != e.ChainHash)
+                {
+                    DuplexInstrumentation.HashChainVerificationOutcomes.Add(1, new KeyValuePair<string, object?>("outcome", "tampered"));
+                    return new ChainVerificationResult.Tampered(e.SequenceNumber);
+                }
             }
+
+            count += events.Count;
+            cursor = events[^1].SequenceNumber;
         }
 
         DuplexInstrumentation.HashChainVerificationOutcomes.Add(1, new KeyValuePair<string, object?>("outcome", "verified"));
-        return new ChainVerificationResult.Verified(events.Count);
+        return new ChainVerificationResult.Verified(count);
     }
 }
 

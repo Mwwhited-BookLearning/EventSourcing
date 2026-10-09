@@ -70,6 +70,7 @@ public class RouterWorker(IServiceScopeFactory scopeFactory, ILogger<RouterWorke
         var nextRenewalAt = DateTimeOffset.MinValue; // forces an immediate first acquisition attempt
         while (!stoppingToken.IsCancellationRequested)
         {
+            var applied = 0;
             try
             {
                 using var scope = scopeFactory.CreateScope();
@@ -98,7 +99,7 @@ public class RouterWorker(IServiceScopeFactory scopeFactory, ILogger<RouterWorke
                     var erasureKeyService = scope.ServiceProvider.GetRequiredService<ErasureKeyService>();
                     var payloadMasker = scope.ServiceProvider.GetRequiredService<IPayloadMasker>();
                     var tickWakeSignal = scope.ServiceProvider.GetRequiredService<IWorkerWakeSignal>();
-                    await RunOnceAsync(db, schemaRegistry, upcastChain, erasureKeyService, payloadMasker, tickWakeSignal, stoppingToken);
+                    applied = (await RunTickAsync(db, schemaRegistry, upcastChain, erasureKeyService, payloadMasker, tickWakeSignal, stoppingToken)).Applied;
                 }
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
@@ -112,6 +113,10 @@ public class RouterWorker(IServiceScopeFactory scopeFactory, ILogger<RouterWorke
                 // tick, same resiliency posture as EventTailReader's own poll loop.
                 logger.LogError(ex, "Router tick failed");
             }
+
+            // A full batch means more is likely waiting: go straight to the next tick, no wake wait.
+            if (applied >= BatchSize)
+                continue;
 
             // ADR-095 -- waits up to PollInterval, but returns early the
             // moment PublishService signals new work exists. Never the sole
@@ -138,6 +143,14 @@ public class RouterWorker(IServiceScopeFactory scopeFactory, ILogger<RouterWorke
         }
     }
 
+    // Upper bound on events folded per tick. RunOnceAsync used to load EVERY "received" event into one
+    // change tracker and save once at the end: after a burst (or any backlog) one tick took minutes of
+    // quadratic change-tracking, committed nothing until the very end, held the leader lease far past its
+    // renewal point, and one bad event discarded the whole tick. Found by the concurrent AppHost load run
+    // (docs/bugs/framework/service/router-unbounded-tick-batch.md). Bounded and committed per tick; the
+    // worker loops straight back for the next batch while batches come back full.
+    public const int BatchSize = 500;
+
     // One tick's worth of work, factored out of ExecuteAsync's loop so tests
     // can drive it directly against a provider-backed context, the same
     // pattern DerivationWorker.RunOnceAsync already established. Returns the
@@ -146,18 +159,42 @@ public class RouterWorker(IServiceScopeFactory scopeFactory, ILogger<RouterWorke
     // here since it's not driven by "received" events at all).
     public static async Task<int> RunOnceAsync(
         EventStoreContext db, SchemaRegistryService schemaRegistry, UpcastChain upcastChain, ErasureKeyService? erasureKeyService = null,
+        IPayloadMasker? payloadMasker = null, IWorkerWakeSignal? wakeSignal = null, CancellationToken ct = default) =>
+        (await RunTickAsync(db, schemaRegistry, upcastChain, erasureKeyService, payloadMasker, wakeSignal, ct)).Processed;
+
+    // Processed = events looked at; Applied = those that actually reached "applied". Events deferred by
+    // ADR-038's rollback gate stay "received" forever, so the tick pages forward by SequenceNumber cursor
+    // (a plain Take would let BatchSize deferred events starve everything behind them) and stops once
+    // BatchSize events have actually been applied; each page is committed and the change tracker cleared.
+    public static async Task<(int Processed, int Applied)> RunTickAsync(
+        EventStoreContext db, SchemaRegistryService schemaRegistry, UpcastChain upcastChain, ErasureKeyService? erasureKeyService = null,
         IPayloadMasker? payloadMasker = null, IWorkerWakeSignal? wakeSignal = null, CancellationToken ct = default)
     {
-        var received = await db.Events
-            .Where(e => e.Status == "received")
-            .OrderBy(e => e.SequenceNumber)
-            .ToListAsync(ct);
+        var processed = 0;
+        var applied = 0;
+        long cursor = 0;
+        while (true)
+        {
+            var received = await db.Events
+                .Where(e => e.Status == "received" && e.SequenceNumber > cursor)
+                .OrderBy(e => e.SequenceNumber)
+                .Take(BatchSize)
+                .ToListAsync(ct);
+            if (received.Count == 0)
+                break;
 
-        foreach (var storedEvent in received)
-            await ProcessEventAsync(db, schemaRegistry, upcastChain, erasureKeyService, payloadMasker, storedEvent, ct);
+            foreach (var storedEvent in received)
+                await ProcessEventAsync(db, schemaRegistry, upcastChain, erasureKeyService, payloadMasker, storedEvent, ct);
 
-        if (received.Count > 0)
             await db.SaveChangesAsync(ct);
+            processed += received.Count;
+            var pageApplied = received.Count(e => e.Status == "applied");
+            applied += pageApplied;
+            cursor = received[^1].SequenceNumber;
+            db.ChangeTracker.Clear();
+            if (applied >= BatchSize)
+                break;
+        }
 
         // ADR-095 -- best-effort, after this tick's own fold genuinely
         // committed above. Fires once per tick that processed anything,
@@ -168,14 +205,14 @@ public class RouterWorker(IServiceScopeFactory scopeFactory, ILogger<RouterWorke
         // ADR wires). payloadMasker is null only for call sites that never
         // wire webhooks at all, the same guard WebhookEnqueueResolver's own
         // call above already uses.
-        if (received.Count > 0 && payloadMasker is not null && wakeSignal is not null)
+        if (processed > 0 && payloadMasker is not null && wakeSignal is not null)
             await wakeSignal.NotifyAsync(EventStore.Webhooks.WebhookOutboxPump.Topic, ct);
 
         // ADR-027 Trigger 2 -- catches up any backlog left by a mapping that
         // didn't exist yet when its events originally folded.
         await UpcastMaterializer.ReconcileBacklogAsync(db, schemaRegistry, upcastChain, ct);
 
-        return received.Count;
+        return (processed, applied);
     }
 
     private static async Task ProcessEventAsync(
