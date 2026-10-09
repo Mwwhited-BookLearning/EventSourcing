@@ -107,10 +107,13 @@ public class MeridianKycAnalystQueuePlaybookTests
         var firstItem = queueList.Locator("tbody tr").First;
         await recorder.RecordStepAsync(_page, "Samples.Meridian.Simulator publishes a fresh SanctionsScreeningPerformed for a new applicant roughly every 25 seconds, alternating MatchFound so the queue shows both hits and clears -- this is a real, live pending match, not fixed seed data.");
 
-        await firstItem.Locator("[data-testid^='queue-meaning-']").FillAsync("confirmed against OFAC-SDN, applicant's own stated DOB does not match");
+        var meaningInput = firstItem.Locator("[data-testid^='queue-meaning-']");
+        var itemTestId = await meaningInput.GetAttributeAsync("data-testid"); // pins THIS row: the live subscription removes it once decided, so "first row" re-resolves to a different one
+        await meaningInput.FillAsync("confirmed against OFAC-SDN, applicant's own stated DOB does not match");
         await firstItem.GetByRole(AriaRole.Button, new() { Name = "Accept" }).ClickAsync();
-        var status = firstItem.Locator("[data-testid^='queue-status-']");
-        await Assertions.Expect(status).ToContainTextAsync("accepted", new() { Timeout = 15_000 });
+        // The decided row leaves the queue as soon as the authorityDecision arrives back (fast Routers do this
+        // before any status text could be polled); a failed publish would leave the row, so this still catches it.
+        await Assertions.Expect(_page.GetByTestId(itemTestId!)).ToHaveCountAsync(0, new() { Timeout = 30_000 });
         await recorder.RecordStepAsync(_page, "Filling in the required sign-off reason (Meaning, ADR-066) and clicking Accept publishes an authorityDecision as meridian-analyst-client (claims: identity:aml-review) -- AuthorityDecisionResolver folds the confirmed match into the authoritative Entity Store, and the item disappears from this queue the moment that decision arrives back over the same live subscription.");
 
         const string sequenceDiagram = """

@@ -50,4 +50,3 @@ files since work crossed a real midnight boundary mid-session).
 ## Load-run follow-ups
 
 - [ ] SQL Server still routes ~100 events/s vs Postgres' hundreds (every wake-signal send is a Service Broker dialog with a log flush): consider batching/coalescing sends or reusing dialogs, then re-run `dotnet run --project src/EventStore.LoadTest -- http://localhost:5002 3000 64 6 http://localhost:5010 60` until 200/200 route inside 60 s.
-- [ ] Triage the two Playwright playbook failures from the full test run (`RecordDecidePendingMatchPlaybook`, `RecordDecidePendingAlertPlaybook`): confirm whether they also fail on `main`.
