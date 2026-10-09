@@ -41,9 +41,6 @@ left.)
   the Postgres durable wake queue (ADR-095 revision, 2026-10-09) and the SQL
   Server `sp_getapplock` append lock. Both were only tested in-process with
   Testcontainers; past bugs here appeared only under the real orchestration.
-- **Document the Postgres durable wake queue as a pattern.** Add a row to
-  `docs/patterns/README.md` and record the pgmq rejection in
-  `docs/references.md` (today it lives only in `ADR-095`'s 2026-10-09 revision).
 
 The five-phase design-review program (missing-documents sweep, full ADR
 review, proving-ground domain review, cross-domain-to-framework review,
