@@ -1,11 +1,11 @@
 # Postgres hosts have no connection pool cap sized against the server's max_connections
 
-**Status: open (hardening; the failure itself was mitigated).**
+**Status: resolved 2026-10-09.**
 
 ## What was wrong
 
-The load run exhausted Postgres `max_connections` (`too many clients`). The immediate fix raised the AppHost container to `max_connections=300` and made the wake signal non-throwing, but each host's Npgsql pool still has the default maximum (100) plus one dedicated LISTEN connection per topic, and several hosts share one server. Nothing ties the pool size to the server limit, so a bigger deployment can hit it again.
+The load run exhausted Postgres `max_connections` (`too many clients`). The immediate fix raised the AppHost container to `max_connections=300` and made the wake signal non-throwing, but each host's Npgsql pool still had the default maximum (100) plus one dedicated LISTEN connection per topic, and several hosts share one server. Nothing tied the pool size to the server limit.
 
-## Next step
+## Resolution
 
-Set `Maximum Pool Size` explicitly in the connection strings and document the budget (hosts x pool + LISTEN connections < max_connections).
+`EventStore.Host.Postgres/Program.cs` rewrites `ConnectionStrings:Postgres` at startup to set `Maximum Pool Size=40` unless the configured string already specifies one. Budget: hosts x 40 + LISTEN connections (one per wake topic) must stay under `max_connections` (300 in the AppHost, which runs one Postgres host plus simulators/seeds). Raise `max_connections` with any added host.
