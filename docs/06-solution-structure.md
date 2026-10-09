@@ -48,7 +48,7 @@ already documented above (`.PeerSync`→`.Replication`,
 projects) all still hold, confirmed. What this pass found and added:
 **twelve real projects existed with zero mention anywhere in this
 file** — `EventStore.Flows`, `EventStore.WorkerWakeSignal`,
-`EventStore.SqlClr.SqlServer`, `EventStore.Benchmarks`, and all eight
+`EventStore.SqlClr.SqlServer` (since moved to `spikes/`, see its tree entry below), `EventStore.Benchmarks`, and all eight
 `Samples.Vitals*`/`Samples.Meridian*` projects — added to the tree below
 in their own right places rather than left as a silent gap.
 
@@ -76,7 +76,7 @@ EventStore.sln
     EventStore.Persistence.Migrations.Sqlite/
     EventStore.Persistence.Migrations.Postgres/
     EventStore.Persistence.Migrations.SqlServer/
-    EventStore.SqlClr.SqlServer/     -- ADDED, this reconciliation pass -- EncryptedPredicateFunctions.cs, ADR-098's "In-Database Native Predicate Evaluator Seam" (build-plan item 56): a SQL CLR assembly deployed into SQL Server so an encrypted-field range predicate can be evaluated natively by the database engine rather than pulled client-side first; SQL Server built and verified, the equivalent PostgreSQL path (a native extension) is written but not yet verified (build-plan item 56's own "not Done" status)
+    -- (EventStore.SqlClr.SqlServer/ no longer lives under src/: moved to spikes/in-database-native-predicate-evaluators/SqlServerSqlClrSpike/ 2026-09-04 -- ADR-098's final additive note, native evaluators not adopted; the IEncryptedPredicate seam and its app-tier default, build-plan item 56, stay in src/)
     EventStore.SchemaRegistry/      -- registration service, AppId-scoped lookups (ADR-030), ParentLinkService, upcast/downcast map validation (ADR-018/028); complex-case upcast mappings run sandboxed via Jint, common case via CEL (candidates only, see docs/libraries/dotnet/cel-dotnet.md)
     EventStore.ViewRegistry/        -- ViewDefinitionService/RegisterViewDefinitionRequest/Result + TranslationKeyValidator -- the same registration-service shape as SchemaRegistry above, but for the MVVM client's own ViewDefinition rows (docs/data/schema-registry.md, ADR-039) rather than EventTypeDefinition rows
     EventStore.Inbox/               -- POST /publish; Idempotent Receiver + always-202 append (ADR-011/023) -- the ONLY still-blocking-on-shape step is "can I parse the envelope at all"

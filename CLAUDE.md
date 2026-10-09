@@ -118,7 +118,7 @@ re-derive the process from scratch:
   CLAUDE.md; a restated count/list will just drift out of date.**
 - `docs/07-adrs.md` — **template + index only.** The ADRs themselves live
   one per file under `docs/adrs/adr-NNN-slug.md`, all currently Accepted
-  through `ADR-094`. Never write ADR content back into `07-adrs.md` — add
+  through `ADR-108`. Never write ADR content back into `07-adrs.md` — add
   a row to its index table (it already carries a one-line description per
   ADR — that index, not this file, is where to look for "what does ADR-NNN
   decide") and create the file under `adrs/`.
@@ -340,7 +340,7 @@ re-derive the process from scratch:
 
 ## Decision index
 
-All 103 ADRs (`ADR-001`–`ADR-103`) are Accepted. For what each one
+All 108 ADRs (`ADR-001`–`ADR-108`) are Accepted. For what each one
 decides, read `docs/07-adrs.md`'s index (one-line description per row)
 or the ADR file itself — not this section, which no longer narrates
 individual decisions. For the forks weighed before a decision, see
