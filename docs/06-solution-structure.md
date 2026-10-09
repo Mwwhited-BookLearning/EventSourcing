@@ -245,6 +245,9 @@ EventStore.sln
                                       -- test: run manually to measure the Router's own fold-step cost and each
                                       -- provider's JSON-path-translation cost, not executed as part of any test
                                       -- suite or CI gate
+    EventStore.LoadTest/             -- console driver for a concurrent load run against one running host (registrations,
+                                      -- a publish burst, /events/verify, GraphQL routing poll); run manually against the
+                                      -- AppHost, see its Program.cs usage line. Not part of any test suite or CI gate
   tests/
     EventStore.UnitTests/            -- Built per ADR-063's own decision ("adopt now, alongside ADR-055's
                                       -- EventStore.UnitTests"), correcting THIS line's own earlier "never built"

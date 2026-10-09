@@ -73,6 +73,20 @@ public class WorkerWakeSignalSqlServerTests
     }
 
     [TestMethod]
+    public async Task WaitForWakeNeverThrowsWhenTheDatabaseIsUnreachable()
+    {
+        // Workers call WaitForWakeAsync outside their per-tick try/catch, so a throw would stop the host
+        // (docs/bugs/framework/service/wake-signal-fault-stops-host.md). Port 1 refuses connections; it never
+        // touches the shared queue, so it cannot race the combined scenario below.
+        var options = new DbContextOptionsBuilder<EventStoreContext>()
+            .UseSqlServer("Server=127.0.0.1,1;Database=x;User Id=x;Password=x;Encrypt=False;Connect Timeout=2", x => x.MigrationsAssembly("EventStore.Persistence.Migrations.SqlServer"))
+            .Options;
+        using var db = new EventStoreContext(options, new SqlServerJsonPathTranslator());
+
+        await new SqlServerWorkerWakeSignal(db).WaitForWakeAsync("router", TimeSpan.FromSeconds(2), CancellationToken.None);
+    }
+
+    [TestMethod]
     public async Task AllWorkerWakeSignalScenarios()
     {
         using var waiterDb = CreateContext();

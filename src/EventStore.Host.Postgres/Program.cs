@@ -37,6 +37,19 @@ builder.AddEventStoreCommonServices();
 // completely unaffected. A raw ADO.NET connection, not EventStoreContext --
 // this provider runs before WebApplicationBuilder.Build() (no DI container
 // yet) and only ever reads one flat table with no JSON columns.
+// Pool budget (docs/bugs/framework/service/postgres-connection-pool-unbounded-under-load.md):
+// each host's pool is capped so hosts x pool + LISTEN connections stays under the server's
+// max_connections (300 in the AppHost). An explicit "Maximum Pool Size" in the configured
+// string wins. Rewritten in configuration so every consumer (DbContext, wake signal,
+// feature flags) sees the same string.
+if (builder.Configuration.GetConnectionString("Postgres") is { } rawPostgres)
+{
+    var pooled = new NpgsqlConnectionStringBuilder(rawPostgres);
+    if (!rawPostgres.Contains("Maximum Pool Size", StringComparison.OrdinalIgnoreCase) && !rawPostgres.Contains("MaxPoolSize", StringComparison.OrdinalIgnoreCase))
+        pooled.MaxPoolSize = 40;
+    builder.Configuration["ConnectionStrings:Postgres"] = pooled.ConnectionString;
+}
+
 if (builder.Configuration["FeatureFlags:AppId"] is { } featureFlagsAppId)
 {
     var postgresConnectionString = builder.Configuration.GetConnectionString("Postgres");
