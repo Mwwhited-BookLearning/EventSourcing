@@ -1,6 +1,6 @@
 # AppHost pins HTTPS port 5001, which Docker Desktop's backend also uses
 
-**Status: open.**
+**Status: resolved 2026-10-09 (fail-fast).**
 
 ## What was wrong
 
@@ -14,6 +14,6 @@
 
 A fixed well-known port with no check for collisions; the Aspire DCP proxy and Docker both claim it depending on start order.
 
-## Next step
+## Resolution
 
-Decide whether to move the pinned port (and the docs/client defaults that cite it) or fail fast in the AppHost when it is taken.
+Moving the port would break every doc and client default that cites it, so the AppHost's `Port()` helper now probes each pinned port before use and throws with the port, its `Ports:<Key>` override name and a `netstat` hint when it is taken. Not verified against a live collision (the AppHost was not restarted this pass).

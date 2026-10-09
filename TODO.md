@@ -49,4 +49,4 @@ files since work crossed a real midnight boundary mid-session).
 
 ## Load-run follow-ups
 
-Open bug reports from the load run (each file has its own next step): `docs/bugs/framework/service/sqlserver-prelogin-errors-under-load.md`, `docs/bugs/framework/service/apphost-port-5001-conflicts-with-docker-backend.md`, `docs/bugs/framework/service/aspire-restart-leaves-stale-containers-and-dead-ports.md`.
+Open bug reports from the load run (each file has its own next step): `docs/bugs/framework/service/sqlserver-prelogin-errors-under-load.md`, `docs/bugs/framework/service/aspire-restart-leaves-stale-containers-and-dead-ports.md`.
