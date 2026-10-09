@@ -19,13 +19,13 @@ public abstract class ProviderE2EScenarios
 
     private static string NewAppId() => $"e2e-{Guid.NewGuid():N}"[..16];
 
-    private async Task RegisterAsync(string eventType, string appId)
+    private async Task RegisterAsync(string eventType, string appId, string? entityType = null)
     {
         const string schema = """{ "type": "object", "properties": { "Id": { "type": "string" }, "Amount": { "type": "number" } }, "required": ["Id"] }""";
         var (token, key) = await AuthScenarioAssertions.GetTokenAsync(Harness.DevIdp, "operator-client", "operator-client-secret", "registry:admin");
         using var request = new HttpRequestMessage(HttpMethod.Put, $"/registry/{eventType}")
         {
-            Content = JsonContent.Create(new { appId, jsonSchema = schema, filterableFields = Array.Empty<object>(), changeKind = "Full", entityIdField = "$.Id" }),
+            Content = JsonContent.Create(new { appId, jsonSchema = schema, filterableFields = Array.Empty<object>(), changeKind = "Full", entityIdField = "$.Id", entityType }),
         };
         AuthScenarioAssertions.AttachAuth(request, Harness.Host, token, key);
         var response = await Harness.Host.SendAsync(request);
@@ -71,6 +71,37 @@ public abstract class ProviderE2EScenarios
         Assert.AreEqual(eventId, data.GetProperty("event").GetProperty("eventId").GetGuid());
     }
 
+
+    [TestMethod]
+    public async Task PublishedEventIsRoutedIntoItsEntityAndQueryableWithinSeconds()
+    {
+        var appId = $"e2eroute{Guid.NewGuid():N}"[..16];
+        var entityType = "widget";
+        var eventType = $"E2eRouted{appId}";
+        await RegisterAsync(eventType, appId, entityType);
+        Assert.AreEqual(HttpStatusCode.Accepted, (await PublishAsync(eventType, appId, "w-1", amount: 7)).StatusCode);
+
+        // RouterWorker folds the event into the Entity Store asynchronously (woken by the provider's wake signal,
+        // with its 200ms poll as the backstop) -- the entity must appear well inside the timeout on every provider.
+        var query = $$"""query { entity_{{appId}}_{{entityType}}(id: "w-1") { isAuthoritative } }""";
+        var deadline = DateTime.UtcNow.AddSeconds(15);
+        JsonElement entity = default;
+        while (DateTime.UtcNow < deadline)
+        {
+            var (token, key) = await AuthScenarioAssertions.GetTokenAsync(Harness.DevIdp, "follower-client", "follower-client-secret", "events:follow");
+            using var request = new HttpRequestMessage(Query, "/graphql")
+            {
+                Content = new StringContent(JsonSerializer.Serialize(new { query }), Encoding.UTF8, "application/json"),
+            };
+            AuthScenarioAssertions.AttachAuth(request, Harness.Host, token, key);
+            var body = await (await Harness.Host.SendAsync(request)).Content.ReadFromJsonAsync<JsonElement>();
+            if (!body.TryGetProperty("errors", out _) && body.GetProperty("data").TryGetProperty($"entity_{appId}_{entityType}", out entity) && entity.ValueKind == JsonValueKind.Object)
+                break;
+            await Task.Delay(200);
+        }
+        Assert.AreEqual(JsonValueKind.Object, entity.ValueKind, "entity was never routed/queryable");
+        Assert.IsTrue(entity.GetProperty("isAuthoritative").GetBoolean());
+    }
     [TestMethod]
     public async Task ReplayingTheSameEventIdWithTheSameContentIsIdempotentAndDifferentContentConflicts()
     {
@@ -84,6 +115,14 @@ public abstract class ProviderE2EScenarios
         Assert.AreEqual(HttpStatusCode.Conflict, (await PublishAsync(eventType, appId, "i-1", eventId, amount: 99)).StatusCode);
     }
 
+
+    [TestMethod]
+    public async Task ConcurrentRegistrationsOfDistinctEventTypesAllSucceed()
+    {
+        var appId = NewAppId();
+        // RegisterAsync asserts 201 for each; a deadlock/lock-timeout on either provider surfaces as a 500 here.
+        await Task.WhenAll(Enumerable.Range(0, 15).Select(i => RegisterAsync($"E2eConcurrentReg{i}{appId.Replace("-", "")}", appId)));
+    }
     [TestMethod]
     public async Task PublishingAnUnregisteredEventTypeIsRejectedAsNotFound()
     {

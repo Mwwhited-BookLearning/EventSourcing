@@ -274,11 +274,28 @@ public class SchemaRegistryService(
         // event type this very append needs to already exist.
         if (normalizedName != SchemaRegisteredEventType.Name.ToLowerInvariant())
         {
-            await SchemaRegisteredEventType.EnsureRegisteredAsync(this, request.AppId, ct);
+            try
+            {
+                await SchemaRegisteredEventType.EnsureRegisteredAsync(this, request.AppId, ct);
+            }
+            catch (DbUpdateException)
+            {
+                // Two first-ever registrations for the same AppId raced to insert the built-in
+                // SchemaRegistered bootstrap type; the loser's PK violation is benign -- the
+                // type exists, which is all this step needed. Anything else is a real failure.
+                if (!await BootstrapWonByConcurrentRegistrationAsync(request.AppId, ct))
+                    throw;
+            }
             await AppendSchemaRegisteredAsync(registeredDefinition, user, ct);
         }
 
         return new RegisterEventTypeResult.Success(registeredDefinition.Version);
+    }
+
+    private async Task<bool> BootstrapWonByConcurrentRegistrationAsync(string appId, CancellationToken ct)
+    {
+        db.ChangeTracker.Clear(); // drop the failed insert so later SaveChanges don't replay it
+        return await GetActiveAsync(appId, SchemaRegisteredEventType.Name, ct) is not null;
     }
 
     // Promoted from Samples.Vitals.VitalsSharedTypes/Samples.Meridian.
