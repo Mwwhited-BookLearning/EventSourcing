@@ -37,15 +37,10 @@ above: deleted from this file, full narrative in
 here — a genuinely undecided fork, not decided work with only the doing
 left.)
 
-- `docs/06-solution-structure.md`'s "Project layout" ASCII tree (line
-  ~77) still shows `EventStore.SqlClr.SqlServer/` under `src/`, and
-  "ADDED, this reconciliation pass" stale phrasing — that project moved
-  to `spikes/in-database-native-predicate-evaluators/SqlServerSqlClrSpike/`
-  2026-09-04 (`ADR-098`'s final additive note, native evaluators not
-  adopted). Found in passing while adding a `Directory.Packages.props`
-  pointer to this same tree for `ADR-108` — not fixed this pass, since
-  the whole tree looked broadly stale beyond just this one line and a
-  full re-sweep is its own separate task.
+- **Run the full AppHost (`aspire run`) under concurrent write load** against
+  the Postgres durable wake queue (ADR-095 revision, 2026-10-09) and the SQL
+  Server `sp_getapplock` append lock. Both were only tested in-process with
+  Testcontainers; past bugs here appeared only under the real orchestration.
 
 The five-phase design-review program (missing-documents sweep, full ADR
 review, proving-ground domain review, cross-domain-to-framework review,

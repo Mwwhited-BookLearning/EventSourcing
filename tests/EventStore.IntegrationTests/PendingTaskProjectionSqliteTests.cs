@@ -93,10 +93,8 @@ public class PendingTaskProjectionSqliteTests
         _devIdpClient.Dispose();
         _devIdpFactory.Dispose();
         SqliteConnection.ClearAllPools();
-        if (File.Exists(_dbPath))
-            File.Delete(_dbPath);
-        if (File.Exists(_pendingTasksDbPath))
-            File.Delete(_pendingTasksDbPath);
+        TempDbFile.Delete(_dbPath);
+        TempDbFile.Delete(_pendingTasksDbPath);
     }
 
     private static PendingTasksDbContext CreatePendingTasksDb()

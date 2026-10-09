@@ -6,54 +6,82 @@ using Npgsql;
 
 namespace EventStore.Persistence.Migrations.Postgres;
 
-// ADR-095 -- Postgres's own real, native mechanism: NOTIFY (fire-and-forget,
-// no durable queue of its own) as the "wake sooner" layer, RouterWorker's
-// existing poll loop staying the actual correctness guarantee regardless
-// (the "notify-to-wake, poll-to-confirm" pattern docs/10-open-questions.md's
-// own resolved row already names). One dedicated LISTEN connection per
-// topic, held open for this process's whole lifetime -- LISTEN is
-// session-scoped in Postgres, so a fresh connection per call (this class is
-// otherwise resolved from a fresh DI scope every tick, the same as every
-// other RouterWorker dependency) would re-subscribe from scratch every
-// time and could miss a NOTIFY fired in the gap between connections.
+// ADR-095 -- Postgres's mechanism, revised to match SQL Server Service
+// Broker's queue semantics: a signal is a durable row in "WakeSignalQueue"
+// (so one sent while no reader is connected is still there on reconnect),
+// and NOTIFY is only the doorbell that releases a blocked reader. The
+// reader PULLS: it drains the queue first (the RECEIVE equivalent --
+// DELETE ... FOR UPDATE SKIP LOCKED), and only when empty blocks on its
+// LISTEN connection until notified or maxWait elapses (the WAITFOR ...
+// TIMEOUT equivalent). Postgres has no server-side blocking receive nor
+// internal activation, so the block lives in Npgsql's WaitAsync.
+// RouterWorker's poll loop still backstops everything via maxWait, as with
+// SSB. A wake is idempotent, so a notify coalesces into at most one
+// pending row per topic and a drain consumes every pending row at once.
+// One dedicated LISTEN connection per topic, held open for this process's
+// lifetime -- LISTEN is session-scoped, so a fresh connection per call
+// would re-subscribe from scratch and could miss a NOTIFY in the gap.
 public class PostgresWorkerWakeSignal(EventStoreContext db) : IWorkerWakeSignal
 {
     private static readonly ConcurrentDictionary<string, Lazy<Task<NpgsqlConnection>>> ListenConnections = new();
 
-    // pg_notify(channel, payload), not a literal `NOTIFY channel` string --
-    // the function form accepts the channel name as a real, parameterized
-    // argument (ExecuteSqlInterpolatedAsync parameterizes it), never string-
-    // interpolated SQL, even though `topic` only ever comes from this
-    // codebase's own hardcoded constants (RouterWorker.Topic) today.
-    // Issued on EventStoreContext's own connection/ambient transaction --
-    // if PublishService's own EventAppender.AppendAsync call already
-    // committed by this point (it does -- ADR-011's own Serializable
-    // transaction), this fires immediately; if it hadn't, Postgres defers
-    // visibility to listeners until commit either way, which is exactly
-    // the "never signal before the write is truly durable" contract this
-    // interface's own comment requires.
+    // Enqueue (unless a signal for this topic is already pending) and ring
+    // the doorbell in one command. pg_notify(channel, payload) takes the
+    // channel as a real parameter, never string-interpolated SQL. Postgres
+    // defers NOTIFY delivery until commit, so a signal never precedes the
+    // durable write it announces.
     public async Task NotifyAsync(string topic, CancellationToken ct = default) =>
-        await db.Database.ExecuteSqlInterpolatedAsync($"SELECT pg_notify({topic}, '')", ct);
+        await db.Database.ExecuteSqlInterpolatedAsync($"""
+            INSERT INTO "WakeSignalQueue" ("Topic")
+            SELECT {topic} WHERE NOT EXISTS (SELECT 1 FROM "WakeSignalQueue" WHERE "Topic" = {topic});
+            SELECT pg_notify({topic}, '')
+            """, ct);
 
     public async Task WaitForWakeAsync(string topic, TimeSpan maxWait, CancellationToken ct = default)
     {
+        // LISTEN first, so a NOTIFY landing between the drain below and
+        // the block is buffered rather than missed.
         var connection = await GetListenConnectionAsync(topic, ct);
-        using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
-        timeoutCts.CancelAfter(maxWait);
-        try
+        var deadline = DateTimeOffset.UtcNow + maxWait;
+        while (true)
         {
-            // Blocks until either a NOTIFY on this connection's own LISTEN
-            // channel arrives (firing the Notification event synchronously
-            // during this call, per Npgsql's own documented behavior) or
-            // the linked token cancels.
-            await connection.WaitAsync(timeoutCts.Token);
-        }
-        catch (OperationCanceledException) when (!ct.IsCancellationRequested)
-        {
-            // maxWait elapsed with no NOTIFY -- the ordinary, expected case
-            // every tick this worker's own poll interval already tolerates.
+            if (await DrainAsync(topic, ct))
+                return;
+
+            var remaining = deadline - DateTimeOffset.UtcNow;
+            if (remaining <= TimeSpan.Zero)
+                return;
+
+            using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            timeoutCts.CancelAfter(remaining);
+            try
+            {
+                await connection.WaitAsync(timeoutCts.Token);
+            }
+            catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+            {
+                return; // maxWait elapsed -- the poll loop's own backstop
+            }
+            catch (Exception ex) when (ex is NpgsqlException or System.IO.IOException)
+            {
+                // Listen connection died; evict so the next call reopens it.
+                // The caller's poll loop covers this tick.
+                ListenConnections.TryRemove(topic, out _);
+                return;
+            }
+            // Woken (or a stale notification for an already-drained row):
+            // loop -- the drain decides whether it was a real signal.
         }
     }
+
+    // RECEIVE equivalent: atomically consume every pending signal for this
+    // topic; SKIP LOCKED so concurrent readers never block on each other.
+    private async Task<bool> DrainAsync(string topic, CancellationToken ct) =>
+        await db.Database.ExecuteSqlInterpolatedAsync($"""
+            WITH pending AS (
+                SELECT "Id" FROM "WakeSignalQueue" WHERE "Topic" = {topic} FOR UPDATE SKIP LOCKED)
+            DELETE FROM "WakeSignalQueue" q USING pending WHERE q."Id" = pending."Id"
+            """, ct) > 0;
 
     private Task<NpgsqlConnection> GetListenConnectionAsync(string topic, CancellationToken ct)
     {

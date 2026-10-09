@@ -66,4 +66,36 @@ public class WorkerWakeSignalPostgresTests
 
         Assert.IsTrue(stopwatch.Elapsed >= TimeSpan.FromMilliseconds(400), $"expected the wait to run out its own timeout with no NOTIFY, took only {stopwatch.Elapsed}");
     }
+
+    [TestMethod]
+    public async Task ASignalSentWhileNoReaderIsListeningIsStillDeliveredToALaterReaderLikeServiceBroker()
+    {
+        var topic = $"topic_{Guid.NewGuid():N}";
+        using var notifierDb = CreateContext();
+        await new PostgresWorkerWakeSignal(notifierDb).NotifyAsync(topic, CancellationToken.None); // no LISTEN anywhere yet
+
+        using var readerDb = CreateContext();
+        var stopwatch = Stopwatch.StartNew();
+        await new PostgresWorkerWakeSignal(readerDb).WaitForWakeAsync(topic, TimeSpan.FromSeconds(10), CancellationToken.None);
+        stopwatch.Stop();
+
+        Assert.IsTrue(stopwatch.Elapsed < TimeSpan.FromSeconds(2), $"expected the queued signal to be pulled immediately, took {stopwatch.Elapsed}");
+    }
+
+    [TestMethod]
+    public async Task ASignalIsConsumedOnceAndCoalescesSoASecondWaitBlocksUntilItsTimeout()
+    {
+        var topic = $"topic_{Guid.NewGuid():N}";
+        using var db = CreateContext();
+        var signal = new PostgresWorkerWakeSignal(db);
+        await signal.NotifyAsync(topic, CancellationToken.None);
+        await signal.NotifyAsync(topic, CancellationToken.None); // coalesces into the one pending row
+        await signal.WaitForWakeAsync(topic, TimeSpan.FromSeconds(10), CancellationToken.None); // consumes it
+
+        var stopwatch = Stopwatch.StartNew();
+        await signal.WaitForWakeAsync(topic, TimeSpan.FromMilliseconds(600), CancellationToken.None);
+        stopwatch.Stop();
+
+        Assert.IsTrue(stopwatch.Elapsed >= TimeSpan.FromMilliseconds(500), $"expected nothing left to pull, but the wait returned in {stopwatch.Elapsed}");
+    }
 }

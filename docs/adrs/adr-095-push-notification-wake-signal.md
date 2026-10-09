@@ -167,3 +167,33 @@ Consequences:
   have had). `WakeSignalExtendedWorkersSqliteTests.cs` proves each of the
   5 new call sites (`PublishService`, `RouterWorker`,
   `TelemetrySampleWriter`) actually signals its own topic.
+
+## Revised, 2026-10-09 — Postgres wake signal is now a durable queue (direct request)
+
+The Decision above described Postgres as `LISTEN`/`NOTIFY` only —
+fire-and-forget, so a signal sent while no reader was connected was lost,
+unlike SQL Server Service Broker's durable queue. Direct request: "i want
+pg to work like ssb." `PostgresWorkerWakeSignal` now matches SSB's queue
+semantics:
+
+- `NotifyAsync` inserts a row into `"WakeSignalQueue"` (migration
+  `AddWakeSignalQueue`; raw SQL, not an EF entity, so the model snapshot is
+  unchanged) unless one is already pending for that topic — a wake is
+  idempotent, so signals coalesce and the table cannot grow unbounded —
+  then calls `pg_notify` as the doorbell.
+- `WaitForWakeAsync` **pulls**: it first drains the queue
+  (`DELETE ... FOR UPDATE SKIP LOCKED`, the `RECEIVE` equivalent), and only
+  when empty blocks on its `LISTEN` connection until notified or `maxWait`
+  elapses (the `WAITFOR ... TIMEOUT` equivalent). A reader that was offline
+  when the signal was sent finds it on its next wait.
+- Postgres has no server-side blocking receive and no internal activation
+  (verified: `LISTEN`/`NOTIFY` is pub/sub with no replay; the in-core
+  background-worker API needs a `shared_preload_libraries` C module). The
+  block lives in Npgsql's `WaitAsync`. Like the SSB path, this deliberately
+  uses no activation.
+- `pgmq` was considered and not adopted: it needs an extension install,
+  unconfirmed on major managed Postgres offerings, and the plain table
+  gives the same persistence with no new dependency.
+- The worker poll loop (`maxWait`) remains the correctness backstop on every
+  provider, unchanged. Tests: `WorkerWakeSignalPostgresTests.cs` adds an
+  offline-reader case and a coalescing/consume-once case.

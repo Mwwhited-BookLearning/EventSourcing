@@ -105,8 +105,7 @@ public class TimestampingHttpSqliteTests
         await _fakeTsaServer.StopAsync();
         _fakeTsaServer.Dispose();
         SqliteConnection.ClearAllPools();
-        if (File.Exists(_dbPath))
-            File.Delete(_dbPath);
+        TempDbFile.Delete(_dbPath);
     }
 
     private static EventStoreContext OpenDb() => new(

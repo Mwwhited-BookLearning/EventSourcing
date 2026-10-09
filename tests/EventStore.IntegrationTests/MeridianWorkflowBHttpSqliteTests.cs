@@ -100,8 +100,7 @@ public class MeridianWorkflowBHttpSqliteTests
         _devIdpClient.Dispose();
         _devIdpFactory.Dispose();
         SqliteConnection.ClearAllPools();
-        if (File.Exists(_dbPath))
-            File.Delete(_dbPath);
+        TempDbFile.Delete(_dbPath);
     }
 
     private static async Task RegisterIdentityClaimSubmittedAsync(string appId)

@@ -31,10 +31,8 @@ public class ReplicationSqliteTests
     public static void ClassCleanup()
     {
         SqliteConnection.ClearAllPools();
-        if (File.Exists(_dbPathA))
-            File.Delete(_dbPathA);
-        if (File.Exists(_dbPathB))
-            File.Delete(_dbPathB);
+        TempDbFile.Delete(_dbPathA);
+        TempDbFile.Delete(_dbPathB);
     }
 
     private static EventStoreContext CreateContext(string dbPath)

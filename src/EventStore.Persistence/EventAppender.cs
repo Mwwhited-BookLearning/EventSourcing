@@ -91,7 +91,7 @@ public static class EventAppender
             // documented failed attempts this corrects). SQLite/SQL Server keep
             // Serializable, completely unchanged -- neither has ever exhibited the
             // Postgres-specific 40001 contention this exists to fix.
-            var isolationLevel = AppendSerializationLock.IsPostgres(db) ? IsolationLevel.ReadCommitted : IsolationLevel.Serializable;
+            var isolationLevel = AppendSerializationLock.UsesTailLock(db) ? IsolationLevel.ReadCommitted : IsolationLevel.Serializable;
             await using var transaction = await db.Database.BeginTransactionAsync(isolationLevel, ct);
             try
             {
